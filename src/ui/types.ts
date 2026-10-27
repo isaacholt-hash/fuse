@@ -83,6 +83,8 @@ export interface MessageView {
   sources?: SourceView[];
   /** The provider is searching the web right now. */
   searching?: boolean;
+  /** Saved memories that were sent with this answer (PM-04). */
+  memories?: string[];
 }
 
 export interface SourceView {
@@ -158,4 +160,40 @@ export interface ProjectForm {
   name: string;
   instructions: string;
   defaultModel: { provider: ProviderId; id: string } | null;
+}
+
+/** Settings → Memory: one saved fact (PM-02, PM-07). */
+export type MemoryCategoryView = "fact" | "preference" | "person" | "project";
+
+export interface MemoryView {
+  id: string;
+  text: string;
+  category: MemoryCategoryView;
+  projectId: string | null;
+  projectName: string | null;
+  /** Title of the chat it came from; null if typed in or the chat is gone. */
+  source: string | null;
+  /** e.g. "Oct 27" */
+  date: string;
+  confidence: number;
+}
+
+export interface MemoryForm {
+  text: string;
+  category: MemoryCategoryView;
+  projectId: string | null;
+}
+
+/** A change the Cheap model suggested, waiting for review (PM-03). */
+export interface ProposalView {
+  id: string;
+  op: "add" | "update" | "delete";
+  /** The new text (add, update). */
+  text: string;
+  /** The saved fact it changes (update, delete). */
+  currentText: string | null;
+  category: MemoryCategoryView;
+  projectName: string | null;
+  source: string | null;
+  confidence: number;
 }

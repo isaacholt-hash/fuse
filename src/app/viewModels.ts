@@ -102,6 +102,7 @@ export function messageViews(
   catalog: Catalog,
   images: ReadonlyMap<string, ImageView[]> = new Map(),
   sources: ReadonlyMap<string, SourceView[]> = new Map(),
+  memories: ReadonlyMap<string, { text: string }[]> = new Map(),
 ): MessageView[] {
   const out: MessageView[] = [];
   let lastModel: string | null = null;
@@ -140,6 +141,8 @@ export function messageViews(
     }
     const cited = sources.get(m.id);
     if (cited?.length) view.sources = cited;
+    const used = memories.get(m.id);
+    if (used?.length) view.memories = used.map((x) => x.text);
     if (m.status === "error") view.error = m.errorMessage ?? "Something went wrong.";
     if (m.status === "complete" && m.errorMessage) view.notice = m.errorMessage;
     out.push(view);

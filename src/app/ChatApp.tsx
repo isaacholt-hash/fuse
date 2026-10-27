@@ -16,6 +16,9 @@ import {
   MAX_INSTRUCTION_CHARS,
 } from "@/chat/instructions";
 import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
+import { housekeepingModel, needsMemoryCheck, suggestMemories } from "@/memory/extract";
+import { memoryTokens } from "@/memory/inject";
+import { findSecret, SECRET_LABELS } from "@/memory/secrets";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
 import type { ProviderAdapter } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
@@ -27,6 +30,19 @@ import {
   setGlobalInstructions,
   type GlobalInstructions,
 } from "@/storage/instructions";
+import {
+  addMemory,
+  approveProposal,
+  deleteAllMemories,
+  deleteMemory,
+  editMemory,
+  listMemories,
+  listPendingProposals,
+  memoriesForMessages,
+  rejectProposal,
+  type Memory,
+  type Proposal,
+} from "@/storage/memories";
 import { listMessages, type Message } from "@/storage/messages";
 import {
   createProject,
@@ -36,6 +52,12 @@ import {
   type Project,
 } from "@/storage/projects";
 import { listRecentRequests, logRequest } from "@/storage/requestLog";
+import {
+  DEFAULT_MEMORY_SETTINGS,
+  getMemorySettings,
+  setMemorySettings,
+  type MemorySettings,
+} from "@/storage/settings";
 import type { SqlDb } from "@/storage/sql";
 import type { UpdateApi } from "@/update/api";
 import {
@@ -44,6 +66,7 @@ import {
   listThreads,
   renameThread,
   setThreadInstructions,
+  setThreadMemory,
   setThreadProject,
   setThreadWebSearch,
   type Thread,
@@ -58,12 +81,17 @@ import {
   InstructionsButton,
   ThreadInstructionsDialog,
 } from "@/ui/Instructions";
+import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
+import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog } from "@/ui/Projects";
 import { Sidebar } from "@/ui/Sidebar";
 import { UpdateBar } from "@/ui/UpdateBar";
 import type {
   ImageView,
+  MemoryForm,
+  MemoryView,
   PendingAttachment,
+  ProposalView,
   ProjectForm,
   ProjectView,
   RequestRow,
@@ -157,6 +185,16 @@ export function ChatApp({
   const [threadFiles, setThreadFiles] = useState<Map<string, FileRecord[]>>(new Map());
   // Web sources cited by the answers on screen, by message id.
   const [threadSources, setThreadSources] = useState<Map<string, Citation[]>>(new Map());
+  // Memories sent with the answers on screen, by message id.
+  const [threadMemories, setThreadMemories] = useState<Map<string, { text: string }[]>>(new Map());
+  // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [memorySettings, setMemorySettingsState] =
+    useState<MemorySettings>(DEFAULT_MEMORY_SETTINGS);
+  const [skippedSecrets, setSkippedSecrets] = useState<string[]>([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [checkingMemory, setCheckingMemory] = useState(false);
   // The search toggle for a chat that hasn't been saved yet.
   const [draftSearch, setDraftSearch] = useState(false);
   // Instructions for every chat (Settings), and for a chat that hasn't been saved yet.
@@ -234,6 +272,20 @@ export function ChatApp({
     const list = await listThreads(db, tenant);
     setThreadList({ threads: list, at: Date.now() });
   }, [db, tenant]);
+  const refreshMemory = useCallback(async () => {
+    setMemories(await listMemories(db, tenant));
+    setProposals(await listPendingProposals(db, tenant));
+  }, [db, tenant]);
+  useEffect(() => {
+    Promise.all([listMemories(db, tenant), listPendingProposals(db, tenant)]).then(
+      ([saved, waiting]) => {
+        setMemories(saved);
+        setProposals(waiting);
+      },
+      report,
+    );
+    getMemorySettings(db, tenant).then(setMemorySettingsState, report);
+  }, [db, tenant]);
   /** A thread's messages and their attached files. */
   const loadThread = useCallback(
     async (threadId: string) => {
@@ -243,23 +295,22 @@ export function ChatApp({
         tenant,
         rows.filter((m) => m.role === "user").map((m) => m.id),
       );
-      const cited = await citationsForMessages(
-        db,
-        tenant,
-        rows.filter((m) => m.role === "assistant").map((m) => m.id),
-      );
-      return { rows, attached, cited };
+      const answers = rows.filter((m) => m.role === "assistant").map((m) => m.id);
+      const cited = await citationsForMessages(db, tenant, answers);
+      const used = await memoriesForMessages(db, tenant, answers);
+      return { rows, attached, cited, used };
     },
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
   const reload = useCallback(
     async (threadId: string) => {
-      const { rows, attached, cited } = await loadThread(threadId);
+      const { rows, attached, cited, used } = await loadThread(threadId);
       if (selectedRef.current === threadId) {
         setMessages(rows);
         setThreadFiles(attached);
         setThreadSources(cited);
+        setThreadMemories(used);
       }
       return rows;
     },
@@ -272,13 +323,14 @@ export function ChatApp({
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
         if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, attached, cited } = await loadThread(lastThread);
+        const { rows, attached, cited, used } = await loadThread(lastThread);
         if (selectedRef.current !== null) return; // the user already moved on
         setSelectedId(lastThread);
         selectedRef.current = lastThread;
         setMessages(rows);
         setThreadFiles(attached);
         setThreadSources(cited);
+        setThreadMemories(used);
         const last = lastModelOf(rows, catalog);
         if (last) setModel(last);
       })
@@ -309,6 +361,7 @@ export function ChatApp({
     setMessages([]);
     setThreadFiles(new Map());
     setThreadSources(new Map());
+    setThreadMemories(new Map());
     attachments.clear();
     reload(id).then((rows) => {
       // Continue on the model this thread last used.
@@ -326,6 +379,8 @@ export function ChatApp({
       setMessages([]);
       setThreadFiles(new Map());
       setThreadSources(new Map());
+      setThreadMemories(new Map());
+      setThreadMemories(new Map());
       setDraftSearch(false);
       setDraftInstructions("");
       setDraftProject(projectId);
@@ -425,6 +480,132 @@ export function ChatApp({
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
   }, []);
 
+  const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  /**
+   * Asks the housekeeping model what to remember from a chat (PM-03). Runs by itself when you
+   * leave a chat with new messages (if suggestions are on), or when asked from the chat's menu.
+   */
+  const checkMemory = async (threadId: string, asked: boolean) => {
+    const target = threads.find((t) => t.id === threadId);
+    if (!target || threadId in live) return;
+    if (!asked && (!memorySettings.suggest || !needsMemoryCheck(target))) return;
+    const last = threadId === selectedId ? lastModelOf(messages, catalog) : undefined;
+    const helper = housekeepingModel(catalog, savedProviders, last?.provider ?? model.provider);
+    if (!helper) {
+      if (asked) setProblem("Add an API key in Settings to get memory suggestions.");
+      return;
+    }
+    setCheckingMemory(true);
+    try {
+      const r = await suggestMemories(deps, catalog, threadId, helper);
+      setSkippedSecrets(r.skipped.map((k) => SECRET_LABELS[k]));
+      if (r.error && asked) setProblem(`Memory suggestions failed: ${r.error}`);
+      if (asked && !r.error && r.proposed === 0 && r.skipped.length === 0) {
+        setProblem("Nothing new to remember from this chat.");
+      }
+      if (asked && r.proposed > 0) setReviewOpen(true);
+      await refreshMemory();
+      await refreshThreads();
+    } finally {
+      setCheckingMemory(false);
+    }
+  };
+  const checkMemoryRef = useRef(checkMemory);
+  useEffect(() => {
+    checkMemoryRef.current = checkMemory;
+  });
+  // Leaving a chat (opening another, or a new one) is the "end of a thread" for memory.
+  const previousSelected = useRef<string | null>(null);
+  useEffect(() => {
+    const left = previousSelected.current;
+    previousSelected.current = selectedId;
+    if (left && left !== selectedId) checkMemoryRef.current(left, false).catch(report);
+  }, [selectedId]);
+
+  const memoryProblem = (form: MemoryForm) => {
+    const secret = findSecret(form.text);
+    return secret ? `That looks like ${SECRET_LABELS[secret]}. Memory never stores those.` : null;
+  };
+  const addOwnMemory = (form: MemoryForm) => {
+    const problem = memoryProblem(form);
+    if (problem) return problem;
+    addMemory(db, tenant, form).then(refreshMemory).catch(report);
+    return null;
+  };
+  const editOwnMemory = (id: string, form: MemoryForm) => {
+    const problem = memoryProblem(form);
+    if (problem) return problem;
+    editMemory(db, tenant, id, form).then(refreshMemory).catch(report);
+    return null;
+  };
+  const keepProposal = (id: string, text?: string) => {
+    const p = proposals.find((x) => x.id === id);
+    if (p && p.op !== "delete" && text !== undefined) {
+      const secret = findSecret(text);
+      if (secret) {
+        setProblem(`That looks like ${SECRET_LABELS[secret]}. Memory never stores those.`);
+        return;
+      }
+    }
+    approveProposal(db, tenant, id, text).then(refreshMemory).catch(report);
+  };
+  const keepAllProposals = () => {
+    void (async () => {
+      for (const p of proposals) await approveProposal(db, tenant, p.id);
+      await refreshMemory();
+      setReviewOpen(false);
+    })().catch(report);
+  };
+  const skipAllProposals = () => {
+    void (async () => {
+      for (const p of proposals) await rejectProposal(db, tenant, p.id);
+      await refreshMemory();
+      setReviewOpen(false);
+    })().catch(report);
+  };
+  const saveMemorySettings = (value: MemorySettings) => {
+    setMemorySettings(db, tenant, value)
+      .then(() => getMemorySettings(db, tenant))
+      .then(setMemorySettingsState)
+      .catch(report);
+  };
+  const projectName = (id: string | null) =>
+    id ? (projects.find((p) => p.id === id)?.name ?? null) : null;
+  const shortDate = (ms: number) =>
+    new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const memoryViews: MemoryView[] = memories.map((m) => ({
+    id: m.id,
+    text: m.text,
+    category: m.category,
+    projectId: m.projectId,
+    projectName: projectName(m.projectId),
+    source: m.sourceThreadTitle,
+    date: shortDate(m.createdAt),
+    confidence: m.confidence,
+  }));
+  const proposalViews: ProposalView[] = proposals.map((p) => ({
+    id: p.id,
+    op: p.op,
+    text: p.text,
+    currentText: p.currentText,
+    category: p.category,
+    projectName: projectName(p.projectId),
+    source: p.sourceThreadTitle,
+    confidence: p.confidence,
+  }));
+  const copyMemories = () => {
+    const text = (Object.keys(CATEGORY_LABELS) as Memory["category"][])
+      .map((c) => {
+        const list = memories.filter((m) => m.category === c);
+        return list.length
+          ? `${CATEGORY_LABELS[c]}\n${list.map((m) => `- ${m.text}`).join("\n")}`
+          : "";
+      })
+      .filter(Boolean)
+      .join("\n\n");
+    navigator.clipboard.writeText(text).catch(report);
+  };
+
   const thread = threads.find((t) => t.id === selectedId);
   const searchOn = thread ? thread.webSearch : draftSearch;
   const toggleSearch = () => {
@@ -508,7 +689,13 @@ export function ChatApp({
     });
     for (const [id, list] of threadFiles) images.set(id, list.map(view));
     if (liveHere?.files.length) images.set("live-question", liveHere.files.map(view));
-    const views = messageViews(withLive(messages, liveHere), catalog, images, threadSources);
+    const views = messageViews(
+      withLive(messages, liveHere),
+      catalog,
+      images,
+      threadSources,
+      threadMemories,
+    );
     // The answer streaming now shows its live search status and sources.
     const streamingAnswer = views.findLast((v) => v.status === "streaming");
     if (liveHere && streamingAnswer) {
@@ -516,7 +703,7 @@ export function ChatApp({
       if (liveHere.sources?.length) streamingAnswer.sources = liveHere.sources;
     }
     return views;
-  }, [messages, liveHere, threadFiles, threadSources, fileUrls, catalog]);
+  }, [messages, liveHere, threadFiles, threadSources, threadMemories, fileUrls, catalog]);
   const streaming = selectedId !== null && selectedId in live;
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
@@ -663,6 +850,30 @@ export function ChatApp({
                   />
                 )
               }
+              memory={
+                <MemorySection
+                  key={memorySettings.budgetTokens}
+                  memories={memoryViews}
+                  projects={projects}
+                  suggest={memorySettings.suggest}
+                  budgetTokens={memorySettings.budgetTokens}
+                  tokens={memories.reduce((sum, m) => sum + memoryTokens(m), 0)}
+                  pendingCount={proposals.length}
+                  onAdd={addOwnMemory}
+                  onEdit={editOwnMemory}
+                  onDelete={(id) => {
+                    deleteMemory(db, tenant, id).then(refreshMemory).catch(report);
+                  }}
+                  onDeleteAll={() => {
+                    deleteAllMemories(db, tenant).then(refreshMemory).catch(report);
+                  }}
+                  onSettings={saveMemorySettings}
+                  onReview={() => {
+                    setReviewOpen(true);
+                  }}
+                  onCopyAll={copyMemories}
+                />
+              }
               theme={theme}
               onTheme={setTheme}
               onBack={() => {
@@ -747,6 +958,15 @@ export function ChatApp({
                       projects={projects}
                       projectId={thread.projectId}
                       onMove={moveThread}
+                      memoryOn={thread.memoryOn}
+                      onToggleMemory={() => {
+                        setThreadMemory(db, tenant, thread.id, !thread.memoryOn)
+                          .then(refreshThreads)
+                          .catch(report);
+                      }}
+                      onSuggestMemories={() => {
+                        checkMemory(thread.id, true).catch(report);
+                      }}
                       onRename={showRename}
                       onDelete={() => {
                         setDeleting(threadView(thread, at));
@@ -761,6 +981,17 @@ export function ChatApp({
                 modelName={model.displayName}
                 startedAt={messages[0]?.createdAt ?? null}
                 onRetry={retry}
+              />
+              <MemoryBar
+                count={proposals.length}
+                checking={checkingMemory}
+                skipped={skippedSecrets}
+                onReview={() => {
+                  setReviewOpen(true);
+                }}
+                onDismissSkipped={() => {
+                  setSkippedSecrets([]);
+                }}
               />
               <Composer
                 key={`composer-${selectedId ?? "new"}`}
@@ -808,6 +1039,21 @@ export function ChatApp({
           maxChars={MAX_INSTRUCTION_CHARS}
           onSave={saveProject}
           {...(editedProject ? { onDelete: removeProject } : {})}
+        />
+        <MemoryReviewDialog
+          open={reviewOpen}
+          onOpenChange={(open) => {
+            setReviewOpen(open);
+            if (!open) setSkippedSecrets([]);
+          }}
+          proposals={proposalViews}
+          skipped={skippedSecrets}
+          onKeep={keepProposal}
+          onSkip={(id) => {
+            rejectProposal(db, tenant, id).then(refreshMemory).catch(report);
+          }}
+          onKeepAll={keepAllProposals}
+          onSkipAll={skipAllProposals}
         />
         <ThreadInstructionsDialog
           open={instructionsOpen}

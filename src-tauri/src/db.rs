@@ -60,6 +60,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "projects",
         sql: include_str!("../migrations/0005_projects.sql"),
     },
+    MigrationFile {
+        version: 6,
+        description: "memory",
+        sql: include_str!("../migrations/0006_memory.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the

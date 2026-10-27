@@ -2,6 +2,7 @@ import { money, number } from "./format";
 import {
   ArrowDown,
   ArrowUp,
+  Brain,
   Check,
   ChevronDown,
   CircleAlert,
@@ -102,6 +103,31 @@ function CostBadge({ message }: { message: MessageView }) {
           {usage.totalMicro === null ? "cost unknown" : money(usage.totalMicro)}
         </span>
         <ChevronDown className="ml-0.5 size-3 opacity-60" />
+      </button>
+    </Tip>
+  );
+}
+
+function MemoryBadge({ memories }: { memories: string[] }) {
+  return (
+    <Tip
+      label={
+        <div className="w-64 space-y-1.5 py-1">
+          <p className="mb-2 font-medium">Memories sent with this answer</p>
+          <ul className="space-y-1 text-[11px] leading-4">
+            {memories.map((m, i) => (
+              <li key={i}>· {m}</li>
+            ))}
+          </ul>
+        </div>
+      }
+    >
+      <button
+        className="mt-4 flex items-center gap-1 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        aria-label={`${String(memories.length)} ${memories.length === 1 ? "memory" : "memories"} used`}
+      >
+        <Brain className="size-3" />
+        {memories.length}
       </button>
     </Tip>
   );
@@ -325,7 +351,14 @@ export function Messages({
                         Stopped
                       </span>
                     )}
-                    {message.status !== "streaming" && <CostBadge message={message} />}
+                    {message.status !== "streaming" && (
+                      <div className="flex flex-wrap items-center gap-x-3">
+                        <CostBadge message={message} />
+                        {message.memories && message.memories.length > 0 && (
+                          <MemoryBadge memories={message.memories} />
+                        )}
+                      </div>
+                    )}
                   </article>
                 )}
               </div>

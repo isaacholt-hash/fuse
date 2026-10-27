@@ -21,6 +21,9 @@ import {
 } from "@/storage/messages";
 import { addCitations } from "@/storage/citations";
 import { getGlobalInstructions } from "@/storage/instructions";
+import { listMemories, recordInjected } from "@/storage/memories";
+import { getMemorySettings } from "@/storage/settings";
+import { selectMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -219,12 +222,29 @@ async function streamAnswer(
   // Read at send time, so an edit applies from the next message on (and on retry).
   const thread = await getThread(db, tenant, input.threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
+  // Memories matched to the question being answered (PM-04), unless this chat turned them off.
+  const injected =
+    thread && !thread.memoryOn
+      ? []
+      : selectMemories(
+          await listMemories(db, tenant),
+          `${thread?.title ?? ""}\n${history.findLast((m) => m.role === "user")?.content ?? ""}`,
+          thread?.projectId ?? null,
+          (await getMemorySettings(db, tenant)).budgetTokens,
+        );
+  await recordInjected(
+    db,
+    tenant,
+    assistantMessageId,
+    injected.map((m) => m.id),
+  );
   const system = systemPrompt(
     effectiveInstructions(
       await getGlobalInstructions(db, tenant),
       project?.instructions ?? "",
       thread?.instructions ?? "",
     ),
+    injected.map((m) => m.text),
   );
 
   try {

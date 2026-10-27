@@ -15,7 +15,7 @@
 - [x] **4. Web search.** A per-message toggle in the composer (remembered per thread) that turns on the provider's native search tool. Sources render as citations under the answer; the search fee is added to the answer's cost and to the request log.
 - [x] **5. Custom instructions.** Global "about you / how to answer" and per-thread instructions (CH-05); the effective set is viewable from the thread header.
 - [x] **6. Projects.** Create, rename, delete; project instructions and default model; threads belong to a project and can be moved; sidebar groups by project (PM-01, without knowledge files).
-- [ ] **7. Memory v1.** Facts you can see, add, edit and delete (PM-02, PM-07). After a thread, a Cheap-tier model proposes facts; you approve them (PM-03). The secrets filter never stores keys or passwords (PM-05). Injection uses keyword match within a token budget (PM-04); vector search comes in M2.
+- [x] **7. Memory v1.** Facts you can see, add, edit and delete (PM-02, PM-07). After a thread, a Cheap-tier model proposes facts; you approve them (PM-03). The secrets filter never stores keys or passwords (PM-05). Injection uses keyword match within a token budget (PM-04); vector search comes in M2.
 - [ ] **8. Auto-title.** Titles from the Cheap tier after the first exchange (CH-09), logged as `purpose: title`.
 - [ ] **9. Tiers and routing policy as data.** `data/routing.json`: tier → models (Cheap / Balanced / Best), quality floor per intent (RT-17), the default rules (RT-03). Built from the current catalog; **Isaac approves the tier mapping** in the PR.
 - [ ] **9a. Golden prompt set.** Isaac picks 50 real prompts from his ChatGPT/Claude history with the tier he'd expect (RT-16). Claude builds the import helper; Isaac supplies the prompts.

@@ -1,5 +1,16 @@
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
-import { Folder, FolderMinus, MoreHorizontal, Pencil, Trash2, X, Zap } from "lucide-react";
+import {
+  Brain,
+  Check,
+  Folder,
+  FolderMinus,
+  MoreHorizontal,
+  Pencil,
+  Sparkles,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -85,9 +96,17 @@ export function ThreadMenu({
   projects,
   projectId,
   onMove,
+  memoryOn,
+  onToggleMemory,
+  onSuggestMemories,
 }: {
   onRename: () => void;
   onDelete: () => void;
+  /** Saved memories are sent with this chat (PM-04). */
+  memoryOn: boolean;
+  onToggleMemory: () => void;
+  /** Check this chat for things to remember now (PM-03). */
+  onSuggestMemories: () => void;
   /** Projects this chat can move to (PM-01). */
   projects: { id: string; name: string }[];
   projectId: string | null;
@@ -114,6 +133,17 @@ export function ThreadMenu({
           <DropdownMenu.Item className={item} onSelect={onRename}>
             <Pencil className="size-3.5" />
             Rename chat
+          </DropdownMenu.Item>
+          <DropdownMenu.CheckboxItem className={item} checked={memoryOn} onSelect={onToggleMemory}>
+            <Brain className="size-3.5" />
+            Use memories in this chat
+            <DropdownMenu.ItemIndicator className="ml-auto">
+              <Check className="size-3.5" />
+            </DropdownMenu.ItemIndicator>
+          </DropdownMenu.CheckboxItem>
+          <DropdownMenu.Item className={item} onSelect={onSuggestMemories}>
+            <Sparkles className="size-3.5" />
+            Suggest memories now
           </DropdownMenu.Item>
           {targets.length > 0 && (
             <>
