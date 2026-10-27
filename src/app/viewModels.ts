@@ -222,6 +222,11 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
 const PURPOSE_LABELS: Partial<Record<RequestLogRecord["purpose"], string>> = {
   key_test: "Key test",
 };
+/** Housekeeping calls show the model and what the call was for. */
+const CHORE_LABELS: Partial<Record<RequestLogRecord["purpose"], string>> = {
+  title: "chat title",
+  memory: "memory",
+};
 
 /** One request_log row for the debug panel. */
 export function requestRow(r: RequestLogRecord, catalog: Catalog, now: number): RequestRow {
@@ -239,7 +244,9 @@ export function requestRow(r: RequestLogRecord, catalog: Catalog, now: number): 
         ? time
         : `${d.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`,
     provider: provider ? PROVIDER_NAMES[provider] : r.provider,
-    model: PURPOSE_LABELS[r.purpose] ?? model?.displayName ?? r.model,
+    model:
+      PURPOSE_LABELS[r.purpose] ??
+      [model?.displayName ?? r.model, CHORE_LABELS[r.purpose]].filter(Boolean).join(" · "),
     input: u.inputTokens + u.cachedInputTokens + u.cacheWriteTokens,
     output: u.outputTokens,
     cached: u.cachedInputTokens,

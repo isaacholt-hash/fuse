@@ -22,13 +22,8 @@ import { getMemorySettings, setMemorySettings } from "@/storage/settings";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, getThread, setThreadMemory, setThreadProject } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
-import {
-  housekeepingModel,
-  needsMemoryCheck,
-  parseSuggestions,
-  suggestMemories,
-  transcript,
-} from "./extract";
+import { housekeepingModel } from "@/chat/housekeeping";
+import { needsMemoryCheck, parseSuggestions, suggestMemories, transcript } from "./extract";
 import { keywords, selectMemories } from "./inject";
 import { findSecret } from "./secrets";
 
