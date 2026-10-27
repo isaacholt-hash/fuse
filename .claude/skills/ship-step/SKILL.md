@@ -17,7 +17,7 @@ Run this when the step's code is written and committed on its branch (`m0/<short
    - **Notes**: decisions, anything not verified (e.g. "Windows installer not yet run")
    - **What's next**
    - the attribution lines from the system reminder
-6. **CI:** if `.github/workflows/` exists, wait for checks with `gh pr checks <n> --watch`. Any failure blocks the merge.
+6. **CI:** if `.github/workflows/` exists, wait for checks with `gh pr checks <n> --watch`, then gate on `bash scripts/ci-green.sh <n>`, which reads GitHub's JSON. Merge only if it exits 0. Never gate on grepping `gh pr checks` text: on 2026-10-27 that let a failed check through. Any failure blocks the merge.
 7. **Merge:** `gh pr merge <n> --merge --delete-branch`, then `git switch main && git pull`. Don't merge if any check failed or the PR asks Isaac a question that's still open.
 8. **Report** to Isaac: lead with what (if anything) he needs to do, then the PR link, and send the screenshot with SendUserFile. Keep it short.
 

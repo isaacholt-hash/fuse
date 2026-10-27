@@ -38,8 +38,9 @@ jobs:
       - name: Tauri system dependencies
         timeout-minutes: 25
         run: |
-          # The runners' Azure mirror stalled the Rust job four times on 2026-10-27; use Ubuntu's own.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          # The runners' Azure mirror stalled the Rust job five times on 2026-10-27; use Ubuntu's own.
+          # Newer runner images list the mirror in apt-mirrors.txt, so that file is switched too.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev
       - uses: dtolnay/rust-toolchain@stable
