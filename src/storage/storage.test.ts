@@ -4,6 +4,7 @@ import { addMessage, finishMessage, listMessages, markInterruptedMessages } from
 import { listRecentRequests, logRequest } from "./requestLog";
 import { openTestDb } from "./testing/nodeDb";
 import { getGlobalInstructions, NO_INSTRUCTIONS, setGlobalInstructions } from "./instructions";
+import { createProject, deleteProject, getProject, listProjects, updateProject } from "./projects";
 import {
   createThread,
   deleteThread,
@@ -11,6 +12,7 @@ import {
   listThreads,
   renameThread,
   setThreadInstructions,
+  setThreadProject,
 } from "./threads";
 import { EMPTY_USAGE } from "./usage";
 
@@ -190,4 +192,36 @@ test("thread instructions are saved trimmed and read back with the thread", asyn
   expect(thread.instructions).toBe("");
   await setThreadInstructions(db, DEFAULT_TENANT, thread.id, "  French only \n");
   expect((await getThread(db, DEFAULT_TENANT, thread.id))?.instructions).toBe("French only");
+});
+
+test("projects: create, list alphabetically, update, and delete keeps their chats", async () => {
+  const db = openTestDb();
+  const t = DEFAULT_TENANT;
+  const b = await createProject(db, t, "  beta   plans ");
+  const a = await createProject(db, t, "Alpha");
+  expect((await listProjects(db, t)).map((p) => p.name)).toEqual(["Alpha", "beta plans"]);
+  await expect(createProject(db, t, "  ")).rejects.toThrow("needs a name");
+
+  await updateProject(db, t, a.id, {
+    name: "Alpha 2",
+    instructions: " Cite sources. ",
+    defaultModel: { provider: "openai", id: "gpt-6-luna" },
+  });
+  expect(await getProject(db, t, a.id)).toMatchObject({
+    name: "Alpha 2",
+    instructions: "Cite sources.",
+    defaultModel: { provider: "openai", id: "gpt-6-luna" },
+  });
+
+  const inA = await createThread(db, t, "In A", a.id);
+  const loose = await createThread(db, t, "Loose");
+  await setThreadProject(db, t, loose.id, b.id);
+  expect((await getThread(db, t, loose.id))?.projectId).toBe(b.id);
+  await setThreadProject(db, t, loose.id, null);
+  expect((await getThread(db, t, loose.id))?.projectId).toBeNull();
+
+  await deleteProject(db, t, a.id);
+  expect(await getProject(db, t, a.id)).toBeNull();
+  expect((await listProjects(db, t)).map((p) => p.name)).toEqual(["beta plans"]);
+  expect((await getThread(db, t, inA.id))?.projectId).toBeNull();
 });

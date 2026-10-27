@@ -95,6 +95,7 @@ export interface ThreadView {
   title: string;
   group: ThreadGroup;
   costMicro: number;
+  projectId: string | null;
 }
 
 export type KeyBusy = null | "loading" | "saving" | "testing" | "deleting";
@@ -142,4 +143,19 @@ export interface GlobalInstructionsView {
 export interface InstructionPartView {
   label: string;
   text: string;
+}
+
+/** A project in the sidebar, with its chats (most recent first). */
+export interface ProjectView {
+  id: string;
+  name: string;
+  threads: ThreadView[];
+  costMicro: number;
+}
+
+/** The fields of the project dialog. */
+export interface ProjectForm {
+  name: string;
+  instructions: string;
+  defaultModel: { provider: ProviderId; id: string } | null;
 }

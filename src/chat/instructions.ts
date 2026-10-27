@@ -6,7 +6,7 @@ import type { GlobalInstructions } from "@/storage/instructions";
 /** Each box is capped so an instruction set can't quietly cost a lot on every message. */
 export const MAX_INSTRUCTION_CHARS = 4000;
 
-export type InstructionSource = "about_you" | "how_to_answer" | "thread";
+export type InstructionSource = "about_you" | "how_to_answer" | "project" | "thread";
 
 export interface InstructionPart {
   source: InstructionSource;
@@ -17,17 +17,20 @@ export interface InstructionPart {
 const PARTS: { source: InstructionSource; label: string; tag: string }[] = [
   { source: "about_you", label: "About you", tag: "about_the_user" },
   { source: "how_to_answer", label: "How to answer", tag: "how_to_answer" },
+  { source: "project", label: "This project", tag: "project" },
   { source: "thread", label: "This chat", tag: "this_chat" },
 ];
 
 /** The instructions in effect for a thread, broadest first; empty ones are left out. */
 export function effectiveInstructions(
   global: GlobalInstructions,
+  project: string,
   thread: string,
 ): InstructionPart[] {
   const text: Record<InstructionSource, string> = {
     about_you: global.aboutYou,
     how_to_answer: global.howToAnswer,
+    project,
     thread,
   };
   return PARTS.flatMap(({ source, label }) => {
@@ -37,8 +40,8 @@ export function effectiveInstructions(
 }
 
 /**
- * The system prompt sent with every message. Global parts come first and the thread part last,
- * so the stable prefix is the same across threads (better prompt caching, RT-07).
+ * The system prompt sent with every message. Global parts come first, then the project, then the
+ * thread, so the stable prefix is shared across threads (better prompt caching, RT-07).
  */
 export function systemPrompt(parts: InstructionPart[]): string | undefined {
   if (parts.length === 0) return undefined;
@@ -47,7 +50,7 @@ export function systemPrompt(parts: InstructionPart[]): string | undefined {
     return `<${tag}>\n${p.text}\n</${tag}>`;
   });
   return [
-    "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Instructions for this chat take priority over the general ones.",
+    "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
     ...blocks,
   ].join("\n\n");
 }

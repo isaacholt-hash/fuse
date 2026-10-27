@@ -21,6 +21,7 @@ import {
 } from "@/storage/messages";
 import { addCitations } from "@/storage/citations";
 import { getGlobalInstructions } from "@/storage/instructions";
+import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
@@ -216,10 +217,13 @@ async function streamAnswer(
   const sources: Source[] = [];
   const webSearch = Boolean(input.webSearch) && model.capabilities.includes("web_search");
   // Read at send time, so an edit applies from the next message on (and on retry).
+  const thread = await getThread(db, tenant, input.threadId);
+  const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
   const system = systemPrompt(
     effectiveInstructions(
       await getGlobalInstructions(db, tenant),
-      (await getThread(db, tenant, input.threadId))?.instructions ?? "",
+      project?.instructions ?? "",
+      thread?.instructions ?? "",
     ),
   );
 
