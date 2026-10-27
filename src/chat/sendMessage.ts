@@ -6,6 +6,7 @@ import {
   type ProviderId,
 } from "@/catalog/catalog";
 import { cost } from "@/cost/cost";
+import { effectiveInstructions, systemPrompt } from "./instructions";
 import { ProviderError, userMessage } from "@/providers/errors";
 import { toBase64, type FilesApi } from "@/files/api";
 import type { Attachment, ChatMessage, ProviderAdapter, StreamDone } from "@/providers/types";
@@ -19,6 +20,7 @@ import {
   type Message,
 } from "@/storage/messages";
 import { addCitations } from "@/storage/citations";
+import { getGlobalInstructions } from "@/storage/instructions";
 import { filesForMessages, linkFiles } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
@@ -48,7 +50,6 @@ export interface SendInput {
   text: string;
   /** Files already stored (src/storage/files.ts addFile) to attach to this question. */
   fileIds?: string[];
-  system?: string;
   signal?: AbortSignal;
   /** Called with the full answer text so far, for live rendering. */
   onText?: (textSoFar: string) => void;
@@ -214,11 +215,18 @@ async function streamAnswer(
   let failure: ProviderError | null = null;
   const sources: Source[] = [];
   const webSearch = Boolean(input.webSearch) && model.capabilities.includes("web_search");
+  // Read at send time, so an edit applies from the next message on (and on retry).
+  const system = systemPrompt(
+    effectiveInstructions(
+      await getGlobalInstructions(db, tenant),
+      (await getThread(db, tenant, input.threadId))?.instructions ?? "",
+    ),
+  );
 
   try {
     const adapter = deps.adapterFor(model.provider);
     const options = {
-      ...(input.system ? { system: input.system } : {}),
+      ...(system ? { system } : {}),
       ...(webSearch ? { webSearch } : {}),
     };
     for await (const ev of adapter.streamChat(history, model.id, options, input.signal)) {

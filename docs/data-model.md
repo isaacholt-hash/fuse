@@ -110,6 +110,7 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 | `chunk_vectors` | sqlite-vec `vec0`: `chunk_id`, `embedding`. | FK-02 |
 | `url_cache` | `url`, `fetched_at`, `content`, `token_estimate` (24 h TTL). | FK-06 |
 | `message_citations` | `message_id`, `ordinal`, `kind` (`chunk`/`web`), `chunk_id NULL`, `url NULL`, `title NULL`. Built in M1 step 4 (`0003_web_search.sql`, web only so far), with `messages.web_search_calls`, `request_log.web_search_calls` and `threads.web_search` (the composer toggle). | FK-02, FK-05 |
+| `user_instructions` | One row per user: `about_you`, `how_to_answer` (global custom instructions), with `threads.instructions` for one thread. Built in M1 step 5 (`0004_instructions.sql`). Composed into the system prompt at send time, global first and thread last (`src/chat/instructions.ts`); project instructions slot in between in step 6. | CH-05 |
 
 ### Artifacts: M1+
 

@@ -10,12 +10,23 @@ import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import { LARGE_TEXT_TOKENS } from "@/files/documents";
 import { imageTokens, type PreparedImage } from "@/files/images";
+import {
+  effectiveInstructions,
+  instructionTokens,
+  MAX_INSTRUCTION_CHARS,
+} from "@/chat/instructions";
 import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
 import type { ProviderAdapter } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
 import { citationsForMessages, type Citation } from "@/storage/citations";
 import { filesForMessages, type FileRecord } from "@/storage/files";
+import {
+  getGlobalInstructions,
+  NO_INSTRUCTIONS,
+  setGlobalInstructions,
+  type GlobalInstructions,
+} from "@/storage/instructions";
 import { listMessages, type Message } from "@/storage/messages";
 import { listRecentRequests, logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
@@ -25,6 +36,7 @@ import {
   deleteThread,
   listThreads,
   renameThread,
+  setThreadInstructions,
   setThreadWebSearch,
   type Thread,
 } from "@/storage/threads";
@@ -33,6 +45,11 @@ import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
+import {
+  GlobalInstructionsSection,
+  InstructionsButton,
+  ThreadInstructionsDialog,
+} from "@/ui/Instructions";
 import { Sidebar } from "@/ui/Sidebar";
 import { UpdateBar } from "@/ui/UpdateBar";
 import type { ImageView, PendingAttachment, RequestRow, ThreadView } from "@/ui/types";
@@ -124,6 +141,10 @@ export function ChatApp({
   const [threadSources, setThreadSources] = useState<Map<string, Citation[]>>(new Map());
   // The search toggle for a chat that hasn't been saved yet.
   const [draftSearch, setDraftSearch] = useState(false);
+  // Instructions for every chat (Settings), and for a chat that hasn't been saved yet.
+  const [globalInstructions, setGlobal] = useState<GlobalInstructions | null>(null);
+  const [draftInstructions, setDraftInstructions] = useState("");
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
   const [model, setModel] = useState(() => initialModel(catalog));
   const [view, setView] = useState<"chat" | "settings">(
@@ -173,6 +194,11 @@ export function ChatApp({
   const report = (e: unknown) => {
     setProblem(e instanceof Error ? e.message : String(e));
   };
+  useEffect(() => {
+    getGlobalInstructions(db, tenant).then(setGlobal, (e: unknown) => {
+      setProblem(String(e));
+    });
+  }, [db, tenant]);
   const refreshThreads = useCallback(async () => {
     const list = await listThreads(db, tenant);
     setThreadList({ threads: list, at: Date.now() });
@@ -268,6 +294,7 @@ export function ChatApp({
     setThreadFiles(new Map());
     setThreadSources(new Map());
     setDraftSearch(false);
+    setDraftInstructions("");
     clearAttachments();
     setView("chat");
   }, [clearAttachments]);
@@ -340,6 +367,9 @@ export function ChatApp({
         const thread = await createThread(db, tenant);
         threadId = thread.id;
         if (search) await setThreadWebSearch(db, tenant, threadId, true);
+        if (draftInstructions) {
+          await setThreadInstructions(db, tenant, threadId, draftInstructions);
+        }
         setSelectedId(threadId);
         selectedRef.current = threadId;
         await refreshThreads();
@@ -364,6 +394,24 @@ export function ChatApp({
       return;
     }
     setThreadWebSearch(db, tenant, thread.id, !thread.webSearch).then(refreshThreads).catch(report);
+  };
+  const chatInstructions = thread ? thread.instructions : draftInstructions;
+  const instructionParts = effectiveInstructions(
+    globalInstructions ?? NO_INSTRUCTIONS,
+    chatInstructions,
+  );
+  const saveChatInstructions = (text: string) => {
+    if (!thread) {
+      setDraftInstructions(text.trim());
+      return;
+    }
+    setThreadInstructions(db, tenant, thread.id, text).then(refreshThreads).catch(report);
+  };
+  const saveGlobalInstructions = (value: GlobalInstructions) => {
+    setGlobalInstructions(db, tenant, value)
+      .then(() => getGlobalInstructions(db, tenant))
+      .then(setGlobal)
+      .catch(report);
   };
   const liveHere = selectedId ? live[selectedId] : undefined;
   const wantedFiles = useMemo(
@@ -510,6 +558,15 @@ export function ChatApp({
             <SettingsView
               keys={keys.keys}
               version={appUpdate.version}
+              instructions={
+                globalInstructions && (
+                  <GlobalInstructionsSection
+                    value={globalInstructions}
+                    maxChars={MAX_INSTRUCTION_CHARS}
+                    onSave={saveGlobalInstructions}
+                  />
+                )
+              }
               theme={theme}
               onTheme={setTheme}
               onBack={() => {
@@ -556,6 +613,12 @@ export function ChatApp({
                     )}
                   </button>
                 </div>
+                <InstructionsButton
+                  count={instructionParts.length}
+                  onClick={() => {
+                    setInstructionsOpen(true);
+                  }}
+                />
                 {thread && (
                   <>
                     <Tip label="Total cost and tokens for this conversation">
@@ -612,6 +675,19 @@ export function ChatApp({
             </main>
           )}
         </div>
+        <ThreadInstructionsDialog
+          open={instructionsOpen}
+          onOpenChange={setInstructionsOpen}
+          globalParts={instructionParts.filter((p) => p.source !== "thread")}
+          thread={chatInstructions}
+          tokens={instructionTokens(instructionParts)}
+          maxChars={MAX_INSTRUCTION_CHARS}
+          onSave={saveChatInstructions}
+          onEditGlobal={() => {
+            setInstructionsOpen(false);
+            setView("settings");
+          }}
+        />
         <Modal
           open={Boolean(deleting)}
           onOpenChange={(open) => {

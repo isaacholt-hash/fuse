@@ -13,7 +13,7 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ProviderId } from "@/catalog/catalog";
@@ -218,6 +218,7 @@ export function KeyCard({
 export function SettingsView({
   keys,
   version,
+  instructions,
   theme,
   onTheme,
   onBack,
@@ -229,6 +230,8 @@ export function SettingsView({
   keys: KeyView[];
   /** The installed app version; null while it loads. */
   version: string | null;
+  /** Settings → Custom instructions; rendered once loaded. */
+  instructions: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -286,6 +289,7 @@ export function SettingsView({
             provider.
           </p>
         </div>
+        {instructions}
         <section className="mt-8 border-t pt-6">
           <h2 className="text-sm font-medium">Appearance</h2>
           <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Theme">
@@ -327,7 +331,9 @@ export function SettingsView({
         </button>
         {version && (
           <p className="mt-7 border-t pt-5 font-mono text-[10px] text-muted-foreground">
-            FUSE {version} · updates install automatically
+            {version === "dev"
+              ? "FUSE development build · auto-update off"
+              : `FUSE ${version} · updates install automatically`}
           </p>
         )}
       </div>

@@ -5,14 +5,15 @@ import { ProviderError } from "@/providers/errors";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import { fakeFetch, noSleep } from "@/providers/testing/fakeFetch";
 import { loadFixture } from "@/providers/testing/fixtures";
-import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
+import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { citationsForMessages } from "@/storage/citations";
 import { addFile } from "@/storage/files";
 import { listMessages } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
 import { openTestDb } from "@/storage/testing/nodeDb";
-import { createThread, getThread } from "@/storage/threads";
+import { setGlobalInstructions } from "@/storage/instructions";
+import { createThread, getThread, setThreadInstructions } from "@/storage/threads";
 import { historyFor, retryLast, sendMessage, type ChatDeps } from "./sendMessage";
 
 const t = DEFAULT_TENANT;
@@ -51,15 +52,17 @@ type Script = (history: ChatMessage[], signal?: AbortSignal) => AsyncGenerator<S
 
 function fakeAdapter(provider: "anthropic" | "openai", script: Script) {
   const calls: ChatMessage[][] = [];
+  const options: ChatOptions[] = [];
   const adapter: ProviderAdapter = {
     provider,
     listModels: () => Promise.resolve([]),
-    streamChat(history, _model, _options, signal) {
+    streamChat(history, _model, opts, signal) {
       calls.push(history);
+      options.push(opts);
       return script(history, signal);
     },
   };
-  return { adapter, calls };
+  return { adapter, calls, options };
 }
 
 async function* answer(text: string, input = 100, output = 50): AsyncGenerator<StreamEvent> {
@@ -456,4 +459,23 @@ test("web search: fee added to the cost, sources saved, status reported, only if
     { ...deps, catalog },
     { threadId: thread.id, model: claude, text: "Again", webSearch: true },
   );
+});
+
+test("custom instructions go to every model as the system prompt, read fresh on each send", async () => {
+  const { db, deps, fakes } = setup({});
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "a" });
+  expect(fakes.anthropic.options[0]).toEqual({});
+
+  await setGlobalInstructions(db, t, { aboutYou: "I live in Leeds.", howToAnswer: "Be brief." });
+  await setThreadInstructions(db, t, thread.id, "  Answer in French.  ");
+  await sendMessage(deps, { threadId: thread.id, model: gpt, text: "b" });
+  const system = fakes.openai.options[0]?.system ?? "";
+  expect(system).toContain("<about_the_user>\nI live in Leeds.\n</about_the_user>");
+  expect(system.indexOf("Be brief.")).toBeLessThan(system.indexOf("Answer in French."));
+  expect(system).toContain("<this_chat>\nAnswer in French.\n</this_chat>");
+
+  // Retry uses them too.
+  await retryLast(deps, { threadId: thread.id, model: claude });
+  expect(fakes.anthropic.options[1]?.system).toBe(system);
 });

@@ -34,11 +34,12 @@ export function tauriUpdateApi(): UpdateApi {
   };
 }
 
-/** Outside the desktop app (tests, the browser preview) there is nothing to update. */
+/** Outside an installed build (tests, the browser preview, `pnpm tauri dev`) there is nothing to update. */
 export const noUpdates: UpdateApi = {
   version: () => Promise.resolve("dev"),
   prepare: () => Promise.resolve(null),
   installAndRestart: () => Promise.resolve(),
 };
 
-export const defaultUpdateApi = (): UpdateApi => (isTauri() ? tauriUpdateApi() : noUpdates);
+export const defaultUpdateApi = (): UpdateApi =>
+  isTauri() && !import.meta.env.DEV ? tauriUpdateApi() : noUpdates;

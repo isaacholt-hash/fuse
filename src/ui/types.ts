@@ -131,3 +131,15 @@ export interface RequestRow {
   /** Provider's request id, for support tickets. */
   requestId: string | null;
 }
+
+/** Settings → Custom instructions (CH-05). */
+export interface GlobalInstructionsView {
+  aboutYou: string;
+  howToAnswer: string;
+}
+
+/** One instruction in effect for a chat, e.g. "About you" and its text. */
+export interface InstructionPartView {
+  label: string;
+  text: string;
+}
