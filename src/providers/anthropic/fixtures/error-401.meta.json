@@ -1,0 +1,29 @@
+{
+  "scenario": "error-401",
+  "description": "Invalid API key",
+  "provider": "anthropic",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request_headers": {
+    "anthropic-version": "2026-10-21"
+  },
+  "request_body": {
+    "model": "claude-haiku-5-5",
+    "max_tokens": 200,
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Reply with exactly: Hello from FUSE."
+      }
+    ]
+  },
+  "used_invalid_key": true,
+  "status": 401,
+  "response_headers": {
+    "content-type": "application/json",
+    "request-id": "req_011CgRKwXFTkmdLz4DcGwJRj"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 138
+}

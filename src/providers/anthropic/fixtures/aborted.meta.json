@@ -1,0 +1,31 @@
+{
+  "scenario": "aborted",
+  "description": "Client stops reading early (stop button)",
+  "provider": "anthropic",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request_headers": {
+    "anthropic-version": "2026-10-21"
+  },
+  "request_body": {
+    "model": "claude-haiku-5-5",
+    "max_tokens": 1500,
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Count from 1 to 200, one number per line."
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "request-id": "req_011CgRKwTwGkfbKDcxD2LDti",
+    "anthropic-ratelimit-requests-limit": "5000",
+    "anthropic-ratelimit-tokens-limit": "6000000"
+  },
+  "aborted_by_client": true,
+  "elapsed_ms": 761
+}

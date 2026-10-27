@@ -1,0 +1,39 @@
+[package]
+name = "fuse"
+version = "0.1.0"
+description = "FUSE — frontier models, unified, spend-efficient"
+authors = ["Isaac Holt"]
+edition = "2024"
+
+[lib]
+# The `_lib` suffix keeps the lib name distinct from the bin name (needed on Windows,
+# see https://github.com/rust-lang/cargo/issues/8519).
+name = "fuse_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri-plugin-sql = { version = "2.6.0", features = ["sqlite"] }
+keyring = "4.2"
+reqwest = "0.13"
+tauri-plugin-opener = "2.7.2"
+sha2 = "0.11.1"
+tauri-plugin-process = "2"
+# Desktop only, like the app (CLAUDE.md: P1 is desktop only).
+tauri-plugin-updater = "2"
+
+# https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

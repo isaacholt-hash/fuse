@@ -1,0 +1,29 @@
+{
+  "scenario": "error-401",
+  "description": "Invalid API key",
+  "provider": "openai",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Reply with exactly: Hello from FUSE."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 300
+  },
+  "used_invalid_key": true,
+  "status": 401,
+  "response_headers": {
+    "content-type": "application/json",
+    "x-request-id": "req_0644eb6192c8478daee44af3ded5fbaa"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 257
+}

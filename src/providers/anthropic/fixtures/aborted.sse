@@ -1,0 +1,24 @@
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgRKwUHrnhr3g1MiEzfBC","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":23,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":5,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}     }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}     }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSqQUKEAgTGAI4AUIIdGhpbmtpbmcSDPi+o1q/0pvz6msXIRoMqjU2KjAhtJbGlMSqIjA+VMbM31gmXdrQwlAyIHmetcqqf7KmFgDaW0VfeZX4lSuYqxfnKL27mv9Dpyh8JZsqxgS0EmcU1VFpjDsHDJRKjMDs5IeAc+MS7Q+8cILcHt9dv/y+ZGDSozIdT/gDe9O62N/gs4776BJY0vI/u5WBAMbAmp9OdJ11lT6vrPcqGbHFtCcSiXDifhxQ5ui6wcByX2gDwSFMNQO8OIOIKbV9BFs1ZBgMZzOwxvzueUhEpqDc9bL75OBbsSRca+fmqnRqzK1BJ/pPYvkvDGO2RAdWG6MUe9arBCkRTZvZVzuAGAWmL5AfirbkuMeZk9MtRZ8RzpBX0SDtndDaS8lutJBHpvT97tChQPoGKTMXdfCYXpudNPWTSsx2zvRJ0UEx2LApz/UWpjtu+cXIpH+vNav2L9l0szMs042KHO2GJaNczW7RpTtK1zExPOYVmuj/ht2E+FDApW4oQtOPGeankiijUtkGr28jYhKvSQ13v73RJ0XxRh7835iQs+s7X3fHT3hTpq7yQi4P/p4v48YBXuyZmyQYmWvbSYMwPR67EmPZFCrA6FsxTIx15uEQwkDYNq8gXWdsr9TBzn8I/5fbNRkcJ3iwVlh4g6YcW7Th70baMHdSrKngaDS/x7zQFgAJWEJTetHP5TnEueNOJOk6+G6YYuhVg20aXJTTqhYoMvNAE/6hFsD6SKSta6OnVDqvzolY+xvy3avc5Jyg12ACb/JsJhQlyILOZsKn33FV6v/zS/ovc8KvDl3+CndPHyQkGRStt90n1m2YG+YjYagqLPnqH8AIUHHWXJndusTcyPM5LXlCV3Yn93SuBNHTF48OxV5KIH+kD2EBcEsYAQ=="}               }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0        }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"1\n2\n3"}   }
+

@@ -1,0 +1,88 @@
+import { useEffect, useState } from "react";
+import type { Catalog, ProviderId } from "@/catalog/catalog";
+import { defaultCatalog } from "@/catalog/defaultCatalog";
+import { ChatApp } from "@/app/ChatApp";
+import { tauriFilesApi, type FilesApi } from "@/files/api";
+import { prepareImage as webviewPrepareImage, type PreparedImage } from "@/files/images";
+import { tauriKeysApi, type KeysApi } from "@/keys/api";
+import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
+import { createOpenAIAdapter } from "@/providers/openai/adapter";
+import type { ProviderAdapter } from "@/providers/types";
+import { DEFAULT_TENANT } from "@/storage/defaults";
+import { markInterruptedMessages } from "@/storage/messages";
+import type { SqlDb } from "@/storage/sql";
+import { openTauriDb } from "@/storage/tauriDb";
+import { providerFetch } from "@/transport/tauriFetch";
+import { defaultUpdateApi, type UpdateApi } from "@/update/api";
+
+// On desktop, every provider request goes through the Rust transport, which adds the key.
+const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
+  anthropic: createAnthropicAdapter({ fetch: providerFetch("anthropic") }),
+  openai: createOpenAIAdapter({ fetch: providerFetch("openai") }),
+};
+const desktopAdapterFor = (p: ProviderId) => desktopAdapters[p];
+const desktopUpdates = defaultUpdateApi();
+
+type Storage =
+  { kind: "opening" } | { kind: "ready"; db: SqlDb } | { kind: "error"; message: string };
+
+interface Props {
+  openDb?: () => Promise<SqlDb>;
+  keysApi?: KeysApi;
+  adapterFor?: (provider: ProviderId) => ProviderAdapter;
+  catalog?: Catalog;
+  files?: FilesApi;
+  prepareImage?: (file: File) => Promise<PreparedImage>;
+  updates?: UpdateApi;
+}
+
+export default function App({
+  openDb = openTauriDb,
+  keysApi = tauriKeysApi,
+  adapterFor = desktopAdapterFor,
+  catalog = defaultCatalog,
+  files = tauriFilesApi,
+  prepareImage = webviewPrepareImage,
+  updates = desktopUpdates,
+}: Props) {
+  const [storage, setStorage] = useState<Storage>({ kind: "opening" });
+
+  useEffect(() => {
+    const alive = { current: true };
+    void (async () => {
+      try {
+        const db = await openDb();
+        // Answers that were streaming when the app last closed are marked as cut off.
+        await markInterruptedMessages(db, DEFAULT_TENANT);
+        if (alive.current) setStorage({ kind: "ready", db });
+      } catch (e) {
+        if (alive.current) setStorage({ kind: "error", message: String(e) });
+      }
+    })();
+    return () => {
+      alive.current = false;
+    };
+  }, [openDb]);
+
+  if (storage.kind !== "ready")
+    return (
+      <main className="flex h-dvh flex-col items-center justify-center gap-2 bg-background text-foreground">
+        <h1 className="text-2xl font-semibold tracking-[0.12em]">FUSE</h1>
+        <p className="font-mono text-xs text-muted-foreground" role="status">
+          {storage.kind === "opening" ? "Opening storage…" : `Storage error: ${storage.message}`}
+        </p>
+      </main>
+    );
+  return (
+    <ChatApp
+      db={storage.db}
+      tenant={DEFAULT_TENANT}
+      catalog={catalog}
+      keysApi={keysApi}
+      adapterFor={adapterFor}
+      files={files}
+      prepareImage={prepareImage}
+      updates={updates}
+    />
+  );
+}

@@ -1,0 +1,27 @@
+# deps / builds
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+coverage/
+
+# secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+
+# local data
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+
+# editors / OS
+.DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Claude Code personal settings
+.claude/settings.local.json

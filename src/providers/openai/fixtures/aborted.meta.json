@@ -1,0 +1,31 @@
+{
+  "scenario": "aborted",
+  "description": "Client stops reading early (stop button)",
+  "provider": "openai",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Count from 1 to 200, one number per line."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 1500
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_028c351df027490e80790f08bd022476",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": true,
+  "elapsed_ms": 770
+}

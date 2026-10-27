@@ -1,0 +1,111 @@
+name: Release
+
+# Every merge to main that changes the app publishes a signed release, and installed copies of
+# FUSE update themselves from releases/latest (docs/releases.md). Also runs from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md"]
+
+# One release at a time, oldest first, so versions go out in order.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    name: Draft release
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v7
+      # The run number only goes up, so every release is newer than the one before it.
+      - id: version
+        run: echo "version=0.1.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+      - id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # A merge commit's body is the PR title: that's the release note.
+          notes="$(git log -1 --format=%b)"
+          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" \
+            --title "FUSE $VERSION" --notes "${notes:-$(git log -1 --format=%s)}"
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .id")"
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: draft
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tauri system dependencies (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        timeout-minutes: 25
+        run: |
+          # Same mirror switch as ci.yml: the runners' Azure mirror stalls.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libsecret-1-dev
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: pnpm install --frozen-lockfile
+      - name: Stamp the version
+        shell: bash
+        env:
+          VERSION: ${{ needs.draft.outputs.version }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = "src-tauri/tauri.conf.json";
+            const c = JSON.parse(fs.readFileSync(p, "utf8"));
+            c.version = process.env.VERSION;
+            fs.writeFileSync(p, JSON.stringify(c, null, 2));
+          '
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater bundles; the matching public key is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          releaseId: ${{ needs.draft.outputs.release_id }}
+          # Isaac installed the NSIS (.exe) build, so updates use it too.
+          updaterJsonPreferNsis: true
+
+  publish:
+    name: Publish release
+    needs: [draft, build]
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "v${{ needs.draft.outputs.version }}" -R "$GITHUB_REPOSITORY" --draft=false --latest
+
+  # A failed build leaves a draft nobody can update from; remove it so the next run starts clean.
+  cleanup:
+    needs: [draft, build]
+    if: failure() && needs.draft.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete "v${{ needs.draft.outputs.version }}" -R "$GITHUB_REPOSITORY" --yes

@@ -1,0 +1,31 @@
+{
+  "scenario": "reasoning",
+  "description": "Reasoning tokens on a reasoning model",
+  "provider": "openai",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6.1-sol",
+    "input": [
+      {
+        "role": "user",
+        "content": "What is 17 × 23? Think it through, then give only the number."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 2000
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_734e17d531b84096af65ab334e5d87ad",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "1000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 2195
+}

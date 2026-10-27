@@ -1,0 +1,39 @@
+{
+  "scenario": "multi-turn",
+  "description": "Three-message history",
+  "provider": "openai",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "My name is Isaac. Remember it."
+      },
+      {
+        "role": "assistant",
+        "content": "Got it, Isaac."
+      },
+      {
+        "role": "user",
+        "content": "What is my name? Answer in one word."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 300
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_3d615f8605dd4f2aab726314a5bc258c",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1321
+}

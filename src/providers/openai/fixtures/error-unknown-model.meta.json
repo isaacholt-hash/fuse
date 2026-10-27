@@ -1,0 +1,29 @@
+{
+  "scenario": "error-unknown-model",
+  "description": "Model id that does not exist",
+  "provider": "openai",
+  "recorded_on": "2026-10-26",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "fuse-no-such-model",
+    "input": [
+      {
+        "role": "user",
+        "content": "Reply with exactly: Hello from FUSE."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 300
+  },
+  "used_invalid_key": false,
+  "status": 404,
+  "response_headers": {
+    "content-type": "application/json",
+    "x-request-id": "req_8fe65129b2224bcd878f5eda69375df2"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 188
+}

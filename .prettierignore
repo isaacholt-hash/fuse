@@ -1,0 +1,7 @@
+dist
+coverage
+pnpm-lock.yaml
+src-tauri/target
+src-tauri/gen
+*.md
+src/providers/*/fixtures/

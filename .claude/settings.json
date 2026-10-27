@@ -1,0 +1,44 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm:*)",
+      "Bash(cargo:*)",
+      "Bash(rustup:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout:*)",
+      "Bash(git switch:*)",
+      "Bash(git push -u origin m0/*)",
+      "Bash(git pull:*)",
+      "Bash(git grep:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr checks:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh api repos/isaacholt-hash/fuse/*)",
+      "Bash(gh run watch:*)",
+      "Bash(git branch:*)",
+      "Bash(bash scripts/check.sh)",
+      "Bash(bash scripts/screenshot.sh:*)",
+      "Bash(bash scripts/secret-scan.sh)",
+      "Bash(xvfb-run:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(~/.config/fuse/**)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push origin main:*)",
+      "Bash(secret-tool lookup:*)",
+      "Bash(printenv:*)",
+      "Bash(env)"
+    ]
+  }
+}
