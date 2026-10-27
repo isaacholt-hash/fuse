@@ -35,9 +35,11 @@ jobs:
         run: |
           # A merge commit's body is the PR title: that's the release note.
           notes="$(git log -1 --format=%b)"
-          gh release create "v$VERSION" --draft --target "$GITHUB_SHA" \
-            --title "FUSE $VERSION" --notes "${notes:-$(git log -1 --format=%s)}"
-          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"v$VERSION\") | .id")"
+          # Created through the API so the id comes straight back (listing drafts can lag).
+          id="$(gh api "repos/$GITHUB_REPOSITORY/releases" -f tag_name="v$VERSION" \
+            -f target_commitish="$GITHUB_SHA" -f name="FUSE $VERSION" \
+            -f body="${notes:-$(git log -1 --format=%s)}" -F draft=true --jq .id)"
+          test -n "$id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
   build:
@@ -98,14 +100,22 @@ jobs:
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release edit "v${{ needs.draft.outputs.version }}" -R "$GITHUB_REPOSITORY" --draft=false --latest
+          RELEASE_ID: ${{ needs.draft.outputs.release_id }}
+        run: |
+          # Never publish a release the app can't update from.
+          assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" --jq '[.assets[].name] | join(" ")')"
+          echo "Assets: $assets"
+          for want in latest.json -setup.exe .AppImage; do
+            [[ " $assets" == *"$want"* ]] || { echo "Missing $want"; exit 1; }
+          done
+          gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" -F draft=false -f make_latest=true --silent
 
-  # A failed build leaves a draft nobody can update from; remove it so the next run starts clean.
+  # A failed or cancelled run leaves a draft nobody can update from; remove it.
   cleanup:
-    needs: [draft, build]
-    if: failure() && needs.draft.result == 'success'
+    needs: [draft, build, publish]
+    if: (failure() || cancelled()) && needs.draft.outputs.release_id != ''
     runs-on: ubuntu-24.04
     steps:
       - env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release delete "v${{ needs.draft.outputs.version }}" -R "$GITHUB_REPOSITORY" --yes
+        run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/${{ needs.draft.outputs.release_id }}"
