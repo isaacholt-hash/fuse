@@ -58,6 +58,7 @@ export function threadView(t: Thread, now: number): ThreadView {
     title: t.title,
     group: groupFor(t.lastMessageAt ?? t.createdAt, now),
     costMicro: t.costMicroUsd,
+    projectId: t.projectId,
   };
 }
 

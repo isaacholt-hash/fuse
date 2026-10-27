@@ -603,3 +603,62 @@ describe("custom instructions", () => {
     expect(await screen.findByRole("region", { name: "Custom instructions" })).toBeInTheDocument();
   });
 });
+
+describe("projects", () => {
+  test("a new project starts a chat in it, on its default model, with its instructions", async () => {
+    const { db, calls, options, user } = setup();
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.type(dialog.getByLabelText("Name"), "Trip to Lisbon");
+    await user.type(dialog.getByLabelText("Project instructions"), "Prices in euros.");
+    await user.selectOptions(dialog.getByLabelText("Default model"), "openai/test-gpt");
+    await user.click(dialog.getByRole("button", { name: "Create project" }));
+
+    expect(await screen.findByRole("button", { name: "Project: Trip to Lisbon" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Instructions (1 active)" })).toBeInTheDocument();
+    await user.type(await composer(), "Where to eat?{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    expect(calls.openai).toHaveLength(1);
+    expect((options[0] as { system?: string }).system).toContain(
+      "<project>\nPrices in euros.\n</project>",
+    );
+    const [thread] = await listThreads(db, DEFAULT_TENANT);
+    expect(thread?.projectId).not.toBeNull();
+
+    // Shown under the project in the sidebar, not with loose chats.
+    const projects = within(sidebar().getByRole("region", { name: "Projects" }));
+    expect(projects.getByRole("button", { name: /^Where to eat\?/ })).toBeInTheDocument();
+  });
+
+  test("chats move in and out of projects; deleting a project keeps its chats", async () => {
+    const { db, user } = setup();
+    await user.type(await composer(), "Loose question{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Work");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+
+    // Back to the loose chat, then move it into Work from the chat menu.
+    await user.click(sidebar().getByRole("button", { name: /^Loose question/ }));
+    await user.click(await screen.findByRole("button", { name: "Conversation actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Work" }));
+    await waitFor(async () => {
+      expect((await listThreads(db, DEFAULT_TENANT))[0]?.projectId).not.toBeNull();
+    });
+    expect(await screen.findByRole("button", { name: "Project: Work" })).toBeInTheDocument();
+
+    // Delete the project from its settings: the chat stays, now outside any project.
+    await user.click(screen.getByRole("button", { name: "Project: Work" }));
+    const edit = within(await screen.findByRole("dialog"));
+    await user.click(edit.getByRole("button", { name: "Delete…" }));
+    await user.click(edit.getByRole("button", { name: "Delete project" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Project: Work" })).not.toBeInTheDocument();
+    });
+    const [thread] = await listThreads(db, DEFAULT_TENANT);
+    expect(thread?.projectId).toBeNull();
+    expect(thread?.title).toBe("Loose question");
+  });
+});

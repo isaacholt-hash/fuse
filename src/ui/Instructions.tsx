@@ -179,7 +179,7 @@ export function ThreadInstructionsDialog({
       <div className="space-y-5">
         <section aria-label="Global instructions">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-medium">For every chat</h3>
+            <h3 className="text-xs font-medium">Also in effect</h3>
             <Button variant="link" size="xs" className="px-0" onClick={onEditGlobal}>
               Edit in Settings
             </Button>
@@ -201,7 +201,7 @@ export function ThreadInstructionsDialog({
         </section>
         <InstructionBox
           label="This chat only"
-          hint="Takes priority over the instructions for every chat."
+          hint="Takes priority over project and global instructions."
           placeholder="e.g. We're drafting a cover letter. Ask before rewriting whole paragraphs."
           value={draft}
           maxChars={maxChars}

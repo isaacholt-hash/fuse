@@ -15,6 +15,8 @@ export interface Thread {
   webSearch: boolean;
   /** Custom instructions for this thread only (CH-05); empty when none. */
   instructions: string;
+  /** The project this thread belongs to, or null. */
+  projectId: string | null;
 }
 
 interface ThreadRow {
@@ -27,6 +29,7 @@ interface ThreadRow {
   cost_micro_usd: number;
   web_search: number;
   instructions: string;
+  project_id: string | null;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -39,22 +42,29 @@ const toThread = (r: ThreadRow): Thread => ({
   costMicroUsd: r.cost_micro_usd,
   webSearch: r.web_search === 1,
   instructions: r.instructions,
+  projectId: r.project_id,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
-         t.instructions,
+         t.instructions, t.project_id,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
 
-export async function createThread(db: SqlDb, tenant: Tenant, title = "New chat"): Promise<Thread> {
+export async function createThread(
+  db: SqlDb,
+  tenant: Tenant,
+  title = "New chat",
+  projectId: string | null = null,
+): Promise<Thread> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
-    `INSERT INTO threads (id, workspace_id, user_id, title, title_source, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'auto', ?, ?)`,
-    [id, tenant.workspaceId, tenant.userId, title, now, now],
+    `INSERT INTO threads
+       (id, workspace_id, user_id, title, title_source, project_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?)`,
+    [id, tenant.workspaceId, tenant.userId, title, projectId, now, now],
   );
   const thread = await getThread(db, tenant, id);
   if (!thread) throw new Error("Thread insert failed");
@@ -114,6 +124,19 @@ export async function setThreadInstructions(
   await db.execute(
     `UPDATE threads SET instructions = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [instructions.trim(), Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** Moves a thread into a project, or out of any project with null. */
+export async function setThreadProject(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  projectId: string | null,
+): Promise<void> {
+  await db.execute(
+    `UPDATE threads SET project_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [projectId, Date.now(), tenant.workspaceId, id],
   );
 }
 

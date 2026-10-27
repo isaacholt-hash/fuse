@@ -13,7 +13,13 @@ import { listMessages } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { setGlobalInstructions } from "@/storage/instructions";
-import { createThread, getThread, setThreadInstructions } from "@/storage/threads";
+import { createProject, updateProject } from "@/storage/projects";
+import {
+  createThread,
+  getThread,
+  setThreadInstructions,
+  setThreadProject,
+} from "@/storage/threads";
 import { historyFor, retryLast, sendMessage, type ChatDeps } from "./sendMessage";
 
 const t = DEFAULT_TENANT;
@@ -469,10 +475,18 @@ test("custom instructions go to every model as the system prompt, read fresh on 
 
   await setGlobalInstructions(db, t, { aboutYou: "I live in Leeds.", howToAnswer: "Be brief." });
   await setThreadInstructions(db, t, thread.id, "  Answer in French.  ");
+  const project = await createProject(db, t, "Trip");
+  await updateProject(db, t, project.id, {
+    name: "Trip",
+    instructions: "Prices in euros.",
+    defaultModel: null,
+  });
+  await setThreadProject(db, t, thread.id, project.id);
   await sendMessage(deps, { threadId: thread.id, model: gpt, text: "b" });
   const system = fakes.openai.options[0]?.system ?? "";
   expect(system).toContain("<about_the_user>\nI live in Leeds.\n</about_the_user>");
-  expect(system.indexOf("Be brief.")).toBeLessThan(system.indexOf("Answer in French."));
+  expect(system.indexOf("Be brief.")).toBeLessThan(system.indexOf("Prices in euros."));
+  expect(system.indexOf("Prices in euros.")).toBeLessThan(system.indexOf("Answer in French."));
   expect(system).toContain("<this_chat>\nAnswer in French.\n</this_chat>");
 
   // Retry uses them too.

@@ -1,6 +1,6 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
-import { CircleAlert, PanelLeft, Pencil, X } from "lucide-react";
+import { CircleAlert, Folder, PanelLeft, Pencil, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,13 @@ import {
   type GlobalInstructions,
 } from "@/storage/instructions";
 import { listMessages, type Message } from "@/storage/messages";
+import {
+  createProject,
+  deleteProject,
+  listProjects,
+  updateProject,
+  type Project,
+} from "@/storage/projects";
 import { listRecentRequests, logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
 import type { UpdateApi } from "@/update/api";
@@ -37,6 +44,7 @@ import {
   listThreads,
   renameThread,
   setThreadInstructions,
+  setThreadProject,
   setThreadWebSearch,
   type Thread,
 } from "@/storage/threads";
@@ -50,9 +58,17 @@ import {
   InstructionsButton,
   ThreadInstructionsDialog,
 } from "@/ui/Instructions";
+import { ProjectDialog } from "@/ui/Projects";
 import { Sidebar } from "@/ui/Sidebar";
 import { UpdateBar } from "@/ui/UpdateBar";
-import type { ImageView, PendingAttachment, RequestRow, ThreadView } from "@/ui/types";
+import type {
+  ImageView,
+  PendingAttachment,
+  ProjectForm,
+  ProjectView,
+  RequestRow,
+  ThreadView,
+} from "@/ui/types";
 import { useAttachments, useFileUrls } from "./useAttachments";
 import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
@@ -145,6 +161,11 @@ export function ChatApp({
   const [globalInstructions, setGlobal] = useState<GlobalInstructions | null>(null);
   const [draftInstructions, setDraftInstructions] = useState("");
   const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [projects, setProjects] = useState<Project[]>([]);
+  // The project a new, unsaved chat will be created in.
+  const [draftProject, setDraftProject] = useState<string | null>(null);
+  // The project dialog: creating ("new"), editing (a project id), or closed.
+  const [projectDialog, setProjectDialog] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
   const [model, setModel] = useState(() => initialModel(catalog));
   const [view, setView] = useState<"chat" | "settings">(
@@ -196,6 +217,14 @@ export function ChatApp({
   };
   useEffect(() => {
     getGlobalInstructions(db, tenant).then(setGlobal, (e: unknown) => {
+      setProblem(String(e));
+    });
+  }, [db, tenant]);
+  const refreshProjects = useCallback(async () => {
+    setProjects(await listProjects(db, tenant));
+  }, [db, tenant]);
+  useEffect(() => {
+    listProjects(db, tenant).then(setProjects, (e: unknown) => {
       setProblem(String(e));
     });
   }, [db, tenant]);
@@ -287,17 +316,25 @@ export function ChatApp({
   };
 
   const clearAttachments = attachments.clear;
-  const newChat = useCallback(() => {
-    setSelectedId(null);
-    selectedRef.current = null;
-    setMessages([]);
-    setThreadFiles(new Map());
-    setThreadSources(new Map());
-    setDraftSearch(false);
-    setDraftInstructions("");
-    clearAttachments();
-    setView("chat");
-  }, [clearAttachments]);
+  /** A new chat, optionally inside a project (starting on its default model, if it has one). */
+  const newChat = useCallback(
+    (projectId: string | null = null) => {
+      setSelectedId(null);
+      selectedRef.current = null;
+      setMessages([]);
+      setThreadFiles(new Map());
+      setThreadSources(new Map());
+      setDraftSearch(false);
+      setDraftInstructions("");
+      setDraftProject(projectId);
+      const preferred = projects.find((p) => p.id === projectId)?.defaultModel;
+      const start = preferred && findModel(catalog, preferred.provider, preferred.id);
+      if (start) setModel(start);
+      clearAttachments();
+      setView("chat");
+    },
+    [clearAttachments, projects, catalog],
+  );
 
   /** Streams one answer (a new question, or a retry of the last one) into a thread. */
   const stream = async (
@@ -364,7 +401,7 @@ export function ChatApp({
       let threadId = selectedId;
       const search = searchOn;
       if (threadId === null) {
-        const thread = await createThread(db, tenant);
+        const thread = await createThread(db, tenant, undefined, draftProject);
         threadId = thread.id;
         if (search) await setThreadWebSearch(db, tenant, threadId, true);
         if (draftInstructions) {
@@ -396,10 +433,50 @@ export function ChatApp({
     setThreadWebSearch(db, tenant, thread.id, !thread.webSearch).then(refreshThreads).catch(report);
   };
   const chatInstructions = thread ? thread.instructions : draftInstructions;
+  const activeProjectId = thread ? thread.projectId : draftProject;
+  const activeProject = projects.find((p) => p.id === activeProjectId);
   const instructionParts = effectiveInstructions(
     globalInstructions ?? NO_INSTRUCTIONS,
+    activeProject?.instructions ?? "",
     chatInstructions,
   );
+  const moveThread = (projectId: string | null) => {
+    if (!thread) return;
+    setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
+  };
+  const editedProject = projects.find((p) => p.id === projectDialog);
+  const saveProject = (form: ProjectForm) => {
+    const editing = editedProject;
+    setProjectDialog(null);
+    void (async () => {
+      if (editing) {
+        await updateProject(db, tenant, editing.id, form);
+      } else {
+        const created = await createProject(db, tenant, form.name);
+        await updateProject(db, tenant, created.id, form);
+        await refreshProjects();
+        // `projects` in newChat's closure doesn't have the new one yet: apply its model here.
+        newChat(created.id);
+        const start =
+          form.defaultModel && findModel(catalog, form.defaultModel.provider, form.defaultModel.id);
+        if (start) setModel(start);
+        return;
+      }
+      await refreshProjects();
+    })().catch(report);
+  };
+  const removeProject = () => {
+    const id = editedProject?.id;
+    setProjectDialog(null);
+    if (!id) return;
+    if (draftProject === id) setDraftProject(null);
+    deleteProject(db, tenant, id)
+      .then(async () => {
+        await refreshProjects();
+        await refreshThreads();
+      })
+      .catch(report);
+  };
   const saveChatInstructions = (text: string) => {
     if (!thread) {
       setDraftInstructions(text.trim());
@@ -442,6 +519,15 @@ export function ChatApp({
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const threadViews = threads.map((t) => threadView(t, at));
+  const projectViews: ProjectView[] = projects.map((p) => {
+    const inside = threadViews.filter((t) => t.projectId === p.id);
+    return {
+      id: p.id,
+      name: p.name,
+      threads: inside,
+      costMicro: inside.reduce((sum, t) => sum + t.costMicro, 0),
+    };
+  });
   const options = catalog.models.map(modelOption);
   const pendingViews: PendingAttachment[] = attachments.pending.map((p) => {
     const isImage = p.file ? p.file.mime.startsWith("image/") : p.url !== undefined;
@@ -541,9 +627,16 @@ export function ChatApp({
           {sidebar && (
             <Sidebar
               threads={threadViews}
+              projects={projectViews}
               selectedId={selectedId}
+              activeProjectId={activeProjectId}
               onSelect={select}
               onNew={newChat}
+              onNewProject={() => {
+                setProjectDialog("new");
+              }}
+              onNewInProject={newChat}
+              onEditProject={setProjectDialog}
               onCollapse={() => {
                 setSidebar(false);
               }}
@@ -599,9 +692,24 @@ export function ChatApp({
                     </Button>
                   </Tip>
                 )}
-                <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                  {activeProject && (
+                    <>
+                      <button
+                        className="flex max-w-[40%] shrink-0 items-center gap-1.5 rounded text-[12px] text-muted-foreground hover:text-foreground"
+                        aria-label={`Project: ${activeProject.name}`}
+                        onClick={() => {
+                          setProjectDialog(activeProject.id);
+                        }}
+                      >
+                        <Folder className="size-3.5 shrink-0" />
+                        <span className="truncate">{activeProject.name}</span>
+                      </button>
+                      <span className="text-border">/</span>
+                    </>
+                  )}
                   <button
-                    className="group flex max-w-full items-center gap-2 text-left"
+                    className="group flex min-w-0 items-center gap-2 text-left"
                     onClick={showRename}
                     disabled={!thread}
                   >
@@ -633,6 +741,9 @@ export function ChatApp({
                       </div>
                     </Tip>
                     <ThreadMenu
+                      projects={projects}
+                      projectId={thread.projectId}
+                      onMove={moveThread}
                       onRename={showRename}
                       onDelete={() => {
                         setDeleting(threadView(thread, at));
@@ -675,6 +786,26 @@ export function ChatApp({
             </main>
           )}
         </div>
+        <ProjectDialog
+          key={projectDialog ?? "closed"}
+          open={projectDialog !== null}
+          onOpenChange={(open) => {
+            if (!open) setProjectDialog(null);
+          }}
+          initial={
+            editedProject
+              ? {
+                  name: editedProject.name,
+                  instructions: editedProject.instructions,
+                  defaultModel: editedProject.defaultModel,
+                }
+              : null
+          }
+          models={options}
+          maxChars={MAX_INSTRUCTION_CHARS}
+          onSave={saveProject}
+          {...(editedProject ? { onDelete: removeProject } : {})}
+        />
         <ThreadInstructionsDialog
           open={instructionsOpen}
           onOpenChange={setInstructionsOpen}

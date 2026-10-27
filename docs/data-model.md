@@ -80,8 +80,8 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 
 | Table / column | Purpose | Req |
 | --- | --- | --- |
-| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. | PM-01, RT-17 |
-| `threads.project_id NULL` | FK → projects. Threads can move between projects. | PM-01 |
+| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. Built in M1 step 6 (`0005_projects.sql`) with `name`, `instructions`, `default_provider`/`default_model` (both NULL = last used model; a default tier replaces it in step 9) and `deleted_at`. Deleting a project keeps its chats (they move out to no project). | PM-01, RT-17 |
+| `threads.project_id NULL` | FK → projects. Threads can move between projects. Built in M1 step 6. | PM-01 |
 | `threads.instructions NULL` | Per-thread custom instructions. Global instructions live in `settings`. | CH-05 |
 | `threads.pinned`, `threads.archived_at NULL`, `threads.incognito` | Incognito threads never touch memory and aren't listed. | CH-02, CH-15 |
 | `threads.current_leaf_id NULL` | The selected branch tip. | CH-04 |

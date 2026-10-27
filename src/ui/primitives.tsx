@@ -1,5 +1,5 @@
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
-import { MoreHorizontal, Pencil, Trash2, X, Zap } from "lucide-react";
+import { Folder, FolderMinus, MoreHorizontal, Pencil, Trash2, X, Zap } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
@@ -79,9 +79,25 @@ export function Modal({
     </Dialog.Root>
   );
 }
-export function ThreadMenu({ onRename, onDelete }: { onRename: () => void; onDelete: () => void }) {
+export function ThreadMenu({
+  onRename,
+  onDelete,
+  projects,
+  projectId,
+  onMove,
+}: {
+  onRename: () => void;
+  onDelete: () => void;
+  /** Projects this chat can move to (PM-01). */
+  projects: { id: string; name: string }[];
+  projectId: string | null;
+  onMove: (projectId: string | null) => void;
+}) {
   const item =
     "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm outline-none focus:bg-accent";
+  const targets = [...projects, ...(projectId ? [{ id: null, name: "No project" }] : [])].filter(
+    (p) => p.id !== projectId,
+  );
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
@@ -93,12 +109,33 @@ export function ThreadMenu({ onRename, onDelete }: { onRename: () => void; onDel
         <DropdownMenu.Content
           align="end"
           sideOffset={5}
-          className="z-30 min-w-44 rounded-lg border bg-popover p-1 shadow-lg"
+          className="z-30 max-h-[70dvh] min-w-48 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
         >
           <DropdownMenu.Item className={item} onSelect={onRename}>
             <Pencil className="size-3.5" />
             Rename chat
           </DropdownMenu.Item>
+          {targets.length > 0 && (
+            <>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                Move to
+              </DropdownMenu.Label>
+              {targets.map((p) => (
+                <DropdownMenu.Item
+                  key={p.id ?? "none"}
+                  className={item}
+                  onSelect={() => {
+                    onMove(p.id);
+                  }}
+                >
+                  {p.id ? <Folder className="size-3.5" /> : <FolderMinus className="size-3.5" />}
+                  <span className="truncate">{p.name}</span>
+                </DropdownMenu.Item>
+              ))}
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+            </>
+          )}
           <DropdownMenu.Item className={`${item} text-destructive`} onSelect={onDelete}>
             <Trash2 className="size-3.5" />
             Delete chat
