@@ -12,6 +12,7 @@ import { DbLockedError } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { listThreads } from "@/storage/threads";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
+import { TITLE_SYSTEM } from "@/chat/title";
 import App from "./App";
 
 // Placeholder prices for arithmetic; real ones live in data/models.json.
@@ -85,19 +86,38 @@ async function* untilStopped(_h: ChatMessage[], signal?: AbortSignal): AsyncGene
   });
 }
 
+/** Replies for housekeeping calls (titles, memory), kept apart from the chat scripts. */
+interface Chores {
+  title?: string[];
+  memory?: string[];
+}
+
 function setup(
   scripts: Partial<Record<"anthropic" | "openai", Script[]>> = {},
   savedKeys: ("anthropic" | "openai")[] = ["anthropic", "openai"],
+  chores: Chores = {},
 ) {
   const db = openTestDb();
   const keys = fakeKeysApi();
   for (const p of savedKeys) keys.keys.set(p, "fake-value-for-tests-0000");
   const calls: Record<string, ChatMessage[][]> = { anthropic: [], openai: [] };
   const options_: unknown[] = [];
+  const choreCalls: { kind: keyof Chores; model: string; input: string }[] = [];
   const adapterFor = (provider: "anthropic" | "openai"): ProviderAdapter => ({
     provider,
     listModels: () => Promise.resolve([]),
-    streamChat(history, _model, options, signal) {
+    streamChat(history, model, options, signal) {
+      const kind: keyof Chores | null =
+        options.system === TITLE_SYSTEM
+          ? "title"
+          : options.system?.startsWith("You keep a short list of lasting facts")
+            ? "memory"
+            : null;
+      if (kind) {
+        choreCalls.push({ kind, model, input: history[0]?.content ?? "" });
+        // No scripted reply: an empty answer (no title change, nothing to remember).
+        return answer(chores[kind]?.shift() ?? "");
+      }
       calls[provider]?.push(history);
       options_.push(options);
       const next = scripts[provider]?.shift() ?? (() => answer("Hello there."));
@@ -115,7 +135,7 @@ function setup(
       prepareImage={fakePrepare}
     />,
   );
-  return { db, keys, calls, options: options_, files, user: userEvent.setup() };
+  return { db, keys, calls, options: options_, choreCalls, files, user: userEvent.setup() };
 }
 
 const composer = () => screen.findByRole("textbox", { name: "Message" });
@@ -140,10 +160,8 @@ test("send a message: the answer streams in, then shows model, tokens and cost",
   });
   expect(sidebar().getByText("$0.0064")).toBeInTheDocument();
   expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(1);
-  expect((await listRecentRequests(db, DEFAULT_TENANT, 10))[0]).toMatchObject({
-    purpose: "chat",
-    model: "test-claude",
-  });
+  const logged = await listRecentRequests(db, DEFAULT_TENANT, 10);
+  expect(logged.find((r) => r.purpose === "chat")).toMatchObject({ model: "test-claude" });
 });
 
 test("the request log lists every provider call with tokens, cost and errors", async () => {
@@ -166,12 +184,14 @@ test("the request log lists every provider call with tokens, cost and errors", a
   await user.click(await screen.findByRole("button", { name: /Request log/ }));
   const table = await screen.findByRole("table");
   const rows = within(table).getAllByRole("row").slice(1); // newest first
-  expect(rows).toHaveLength(2);
+  expect(rows).toHaveLength(3);
   expect(rows[0]).toHaveTextContent("401 · Invalid bearer token");
-  expect(rows[1]).toHaveTextContent("Test Claude");
-  expect(rows[1]).toHaveTextContent("1,200 / 400");
-  expect(rows[1]).toHaveTextContent("$0.0064");
-  expect(rows[1]).toHaveTextContent("OK");
+  // The chat title is a housekeeping call on the cheapest model, after the first answer.
+  expect(rows[1]).toHaveTextContent("Test GPT · chat title");
+  expect(rows[2]).toHaveTextContent("Test Claude");
+  expect(rows[2]).toHaveTextContent("1,200 / 400");
+  expect(rows[2]).toHaveTextContent("$0.0064");
+  expect(rows[2]).toHaveTextContent("OK");
 });
 
 test("switching model mid-thread: divider shown, the new model gets the whole history", async () => {
@@ -296,7 +316,8 @@ test("reopening the app reopens the last thread, with its messages and costs", a
     ({
       provider: "anthropic",
       listModels: () => Promise.resolve([]),
-      streamChat: () => answer("Remember me."),
+      // No title from the housekeeping call: the chat keeps its question as its name.
+      streamChat: (_h, _m, o) => answer(o.system === TITLE_SYSTEM ? "" : "Remember me."),
     }) satisfies ProviderAdapter;
   const first = render(<App {...props} adapterFor={adapterFor} />);
   const user = userEvent.setup();
@@ -605,11 +626,27 @@ describe("custom instructions", () => {
   });
 });
 
-describe("memory", () => {
-  async function* reply(text: string): AsyncGenerator<StreamEvent> {
-    yield* answer(text);
-  }
+describe("auto-title", () => {
+  test("after the first answer the cheap model names the chat; a rename by hand sticks", async () => {
+    const { db, choreCalls, user } = setup({}, undefined, { title: ['"Lisbon trip with kids."'] });
+    await user.type(await composer(), "We're going to Lisbon in May with two kids{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    expect(await sidebar().findByText("Lisbon trip with kids")).toBeInTheDocument();
+    expect(choreCalls).toMatchObject([{ kind: "title", model: "test-gpt" }]);
+    expect(choreCalls[0]?.input).toContain("Lisbon in May");
+    const logged = await listRecentRequests(db, DEFAULT_TENANT, 10);
+    expect(logged.find((r) => r.purpose === "title")).toMatchObject({ model: "test-gpt" });
 
+    // Later answers don't rename it again.
+    await user.type(await composer(), "What about food?{Enter}");
+    await waitFor(() => {
+      expect(screen.getAllByText("Hello there.")).toHaveLength(2);
+    });
+    expect(choreCalls.filter((c) => c.kind === "title")).toHaveLength(1);
+  });
+});
+
+describe("memory", () => {
   test("leaving a chat suggests memories; kept ones are sent with later answers", async () => {
     const suggestion = JSON.stringify({
       suggestions: [
@@ -618,7 +655,7 @@ describe("memory", () => {
       ],
     });
     // The cheapest model with a key does the housekeeping: Test GPT here.
-    const { db, options, user } = setup({ openai: [() => reply(suggestion)] });
+    const { db, options, user } = setup({}, undefined, { memory: [suggestion] });
     await user.type(await composer(), "We just moved to York.{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();
     await user.keyboard("{Control>}n{/Control}");
@@ -633,8 +670,8 @@ describe("memory", () => {
     expect(await dialog.findByText("No suggestions waiting.")).toBeInTheDocument();
     await user.keyboard("{Escape}");
 
-    const [log] = await listRecentRequests(db, DEFAULT_TENANT, 1);
-    expect(log).toMatchObject({ purpose: "memory", model: "test-gpt" });
+    const logged = await listRecentRequests(db, DEFAULT_TENANT, 10);
+    expect(logged.find((r) => r.purpose === "memory")).toMatchObject({ model: "test-gpt" });
 
     await user.type(await composer(), "Any good walks nearby?{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();

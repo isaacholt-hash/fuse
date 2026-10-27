@@ -16,7 +16,9 @@ import {
   MAX_INSTRUCTION_CHARS,
 } from "@/chat/instructions";
 import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
-import { housekeepingModel, needsMemoryCheck, suggestMemories } from "@/memory/extract";
+import { housekeepingModel } from "@/chat/housekeeping";
+import { autoTitle, wantsAutoTitle } from "@/chat/title";
+import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
 import { memoryTokens } from "@/memory/inject";
 import { findSecret, SECRET_LABELS } from "@/memory/secrets";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
@@ -393,6 +395,20 @@ export function ChatApp({
     [clearAttachments, projects, catalog],
   );
 
+  const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  /** After a chat's first answer, the housekeeping model gives it a real title (CH-09). */
+  const nameThread = (threadId: string, rows: Message[]) => {
+    const current = threads.find((t) => t.id === threadId);
+    if (!wantsAutoTitle(current?.titleSource ?? "auto", rows)) return;
+    const helper = housekeepingModel(catalog, savedProviders, model.provider);
+    if (!helper) return;
+    autoTitle(deps, catalog, threadId, helper)
+      .then(async (r) => {
+        if (r.title) await refreshThreads();
+      })
+      .catch(report);
+  };
+
   /** Streams one answer (a new question, or a retry of the last one) into a thread. */
   const stream = async (
     threadId: string,
@@ -446,7 +462,8 @@ export function ChatApp({
       report(e);
     } finally {
       controllers.current.delete(threadId);
-      await reload(threadId).catch(report);
+      const rows = await reload(threadId).catch(report);
+      if (rows) nameThread(threadId, rows);
       setLive((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== threadId)));
       await refreshThreads().catch(report);
     }
@@ -480,7 +497,6 @@ export function ChatApp({
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
   }, []);
 
-  const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
   /**
    * Asks the housekeeping model what to remember from a chat (PM-03). Runs by itself when you
    * leave a chat with new messages (if suggestions are on), or when asked from the chat's menu.

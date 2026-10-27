@@ -1,11 +1,7 @@
 // Memory extraction v1 (PM-03): after a chat, a cheap model suggests facts to remember, updates and
 // deletions. Nothing is saved until you approve it. Secrets are filtered out before storing (PM-05).
-import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
-import { cost } from "@/cost/cost";
-import { PROVIDER_NAMES } from "@/chat/sendMessage";
-import { ProviderError, userMessage } from "@/providers/errors";
-import type { ProviderAdapter, StreamDone } from "@/providers/types";
-import type { Tenant } from "@/storage/defaults";
+import type { Catalog, CatalogModel } from "@/catalog/catalog";
+import { housekeepingCall, type HousekeepingDeps } from "@/chat/housekeeping";
 import {
   addProposals,
   listMemories,
@@ -17,30 +13,8 @@ import {
 } from "@/storage/memories";
 import { listMessages, type Message } from "@/storage/messages";
 import { getProject } from "@/storage/projects";
-import { logRequest } from "@/storage/requestLog";
-import type { SqlDb } from "@/storage/sql";
 import { getThread, markMemoryChecked } from "@/storage/threads";
-import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import { findSecret, type SecretKind } from "./secrets";
-
-/**
- * The model that does housekeeping (memory now, titles in step 8): the cheapest model, by input +
- * output price in data/models.json, from a provider with a saved key, the chat's provider first on
- * a tie. A stand-in until the Cheap tier exists (step 9, data/routing.json).
- */
-export function housekeepingModel(
-  catalog: Catalog,
-  providers: readonly ProviderId[],
-  prefer?: ProviderId,
-): CatalogModel | null {
-  const usable = catalog.models.filter((m) => providers.includes(m.provider));
-  usable.sort(
-    (a, b) =>
-      a.price.input + a.price.output - (b.price.input + b.price.output) ||
-      Number(b.provider === prefer) - Number(a.provider === prefer),
-  );
-  return usable[0] ?? null;
-}
 
 /** The transcript sent for extraction is capped, newest turns kept. */
 const MAX_TRANSCRIPT_CHARS = 24_000;
@@ -176,12 +150,7 @@ const sameText = (text: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 
-export interface ExtractDeps {
-  db: SqlDb;
-  tenant: Tenant;
-  adapterFor: (provider: ProviderId) => ProviderAdapter;
-  now?: () => number;
-}
+export type ExtractDeps = HousekeepingDeps;
 
 export interface ExtractResult {
   /** Suggestions saved for review. */
@@ -219,64 +188,17 @@ export async function suggestMemories(
   const system = extractionSystem(project?.name ?? null);
   const input = extractionInput(transcript(messages), saved, previous.slice(-MAX_PREVIOUS));
 
-  const started = now();
-  let reply = "";
-  let done: StreamDone | null = null;
-  let failure: ProviderError | null = null;
-  try {
-    const stream = deps
-      .adapterFor(model.provider)
-      .streamChat(
-        [{ role: "user", content: input }],
-        model.id,
-        { system, maxOutputTokens: MAX_OUTPUT_TOKENS },
-        signal,
-      );
-    for await (const ev of stream) {
-      if (ev.type === "text") reply += ev.text;
-      else if (ev.type === "done") done = ev;
-    }
-  } catch (e) {
-    failure =
-      e instanceof ProviderError
-        ? e
-        : new ProviderError("stream", e instanceof Error ? e.message : String(e));
-  }
-
-  let usage: Usage = { ...EMPTY_USAGE, latencyMs: now() - started };
-  if (done) {
-    const t = done.usage;
-    const totalInput = t.inputTokens + t.cachedInputTokens + t.cacheWriteTokens;
-    usage = {
-      ...usage,
-      ...t,
-      costMicroUsd: done.usageReported ? cost({ ...usage, ...t }, priceFor(model, totalInput)) : 0,
-      priceVersion: done.usageReported ? catalog.priceVersion : null,
-    };
-  }
-  await logRequest(db, tenant, {
-    threadId,
-    messageId: null,
+  const call = await housekeepingCall(deps, catalog, {
     purpose: "memory",
-    provider: model.provider,
-    model: model.id,
-    attempt: done?.attempts ?? 1,
-    usage,
-    httpStatus: failure?.status ?? (done ? 200 : null),
-    errorCode: failure ? (failure.code ?? failure.kind) : null,
-    errorMessage: failure ? failure.message.slice(0, 500) : null,
-    providerRequestId: done?.providerRequestId ?? failure?.providerRequestId ?? null,
+    threadId,
+    model,
+    system,
+    input,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    ...(signal ? { signal } : {}),
   });
-  if (!done) {
-    return {
-      proposed: 0,
-      skipped: [],
-      costMicroUsd: 0,
-      error: failure
-        ? userMessage(failure, PROVIDER_NAMES[model.provider])
-        : "No reply from the model",
-    };
-  }
+  if (!call.ok) return { proposed: 0, skipped: [], costMicroUsd: 0, error: call.error };
+  const reply = call.text;
 
   const byRef = new Map(saved.map((s) => [s.ref, s.memory]));
   const seen = new Set([...saved.map((s) => sameText(s.memory.text)), ...previous.map(sameText)]);
@@ -307,7 +229,7 @@ export async function suggestMemories(
   }
   await addProposals(db, tenant, proposals);
   await markMemoryChecked(db, tenant, threadId, checkedUpTo);
-  return { proposed: proposals.length, skipped, costMicroUsd: usage.costMicroUsd };
+  return { proposed: proposals.length, skipped, costMicroUsd: call.costMicroUsd };
 }
 
 /** True when a thread has messages its last memory check didn't cover. */
