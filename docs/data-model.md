@@ -123,6 +123,19 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 
 Agents/tools/MCP/audit (P2), sync metadata (P2: sync will need a per-row `version` / `sync_state`, added then), auth sessions and billing (P3).
 
+## Encryption at rest (M1 C2)
+
+- **What's encrypted:** the database (`fuse.db`) is SQLCipher. `src-tauri/src/db.rs` owns the connection, and the frontend sends SQL through the `db_execute` and `db_select` commands. The SQL plugin was dropped because it can't pass a key to its connections.
+- **The key:** 32 random bytes, used as a raw key (`PRAGMA key = "x'…'"`), kept in the OS keychain under the account `database-key`. The frontend never sees it, except as the recovery key (Settings → Recovery key: 8 groups of 8 hex characters).
+- **Upgrading an unencrypted database (first launch):**
+  1. The WAL is checkpointed.
+  2. `sqlcipher_export` copies the database into an encrypted file.
+  3. Row counts per table are compared.
+  4. The encrypted copy is swapped in, and the unencrypted file and any unencrypted backups are deleted.
+- **If the keychain has no key, or the wrong one:** the app shows a locked screen that takes the recovery key, and puts it back in the keychain.
+- **Migrations:** the same sqlx migrations as before, so `_sqlx_migrations` carries over.
+- **Not encrypted yet:** attachment bytes in `files/<sha256>` (follow-up).
+
 ## M0 migration plan (step 3)
 
 `0001_init.sql` creates `workspaces`, `users`, `threads`, `messages` (including `parent_id`), `request_log`, `schema_meta`, plus indexes:
