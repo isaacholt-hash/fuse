@@ -57,7 +57,7 @@ jobs:
         timeout-minutes: 25
         run: |
           # Same mirror switch as ci.yml: the runners' Azure mirror stalls.
-          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils libsecret-1-dev
       - uses: pnpm/action-setup@v6
