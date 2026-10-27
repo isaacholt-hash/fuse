@@ -1,0 +1,14 @@
+$ tauri dev
+     Running BeforeDevCommand (`pnpm dev`)
+$ vite
+
+  VITE v8.3.5  ready in 145 ms
+
+  ➜  Local:   http://localhost:1420/
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching /home/daywalker/fuse/src-tauri for changes...
+[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
+[1m[92m     Running[0m `target/debug/fuse`
+libEGL warning: failed to open /dev/dri/card1: Permission denied
+
+       Error The "beforeDevCommand" terminated with a non-zero status code.

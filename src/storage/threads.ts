@@ -13,6 +13,8 @@ export interface Thread {
   costMicroUsd: number;
   /** The composer's web search toggle for this thread. */
   webSearch: boolean;
+  /** Custom instructions for this thread only (CH-05); empty when none. */
+  instructions: string;
 }
 
 interface ThreadRow {
@@ -24,6 +26,7 @@ interface ThreadRow {
   updated_at: number;
   cost_micro_usd: number;
   web_search: number;
+  instructions: string;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -35,10 +38,12 @@ const toThread = (r: ThreadRow): Thread => ({
   updatedAt: r.updated_at,
   costMicroUsd: r.cost_micro_usd,
   webSearch: r.web_search === 1,
+  instructions: r.instructions,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
+         t.instructions,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -97,6 +102,18 @@ export async function setThreadWebSearch(
   await db.execute(
     `UPDATE threads SET web_search = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [on ? 1 : 0, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+export async function setThreadInstructions(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  instructions: string,
+): Promise<void> {
+  await db.execute(
+    `UPDATE threads SET instructions = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [instructions.trim(), Date.now(), tenant.workspaceId, id],
   );
 }
 

@@ -3,7 +3,15 @@ import { DEFAULT_TENANT, DEFAULT_USER_ID, DEFAULT_WORKSPACE_ID } from "./default
 import { addMessage, finishMessage, listMessages, markInterruptedMessages } from "./messages";
 import { listRecentRequests, logRequest } from "./requestLog";
 import { openTestDb } from "./testing/nodeDb";
-import { createThread, deleteThread, getThread, listThreads, renameThread } from "./threads";
+import { getGlobalInstructions, NO_INSTRUCTIONS, setGlobalInstructions } from "./instructions";
+import {
+  createThread,
+  deleteThread,
+  getThread,
+  listThreads,
+  renameThread,
+  setThreadInstructions,
+} from "./threads";
 import { EMPTY_USAGE } from "./usage";
 
 const t = DEFAULT_TENANT;
@@ -162,4 +170,24 @@ describe("messages", () => {
       addMessage(db, t, { threadId: "missing", parentId: null, role: "user", content: "x" }),
     ).rejects.toThrow(/FOREIGN KEY/);
   });
+});
+
+test("global instructions: empty by default, saved trimmed, updated in place", async () => {
+  const db = openTestDb();
+  expect(await getGlobalInstructions(db, DEFAULT_TENANT)).toEqual(NO_INSTRUCTIONS);
+  await setGlobalInstructions(db, DEFAULT_TENANT, { aboutYou: " Me ", howToAnswer: "Short" });
+  await setGlobalInstructions(db, DEFAULT_TENANT, { aboutYou: "Me", howToAnswer: "Shorter" });
+  expect(await getGlobalInstructions(db, DEFAULT_TENANT)).toEqual({
+    aboutYou: "Me",
+    howToAnswer: "Shorter",
+  });
+  expect(db.raw.prepare("SELECT COUNT(*) AS n FROM user_instructions").get()).toEqual({ n: 1 });
+});
+
+test("thread instructions are saved trimmed and read back with the thread", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, DEFAULT_TENANT);
+  expect(thread.instructions).toBe("");
+  await setThreadInstructions(db, DEFAULT_TENANT, thread.id, "  French only \n");
+  expect((await getThread(db, DEFAULT_TENANT, thread.id))?.instructions).toBe("French only");
 });

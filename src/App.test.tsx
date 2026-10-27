@@ -560,3 +560,46 @@ describe("auto-update", () => {
     warn.mockRestore();
   });
 });
+
+describe("custom instructions", () => {
+  test("set in Settings, shown in the chat's window, sent with every message", async () => {
+    const { options, user } = setup();
+    await composer();
+    await user.keyboard("{Control>},{/Control}");
+    const section = within(await screen.findByRole("region", { name: "Custom instructions" }));
+    await user.type(section.getByLabelText("About you"), "I live in Leeds.");
+    await user.type(section.getByLabelText("How to answer"), "Be brief.");
+    await user.click(section.getByRole("button", { name: "Save" }));
+    expect(await section.findByText("Saved")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+
+    // A new chat: this chat's box is kept as a draft until the first message saves the thread.
+    await user.click(await screen.findByRole("button", { name: "Instructions (2 active)" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("I live in Leeds.")).toBeInTheDocument();
+    expect(dialog.getByText("Be brief.")).toBeInTheDocument();
+    await user.type(dialog.getByLabelText("This chat only"), "Answer in French.");
+    await user.click(dialog.getByRole("button", { name: "Save" }));
+    expect(dialog.getByText(/tokens added to every message/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.type(await composer(), "Hello{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    const system = (options[0] as { system?: string }).system ?? "";
+    expect(system).toContain("I live in Leeds.");
+    expect(system).toContain("<this_chat>\nAnswer in French.\n</this_chat>");
+    expect(screen.getByRole("button", { name: "Instructions (3 active)" })).toBeInTheDocument();
+  });
+
+  test("Edit in Settings jumps to the global boxes; no instructions sends no system prompt", async () => {
+    const { options, user } = setup();
+    await user.type(await composer(), "Hi{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    expect(options[0]).toEqual({});
+    await user.click(screen.getByRole("button", { name: "Instructions (none)" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("None set.")).toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: "Edit in Settings" }));
+    expect(await screen.findByRole("region", { name: "Custom instructions" })).toBeInTheDocument();
+  });
+});
