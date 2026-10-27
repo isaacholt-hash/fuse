@@ -8,6 +8,7 @@ import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { listRecentRequests } from "@/storage/requestLog";
+import { DbLockedError } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { listThreads } from "@/storage/threads";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
@@ -660,5 +661,60 @@ describe("projects", () => {
     const [thread] = await listThreads(db, DEFAULT_TENANT);
     expect(thread?.projectId).toBeNull();
     expect(thread?.title).toBe("Loose question");
+  });
+});
+
+describe("encrypted database", () => {
+  test("a locked database asks for the recovery key, then opens", async () => {
+    const db = openTestDb();
+    let unlocked = false;
+    const unlockDb = vi.fn((key: string) => {
+      unlocked = key === "GOOD-KEY";
+      return Promise.resolve(unlocked);
+    });
+    render(
+      <App
+        openDb={() => (unlocked ? Promise.resolve(db) : Promise.reject(new DbLockedError()))}
+        unlockDb={unlockDb}
+        keysApi={fakeKeysApi().api}
+        catalog={catalog}
+      />,
+    );
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "Your chats are locked" })).toBeVisible();
+    await user.type(screen.getByLabelText("Recovery key"), "WRONG");
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("doesn't open these chats");
+    await user.clear(screen.getByLabelText("Recovery key"));
+    await user.type(screen.getByLabelText("Recovery key"), "GOOD-KEY");
+    await user.click(screen.getByRole("button", { name: "Unlock" }));
+    await waitFor(() => {
+      expect(unlockDb).toHaveBeenLastCalledWith("GOOD-KEY");
+    });
+    expect(await screen.findByRole("complementary", { name: "Chat sidebar" })).toBeVisible();
+  });
+
+  test("Settings shows the recovery key only when asked, with a copy button", async () => {
+    const db = openTestDb();
+    const recoveryKey = vi.fn(() => Promise.resolve("ABCDEF01-23456789"));
+    render(
+      <App
+        openDb={() => Promise.resolve(db)}
+        recoveryKey={recoveryKey}
+        keysApi={fakeKeysApi().api}
+        catalog={catalog}
+      />,
+    );
+    const user = userEvent.setup();
+    await screen.findByRole("complementary", { name: "Chat sidebar" });
+    await user.keyboard("{Control>},{/Control}");
+    const section = within(await screen.findByRole("region", { name: "Recovery key" }));
+    expect(recoveryKey).not.toHaveBeenCalled();
+    await user.click(section.getByRole("button", { name: "Show recovery key" }));
+    expect(await section.findByText("ABCDEF01-23456789")).toBeInTheDocument();
+    await user.click(section.getByRole("button", { name: "Copy" }));
+    expect(await navigator.clipboard.readText()).toBe("ABCDEF01-23456789");
+    await user.click(section.getByRole("button", { name: "Hide" }));
+    expect(section.queryByText("ABCDEF01-23456789")).not.toBeInTheDocument();
   });
 });

@@ -92,6 +92,7 @@ export interface ChatAppProps {
   files: FilesApi;
   prepareImage: (file: File) => Promise<PreparedImage>;
   updates: UpdateApi;
+  recoveryKey: () => Promise<string>;
 }
 
 const MODEL_KEY = "fuse.model";
@@ -140,6 +141,7 @@ export function ChatApp({
   files,
   prepareImage,
   updates,
+  recoveryKey,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -651,6 +653,7 @@ export function ChatApp({
             <SettingsView
               keys={keys.keys}
               version={appUpdate.version}
+              onRecoveryKey={recoveryKey}
               instructions={
                 globalInstructions && (
                   <GlobalInstructionsSection

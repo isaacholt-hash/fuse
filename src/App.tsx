@@ -11,7 +11,8 @@ import type { ProviderAdapter } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { markInterruptedMessages } from "@/storage/messages";
 import type { SqlDb } from "@/storage/sql";
-import { openTauriDb } from "@/storage/tauriDb";
+import { DbLockedError, openTauriDb, tauriRecoveryKey, unlockTauriDb } from "@/storage/tauriDb";
+import { LockedScreen } from "@/ui/LockedScreen";
 import { providerFetch } from "@/transport/tauriFetch";
 import { defaultUpdateApi, type UpdateApi } from "@/update/api";
 
@@ -24,7 +25,10 @@ const desktopAdapterFor = (p: ProviderId) => desktopAdapters[p];
 const desktopUpdates = defaultUpdateApi();
 
 type Storage =
-  { kind: "opening" } | { kind: "ready"; db: SqlDb } | { kind: "error"; message: string };
+  | { kind: "opening" }
+  | { kind: "ready"; db: SqlDb }
+  | { kind: "locked" }
+  | { kind: "error"; message: string };
 
 interface Props {
   openDb?: () => Promise<SqlDb>;
@@ -34,6 +38,9 @@ interface Props {
   files?: FilesApi;
   prepareImage?: (file: File) => Promise<PreparedImage>;
   updates?: UpdateApi;
+  /** Tries a recovery key on a locked database; true if it opened. */
+  unlockDb?: (key: string) => Promise<boolean>;
+  recoveryKey?: () => Promise<string>;
 }
 
 export default function App({
@@ -44,8 +51,12 @@ export default function App({
   files = tauriFilesApi,
   prepareImage = webviewPrepareImage,
   updates = desktopUpdates,
+  unlockDb = unlockTauriDb,
+  recoveryKey = tauriRecoveryKey,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
+  // Bumped after a successful unlock, to open the database again.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const alive = { current: true };
@@ -56,13 +67,27 @@ export default function App({
         await markInterruptedMessages(db, DEFAULT_TENANT);
         if (alive.current) setStorage({ kind: "ready", db });
       } catch (e) {
-        if (alive.current) setStorage({ kind: "error", message: String(e) });
+        if (!alive.current) return;
+        setStorage(
+          e instanceof DbLockedError ? { kind: "locked" } : { kind: "error", message: String(e) },
+        );
       }
     })();
     return () => {
       alive.current = false;
     };
-  }, [openDb]);
+  }, [openDb, attempt]);
+
+  if (storage.kind === "locked")
+    return (
+      <LockedScreen
+        onUnlock={async (key) => {
+          const ok = await unlockDb(key);
+          if (ok) setAttempt((n) => n + 1);
+          return ok;
+        }}
+      />
+    );
 
   if (storage.kind !== "ready")
     return (
@@ -83,6 +108,7 @@ export default function App({
       files={files}
       prepareImage={prepareImage}
       updates={updates}
+      recoveryKey={recoveryKey}
     />
   );
 }

@@ -3,10 +3,12 @@ import {
   ArrowLeft,
   Check,
   CircleAlert,
+  Copy,
   ExternalLink,
   KeyRound,
   Laptop,
   LoaderCircle,
+  LockKeyhole,
   Moon,
   ShieldCheck,
   Sun,
@@ -218,6 +220,7 @@ export function KeyCard({
 export function SettingsView({
   keys,
   version,
+  onRecoveryKey,
   instructions,
   theme,
   onTheme,
@@ -230,6 +233,8 @@ export function SettingsView({
   keys: KeyView[];
   /** The installed app version; null while it loads. */
   version: string | null;
+  /** The database recovery key, shown only when asked for. */
+  onRecoveryKey: () => Promise<string>;
   /** Settings → Custom instructions; rendered once loaded. */
   instructions: ReactNode;
   theme: Theme;
@@ -290,6 +295,7 @@ export function SettingsView({
           </p>
         </div>
         {instructions}
+        <RecoveryKeySection load={onRecoveryKey} />
         <section className="mt-8 border-t pt-6">
           <h2 className="text-sm font-medium">Appearance</h2>
           <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Theme">
@@ -395,5 +401,67 @@ export function RequestLog({ rows }: { rows: RequestRow[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Settings → Recovery key (M1 C2): the way back in if the keychain loses the database key. */
+function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
+  const [key, setKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  return (
+    <section className="mt-8 border-t pt-6" aria-label="Recovery key">
+      <div className="mb-1 flex items-center gap-2">
+        <LockKeyhole className="size-4 text-muted-foreground" />
+        <h2 className="text-sm font-medium">Recovery key</h2>
+      </div>
+      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+        Your chats are encrypted on this computer, with a key kept in the OS keychain. Save this
+        recovery key in your password manager: you need it if the keychain loses the key (a Windows
+        reset, or moving your data to a new PC).
+      </p>
+      {key ? (
+        <div className="flex items-center gap-2">
+          <code className="flex-1 rounded-lg bg-muted px-3 py-2 font-mono text-[11px] break-all select-all">
+            {key}
+          </code>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard.writeText(key).then(() => {
+                setCopied(true);
+              });
+            }}
+          >
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setKey(null);
+              setCopied(false);
+            }}
+          >
+            Hide
+          </Button>
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            load().then(setKey, (e: unknown) => {
+              setError(String(e));
+            });
+          }}
+        >
+          Show recovery key
+        </Button>
+      )}
+      {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+    </section>
   );
 }

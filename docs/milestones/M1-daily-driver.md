@@ -25,7 +25,7 @@
 ## Carried from M0 (fit in where they're needed)
 
 - [x] **C1. Content security policy.** Turn `csp` on in `tauri.conf.json` before attachments land (step 2).
-- [ ] **C2. Encrypted database.** SQLCipher (PL-03), before memory is stored (step 7).
+- [x] **C2. Encrypted database.** SQLCipher (PL-03), before memory is stored (step 7). Attachment files in `files/` are not encrypted yet (follow-up).
 - [x] **C3. Auto-update + signed builds** (PL-06), before the week-long trial. Update signing only; paid Windows code signing deferred (docs/releases.md).
 
 ## Notes

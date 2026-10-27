@@ -3,6 +3,7 @@
 # Usage: bash scripts/screenshot.sh [output.png]
 #   FUSE_VIEW=settings   open on a given screen (dev builds only)
 #   FUSE_BEFORE_SHOT=cmd  run cmd (e.g. xdotool clicks/typing) right before the screenshot
+#   FUSE_SEED_DIR=dir     start from a copy of an existing data folder (upgrade tests)
 # Needs: xvfb, imagemagick, x11-utils, gnome-keyring (installed on HULK 2026-10-26).
 # Runs in a private D-Bus session with a throwaway, unlocked keyring in a temp dir,
 # so it never touches the real login keyring, and with a throwaway database.
@@ -23,6 +24,11 @@ printf 'throwaway' | XDG_DATA_HOME="$KEYRING_HOME" gnome-keyring-daemon --unlock
 export VITE_FUSE_VIEW="${FUSE_VIEW:-}"
 # The app's database and attachment files go in the same temp dir, so screenshots never touch real data.
 export XDG_CONFIG_HOME="$KEYRING_HOME/config" XDG_DATA_HOME="$KEYRING_HOME/data"
+# FUSE_SEED_DIR=dir: start from a copy of an existing data folder (e.g. to test an upgrade).
+if [[ -n "${FUSE_SEED_DIR:-}" ]]; then
+  mkdir -p "$XDG_CONFIG_HOME/com.isaacholt.fuse"
+  cp -a "$FUSE_SEED_DIR/." "$XDG_CONFIG_HOME/com.isaacholt.fuse/"
+fi
 
 # WebKitGTK renders black under Xvfb without these.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1
