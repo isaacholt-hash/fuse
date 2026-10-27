@@ -85,20 +85,25 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 | `threads.instructions NULL` | Per-thread custom instructions. Global instructions live in `settings`. | CH-05 |
 | `threads.pinned`, `threads.archived_at NULL`, `threads.incognito` | Incognito threads never touch memory and aren't listed. | CH-02, CH-15 |
 | `threads.current_leaf_id NULL` | The selected branch tip. | CH-04 |
-| `threads.memory_injection` | `on` / `off` per thread. | PM-04 |
+| `threads.memory_injection` | Built in step 7 (below). | PM-04 |
 | `tags`, `thread_tags` | Tags (many-to-many). | CH-02 |
 | `thread_summaries` | Rolling summary: `thread_id`, `covers_up_to_message_id`, `content`, token count, cost. | PM-06 |
 | `messages_fts` | FTS5 virtual table over `messages.content` + thread titles. | CH-02, PM-10 |
-| `settings` | Key/value per user (`theme`, `global_instructions`, defaults). Never keys. | CH-05, PL-10 |
+| `settings` | Key/value per user. Built in step 7 (`0006_memory.sql`, below); later keys: `theme`, defaults. Never keys. | CH-05, PL-10 |
 | `prompts` | Prompt library: `name`, `body`, `variables_json`, `project_id NULL`. | CH-12 |
 
-### Memory: M1+ (needs sqlite-vec)
+### Memory: M1 step 7 (`0006_memory.sql`); vectors in M2
 
 | Table | Purpose | Req |
 | --- | --- | --- |
-| `memories` | `text`, `category` (`preference`/`person`/`project`/`fact`), `scope` (`global`/`project`), `project_id NULL`, `source_thread_id NULL`, `source_message_id NULL`, `confidence` (0–100 integer), `status` (`proposed`/`active`/`rejected`), `superseded_by_id NULL` (old facts kept as history), `deleted_at`. | PM-02, PM-03, PM-11 |
-| `memory_vectors` | sqlite-vec `vec0` virtual table: `memory_id`, `embedding`. The embedding model and dimension are recorded in `settings`, and changing them triggers a re-index (MM-11). | PM-04 |
-| `message_memories` | Which memories were injected into which message. | PM-04 |
+| `memories` | Approved facts only: `text`, `category` (`preference`/`person`/`project`/`fact`), `scope` (`global`/`project`) with `project_id NULL`, `source_thread_id NULL`, `confidence` (0–100; 100 when typed by you), `superseded_by_id NULL` (an approved update keeps the old fact as history), `deleted_at`. In use = not deleted and not superseded. | PM-02, PM-07 |
+| `memory_proposals` | What the housekeeping model suggested after a chat, waiting for review: `op` (`add`/`update`/`delete`), `memory_id NULL` (the fact to change), `text`, `category`, `project_id NULL`, `confidence`, `source_thread_id`, `status` (`pending`/`approved`/`rejected`). Rejected ones are shown to the model next time so they aren't suggested again. Secrets are filtered out before a row is written (PM-05), so no row ever holds one. | PM-03, PM-05 |
+| `message_memories` | Which memories were sent with which answer. | PM-04 |
+| `settings` | Key/value per user. Used now for `memory.suggest` (`on`/`off`) and `memory.budget_tokens` (default 1,500). Never keys. | PM-03, PM-04 |
+| `threads.memory_injection`, `threads.memory_checked_at` | Memory on/off per chat, and the `last_message_at` the last memory check covered (a chat is checked again only after new messages). | PM-03, PM-04 |
+| `memory_vectors` | M2: sqlite-vec `vec0` virtual table: `memory_id`, `embedding`. The embedding model and dimension are recorded in `settings`, and changing them triggers a re-index (MM-11). | PM-04 |
+
+**How memory v1 works.** Leaving a chat with new messages (or "Suggest memories now" in its menu) sends its transcript, capped to the newest ~24,000 characters, plus the saved facts to the housekeeping model: the cheapest catalog model with a saved key, until the Cheap tier exists (step 9). The call is logged with `purpose: memory`. Before each send, in-use memories (global plus the chat's project) go into the system prompt after the instructions. If they all fit the token budget they all go, otherwise the ones sharing the most and rarest keywords with the question (`src/memory/inject.ts`).
 
 ### Files and knowledge: M1+
 

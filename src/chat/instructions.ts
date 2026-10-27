@@ -41,18 +41,35 @@ export function effectiveInstructions(
 
 /**
  * The system prompt sent with every message. Global parts come first, then the project, then the
- * thread, so the stable prefix is shared across threads (better prompt caching, RT-07).
+ * thread, so the stable prefix is shared across threads (better prompt caching, RT-07). Saved
+ * memories (step 7) come last: they're the part most likely to change between messages.
  */
-export function systemPrompt(parts: InstructionPart[]): string | undefined {
-  if (parts.length === 0) return undefined;
-  const blocks = parts.map((p) => {
-    const tag = PARTS.find((x) => x.source === p.source)?.tag ?? p.source;
-    return `<${tag}>\n${p.text}\n</${tag}>`;
-  });
-  return [
-    "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
-    ...blocks,
-  ].join("\n\n");
+export function systemPrompt(
+  parts: InstructionPart[],
+  memories: string[] = [],
+): string | undefined {
+  const sections: string[] = [];
+  if (parts.length > 0) {
+    const blocks = parts.map((p) => {
+      const tag = PARTS.find((x) => x.source === p.source)?.tag ?? p.source;
+      return `<${tag}>\n${p.text}\n</${tag}>`;
+    });
+    sections.push(
+      "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
+      ...blocks,
+    );
+  }
+  if (memories.length > 0) {
+    sections.push(
+      [
+        "<memories>",
+        "Facts about the user that they asked to be remembered across chats. Use them when they help; don't list them back or mention this note. If the conversation contradicts one, the conversation wins.",
+        ...memories.map((m) => `- ${m}`),
+        "</memories>",
+      ].join("\n"),
+    );
+  }
+  return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
 
 /** Rough tokens added to every message by these instructions. */

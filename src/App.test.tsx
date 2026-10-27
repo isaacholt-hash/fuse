@@ -605,6 +605,75 @@ describe("custom instructions", () => {
   });
 });
 
+describe("memory", () => {
+  async function* reply(text: string): AsyncGenerator<StreamEvent> {
+    yield* answer(text);
+  }
+
+  test("leaving a chat suggests memories; kept ones are sent with later answers", async () => {
+    const suggestion = JSON.stringify({
+      suggestions: [
+        { op: "add", text: "Lives in York.", category: "fact", confidence: 90 },
+        { op: "add", text: "Bike lock PIN is 4821", category: "fact" },
+      ],
+    });
+    // The cheapest model with a key does the housekeeping: Test GPT here.
+    const { db, options, user } = setup({ openai: [() => reply(suggestion)] });
+    await user.type(await composer(), "We just moved to York.{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    await user.keyboard("{Control>}n{/Control}");
+
+    const bar = within(await screen.findByRole("status", { name: "Memory suggestions" }));
+    await user.click(await bar.findByRole("button", { name: "Review" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText(/looked like a password or PIN/)).toBeInTheDocument();
+    expect(dialog.queryByDisplayValue(/4821/)).not.toBeInTheDocument();
+    expect(dialog.getByDisplayValue("Lives in York.")).toBeInTheDocument();
+    await user.click(dialog.getByRole("button", { name: "Keep" }));
+    expect(await dialog.findByText("No suggestions waiting.")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    const [log] = await listRecentRequests(db, DEFAULT_TENANT, 1);
+    expect(log).toMatchObject({ purpose: "memory", model: "test-gpt" });
+
+    await user.type(await composer(), "Any good walks nearby?{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    const system = (options.at(-1) as { system?: string }).system ?? "";
+    expect(system).toContain("- Lives in York.");
+    expect(await screen.findByRole("button", { name: "1 memory used" })).toBeInTheDocument();
+  });
+
+  test("Settings lists memories by category; secrets are refused; edit and delete", async () => {
+    const { user } = setup();
+    await composer();
+    await user.keyboard("{Control>},{/Control}");
+    const section = within(await screen.findByRole("region", { name: "Memory" }));
+    expect(section.getByText("No memories yet.")).toBeInTheDocument();
+
+    await user.type(section.getByLabelText("New memory"), "My wifi password is hunter22");
+    await user.click(section.getByRole("button", { name: "Add memory" }));
+    expect(section.getByText(/looks like a password or PIN/)).toBeInTheDocument();
+
+    await user.clear(section.getByLabelText("New memory"));
+    await user.type(section.getByLabelText("New memory"), "Prefers metric units.");
+    await user.selectOptions(section.getAllByLabelText("Category")[0] as HTMLElement, "preference");
+    await user.click(section.getByRole("button", { name: "Add memory" }));
+    const prefs = within(await section.findByRole("list", { name: "Preferences" }));
+    expect(prefs.getByText("Prefers metric units.")).toBeInTheDocument();
+
+    await user.click(prefs.getByRole("button", { name: "Edit memory: Prefers metric units." }));
+    await user.clear(prefs.getByLabelText("Memory text"));
+    await user.type(prefs.getByLabelText("Memory text"), "Prefers metric units and 24h time.");
+    await user.click(prefs.getByRole("button", { name: "Save" }));
+    expect(await section.findByText("Prefers metric units and 24h time.")).toBeInTheDocument();
+
+    await user.click(
+      section.getByRole("button", { name: "Delete memory: Prefers metric units and 24h time." }),
+    );
+    expect(await section.findByText("No memories yet.")).toBeInTheDocument();
+  });
+});
+
 describe("projects", () => {
   test("a new project starts a chat in it, on its default model, with its instructions", async () => {
     const { db, calls, options, user } = setup();

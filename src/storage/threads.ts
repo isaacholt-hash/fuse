@@ -17,6 +17,10 @@ export interface Thread {
   instructions: string;
   /** The project this thread belongs to, or null. */
   projectId: string | null;
+  /** Saved memories are sent with this chat's messages (PM-04). */
+  memoryOn: boolean;
+  /** The last_message_at the memory check last covered; null if never checked. */
+  memoryCheckedAt: number | null;
 }
 
 interface ThreadRow {
@@ -30,6 +34,8 @@ interface ThreadRow {
   web_search: number;
   instructions: string;
   project_id: string | null;
+  memory_injection: "on" | "off";
+  memory_checked_at: number | null;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -43,11 +49,13 @@ const toThread = (r: ThreadRow): Thread => ({
   webSearch: r.web_search === 1,
   instructions: r.instructions,
   projectId: r.project_id,
+  memoryOn: r.memory_injection === "on",
+  memoryCheckedAt: r.memory_checked_at,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
-         t.instructions, t.project_id,
+         t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -138,6 +146,32 @@ export async function setThreadProject(
     `UPDATE threads SET project_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [projectId, Date.now(), tenant.workspaceId, id],
   );
+}
+
+export async function setThreadMemory(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  on: boolean,
+): Promise<void> {
+  await db.execute(
+    `UPDATE threads SET memory_injection = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [on ? "on" : "off", Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** Records that the thread's messages up to `lastMessageAt` were checked for memories. */
+export async function markMemoryChecked(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  lastMessageAt: number,
+): Promise<void> {
+  await db.execute(`UPDATE threads SET memory_checked_at = ? WHERE workspace_id = ? AND id = ?`, [
+    lastMessageAt,
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 export async function deleteThread(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
