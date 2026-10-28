@@ -612,7 +612,7 @@ test("a text file is read locally and sent as a named document", async () => {
   });
 });
 
-test("web search: toggle per thread, live status, cited sources and the search fee", async () => {
+test("web search: on by default, toggle per thread, live status, cited sources and the search fee", async () => {
   let release: () => void = () => undefined;
   const searched: Script = async function* () {
     yield { type: "status", status: "searching" };
@@ -641,6 +641,9 @@ test("web search: toggle per thread, live status, cited sources and the search f
   const { db, options, user } = setup({ anthropic: [searched] });
   await composer();
   const toggle = screen.getByRole("button", { name: "Search the web" });
+  // New chats start with search on; it can be turned off and back on before sending.
+  expect(toggle).toHaveAttribute("aria-pressed", "true");
+  await user.click(toggle);
   expect(toggle).toHaveAttribute("aria-pressed", "false");
   await user.click(toggle);
   expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -755,7 +758,7 @@ describe("custom instructions", () => {
     const { options, user } = setup();
     await user.type(await composer(), "Hi{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();
-    expect(options[0]).toEqual({});
+    expect(options[0]).toEqual({ webSearch: true }); // no `system` key
     await user.click(screen.getByRole("button", { name: "Instructions (none)" }));
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText("None set.")).toBeInTheDocument();
