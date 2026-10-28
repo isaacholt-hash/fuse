@@ -585,9 +585,9 @@ export function Messages({
                       </nav>
                     )}
                     {message.fileSources && message.fileSources.length > 0 && (
-                      <div className="mt-4" aria-label="From your files">
+                      <div className="mt-4" aria-label="From your files and chats">
                         <p className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                          From your files
+                          From your files and chats
                         </p>
                         <ul className="space-y-0.5 text-[11px] text-muted-foreground">
                           {message.fileSources.map((label, i) => (

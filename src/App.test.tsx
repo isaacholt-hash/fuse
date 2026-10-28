@@ -617,7 +617,7 @@ test("a large text file is searched: the question gets the matching excerpts, an
   // The whole file isn't sent: just a note that it's searched.
   const note = sent?.attachments?.find((a) => a.kind === "text" && a.name === "notes.txt");
   expect(note && "text" in note ? note.text : "").toMatch(/isn't sent whole/);
-  const cited = within(await screen.findByLabelText("From your files"));
+  const cited = within(await screen.findByLabelText("From your files and chats"));
   expect(cited.getAllByText(/notes\.txt, lines \d+–\d+/).length).toBeGreaterThan(0);
 });
 
@@ -1189,7 +1189,8 @@ describe("projects", () => {
       "The boat leaves at dawn",
     );
     expect(
-      within(await screen.findByLabelText("From your files")).getAllByText(/logbook\.md/).length,
+      within(await screen.findByLabelText("From your files and chats")).getAllByText(/logbook\.md/)
+        .length,
     ).toBeGreaterThan(0);
   });
 
