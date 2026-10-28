@@ -1,11 +1,115 @@
-import { useId, useState } from "react";
+import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { number } from "./format";
+import { money, number } from "./format";
 import { Modal } from "./primitives";
 import type { ModelOption, ProjectForm } from "./types";
 
 const LAST_USED = "";
+
+/** A project knowledge file (PM-09). */
+export interface KnowledgeFileView {
+  id: string;
+  name: string;
+  tokens: number;
+  /** "Searchable", "Indexing…", "Needs an OpenAI key", or an error. */
+  status: string;
+  ready: boolean;
+  /** What sending it whole with every message would cost, for comparison. */
+  wholeMicro: number;
+}
+
+export interface KnowledgeProps {
+  files: KnowledgeFileView[];
+  busy: boolean;
+  error: string | null;
+  onAdd: (files: File[]) => void;
+  onRemove: (id: string) => void;
+}
+
+/** Project settings → Knowledge: files every chat in the project searches. */
+function KnowledgeSection({ files, busy, error, onAdd, onRemove }: KnowledgeProps) {
+  const picker = useRef<HTMLInputElement>(null);
+  return (
+    <section aria-label="Knowledge files">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h3 className="text-xs font-medium">Knowledge</h3>
+        <input
+          ref={picker}
+          type="file"
+          multiple
+          accept=".txt,.md,.markdown,.csv,.json,.docx,.html,.xml,.yaml,.yml,.ts,.tsx,.js,.py,.rs,.go,.java,.sql"
+          className="hidden"
+          aria-label="Add knowledge files"
+          onChange={(e) => {
+            onAdd(Array.from(e.target.files ?? []));
+            e.target.value = "";
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => picker.current?.click()}
+        >
+          {busy ? (
+            <LoaderCircle className="size-3.5 animate-spin" />
+          ) : (
+            <Paperclip className="size-3.5" />
+          )}
+          Add files
+        </Button>
+      </div>
+      <p className="mb-2 text-[10px] leading-4 text-muted-foreground">
+        Text, Markdown, Word, CSV and code. Indexed once, then every chat in this project gets the
+        parts that match each question (about 3,000 tokens) instead of whole files.
+      </p>
+      {error && (
+        <p role="alert" className="mb-2 text-[11px] text-destructive">
+          {error}
+        </p>
+      )}
+      {files.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">No files yet.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {files.map((f) => (
+            <li
+              key={f.id}
+              className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]"
+            >
+              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">{f.name}</span>
+                <span className="block font-mono text-[10px] text-muted-foreground">
+                  ~{number(f.tokens)} tokens · {money(f.wholeMicro)} a message if sent whole
+                </span>
+              </span>
+              <span
+                className={`shrink-0 text-[10px] ${f.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"}`}
+              >
+                {f.status}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Remove ${f.name}`}
+                onClick={() => {
+                  onRemove(f.id);
+                }}
+              >
+                <Trash2 />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
 const modelKey = (m: { provider: string; id: string }) => `${m.provider}/${m.id}`;
 
 /** Create or edit a project: name, instructions and default model (PM-01). */
@@ -17,6 +121,7 @@ export function ProjectDialog({
   maxChars,
   onSave,
   onDelete,
+  knowledge,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -27,6 +132,8 @@ export function ProjectDialog({
   onSave: (form: ProjectForm) => void;
   /** Only when editing. */
   onDelete?: () => void;
+  /** Only when editing: the project's knowledge files (PM-09). */
+  knowledge?: KnowledgeProps;
 }) {
   const empty: ProjectForm = { name: "", instructions: "", defaultModel: null };
   const [form, setForm] = useState<ProjectForm>(initial ?? empty);
@@ -119,6 +226,7 @@ export function ProjectDialog({
             New chats in this project start on it. You can still change it in any chat.
           </p>
         </div>
+        {knowledge && <KnowledgeSection {...knowledge} />}
         <div className="flex items-center gap-2 pt-2">
           {onDelete &&
             (confirmDelete ? (

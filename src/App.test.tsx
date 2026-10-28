@@ -1158,6 +1158,41 @@ describe("projects", () => {
     expect(projects.getByRole("button", { name: /^Where to eat\?/ })).toBeInTheDocument();
   });
 
+  test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
+    const { calls, user } = setup({ anthropic: [() => answer("At dawn.")] });
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Sailing");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    await user.click(await screen.findByRole("button", { name: "Project: Sailing" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const knowledge = within(dialog.getByRole("region", { name: "Knowledge files" }));
+    const notes = [
+      ...Array.from({ length: 50 }, (_, i) => `Apple note ${String(i)}: apple apple.`),
+      "The boat leaves at dawn from the boat harbour.",
+      ...Array.from({ length: 50 }, (_, i) => `Cloud note ${String(i)}: cloud cloud.`),
+    ].join("\n");
+    await user.upload(
+      knowledge.getByLabelText("Add knowledge files"),
+      new File([notes], "logbook.md", { type: "text/markdown" }),
+    );
+    expect(await knowledge.findByText("Searchable")).toBeInTheDocument();
+    expect(knowledge.getByText(/a message if sent whole/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.type(await composer(), "When does the boat leave?{Enter}");
+    expect(await screen.findByText("At dawn.")).toBeInTheDocument();
+    const sent = calls.anthropic?.[0]?.[0];
+    const excerpts = sent?.attachments?.find((a) => a.kind === "text");
+    expect(excerpts && "text" in excerpts ? excerpts.text : "").toContain(
+      "The boat leaves at dawn",
+    );
+    expect(
+      within(await screen.findByLabelText("From your files")).getAllByText(/logbook\.md/).length,
+    ).toBeGreaterThan(0);
+  });
+
   test("chats move in and out of projects; deleting a project keeps its chats", async () => {
     const { db, user } = setup();
     await user.type(await composer(), "Loose question{Enter}");

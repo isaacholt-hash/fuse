@@ -23,6 +23,7 @@ import {
 } from "@/storage/messages";
 import { addCitations, addFileCitations } from "@/storage/citations";
 import { retrieveExcerpts } from "@/knowledge/retrieve";
+import { listProjectFiles } from "@/storage/projectFiles";
 import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
@@ -256,16 +257,24 @@ async function contextOf(
     deps.tenant,
     kept.filter((m) => m.role === "user").map((m) => m.id),
   );
+  // PM-09: a project's knowledge files are searched for every chat in it.
+  const thread = await getThread(deps.db, deps.tenant, threadId);
+  const knowledge = thread?.projectId
+    ? await listProjectFiles(deps.db, deps.tenant, thread.projectId)
+    : [];
   const searched = [
     ...new Map(
-      [...files.values()]
-        .flat()
-        .filter((f) => f.mode === "retrieval")
-        .map((f) => [f.id, f]),
+      [...[...files.values()].flat().filter((f) => f.mode === "retrieval"), ...knowledge].map(
+        (f) => [f.id, f],
+      ),
     ).values(),
   ];
   const last = history.at(-1);
   if (searched.length === 0 || last?.role !== "user") return { history, earlier, fileSources: [] };
+  // Without an OpenAI key a project's files simply aren't used; a file attached to search fails.
+  if (!embedding && knowledge.length === searched.length) {
+    return { history, earlier, fileSources: [] };
+  }
   if (!embedding) {
     throw new Error(
       "Searching inside large files needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or attach the file again and send it whole.",
