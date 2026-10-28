@@ -47,6 +47,7 @@ export function effectiveInstructions(
 export function systemPrompt(
   parts: InstructionPart[],
   memories: string[] = [],
+  earlier: string | null = null,
 ): string | undefined {
   const sections: string[] = [];
   if (parts.length > 0) {
@@ -66,6 +67,17 @@ export function systemPrompt(
         "Facts about the user that they asked to be remembered across chats. Use them when they help; don't list them back or mention this note. If the conversation contradicts one, the conversation wins.",
         ...memories.map((m) => `- ${m}`),
         "</memories>",
+      ].join("\n"),
+    );
+  }
+  if (earlier) {
+    // Last: the summary changes as the thread grows, so everything above stays cacheable.
+    sections.push(
+      [
+        "<earlier_conversation>",
+        "A summary of the earlier part of this conversation, which is no longer shown in full. Treat it as what was said before the messages below.",
+        earlier,
+        "</earlier_conversation>",
       ].join("\n"),
     );
   }

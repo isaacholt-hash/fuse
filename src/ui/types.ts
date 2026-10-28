@@ -93,6 +93,8 @@ export interface MessageView {
   feedback?: "up" | "down" | null;
   /** This message's place among its siblings, when an edit or regenerate made some (CH-04). */
   branch?: { position: number; total: number };
+  /** The messages above go to the model as a summary (PM-06). */
+  summaryAbove?: boolean;
 }
 
 /** The routing badge on an answer. */
