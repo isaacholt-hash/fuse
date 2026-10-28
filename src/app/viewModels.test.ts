@@ -26,6 +26,7 @@ const msg = (fields: Partial<Message>): Message => ({
   route: null,
   bestCostMicroUsd: null,
   escalatedFromId: null,
+  feedback: null,
   createdAt: 0,
   updatedAt: 0,
   ...fields,

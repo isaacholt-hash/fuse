@@ -66,7 +66,7 @@ Routing columns (`tier`, `route_rule_id`) were added in M1 step 10 (`0008_routin
 | Table / column | Purpose | Req |
 | --- | --- | --- |
 | `messages.tier`, `messages.route_rule_id`, `messages.route_reason`, `messages.pinned_mode`, `messages.route_intent`, `messages.route_complexity`, `messages.best_cost_micro_usd` | What tier and rule picked the model, and why. `pinned_mode`: `auto` / `tier` / `model` (NULL on answers from before routing). Intent and complexity are what the classifier read (Auto only). `best_cost_micro_usd` is the same tokens priced on the cheapest Best model with a key: an estimate, since another model would use a different number of tokens. Built in M1 step 10 (`0008_routing.sql`). | RT-01, RT-09 |
-| `messages.feedback` | `up` / `down` / null. | CH-07, RT-11 |
+| `messages.feedback` | `up` / `down` / null. Built in M2 step 2 (`0010_feedback.sql`); a thumbs-down on the latest answer highlights "Try a stronger model". | CH-07, RT-11 |
 | `messages.escalated_from_id NULL` | The answer this one re-ran one tier up ("Try a stronger model"). Built in M1 step 11 (`0009_escalation.sql`). Both answers stay in the thread and both count in its cost; history sent to models skips any answer that was re-run, so later turns carry the stronger one. Offered on the latest answer only (earlier ones need branching, M2). Logged with `route_rule_id = 'escalation'`. | RT-04 |
 | `request_log.tier`, `request_log.route_rule_id` | Same as above, per call. | RT-09 |
 | `threads.pinned_tier NULL`, `threads.pinned_model NULL`, `threads.pinned_provider NULL` | Per-thread pins: a tier (`balanced`/`best`) or a model; all NULL = Auto. Built in M1 step 10; chats from before it start on Auto. Per-message and per-project pins are not built yet. | RT-01, RT-06 |

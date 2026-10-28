@@ -89,6 +89,8 @@ export interface MessageView {
   route?: RouteView;
   /** The tier "Try a stronger model" would use (e.g. "Best"); only on the latest answer. */
   escalateTo?: string;
+  /** Thumbs up or down (CH-07). */
+  feedback?: "up" | "down" | null;
 }
 
 /** The routing badge on an answer. */

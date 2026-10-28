@@ -55,7 +55,7 @@ import {
   type Memory,
   type Proposal,
 } from "@/storage/memories";
-import { listMessages, type Message } from "@/storage/messages";
+import { listMessages, setFeedback, type Message } from "@/storage/messages";
 import {
   createProject,
   deleteProject,
@@ -151,6 +151,17 @@ function readLastThread(): string | null {
     return null;
   }
 }
+/** An answer as a Markdown quote for the composer, trimmed to a readable length. */
+const QUOTE_CHARS = 1_500;
+const quoteOf = (text: string) => {
+  const cut = text.length > QUOTE_CHARS ? `${text.slice(0, QUOTE_CHARS).trimEnd()}…` : text;
+  return `${cut
+    .trim()
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n")}\n\n`;
+};
+
 const lastModelOf = (messages: Message[], catalog: Catalog) => {
   const m = messages.findLast((x) => x.role === "assistant" && x.model);
   const provider = m?.provider;
@@ -208,6 +219,8 @@ export function ChatApp({
   // The project dialog: creating ("new"), editing (a project id), or closed.
   const [projectDialog, setProjectDialog] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
+  // An answer quoted into the composer; `key` changes on every quote.
+  const [quote, setQuote] = useState<{ text: string; key: number } | null>(null);
   // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
   const [draftMode, setDraftMode] = useState<RouteMode>(AUTO);
   const [view, setView] = useState<"chat" | "settings">(
@@ -1149,6 +1162,16 @@ export function ChatApp({
                 startedAt={messages[0]?.createdAt ?? null}
                 onRetry={retry}
                 onEscalate={escalate}
+                onFeedback={(id, value) => {
+                  const threadId = selectedId;
+                  if (!threadId) return;
+                  setFeedback(db, tenant, id, value)
+                    .then(() => reload(threadId))
+                    .catch(report);
+                }}
+                onQuote={(text) => {
+                  setQuote((q) => ({ text: quoteOf(text), key: (q?.key ?? 0) + 1 }));
+                }}
               />
               <MemoryBar
                 count={proposals.length}
@@ -1172,6 +1195,7 @@ export function ChatApp({
                 onSelectModel={(o) => {
                   chooseMode({ kind: "model", provider: o.provider, id: o.id });
                 }}
+                insert={quote}
                 routing={{
                   selected: mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
                   descriptions: {
