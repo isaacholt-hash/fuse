@@ -55,6 +55,17 @@ const catalog = parseCatalog({
       source_url: "https://example.com",
     },
   ],
+  embedding_models: [
+    {
+      provider: "openai",
+      id: "test-embed",
+      dimensions: 3,
+      max_input_tokens: 8000,
+      input_price: 0.02,
+      verified_on: "2026-10-28",
+      source_url: "https://example.com",
+    },
+  ],
 });
 
 // One model per tier; the shipped tiers are tested against data/ in src/routing.
@@ -141,6 +152,22 @@ function setup(
   const adapterFor = (provider: "anthropic" | "openai"): ProviderAdapter => ({
     provider,
     listModels: () => Promise.resolve([]),
+    // A toy embedding for retrieval tests: how often "apple", "boat" and "cloud" appear.
+    ...(provider === "openai"
+      ? {
+          embed: (texts: string[]) =>
+            Promise.resolve({
+              vectors: texts.map((t) =>
+                Float32Array.from(
+                  ["apple", "boat", "cloud"].map((w) => t.split(w).length - 1 + 0.01),
+                ),
+              ),
+              tokens: texts.join(" ").length / 4,
+              providerRequestId: null,
+              attempts: 1,
+            }),
+        }
+      : {}),
     streamChat(history, model, options, signal) {
       const kind: keyof Chores | null =
         options.system === TITLE_SYSTEM
@@ -533,6 +560,12 @@ test("a big message shows its cost first; it can go without its files", async ()
   const big = new File(["word ".repeat(30_000)], "book.txt", { type: "text/plain" });
   await user.upload(screen.getByLabelText("Attach files"), big);
   expect(await screen.findByText(/tokens ·/)).toBeInTheDocument();
+  // Big text files are searched by default; sent whole, they show their cost first.
+  await user.click(
+    within(screen.getByRole("group", { name: "How book.txt is sent" })).getByRole("button", {
+      name: "Whole",
+    }),
+  );
   await user.type(await composer(), "Summarize this{Enter}");
   const ask = within(await screen.findByRole("dialog"));
   expect(ask.getByText(/This adds about [\d,]+ tokens\. On Test Claude/)).toBeInTheDocument();
@@ -553,6 +586,39 @@ test("the savings card compares this month with Best and with your subscriptions
   await user.type(card.getByLabelText("Subscriptions per month in dollars"), "40");
   await user.tab();
   expect(await card.findByText(/less than your subscriptions so far/)).toBeInTheDocument();
+});
+
+test("a large text file is searched: the question gets the matching excerpts, and the answer cites them", async () => {
+  const { calls, user } = setup({ anthropic: [() => answer("Boats float.")] });
+  await composer();
+  const text = [
+    ...Array.from(
+      { length: 400 },
+      (_, i) => `Line ${String(i)} about apple orchards and apple pie.`,
+    ),
+    "The boat sails at dawn from the boat harbour.",
+    ...Array.from(
+      { length: 400 },
+      (_, i) => `Line ${String(i)} about cloud cover and cloud types.`,
+    ),
+  ].join("\n");
+  // Repeat to pass the 20K-token line where files are searched by default.
+  const big = new File([`${text}\n`.repeat(4)], "notes.txt", { type: "text/plain" });
+  await user.upload(screen.getByLabelText("Attach files"), big);
+  expect(await screen.findByText(/searched: the best/)).toBeInTheDocument();
+  await user.type(await composer(), "When does the boat sail?{Enter}");
+  expect(await screen.findByText("Boats float.")).toBeInTheDocument();
+
+  const sent = calls.anthropic?.[0]?.[0];
+  const excerpts = sent?.attachments?.find(
+    (a) => a.kind === "text" && a.name === "Excerpts from your files",
+  );
+  expect(excerpts && "text" in excerpts ? excerpts.text : "").toContain("The boat sails at dawn");
+  // The whole file isn't sent: just a note that it's searched.
+  const note = sent?.attachments?.find((a) => a.kind === "text" && a.name === "notes.txt");
+  expect(note && "text" in note ? note.text : "").toMatch(/isn't sent whole/);
+  const cited = within(await screen.findByLabelText("From your files"));
+  expect(cited.getAllByText(/notes\.txt, lines \d+–\d+/).length).toBeGreaterThan(0);
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

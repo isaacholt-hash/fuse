@@ -56,8 +56,12 @@ test("refusals are plain English", async () => {
     prepareDocument(new File([new Uint8Array([0xff, 0xfe, 0x00])], "x.txt")),
   ).rejects.toThrow(/isn't plain text/);
   await expect(prepareDocument(new File(["   "], "empty.md"))).rejects.toThrow(/no text/);
-  await expect(prepareDocument(new File(["x".repeat(800_004)], "huge.txt"))).rejects.toThrow(
-    /Too long/,
+  // Past the whole-file limit a text file is still taken: it's searched instead (FK-03).
+  await expect(prepareDocument(new File(["x".repeat(800_004)], "big.txt"))).resolves.toMatchObject({
+    tokens: 200_001,
+  });
+  await expect(prepareDocument(new File(["x".repeat(20_000_004)], "huge.txt"))).rejects.toThrow(
+    /Too long even to search/,
   );
   await expect(prepareDocument(new File(["x"], "deck.pptx"))).rejects.toThrow(/Unsupported/);
 });

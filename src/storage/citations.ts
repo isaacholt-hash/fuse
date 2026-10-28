@@ -56,3 +56,53 @@ export async function citationsForMessages(
   }
   return out;
 }
+
+/** A part of an attached file an answer was given (FK-02), e.g. "book.txt, lines 120–140". */
+export async function addFileCitations(
+  db: SqlDb,
+  tenant: Tenant,
+  messageId: string,
+  sources: { chunkId: string; label: string }[],
+): Promise<void> {
+  const now = Date.now();
+  for (const [ordinal, s] of sources.entries()) {
+    await db.execute(
+      `INSERT INTO message_citations (id, workspace_id, user_id, message_id, ordinal, kind,
+         title, chunk_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'chunk', ?, ?, ?, ?)`,
+      [
+        uuidv7(now),
+        tenant.workspaceId,
+        tenant.userId,
+        messageId,
+        ordinal,
+        s.label,
+        s.chunkId,
+        now,
+        now,
+      ],
+    );
+  }
+}
+
+/** File excerpts per answer, as labels, in order. */
+export async function fileCitationsForMessages(
+  db: SqlDb,
+  tenant: Tenant,
+  messageIds: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (messageIds.length === 0) return out;
+  const rows = await db.select<{ message_id: string; title: string | null }>(
+    `SELECT message_id, title FROM message_citations
+     WHERE workspace_id = ? AND kind = 'chunk' AND message_id IN (${messageIds.map(() => "?").join(", ")})
+     ORDER BY message_id, ordinal`,
+    [tenant.workspaceId, ...messageIds],
+  );
+  for (const r of rows) {
+    const list = out.get(r.message_id) ?? [];
+    list.push(r.title ?? "A file");
+    out.set(r.message_id, list);
+  }
+  return out;
+}

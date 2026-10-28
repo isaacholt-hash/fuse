@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "@/files/api";
-import { prepareDocument as readDocument, type PreparedDocument } from "@/files/documents";
+import {
+  LARGE_TEXT_TOKENS,
+  MAX_TEXT_TOKENS,
+  prepareDocument as readDocument,
+  type PreparedDocument,
+} from "@/files/documents";
 import { isImageType, type PreparedImage } from "@/files/images";
 import type { Tenant } from "@/storage/defaults";
-import { addFile, type FileRecord } from "@/storage/files";
+import { addFile, type FileMode, type FileRecord } from "@/storage/files";
 import type { SqlDb } from "@/storage/sql";
 
 /** A file in the composer, before it's sent. */
@@ -16,6 +21,8 @@ export interface PendingFile {
   /** PDFs: page count, for the chip. */
   pages?: number;
   error?: string;
+  /** Large text files: sent whole or searched (FK-03). Unset for everything else (whole). */
+  mode?: FileMode;
 }
 
 /**
@@ -69,7 +76,14 @@ export function useAttachments(deps: {
               sha256: stored.sha256,
               tokenEstimate: doc.tokens,
             });
-            update(id, { status: "ready", file, ...(doc.pages ? { pages: doc.pages } : {}) });
+            // FK-03: big text files are searched by default; past the whole-file limit, always.
+            const searched = doc.kind === "text" && doc.tokens > LARGE_TEXT_TOKENS;
+            update(id, {
+              status: "ready",
+              file,
+              ...(doc.pages ? { pages: doc.pages } : {}),
+              ...(searched ? { mode: "retrieval" as const } : {}),
+            });
           } catch (e) {
             update(id, { status: "error", error: e instanceof Error ? e.message : String(e) });
           }
@@ -89,9 +103,23 @@ export function useAttachments(deps: {
       return all.filter((p) => p.id !== id);
     });
   };
-  /** Hands over the ready files for sending and empties the composer. */
+  /** Whole or searched, for a large text file; files over the whole-file limit stay searched. */
+  const setMode = (id: string, mode: FileMode) => {
+    setPending((all) =>
+      all.map((p) =>
+        p.id === id &&
+        p.mode &&
+        (mode === "retrieval" || (p.file?.tokenEstimate ?? 0) <= MAX_TEXT_TOKENS)
+          ? { ...p, mode }
+          : p,
+      ),
+    );
+  };
+  /** Hands over the ready files (with how each is sent) and empties the composer. */
   const take = (): FileRecord[] => {
-    const ready = pending.flatMap((p) => (p.status === "ready" && p.file ? [p.file] : []));
+    const ready = pending.flatMap((p) =>
+      p.status === "ready" && p.file ? [{ ...p.file, ...(p.mode ? { mode: p.mode } : {}) }] : [],
+    );
     pending.forEach(release);
     setPending([]);
     return ready;
@@ -100,7 +128,7 @@ export function useAttachments(deps: {
     pending.forEach(release);
     setPending([]);
   };
-  return { pending, add, remove, take, clear };
+  return { pending, add, remove, take, clear, setMode };
 }
 
 /** blob: URLs for stored images (thumbnails), loaded once per file and kept while the app runs. */

@@ -14,7 +14,14 @@ export interface FileRecord {
   /** Documents: estimated input tokens (images are estimated per provider from width/height). */
   tokenEstimate: number | null;
   createdAt: number;
+  /**
+   * How it's sent with its message (FK-03): whole every turn, or searched for the parts that
+   * matter. Set on files read through a message.
+   */
+  mode?: FileMode;
 }
+
+export type FileMode = "whole" | "retrieval";
 
 interface FileRow {
   id: string;
@@ -88,20 +95,31 @@ export async function addFile(db: SqlDb, tenant: Tenant, f: NewFile): Promise<Fi
   };
 }
 
-/** Attaches files to a message, in order. */
+/** Attaches files to a message, in order; files missing from `modes` are sent whole. */
 export async function linkFiles(
   db: SqlDb,
   tenant: Tenant,
   messageId: string,
   fileIds: string[],
+  modes: Partial<Record<string, FileMode>> = {},
 ): Promise<void> {
   const now = Date.now();
   for (const [ordinal, fileId] of fileIds.entries()) {
     await db.execute(
-      `INSERT INTO message_files (id, workspace_id, user_id, message_id, file_id, ordinal,
+      `INSERT INTO message_files (id, workspace_id, user_id, message_id, file_id, ordinal, mode,
          created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [uuidv7(now), tenant.workspaceId, tenant.userId, messageId, fileId, ordinal, now, now],
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        uuidv7(now),
+        tenant.workspaceId,
+        tenant.userId,
+        messageId,
+        fileId,
+        ordinal,
+        modes[fileId] ?? "whole",
+        now,
+        now,
+      ],
     );
   }
 }
@@ -114,9 +132,9 @@ export async function filesForMessages(
 ): Promise<Map<string, FileRecord[]>> {
   const out = new Map<string, FileRecord[]>();
   if (messageIds.length === 0) return out;
-  const rows = await db.select<FileRow & { message_id: string }>(
-    `SELECT mf.message_id, f.id, f.name, f.mime, f.size_bytes, f.sha256, f.width, f.height,
-            f.token_estimate, f.created_at
+  const rows = await db.select<FileRow & { message_id: string; mode: FileMode }>(
+    `SELECT mf.message_id, mf.mode, f.id, f.name, f.mime, f.size_bytes, f.sha256, f.width,
+            f.height, f.token_estimate, f.created_at
      FROM message_files mf JOIN files f ON f.id = mf.file_id
      WHERE mf.workspace_id = ? AND mf.message_id IN (${messageIds.map(() => "?").join(", ")})
        AND f.deleted_at IS NULL
@@ -125,7 +143,7 @@ export async function filesForMessages(
   );
   for (const r of rows) {
     const list = out.get(r.message_id) ?? [];
-    list.push(toFile(r));
+    list.push({ ...toFile(r), mode: r.mode });
     out.set(r.message_id, list);
   }
   return out;
