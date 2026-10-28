@@ -1049,6 +1049,66 @@ test("import from ChatGPT: preview first, then the chats appear in the sidebar",
   expect(screen.getByText("Yes.")).toBeInTheDocument();
 });
 
+test("import from Claude: chats land in their project, which gets its instructions and documents", async () => {
+  const { db, user } = setup();
+  await composer();
+  const zip = zipSync({
+    "conversations.json": strToU8(
+      JSON.stringify([
+        {
+          uuid: "c1",
+          name: "Lisbon days",
+          created_at: "2026-05-01T10:00:00Z",
+          project_uuid: "p1",
+          chat_messages: [
+            {
+              uuid: "m1",
+              sender: "human",
+              text: "Plan Lisbon",
+              created_at: "2026-05-01T10:00:00Z",
+            },
+            {
+              uuid: "m2",
+              sender: "assistant",
+              text: "Day 1: Alfama.",
+              created_at: "2026-05-01T10:01:00Z",
+            },
+          ],
+        },
+      ]),
+    ),
+    "projects.json": strToU8(
+      JSON.stringify([
+        {
+          uuid: "p1",
+          name: "Travel",
+          prompt_template: "Prices in euros.",
+          docs: [{ filename: "notes.md", content: "Hotel near Rossio." }],
+        },
+      ]),
+    ),
+  });
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Import" }));
+  await user.click(section.getByRole("button", { name: "From Claude…" }));
+  await user.upload(section.getByLabelText("Export file"), new File([zip], "claude.zip"));
+  const preview = within(await section.findByLabelText("Import preview"));
+  expect(preview.getByText(/1 projects with their instructions and documents/)).toBeInTheDocument();
+  await user.click(preview.getByRole("button", { name: "Import 1 chats" }));
+  expect(await section.findByText("Imported 1 chats.")).toBeInTheDocument();
+
+  const [project] = await db.select<{ id: string; name: string; instructions: string }>(
+    "SELECT id, name, instructions FROM projects",
+  );
+  expect(project).toMatchObject({ name: "Travel", instructions: "Prices in euros." });
+  const [thread] = await listThreads(db, DEFAULT_TENANT);
+  expect(thread).toMatchObject({ title: "Lisbon days", projectId: project?.id });
+  const docs = await db.select<{ name: string }>(
+    "SELECT f.name FROM project_files pf JOIN files f ON f.id = pf.file_id",
+  );
+  expect(docs.map((d) => d.name)).toEqual(["notes.md"]);
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

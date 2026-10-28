@@ -142,6 +142,7 @@ import { DataSection } from "@/ui/DataSection";
 import { ImportSection, type ImportSourceView } from "@/ui/ImportSection";
 import { previewImport, writeImport, type ImportedChat, type ImportSource } from "@/import/write";
 import { readChatGptExport } from "@/import/chatgpt";
+import { readClaudeExport, type ImportedProject } from "@/import/claude";
 import { AppLockSection, LockScreen } from "@/ui/AppLock";
 import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/security/passcode";
 import { exportAll } from "@/data/exportAll";
@@ -271,11 +272,22 @@ const IMPORT_SOURCES: ImportSourceView[] = [
     hint: "the zip ChatGPT emails you (Settings → Data controls → Export data)",
     accept: ".zip,.json",
   },
+  {
+    id: "claude",
+    label: "Claude",
+    hint: "the zip Claude emails you (Settings → Privacy → Export data)",
+    accept: ".zip,.json",
+  },
 ];
 
 /** Reads an export file for a source; throws a plain-English error. */
-function readExport(source: string, bytes: Uint8Array, name: string): ImportedChat[] {
-  if (source === "chatgpt") return readChatGptExport(bytes, name);
+function readExport(
+  source: string,
+  bytes: Uint8Array,
+  name: string,
+): { chats: ImportedChat[]; projects: ImportedProject[] } {
+  if (source === "chatgpt") return { chats: readChatGptExport(bytes, name), projects: [] };
+  if (source === "claude") return readClaudeExport(bytes, name);
   throw new Error("That source isn't supported.");
 }
 
@@ -441,7 +453,11 @@ export function ChatApp({
   });
   const lastActive = useRef(Date.now());
   // PL-08: chats read from an export, waiting for "Import".
-  const pendingImport = useRef<{ source: ImportSource; chats: ImportedChat[] } | null>(null);
+  const pendingImport = useRef<{
+    source: ImportSource;
+    chats: ImportedChat[];
+    projects: ImportedProject[];
+  } | null>(null);
   // Quick capture (CH-08): the active shortcut, and what the desktop said about it.
   const [shortcut, setShortcut] = useState<{
     shortcut: string | null;
@@ -1282,6 +1298,30 @@ export function ChatApp({
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
   };
   const editedProject = projects.find((p) => p.id === projectDialog);
+  /**
+   * A Claude project: found or made by name; its instructions fill an empty project's, and its
+   * documents become knowledge files (searched when used, PM-09) unless one of that name is there.
+   */
+  const importProject = async (p: ImportedProject) => {
+    const id = await projectIdFor(p.name);
+    const project = (await listProjects(db, tenant)).find((x) => x.id === id);
+    if (project && !project.instructions && p.instructions) {
+      await updateProject(db, tenant, id, { ...project, instructions: p.instructions });
+    }
+    const have = new Set((await listProjectFiles(db, tenant, id)).map((f) => f.name));
+    for (const doc of p.docs.filter((d) => !have.has(d.name))) {
+      const bytes = new TextEncoder().encode(doc.text);
+      const stored = await filesApi.put(bytes);
+      const file = await addFile(db, tenant, {
+        name: doc.name,
+        mime: "text/plain",
+        sizeBytes: stored.size,
+        sha256: stored.sha256,
+        tokenEstimate: Math.ceil(doc.text.length / 4),
+      });
+      await addProjectFile(db, tenant, id, file.id);
+    }
+  };
   /** An imported chat's project, by name: an existing one, or a new one (Claude projects). */
   const projectIdFor = async (name: string) => {
     const found = (await listProjects(db, tenant)).find(
@@ -2153,13 +2193,17 @@ export function ChatApp({
                   sources={IMPORT_SOURCES}
                   onRead={async (source, file) => {
                     const bytes = new Uint8Array(await file.arrayBuffer());
-                    const chats = readExport(source, bytes, file.name);
-                    pendingImport.current = { source: source as ImportSource, chats };
-                    return previewImport(db, tenant, source as ImportSource, chats);
+                    const read = readExport(source, bytes, file.name);
+                    pendingImport.current = { source: source as ImportSource, ...read };
+                    return {
+                      ...(await previewImport(db, tenant, source as ImportSource, read.chats)),
+                      projects: read.projects.length,
+                    };
                   }}
                   onImport={async (onProgress) => {
                     const pending = pendingImport.current;
                     if (!pending) return 0;
+                    for (const p of pending.projects) await importProject(p);
                     const n = await writeImport(
                       db,
                       tenant,

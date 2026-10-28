@@ -15,6 +15,8 @@ export interface ImportPreviewView {
   chats: number;
   messages: number;
   already: number;
+  /** Projects in the export (Claude), made or filled in by name. */
+  projects?: number;
 }
 
 /** Settings → Import (PL-08): chats from ChatGPT and Claude, previewed before anything is written. */
@@ -104,6 +106,9 @@ export function ImportSection({
             {preview.chats === 0
               ? "Nothing new to import."
               : `${String(preview.chats)} chats (${preview.messages.toLocaleString("en-US")} messages) from ${source.label}.`}
+            {preview.projects
+              ? ` ${String(preview.projects)} projects with their instructions and documents.`
+              : ""}
             {preview.already > 0 && (
               <span className="text-muted-foreground">
                 {" "}
