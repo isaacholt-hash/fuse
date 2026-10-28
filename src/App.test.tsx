@@ -852,3 +852,44 @@ describe("encrypted database", () => {
     expect(section.queryByText("ABCDEF01-23456789")).not.toBeInTheDocument();
   });
 });
+
+test("Settings imports the routing test set; a bad file changes nothing", async () => {
+  const { user, db } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Routing test set" }));
+  expect(section.getByRole("status")).toHaveTextContent("No prompts yet.");
+
+  const line = (over: Record<string, unknown>) =>
+    JSON.stringify({
+      prompt: "Hi",
+      expected_tier: "balanced",
+      intent: "chat",
+      complexity: "low",
+      notes: "",
+      ...over,
+    });
+  const good = [
+    line({}),
+    line({
+      prompt: "Design the sync engine",
+      expected_tier: "best",
+      intent: "coding",
+      complexity: "high",
+    }),
+    line({ prompt: "Lets fill the gaps", notes: "The missing context is a data repair." }),
+  ].join("\n");
+  await user.upload(section.getByLabelText("Test set file"), new File([good], "golden.jsonl"));
+  expect(await section.findByText("Imported.")).toBeInTheDocument();
+  expect(section.getByRole("status")).toHaveTextContent(
+    "3 prompts · 2 Balanced · 1 Best · 1 need earlier context",
+  );
+
+  const bad = [line({}), line({ expected_tier: "cheap" }), "not json"].join("\n");
+  await user.upload(section.getByLabelText("Test set file"), new File([bad], "bad.jsonl"));
+  const alert = await section.findByRole("alert");
+  expect(alert).toHaveTextContent("Line 2: expected_tier can't be cheap");
+  expect(alert).toHaveTextContent("Line 3: not valid JSON");
+  const rows = await db.select<{ n: number }>("SELECT COUNT(*) AS n FROM golden_prompts");
+  expect(rows[0]?.n).toBe(3);
+});

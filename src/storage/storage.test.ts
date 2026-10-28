@@ -15,6 +15,7 @@ import {
   setThreadProject,
 } from "./threads";
 import { EMPTY_USAGE } from "./usage";
+import { listGoldenPrompts, replaceGoldenPrompts } from "./goldenPrompts";
 
 const t = DEFAULT_TENANT;
 
@@ -224,4 +225,48 @@ test("projects: create, list alphabetically, update, and delete keeps their chat
   expect(await getProject(db, t, a.id)).toBeNull();
   expect((await listProjects(db, t)).map((p) => p.name)).toEqual(["beta plans"]);
   expect((await getThread(db, t, inA.id))?.projectId).toBeNull();
+});
+
+describe("golden prompts", () => {
+  test("an import replaces the set and keeps file order; other workspaces are untouched", async () => {
+    const db = openTestDb();
+    const other = { workspaceId: "other-ws", userId: "other-user" };
+    await db.execute(
+      `INSERT INTO workspaces (id, workspace_id, user_id, name, created_at, updated_at)
+       VALUES (?, ?, ?, 'Other', 0, 0)`,
+      [other.workspaceId, other.workspaceId, other.userId],
+    );
+    await db.execute(
+      `INSERT INTO users (id, workspace_id, user_id, display_name, created_at, updated_at)
+       VALUES (?, ?, ?, 'O', 0, 0)`,
+      [other.userId, other.workspaceId, other.userId],
+    );
+    const p = (prompt: string, expectedTier: "balanced" | "best" = "balanced") => ({
+      prompt,
+      expectedTier,
+      intent: "chat" as const,
+      complexity: "low" as const,
+      needsContext: false,
+      notes: "",
+    });
+    await replaceGoldenPrompts(db, other, [p("theirs")]);
+    await replaceGoldenPrompts(db, DEFAULT_TENANT, [p("a"), p("b", "best")]);
+    await replaceGoldenPrompts(db, DEFAULT_TENANT, [p("c", "best"), p("d")]);
+    expect(await listGoldenPrompts(db, DEFAULT_TENANT)).toEqual([p("c", "best"), p("d")]);
+    expect(await listGoldenPrompts(db, other)).toEqual([p("theirs")]);
+  });
+
+  test("the database refuses Cheap as an expected tier", async () => {
+    const db = openTestDb();
+    const cheap = {
+      prompt: "x",
+      // Cast: the type already forbids Cheap; this checks the database does too.
+      expectedTier: "cheap" as "best",
+      intent: "chat" as const,
+      complexity: "low" as const,
+      needsContext: false,
+      notes: "",
+    };
+    await expect(replaceGoldenPrompts(db, DEFAULT_TENANT, [cheap])).rejects.toThrow(/CHECK/);
+  });
 });
