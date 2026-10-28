@@ -136,6 +136,7 @@ import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
 import { useUpdate } from "./useUpdate";
 import {
+  cacheHitRate,
   messageViews,
   modelOption,
   requestRow,
@@ -1078,6 +1079,7 @@ export function ChatApp({
   const streaming = selectedId !== null && selectedId in live;
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
+  const cacheRate = cacheHitRate(messages);
   const threadViews = threads.filter((t) => !t.incognito).map((t) => threadView(t, at));
   const incognito = thread ? thread.incognito : draftIncognito;
   const projectViews: ProjectView[] = projects.map((p) => {
@@ -1363,7 +1365,13 @@ export function ChatApp({
                 />
                 {thread && (
                   <>
-                    <Tip label="Total cost and tokens for this conversation">
+                    <Tip
+                      label={
+                        cacheRate === null
+                          ? "Total cost and tokens for this conversation"
+                          : `Total cost and tokens for this conversation. ${String(Math.round(cacheRate * 100))}% of the input was read from the provider's cache, at a tenth of the price or less.`
+                      }
+                    >
                       <div
                         tabIndex={0}
                         aria-label="Thread total"
@@ -1372,6 +1380,12 @@ export function ChatApp({
                         <span className="text-foreground/80">{money(thread.costMicroUsd)}</span>
                         <span className="text-border">/</span>
                         <span>{number(threadTokens(messages))} tokens</span>
+                        {cacheRate !== null && cacheRate > 0 && (
+                          <>
+                            <span className="text-border">/</span>
+                            <span>{Math.round(cacheRate * 100)}% cached</span>
+                          </>
+                        )}
                       </div>
                     </Tip>
                     {!thread.incognito && (

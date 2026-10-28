@@ -179,6 +179,17 @@ export function messageViews(
   return out;
 }
 
+/** Share of a thread's input tokens read from the provider's cache (RT-07); null with no input. */
+export function cacheHitRate(messages: Message[]): number | null {
+  let cached = 0;
+  let input = 0;
+  for (const m of messages) {
+    cached += m.usage.cachedInputTokens;
+    input += m.usage.inputTokens + m.usage.cachedInputTokens + m.usage.cacheWriteTokens;
+  }
+  return input > 0 ? cached / input : null;
+}
+
 /** All tokens billed in a thread (input incl. cache, plus output). */
 export function threadTokens(messages: Message[]): number {
   return messages.reduce(
