@@ -116,6 +116,26 @@ import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog } from "@/ui/Projects";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
+import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
+import {
+  addBudget,
+  allowBudgetUntil,
+  dailySpend,
+  deleteBudget,
+  listBudgets,
+  recordAlert,
+  spentSince,
+  type Budget,
+} from "@/storage/budgets";
+import {
+  alertLevel,
+  budgetState,
+  isAnomaly,
+  periodEnd,
+  periodStart,
+  sendGate,
+  type BudgetState,
+} from "@/cost/budget";
 import { UsageScreen, type UsagePeriod, type UsageScreenView } from "@/ui/Usage";
 import { listUsage, type UsageRecord } from "@/storage/usageReport";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
@@ -261,6 +281,16 @@ export function ChatApp({
       clearTimeout(timer);
     };
   }, [trouble]);
+  // Budgets (CO-03), their state for Settings, alerts waiting to be seen, and a send waiting for
+  // "over budget, send anyway?".
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [budgetStates, setBudgetStates] = useState<BudgetState[]>([]);
+  const [alerts, setAlerts] = useState<string[]>([]);
+  const [overAsk, setOverAsk] = useState<{
+    state: BudgetState;
+    text: string;
+    thinkHarder: boolean;
+  } | null>(null);
   // The usage dashboard (CO-02): its period and the calls it covers.
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
@@ -541,11 +571,18 @@ export function ChatApp({
       .catch(report);
   };
   /** The model for one question under the current mode; null (with a message) if none can take it. */
-  const routeFor = (text: string, files: FileRecord[], history: Message[], webSearch: boolean) => {
+  const routeFor = (
+    text: string,
+    files: FileRecord[],
+    history: Message[],
+    webSearch: boolean,
+    downshift = false,
+  ) => {
     const task = classify(classifyInput(text, files, history, webSearch));
     const routed = route(policy, catalog, mode, task, {
       providers: savedProviders,
       ...(stayOn ? { prefer: stayOn } : {}),
+      downshift,
     });
     if (!routed.ok) {
       setProblem(routed.error);
@@ -686,17 +723,24 @@ export function ChatApp({
         nameThread(threadId, rows);
         summarizeIfLong(threadId, routed.model);
       }
+      checkAlerts().catch(report);
       setLive((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== threadId)));
       await refreshThreads().catch(report);
     }
   };
 
-  const send = async (text: string, thinkHarder = false) => {
+  const send = async (text: string, thinkHarder = false, overConfirmed = false) => {
     const ready = attachments.pending.flatMap((p) =>
       p.status === "ready" && p.file ? [p.file] : [],
     );
     const search = searchOn;
-    const found = routeFor(text, ready, messages, search);
+    // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
+    const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
+    if (gate.over && !overConfirmed) {
+      setOverAsk({ state: gate.over, text, thinkHarder });
+      return;
+    }
+    const found = routeFor(text, ready, messages, search, gate.downshift !== null);
     if (!found) return;
     // RT-08: "Think harder" asks for the most reasoning the model has, for this message only.
     const routed = thinkHarder
@@ -1142,6 +1186,83 @@ export function ChatApp({
       ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
       : null;
 
+  useEffect(() => {
+    listBudgets(db, tenant).then(setBudgets, report);
+  }, [db, tenant]);
+  /** Every budget that covers this project (or every budget, for Settings), with what's spent. */
+  const budgetStatesFor = async (
+    list: readonly Budget[],
+    projectId: string | null,
+    every = false,
+  ): Promise<BudgetState[]> => {
+    const now = Date.now();
+    const applies = list.filter((b) => every || b.projectId === null || b.projectId === projectId);
+    return Promise.all(
+      applies.map(async (b) =>
+        budgetState(b, await spentSince(db, tenant, periodStart(b.period, now), b.projectId), now),
+      ),
+    );
+  };
+  const budgetName = (b: Budget) =>
+    b.projectId ? (projects.find((p) => p.id === b.projectId)?.name ?? "A project") : "Everything";
+  /** After an answer: alerts at 50/80/100% of a budget, and a day far above the usual (CO-07). */
+  const checkAlerts = async () => {
+    const fresh: string[] = [];
+    for (const s of await budgetStatesFor(budgets, null, true)) {
+      const level = alertLevel(s.used);
+      if (!level) continue;
+      const shown = await recordAlert(
+        db,
+        tenant,
+        s.budget.id,
+        level,
+        periodStart(s.budget.period, Date.now()),
+      );
+      if (!shown) continue;
+      fresh.push(
+        `${budgetName(s.budget)}: ${money(s.spent)} of ${money(s.budget.limitMicro)} this ${s.budget.period} (${String(Math.round(s.used * 100))}%).` +
+          (level === "100"
+            ? " Messages now ask before sending."
+            : level === "80"
+              ? " Auto now answers one tier lower where it can."
+              : ""),
+      );
+    }
+    const today = periodStart("day", Date.now());
+    const starts = Array.from({ length: 15 }, (_, i) => {
+      const d = new Date(today);
+      d.setDate(d.getDate() - 14 + i);
+      return d.getTime();
+    });
+    const days = await dailySpend(db, tenant, starts);
+    const spentToday = days.at(-1) ?? 0;
+    if (
+      isAnomaly(spentToday, days.slice(0, -1)) &&
+      (await recordAlert(db, tenant, null, "anomaly", today))
+    ) {
+      fresh.push(
+        `Today's spend (${money(spentToday)}) is more than three times your daily average of the last two weeks.`,
+      );
+    }
+    if (fresh.length > 0) setAlerts((a) => [...a, ...fresh]);
+  };
+  useEffect(() => {
+    if (view !== "settings") return;
+    budgetStatesFor(budgets, null, true).then(setBudgetStates, report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when Settings opens or budgets change
+  }, [view, budgets]);
+  const budgetViews: BudgetView[] = budgetStates.map((s) => ({
+    id: s.budget.id,
+    scope: budgetName(s.budget),
+    period: s.budget.period,
+    limitMicro: s.budget.limitMicro,
+    spentMicro: s.spent,
+    hardStop: s.budget.hardStop,
+    allowed: s.allowed
+      ? `Allowed past the limit until ${new Date(s.budget.allowUntil ?? 0).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
+      : null,
+  }));
+
   const openUsage = () => {
     setView("usage");
     const at = Date.now();
@@ -1296,6 +1417,26 @@ export function ChatApp({
             </Button>
           </div>
         )}
+        {alerts.map((a, i) => (
+          <div
+            key={`${String(i)}-${a}`}
+            role="alert"
+            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+          >
+            <CircleAlert className="size-3.5 text-amber-600" />
+            <span className="flex-1">{a}</span>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss alert"
+              onClick={() => {
+                setAlerts((all) => all.filter((_, j) => j !== i));
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        ))}
         <div className="flex min-h-0 flex-1">
           {sidebar && (
             <Sidebar
@@ -1345,6 +1486,29 @@ export function ChatApp({
                     onSave={saveGlobalInstructions}
                   />
                 )
+              }
+              budgets={
+                <BudgetsSection
+                  budgets={budgetViews}
+                  projects={projects}
+                  onAdd={(form) => {
+                    addBudget(db, tenant, {
+                      projectId: form.projectId,
+                      period: form.period,
+                      limitMicro: form.limitUsd * 1_000_000,
+                      hardStop: form.hardStop,
+                    })
+                      .then(() => listBudgets(db, tenant))
+                      .then(setBudgets)
+                      .catch(report);
+                  }}
+                  onDelete={(id) => {
+                    deleteBudget(db, tenant, id)
+                      .then(() => listBudgets(db, tenant))
+                      .then(setBudgets)
+                      .catch(report);
+                  }}
+                />
               }
               routing={
                 golden && (
@@ -1699,6 +1863,58 @@ export function ChatApp({
             >
               Delete conversation
             </Button>
+          </div>
+        </Modal>
+        <Modal
+          open={overAsk !== null}
+          onOpenChange={(open) => {
+            if (!open) setOverAsk(null);
+          }}
+          title="Over budget"
+          description={
+            overAsk
+              ? `${budgetName(overAsk.state.budget)}: ${money(overAsk.state.spent)} of ${money(overAsk.state.budget.limitMicro)} this ${overAsk.state.budget.period}.${overAsk.state.budget.hardStop ? " This budget has a hard stop." : ""}`
+              : ""
+          }
+        >
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setOverAsk(null);
+              }}
+            >
+              Don&apos;t send
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                const ask = overAsk;
+                setOverAsk(null);
+                if (!ask) return;
+                const b = ask.state.budget;
+                allowBudgetUntil(db, tenant, b.id, periodEnd(b.period, Date.now()))
+                  .then(() => listBudgets(db, tenant))
+                  .then(async (list) => {
+                    setBudgets(list);
+                    await send(ask.text, ask.thinkHarder, true);
+                  })
+                  .catch(report);
+              }}
+            >
+              Allow for the rest of this {overAsk?.state.budget.period ?? "period"}
+            </Button>
+            {!overAsk?.state.budget.hardStop && (
+              <Button
+                onClick={() => {
+                  const ask = overAsk;
+                  setOverAsk(null);
+                  if (ask) void send(ask.text, ask.thinkHarder, true);
+                }}
+              >
+                Send anyway
+              </Button>
+            )}
           </div>
         </Modal>
         <Modal
