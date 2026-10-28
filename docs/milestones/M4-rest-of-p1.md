@@ -17,7 +17,7 @@
 - [x] **3. Editable price list with refresh (MM-04).**
   - Prices are editable per model, and the shipped ones stay as defaults.
   - When a price is over 30 days old, FUSE offers to refresh from the repo's `data/models.json` and shows the changes first, so prices update without a release.
-- [ ] **4. Model discovery and deprecations (MM-03, MM-08).**
+- [x] **4. Model discovery and deprecations (MM-03, MM-08).**
   - The providers' model lists are read through the adapters, and models can be added by hand.
   - A tier's model that disappears or is deprecated is flagged, with a replacement suggested.
 - [ ] **5. Editable routing policy with test before save (RT-03, RT-16).** A rule editor, per-project overrides, and import/export as a file. Before a change is saved, it's scored against the routing test set, before vs after.

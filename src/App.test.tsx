@@ -151,9 +151,14 @@ function setup(
   const calls: Record<string, ChatMessage[][]> = { anthropic: [], openai: [] };
   const options_: unknown[] = [];
   const choreCalls: { kind: keyof Chores; model: string; input: string }[] = [];
+  // What each provider's model list returns (MM-03); empty means "couldn't read it".
+  const remote: Record<"anthropic" | "openai", { id: string; displayName: string | null }[]> = {
+    anthropic: [],
+    openai: [],
+  };
   const adapterFor = (provider: "anthropic" | "openai"): ProviderAdapter => ({
     provider,
-    listModels: () => Promise.resolve([]),
+    listModels: () => Promise.resolve(remote[provider]),
     // A toy embedding for retrieval tests: how often "apple", "boat" and "cloud" appear.
     ...(provider === "openai"
       ? {
@@ -266,6 +271,7 @@ function setup(
     saves,
     quick,
     zooms,
+    remote,
     restarts,
     user: userEvent.setup(),
   };
@@ -1026,6 +1032,35 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(document.documentElement).toHaveClass("reduce-motion");
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
+
+test("models: a tier model the provider stopped listing is flagged; a new one can be added with prices", async () => {
+  const { user, remote } = setup();
+  remote.anthropic = [
+    { id: "test-best", displayName: "Test Best" },
+    { id: "test-claude-2", displayName: "Test Claude 2" },
+  ];
+  remote.openai = [{ id: "test-gpt", displayName: "Test GPT" }];
+  const notice = await screen.findByLabelText("Models notice");
+  expect(notice).toHaveTextContent("no longer listed by its provider: Test Claude.");
+  await user.click(within(notice).getByRole("button", { name: "See models" }));
+  const section = within(await screen.findByRole("region", { name: "Models" }));
+  expect(section.getByRole("list", { name: "Models no longer listed" })).toHaveTextContent(
+    "Test Claude is no longer listed by Anthropic (used by Balanced). Its newest replacement is test-claude-2.",
+  );
+  await user.click(
+    within(section.getByLabelText("New models")).getByRole("button", { name: "Add…" }),
+  );
+  const form = within(section.getByRole("form", { name: "Add a model" }));
+  expect(form.getByLabelText("Model id")).toHaveValue("test-claude-2");
+  await user.type(form.getByLabelText("Input $ per 1M tokens"), "3");
+  await user.type(form.getByLabelText("Output $ per 1M tokens"), "15");
+  await user.click(form.getByRole("button", { name: "Add model" }));
+  expect(
+    within(section.getByRole("list", { name: "Models you added" })).getByText("Test Claude 2"),
+  ).toBeInTheDocument();
+  const prices = within(screen.getByRole("region", { name: "Prices" }));
+  expect(prices.getByText("Test Claude 2").closest("tr")).toHaveTextContent("Test Claude 2$3$15");
 });
 
 test("prices: edit one model's price, then check the repo for a newer list and use it", async () => {

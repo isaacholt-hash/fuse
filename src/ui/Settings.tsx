@@ -226,6 +226,7 @@ export function SettingsView({
   routing,
   budgets,
   prices,
+  models,
   quickCapture,
   data,
   appLock,
@@ -257,6 +258,8 @@ export function SettingsView({
   budgets?: ReactNode;
   /** Settings → Prices (MM-04). */
   prices?: ReactNode;
+  /** Settings → Models (MM-03, MM-08). */
+  models?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -330,6 +333,7 @@ export function SettingsView({
         {instructions}
         {memory}
         {budgets}
+        {models}
         {prices}
         {appLock}
         {quickCapture}
