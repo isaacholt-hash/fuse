@@ -201,6 +201,8 @@ Checked against the Markdown copies of the live docs on 2026-10-28. Decisions fo
 - **Anthropic gets top-level automatic caching.** One field, no breakpoint bookkeeping.
 - **The system prompt carries only stable parts,** in this order: global instructions, project instructions, memory block. Anything that changes per message goes after the history.
 - **OpenAI needs no change,** since its caching is already automatic and its costs are already counted (M0).
+- **Built in M2 step 8:** every Anthropic request sends the top-level `cache_control`. The thread header shows the share of input read from cache.
+- **Known limit:** when there are more memories than fit the budget, the memory block changes with the question, so that turn's history isn't reused from cache.
 - **Cache hit rate** = `cachedInputTokens / all input tokens`, read from the usage we already store.
 
 ### Reasoning effort (RT-08, step 9)

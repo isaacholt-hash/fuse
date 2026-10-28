@@ -137,6 +137,9 @@ export function buildRequestBody(
     model,
     max_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
     stream: true,
+    // Automatic prompt caching (RT-07): the cache breakpoint sits on the last cacheable block and
+    // moves forward as the thread grows. Prompts under the minimum (512 tokens) just aren't cached.
+    cache_control: { type: "ephemeral" },
     messages: messages.map((m) => ({ role: m.role, content: anthropicContent(m) })),
   };
   if (options.system) body.system = options.system;

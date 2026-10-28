@@ -72,6 +72,7 @@ test("request: right endpoint and headers, no key, no temperature", async () => 
     model: "claude-sonnet-5-5",
     max_tokens: 500,
     stream: true,
+    cache_control: { type: "ephemeral" },
     system: "Be brief.",
     messages: [
       { role: "user", content: "a" },

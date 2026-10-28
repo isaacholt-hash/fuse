@@ -3,7 +3,14 @@ import { defaultCatalog } from "@/catalog/defaultCatalog";
 import { findModel } from "@/catalog/catalog";
 import type { Message } from "@/storage/messages";
 import { EMPTY_USAGE } from "@/storage/usage";
-import { groupFor, messageViews, modelOption, requestRow, withLive } from "./viewModels";
+import {
+  cacheHitRate,
+  groupFor,
+  messageViews,
+  modelOption,
+  requestRow,
+  withLive,
+} from "./viewModels";
 
 const catalog = defaultCatalog;
 const sonnet = findModel(catalog, "anthropic", "claude-sonnet-5-5");
@@ -271,4 +278,20 @@ describe("request log rows", () => {
     );
     expect(row.time).toMatch(/Oct 25/);
   });
+});
+
+test("cache hit rate: cached input over all input, across the thread", () => {
+  const usage = (input: number, cached: number, write: number) => ({
+    ...EMPTY_USAGE,
+    inputTokens: input,
+    cachedInputTokens: cached,
+    cacheWriteTokens: write,
+  });
+  expect(cacheHitRate([msg({})])).toBeNull();
+  expect(
+    cacheHitRate([
+      answer("anthropic", sonnet.id, { usage: usage(100, 0, 900) }),
+      answer("anthropic", sonnet.id, { usage: usage(100, 900, 0) }),
+    ]),
+  ).toBe(0.45);
 });
