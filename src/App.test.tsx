@@ -188,6 +188,8 @@ function setup(
     },
   });
   const files = memoryFilesApi();
+  // Files handed to "Save as…" (AR-04).
+  const saves: { name: string; bytes: Uint8Array }[] = [];
   // Pages handed to the preview scheme (AR-05).
   const previews: string[] = [];
   // Pages for pasted links (FK-06): canned HTML, counted so the 24-hour cache can be checked.
@@ -213,6 +215,12 @@ function setup(
       files={files}
       prepareImage={fakePrepare}
       web={web}
+      exporter={{
+        save: (name: string, bytes: Uint8Array) => {
+          saves.push({ name, bytes });
+          return Promise.resolve(name);
+        },
+      }}
       preview={{
         url: (html: string) => {
           previews.push(html);
@@ -230,6 +238,7 @@ function setup(
     files,
     web,
     previews,
+    saves,
     user: userEvent.setup(),
   };
 }
@@ -791,6 +800,34 @@ test("HTML and SVG artifacts preview live: HTML in a no-network sandbox, SVG as 
     "src",
     expect.stringMatching(/^data:image\/svg\+xml/),
   );
+});
+
+test("export: an artifact saves as its own file, and Markdown also as .docx and .pdf", async () => {
+  const { saves, user } = setup({
+    anthropic: [
+      () =>
+        answer(
+          '<artifact id="plan" type="markdown" title="Lisbon trip">\n# Day 1\nTram 28\n</artifact>',
+        ),
+    ],
+  });
+  await user.type(await composer(), "Plan it{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Lisbon trip" }));
+  for (const item of ["Save as file…", "Save as Word (.docx)…", "Save as PDF…"]) {
+    await user.click(panel.getByRole("button", { name: "Export artifact" }));
+    await user.click(panel.getByRole("menuitem", { name: item }));
+  }
+  await waitFor(() => {
+    expect(saves.map((x) => x.name)).toEqual([
+      "Lisbon trip.md",
+      "Lisbon trip.docx",
+      "Lisbon trip.pdf",
+    ]);
+  });
+  expect(new TextDecoder().decode(saves[0]?.bytes)).toBe("# Day 1\nTram 28");
+  expect(saves[1]?.bytes.slice(0, 2)).toEqual(new Uint8Array([0x50, 0x4b])); // a zip
+  expect(new TextDecoder().decode(saves[2]?.bytes.slice(0, 5))).toBe("%PDF-");
+  expect(panel.getByRole("status")).toHaveTextContent("Saved Lisbon trip.pdf");
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

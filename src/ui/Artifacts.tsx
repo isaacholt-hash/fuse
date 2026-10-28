@@ -2,6 +2,7 @@ import {
   Check,
   Code2,
   Copy,
+  Download,
   FileText,
   LoaderCircle,
   Pencil,
@@ -172,13 +173,29 @@ export function ArtifactPanel({
   onClose,
   versions,
   preview,
+  onExport,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
   versions?: VersionsProps;
   /** Live previews (AR-05); without it everything shows as code. */
   preview?: PreviewApi;
+  /** AR-04: saves the artifact (natural file, or .docx/.pdf for Markdown); the saved name or null. */
+  onExport?: (format: "file" | "docx" | "pdf") => Promise<string | null>;
 }) {
+  const [exportOpen, setExportOpen] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const doExport = (format: "file" | "docx" | "pdf") => {
+    setExportOpen(false);
+    onExport?.(format).then(
+      (name) => {
+        if (name) setSaved(`Saved ${name}`);
+      },
+      (e: unknown) => {
+        setSaved(e instanceof Error ? e.message : String(e));
+      },
+    );
+  };
   const canPreview = Boolean(preview) && PREVIEWABLE.has(artifact.type);
   const [tab, setTab] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
@@ -326,10 +343,71 @@ export function ArtifactPanel({
             ))}
           </span>
         )}
+        {onExport && artifact.version !== null && (
+          <span className="relative">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Export artifact"
+              aria-expanded={exportOpen}
+              onClick={() => {
+                setExportOpen((o) => !o);
+              }}
+            >
+              <Download />
+            </Button>
+            {exportOpen && (
+              <span
+                role="menu"
+                className="absolute top-8 right-0 z-20 flex w-44 flex-col rounded-lg border bg-popover p-1 text-[12px] shadow-lg"
+              >
+                <button
+                  role="menuitem"
+                  className="rounded px-2 py-1.5 text-left hover:bg-accent"
+                  onClick={() => {
+                    doExport("file");
+                  }}
+                >
+                  Save as file…
+                </button>
+                {artifact.type === "markdown" && (
+                  <>
+                    <button
+                      role="menuitem"
+                      className="rounded px-2 py-1.5 text-left hover:bg-accent"
+                      onClick={() => {
+                        doExport("docx");
+                      }}
+                    >
+                      Save as Word (.docx)…
+                    </button>
+                    <button
+                      role="menuitem"
+                      className="rounded px-2 py-1.5 text-left hover:bg-accent"
+                      onClick={() => {
+                        doExport("pdf");
+                      }}
+                    >
+                      Save as PDF…
+                    </button>
+                  </>
+                )}
+              </span>
+            )}
+          </span>
+        )}
         <Button variant="ghost" size="icon-sm" aria-label="Close artifact" onClick={onClose}>
           <X />
         </Button>
       </div>
+      {saved && (
+        <p
+          role="status"
+          className="border-b bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
+        >
+          {saved}
+        </p>
+      )}
       {asking && versions?.onAskEdit && (
         <form
           className="border-b bg-muted/30 px-4 py-3"

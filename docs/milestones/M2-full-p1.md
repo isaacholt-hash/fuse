@@ -53,7 +53,9 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **19. Versions (AR-02).** Every edit is a new version: a list, a diff between any two, restore.
 - [x] **20. Ask AI to edit (AR-03).** Select text, "edit this": it routes like a message, shows its cost, and the result is a new version with the diff highlighted.
 - [x] **21. Live preview (AR-05).** HTML, React, SVG and Mermaid render in a sandboxed frame with no network by default.
-- [ ] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
+- [x] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
+
+**All build steps done (2026-10-28).** What's left is the "done when": two straight weeks on FUSE instead of ChatGPT and Claude.
 
 ## Notes
 

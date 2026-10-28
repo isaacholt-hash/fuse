@@ -1,4 +1,5 @@
 mod db;
+mod export;
 mod files;
 mod keys;
 mod preview;
@@ -13,6 +14,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         // Opens links from answers and Settings in the system browser (https/mailto only).
         .plugin(tauri_plugin_opener::init())
+        // Native "Save as" dialogs, used from Rust only (src/export.rs); no JS permission needed.
+        .plugin(tauri_plugin_dialog::init())
         .manage(db::Database::default())
         .manage(keys::Keys::default())
         .manage(transport::Transport::default())
@@ -31,6 +34,7 @@ pub fn run() {
             transport::commands::provider_abort,
             web::commands::url_fetch,
             preview::commands::preview_put,
+            export::commands::save_as,
             files::commands::file_put,
             files::commands::file_get,
             db::commands::db_open,
