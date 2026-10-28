@@ -42,6 +42,8 @@ export interface Message {
   bestCostMicroUsd: number | null;
   /** The answer this one re-ran one tier up (RT-04); null otherwise. */
   escalatedFromId: string | null;
+  /** Thumbs up or down on an answer (CH-07); null when not rated. */
+  feedback: "up" | "down" | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -66,6 +68,7 @@ interface MessageRow extends UsageRow {
   route_complexity: string | null;
   best_cost_micro_usd: number | null;
   escalated_from_id: string | null;
+  feedback: "up" | "down" | null;
   created_at: number;
   updated_at: number;
 }
@@ -95,6 +98,7 @@ const toMessage = (r: MessageRow): Message => ({
     : null,
   bestCostMicroUsd: r.best_cost_micro_usd,
   escalatedFromId: r.escalated_from_id,
+  feedback: r.feedback,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -216,8 +220,8 @@ export async function listMessages(
   const rows = await db.select<MessageRow>(
     `SELECT id, thread_id, parent_id, role, content, status, error_code, error_message, provider,
             model, ${USAGE_COLUMNS}, request_id, pinned_mode, tier, route_rule_id, route_reason,
-            route_intent, route_complexity, best_cost_micro_usd, escalated_from_id, created_at,
-            updated_at
+            route_intent, route_complexity, best_cost_micro_usd, escalated_from_id, feedback,
+            created_at, updated_at
      FROM messages
      WHERE workspace_id = ? AND thread_id = ? AND deleted_at IS NULL
      ORDER BY created_at, id`,
@@ -234,4 +238,17 @@ export async function markInterruptedMessages(db: SqlDb, tenant: Tenant): Promis
     [Date.now(), tenant.workspaceId],
   );
   return result.rowsAffected;
+}
+
+/** Thumbs up or down on an answer; null clears it. */
+export async function setFeedback(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  feedback: "up" | "down" | null,
+): Promise<void> {
+  await db.execute(
+    `UPDATE messages SET feedback = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [feedback, Date.now(), tenant.workspaceId, id],
+  );
 }

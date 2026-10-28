@@ -7,6 +7,10 @@ import {
   ChevronDown,
   CircleAlert,
   Command,
+  Copy,
+  Quote,
+  ThumbsDown,
+  ThumbsUp,
   CornerDownLeft,
   LoaderCircle,
   FileText,
@@ -189,6 +193,8 @@ export function Messages({
   startedAt,
   onRetry,
   onEscalate,
+  onFeedback,
+  onQuote,
 }: {
   messages: MessageView[];
   /** Selected model, for the empty state. */
@@ -198,7 +204,12 @@ export function Messages({
   onRetry: () => void;
   /** "Try a stronger model" on the latest answer (RT-04). */
   onEscalate?: () => void;
+  /** Thumbs up or down on an answer; null clears it (CH-07). */
+  onFeedback?: (id: string, value: "up" | "down" | null) => void;
+  /** Puts an answer into the composer as a quote. */
+  onQuote?: (text: string) => void;
 }) {
+  const [copied, setCopied] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
   const lastMessage = messages.at(-1);
@@ -403,14 +414,75 @@ export function Messages({
                         {message.memories && message.memories.length > 0 && (
                           <MemoryBadge memories={message.memories} />
                         )}
+                        {message.content && (
+                          <div
+                            className="mt-4 flex items-center gap-0.5"
+                            role="group"
+                            aria-label="Answer actions"
+                          >
+                            <Tip label={copied === message.id ? "Copied" : "Copy answer"}>
+                              <Button
+                                variant="ghost"
+                                size="icon-xs"
+                                aria-label="Copy answer"
+                                onClick={() => {
+                                  void navigator.clipboard.writeText(message.content).then(() => {
+                                    setCopied(message.id);
+                                  });
+                                }}
+                              >
+                                {copied === message.id ? <Check /> : <Copy />}
+                              </Button>
+                            </Tip>
+                            {onQuote && (
+                              <Tip label="Quote in your reply">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Quote in reply"
+                                  onClick={() => {
+                                    onQuote(message.content);
+                                  }}
+                                >
+                                  <Quote />
+                                </Button>
+                              </Tip>
+                            )}
+                            {onFeedback &&
+                              (["up", "down"] as const).map((value) => {
+                                const on = message.feedback === value;
+                                const Icon = value === "up" ? ThumbsUp : ThumbsDown;
+                                return (
+                                  <Tip
+                                    key={value}
+                                    label={value === "up" ? "Good answer" : "Bad answer"}
+                                  >
+                                    <Button
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      aria-label={value === "up" ? "Good answer" : "Bad answer"}
+                                      aria-pressed={on}
+                                      className={on ? "text-foreground" : "text-muted-foreground"}
+                                      onClick={() => {
+                                        onFeedback(message.id, on ? null : value);
+                                      }}
+                                    >
+                                      <Icon className={on ? "fill-current" : ""} />
+                                    </Button>
+                                  </Tip>
+                                );
+                              })}
+                          </div>
+                        )}
                         {message.escalateTo && onEscalate && (
                           <Tip label="Ask the same question one tier up. This answer stays.">
                             <button
-                              className="mt-4 flex items-center gap-1 rounded py-1 text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+                              className={`mt-4 flex items-center gap-1 rounded py-1 text-[10px] leading-5 hover:text-foreground ${message.feedback === "down" ? "font-medium text-foreground" : "text-muted-foreground"}`}
                               onClick={onEscalate}
                             >
                               <ArrowUp className="size-3" />
-                              Try a stronger model ({message.escalateTo})
+                              {message.feedback === "down" ? "Not right? " : ""}Try a stronger model
+                              ({message.escalateTo})
                             </button>
                           </Tip>
                         )}
@@ -458,6 +530,7 @@ export function Composer({
   webSearch = null,
   onToggleWebSearch,
   routing,
+  insert,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -480,6 +553,8 @@ export function Composer({
   onToggleWebSearch?: () => void;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
+  /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
+  insert?: { text: string; key: number } | null;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -493,6 +568,13 @@ export function Composer({
   };
   const [search, setSearch] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
+  const inserted = useRef(0);
+  useEffect(() => {
+    if (!insert || insert.key === inserted.current) return;
+    inserted.current = insert.key;
+    setText((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${insert.text}` : insert.text));
+    field.current?.focus();
+  }, [insert]);
   useEffect(() => {
     if (field.current) {
       field.current.style.height = "auto";

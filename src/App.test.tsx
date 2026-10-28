@@ -342,6 +342,39 @@ test("Try a stronger model re-asks one tier up; both answers stay, later turns u
   ]);
 });
 
+test("answer actions: copy, quote into the composer, thumbs up/down (saved), and a thumbs-down nudges a stronger model", async () => {
+  const { db, user } = setup({ anthropic: [() => answer("Everyday answer.")] });
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("Everyday answer.")).toBeInTheDocument();
+  const actions = within(await screen.findByRole("group", { name: "Answer actions" }));
+
+  await user.click(actions.getByRole("button", { name: "Copy answer" }));
+  expect(await navigator.clipboard.readText()).toBe("Everyday answer.");
+
+  await user.click(actions.getByRole("button", { name: "Quote in reply" }));
+  expect(await composer()).toHaveValue("> Everyday answer.\n\n");
+
+  await user.click(actions.getByRole("button", { name: "Good answer" }));
+  await waitFor(() => {
+    expect(actions.getByRole("button", { name: "Good answer" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+  await user.click(actions.getByRole("button", { name: "Bad answer" }));
+  expect(
+    await screen.findByRole("button", { name: "Not right? Try a stronger model (Best)" }),
+  ).toBeInTheDocument();
+  expect(actions.getByRole("button", { name: "Good answer" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  const rows = await db.select<{ feedback: string | null }>(
+    "SELECT feedback FROM messages WHERE role = 'assistant'",
+  );
+  expect(rows.map((r) => r.feedback)).toEqual(["down"]);
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

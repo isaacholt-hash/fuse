@@ -154,6 +154,7 @@ export function messageViews(
       status: m.status,
       providerName: provider ? PROVIDER_NAMES[provider] : (m.provider ?? ""),
       model: name,
+      feedback: m.feedback,
     };
     if (m.escalatedFromId) {
       view.switchLabel = `Stronger model: ${name} · same question`;
@@ -239,6 +240,7 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
     route: null,
     bestCostMicroUsd: null,
     escalatedFromId: null,
+    feedback: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...fields,
