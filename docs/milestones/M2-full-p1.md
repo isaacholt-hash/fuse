@@ -41,7 +41,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 
 ### Knowledge & files
 
-- [ ] **13. Embeddings + local vector index (MM-11).** sqlite-vec alongside SQLCipher; an embedding model per provider; calls logged as `purpose: embed`. **Isaac decides in that PR:** provider embeddings (recommended: cheap and simple) or a local model.
+- [x] **13. Embeddings + local vector index (MM-11).** sqlite-vec alongside SQLCipher; an embedding model per provider; calls logged as `purpose: embed`. **Isaac decides in that PR:** provider embeddings (recommended: cheap and simple) or a local model.
 - [ ] **14. Retrieval over large files (FK-02, FK-03).** Big files are chunked and indexed instead of refused; answers cite file and page; whole-file versus retrieval can be overridden per file.
 - [ ] **15. Project knowledge (PM-09).** Files attached to a project, indexed once, available to every chat in it, with index status and cost.
 - [ ] **16. Memory and history recall (PM-04, PM-10).** Memories found by meaning as well as keywords; "what did we decide about X" searches past chats and cites the thread.

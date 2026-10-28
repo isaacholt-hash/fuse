@@ -305,3 +305,30 @@ describe("web search", () => {
     expect(done(events).usage.webSearchCalls).toBe(1);
   });
 });
+
+test("embeddings: one float vector per input, in order, with billed tokens", async () => {
+  const { a, sent } = adapter([
+    {
+      body: JSON.stringify({
+        data: [
+          { index: 1, embedding: [0, 1] },
+          { index: 0, embedding: [1, 0] },
+        ],
+        usage: { prompt_tokens: 7, total_tokens: 7 },
+      }),
+      headers: { "content-type": "application/json", "x-request-id": "req_emb" },
+    },
+  ]);
+  const r = await a.embed?.(["first", "second"], "text-embedding-3-small");
+  expect(sent[0]?.url).toBe("https://api.openai.com/v1/embeddings");
+  expect(sent[0]?.body).toEqual({
+    model: "text-embedding-3-small",
+    input: ["first", "second"],
+    encoding_format: "float",
+  });
+  expect(r?.vectors.map((v) => [...v])).toEqual([
+    [1, 0],
+    [0, 1],
+  ]);
+  expect(r).toMatchObject({ tokens: 7, providerRequestId: "req_emb", attempts: 1 });
+});

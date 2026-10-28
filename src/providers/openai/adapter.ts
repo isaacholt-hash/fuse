@@ -190,6 +190,31 @@ export function createOpenAIAdapter(deps: {
       return (json.data ?? []).map((m): RemoteModel => ({ id: m.id, displayName: null }));
     },
 
+    async embed(texts, model, signal) {
+      const body = JSON.stringify({ model, input: texts, encoding_format: "float" });
+      const { value: res, attempts } = await withRetry(
+        () => send("/v1/embeddings", { method: "POST", body, ...(signal ? { signal } : {}) }),
+        { ...deps.retry, ...(signal ? { signal } : {}) },
+      );
+      const json = (await res.json()) as {
+        data?: { index: number; embedding: number[] }[];
+        usage?: { prompt_tokens?: number };
+      };
+      const data = [...(json.data ?? [])].sort((a, b) => a.index - b.index);
+      if (data.length !== texts.length) {
+        throw new ProviderError(
+          "stream",
+          `Expected ${String(texts.length)} embeddings, got ${String(data.length)}`,
+        );
+      }
+      return {
+        vectors: data.map((d) => Float32Array.from(d.embedding)),
+        tokens: json.usage?.prompt_tokens ?? 0,
+        providerRequestId: res.headers.get("x-request-id"),
+        attempts,
+      };
+    },
+
     async *streamChat(messages, model, options, signal): AsyncGenerator<StreamEvent> {
       const body = JSON.stringify(buildRequestBody(messages, model, options));
       const { value: res, attempts } = await withRetry(

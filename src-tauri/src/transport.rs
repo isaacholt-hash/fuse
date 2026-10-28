@@ -17,7 +17,7 @@ fn allowed_path(provider: Provider, path: &str) -> bool {
     let path = path.split('?').next().unwrap_or("");
     match provider {
         Provider::Anthropic => matches!(path, "/v1/messages" | "/v1/models"),
-        Provider::Openai => matches!(path, "/v1/responses" | "/v1/models"),
+        Provider::Openai => matches!(path, "/v1/responses" | "/v1/models" | "/v1/embeddings"),
     }
 }
 
@@ -257,6 +257,8 @@ mod tests {
         );
         assert!(validate(&req(Provider::Openai, "POST", "/v1/responses", &[]), base).is_ok());
         assert!(validate(&req(Provider::Openai, "POST", "/v1/files", &[]), base).is_err());
+        assert!(validate(&req(Provider::Openai, "POST", "/v1/embeddings", &[]), base).is_ok());
+        assert!(validate(&req(Provider::Anthropic, "POST", "/v1/embeddings", &[]), base).is_err());
         // No way to point the key at another host.
         assert!(
             validate(
