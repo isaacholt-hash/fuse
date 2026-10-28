@@ -31,6 +31,7 @@ export const EXPORTED_TABLES = [
   "budget_events",
   "golden_prompts",
   "web_pages",
+  "imports",
   "request_log",
 ] as const;
 

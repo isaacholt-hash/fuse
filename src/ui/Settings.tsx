@@ -228,6 +228,7 @@ export function SettingsView({
   quickCapture,
   data,
   appLock,
+  importer,
   theme,
   onTheme,
   onBack,
@@ -255,6 +256,8 @@ export function SettingsView({
   data?: ReactNode;
   /** Settings → App lock (SE-03). */
   appLock?: ReactNode;
+  /** Settings → Import (PL-08). */
+  importer?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -317,6 +320,7 @@ export function SettingsView({
         {budgets}
         {appLock}
         {quickCapture}
+        {importer}
         {data}
         {routing}
         <RecoveryKeySection load={onRecoveryKey} />
