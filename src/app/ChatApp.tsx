@@ -15,10 +15,17 @@ import {
   instructionTokens,
   MAX_INSTRUCTION_CHARS,
 } from "@/chat/instructions";
-import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
+import { escalateLast, retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
 import { classify } from "@/routing/classify";
-import { chooseTier, tierModels, type RoutingPolicy } from "@/routing/policy";
+import {
+  chooseTier,
+  tierModels,
+  tierOf,
+  TIER_ORDER,
+  type RoutingPolicy,
+  type TierId,
+} from "@/routing/policy";
 import { AUTO, modeOf, route, type RouteMode } from "@/routing/route";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
@@ -461,12 +468,20 @@ export function ChatApp({
     routed: NonNullable<ReturnType<typeof routeFor>>,
     sent: FileRecord[] = [],
     webSearch = false,
+    escalating = false,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
     setLive((all) => ({
       ...all,
-      [threadId]: { threadId, model: routed.model, text: "", userText, files: sent },
+      [threadId]: {
+        threadId,
+        model: routed.model,
+        text: "",
+        userText,
+        files: sent,
+        ...(escalating ? { escalating } : {}),
+      },
     }));
     let loaded = false;
     const onText = (text: string) => {
@@ -502,9 +517,11 @@ export function ChatApp({
       },
     };
     try {
-      await (userText === null
-        ? retryLast(deps, input)
-        : sendMessage(deps, { ...input, text: userText, fileIds: sent.map((f) => f.id) }));
+      await (escalating
+        ? escalateLast(deps, input)
+        : userText === null
+          ? retryLast(deps, input)
+          : sendMessage(deps, { ...input, text: userText, fileIds: sent.map((f) => f.id) }));
     } catch (e) {
       report(e);
     } finally {
@@ -558,6 +575,45 @@ export function ChatApp({
     const before = messages.slice(0, messages.indexOf(question));
     const routed = routeFor(question.content, threadFiles.get(question.id) ?? [], before, searchOn);
     if (routed) void stream(selectedId, null, routed, [], searchOn);
+  };
+  const tierLabel = (tier: TierId) => policy.tiers.find((t) => t.id === tier)?.label ?? tier;
+  /** The tier the latest answer came from, and the one above it; null when it's already on Best. */
+  const escalation = (answer: Message | undefined) => {
+    if (!answer || (answer.status !== "complete" && answer.status !== "stopped")) return null;
+    const provider = answer.provider;
+    const used =
+      answer.model && (provider === "openai" || provider === "anthropic")
+        ? findModel(catalog, provider, answer.model)
+        : undefined;
+    const from = answer.route?.tier ?? (used && tierOf(policy, used)) ?? "balanced";
+    const to = TIER_ORDER[TIER_ORDER.indexOf(from) + 1];
+    return to && to !== "cheap" ? { from, to } : null;
+  };
+  /** "Try a stronger model" (RT-04): the last question again, one tier up; the old answer stays. */
+  const escalate = () => {
+    if (!selectedId || live[selectedId]) return;
+    const answer = messages.findLast((m) => m.role === "assistant");
+    const question = messages.findLast((m) => m.role === "user");
+    const step = escalation(answer);
+    if (!question || !step) return;
+    const before = messages.slice(0, messages.indexOf(question));
+    const task = classify(
+      classifyInput(question.content, threadFiles.get(question.id) ?? [], before, searchOn),
+    );
+    const routed = route(policy, catalog, { kind: "tier", tier: step.to }, task, {
+      providers: savedProviders,
+      ...(stayOn ? { prefer: stayOn } : {}),
+    });
+    if (!routed.ok) {
+      setProblem(routed.error);
+      return;
+    }
+    const info = {
+      ...routed.info,
+      ruleId: "escalation",
+      reason: `One tier up from ${tierLabel(step.from)}, at your request`,
+    };
+    void stream(selectedId, null, { ...routed, info }, [], searchOn, true);
   };
   const stop = useCallback(() => {
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
@@ -790,6 +846,13 @@ export function ChatApp({
     }
     return views;
   }, [messages, liveHere, threadFiles, threadSources, threadMemories, fileUrls, catalog]);
+  // "Try a stronger model" goes on the latest answer only: earlier ones would need branching.
+  const stronger = liveHere ? null : escalation(messages.findLast((m) => m.role === "assistant"));
+  const latest = shown.at(-1);
+  const withEscalation =
+    stronger && latest?.role === "assistant"
+      ? [...shown.slice(0, -1), { ...latest, escalateTo: tierLabel(stronger.to) }]
+      : shown;
   const streaming = selectedId !== null && selectedId in live;
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
@@ -1081,10 +1144,11 @@ export function ChatApp({
               </header>
               <Messages
                 key={selectedId ?? "new"}
-                messages={shown}
+                messages={withEscalation}
                 modelName={modeName}
                 startedAt={messages[0]?.createdAt ?? null}
                 onRetry={retry}
+                onEscalate={escalate}
               />
               <MemoryBar
                 count={proposals.length}

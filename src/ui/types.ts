@@ -87,6 +87,8 @@ export interface MessageView {
   memories?: string[];
   /** How the model was picked (RT-09); absent on answers from before routing. */
   route?: RouteView;
+  /** The tier "Try a stronger model" would use (e.g. "Best"); only on the latest answer. */
+  escalateTo?: string;
 }
 
 /** The routing badge on an answer. */

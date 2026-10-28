@@ -313,6 +313,35 @@ describe("auto routing", () => {
   });
 });
 
+test("Try a stronger model re-asks one tier up; both answers stay, later turns use the new one", async () => {
+  const { db, calls, user } = setup({
+    anthropic: [() => answer("Everyday answer."), () => answer("Careful answer.")],
+  });
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("Everyday answer.")).toBeInTheDocument();
+
+  await user.click(await screen.findByRole("button", { name: "Try a stronger model (Best)" }));
+  expect(await screen.findByText("Careful answer.")).toBeInTheDocument();
+  expect(screen.getByText("Everyday answer.")).toBeInTheDocument();
+  expect(screen.getByText("Stronger model: Test Best · same question")).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: "Routing: Stronger · Best" }),
+  ).toBeInTheDocument();
+  // Already on Best: nothing stronger to offer.
+  expect(screen.queryByRole("button", { name: /Try a stronger model/ })).not.toBeInTheDocument();
+  expect(calls.anthropic?.[1]).toEqual([{ role: "user", content: "What is FUSE?" }]);
+  const chat = (await listRecentRequests(db, DEFAULT_TENANT, 10)).find((r) => r.purpose === "chat");
+  expect(chat).toMatchObject({ model: "test-best", tier: "best", routeRuleId: "escalation" });
+
+  await user.type(await composer(), "And then?{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  expect(calls.anthropic?.[2]).toEqual([
+    { role: "user", content: "What is FUSE?" },
+    { role: "assistant", content: "Careful answer." },
+    { role: "user", content: "And then?" },
+  ]);
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

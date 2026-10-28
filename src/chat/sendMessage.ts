@@ -94,15 +94,18 @@ export interface SendResult {
  * The history sent to the model: every saved turn with text, oldest first. The same plain-text
  * history goes to any provider, which is what makes switching model mid-thread work (CH-03).
  * Failed answers with no text are left out; partial answers (stopped, cut off) are kept.
+ * An answer re-run on a stronger model (RT-04) is left out in favour of the newer one.
  */
 export function historyFor(
   messages: Message[],
   attachments: ReadonlyMap<string, Attachment[]> = new Map(),
 ): ChatMessage[] {
+  const superseded = new Set(messages.map((m) => m.escalatedFromId).filter(Boolean));
   return messages
     .filter(
       (m) =>
         (m.role === "user" || m.role === "assistant") &&
+        !superseded.has(m.id) &&
         (m.content.trim() !== "" || attachments.has(m.id)),
     )
     .map((m) => {
@@ -178,20 +181,39 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
 
 export type RetryInput = Omit<SendInput, "text" | "fileIds">;
 
+/** The last question, its answers, and the history up to and including that question. */
+async function lastTurn(deps: ChatDeps, threadId: string) {
+  const messages = await listMessages(deps.db, deps.tenant, threadId);
+  const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
+  const question = messages[lastUserIndex];
+  if (!question) throw new Error("Nothing to retry");
+  const upToQuestion = messages.slice(0, lastUserIndex + 1);
+  return {
+    question,
+    answer: messages.slice(lastUserIndex + 1).findLast((m) => m.role === "assistant"),
+    history: historyFor(upToQuestion, await attachmentsFor(deps, upToQuestion)),
+  };
+}
+
 /**
  * Re-asks the last question (after an error or a stop), optionally on another model.
- * The failed or stopped answer is removed so the thread reads cleanly.
+ * The failed or stopped answer is removed so the thread reads cleanly; an answer it was a
+ * stronger re-run of stays, and the new one is a re-run of it too.
  */
 export async function retryLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
-  const { db, tenant } = deps;
-  const messages = await listMessages(db, tenant, input.threadId);
-  const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
-  const lastUser = messages[lastUserIndex];
-  if (!lastUser) throw new Error("Nothing to retry");
-  for (const m of messages.slice(lastUserIndex + 1)) await deleteMessage(db, tenant, m.id);
-  const kept = messages.slice(0, lastUserIndex + 1);
-  const history = historyFor(kept, await attachmentsFor(deps, kept));
-  return streamAnswer(deps, input, lastUser.id, history);
+  const { question, answer, history } = await lastTurn(deps, input.threadId);
+  if (answer) await deleteMessage(deps.db, deps.tenant, answer.id);
+  return streamAnswer(deps, input, question.id, history, answer?.escalatedFromId ?? null);
+}
+
+/**
+ * "Try a stronger model" (RT-04): answers the last question again on `input.model`, keeping the
+ * old answer on screen. Later turns send only the new one.
+ */
+export async function escalateLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
+  const { question, answer, history } = await lastTurn(deps, input.threadId);
+  if (!answer) throw new Error("There's no answer to try again");
+  return streamAnswer(deps, input, question.id, history, answer.id);
 }
 
 async function streamAnswer(
@@ -199,6 +221,7 @@ async function streamAnswer(
   input: RetryInput,
   userMessageId: string,
   history: ChatMessage[],
+  escalatedFromId: string | null = null,
 ): Promise<SendResult> {
   const { db, tenant } = deps;
   const { model } = input;
@@ -222,6 +245,7 @@ async function streamAnswer(
           complexity: input.route.complexity,
         }
       : null,
+    escalatedFromId,
   });
 
   const started = now();

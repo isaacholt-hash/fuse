@@ -25,6 +25,7 @@ const msg = (fields: Partial<Message>): Message => ({
   requestId: null,
   route: null,
   bestCostMicroUsd: null,
+  escalatedFromId: null,
   createdAt: 0,
   updatedAt: 0,
   ...fields,
@@ -143,6 +144,40 @@ describe("live answer overlay", () => {
       ["assistant", "streaming"],
     ]);
   });
+
+  test("a stronger re-run streams under the answer it re-runs", () => {
+    const base = [msg({ content: "Hi" }), answer("anthropic", sonnet.id, { content: "Quick" })];
+    const rows = withLive(base, { ...live, userText: null, escalating: true });
+    expect(rows.map((r) => [r.content, r.status])).toEqual([
+      ["Hi", "complete"],
+      ["Quick", "complete"],
+      ["Hel", "streaming"],
+    ]);
+  });
+});
+
+test("an escalated answer is labelled Stronger, under a same-question divider", () => {
+  const first = answer("anthropic", sonnet.id);
+  const views = messageViews(
+    [
+      msg({ content: "Hi" }),
+      first,
+      answer("anthropic", "claude-opus-5-5", {
+        escalatedFromId: first.id,
+        route: {
+          mode: "tier",
+          tier: "best",
+          ruleId: "escalation",
+          reason: "One tier up from Balanced, at your request",
+          intent: "chat",
+          complexity: "low",
+        },
+      }),
+    ],
+    catalog,
+  );
+  expect(views[2]?.switchLabel).toBe("Stronger model: Claude Opus 5.5 · same question");
+  expect(views[2]?.route?.label).toBe("Stronger · Best");
 });
 
 describe("request log rows", () => {
