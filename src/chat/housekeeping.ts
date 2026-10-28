@@ -4,6 +4,7 @@ import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/ca
 import { cost } from "@/cost/cost";
 import { ProviderError, userMessage } from "@/providers/errors";
 import type { ProviderAdapter, StreamDone } from "@/providers/types";
+import { tierModels, type HousekeepingPurpose, type RoutingPolicy } from "@/routing/policy";
 import type { Tenant } from "@/storage/defaults";
 import { logRequest, type RequestPurpose } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
@@ -12,22 +13,18 @@ import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 const PROVIDER_NAMES: Record<ProviderId, string> = { anthropic: "Anthropic", openai: "OpenAI" };
 
 /**
- * The model that does housekeeping: the cheapest model, by input + output price in
- * data/models.json, from a provider with a saved key, the chat's provider first on a tie.
- * A stand-in until the Cheap tier exists (step 9, data/routing.json).
+ * The model that does housekeeping: the cheapest model in the purpose's tier (Cheap in
+ * data/routing.json) from a provider with a saved key, the chat's provider first on a tie.
  */
 export function housekeepingModel(
+  policy: RoutingPolicy,
   catalog: Catalog,
+  purpose: HousekeepingPurpose,
   providers: readonly ProviderId[],
   prefer?: ProviderId,
 ): CatalogModel | null {
-  const usable = catalog.models.filter((m) => providers.includes(m.provider));
-  usable.sort(
-    (a, b) =>
-      a.price.input + a.price.output - (b.price.input + b.price.output) ||
-      Number(b.provider === prefer) - Number(a.provider === prefer),
-  );
-  return usable[0] ?? null;
+  const opts = prefer ? { providers, prefer } : { providers };
+  return tierModels(policy, catalog, policy.housekeeping[purpose], opts)[0] ?? null;
 }
 
 export interface HousekeepingDeps {

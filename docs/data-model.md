@@ -76,11 +76,13 @@ Routing columns (`tier`, `route_rule_id`) are not in M0; they arrive with routin
 
 The routing policy, tiers, model catalog and prices are **data files** in `data/`, not tables. User edits to them are saved as override files, not rows.
 
+**`data/routing.json`** (M1 step 9, `src/routing/policy.ts`): three tiers in order (Cheap, Balanced, Best), each a list of `provider/model-id` from `data/models.json`; within a tier the app picks the cheapest model for the request's input size, ties going to `provider_preference`, then the chat's provider. `housekeeping` maps titles, classification, memory and summaries to a tier. `quality_floor` is the lowest tier allowed to answer per intent and complexity (RT-17). `rules` are first-match-wins (intent, complexity, capabilities, context size → tier, with a `reason` shown on the answer); the last must match everything. Neither a rule nor a floor may name Cheap: the file is refused at startup.
+
 ### Projects, instructions, threads: M1+
 
 | Table / column | Purpose | Req |
 | --- | --- | --- |
-| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. Built in M1 step 6 (`0005_projects.sql`) with `name`, `instructions`, `default_provider`/`default_model` (both NULL = last used model; a default tier replaces it in step 9) and `deleted_at`. Deleting a project keeps its chats (they move out to no project). | PM-01, RT-17 |
+| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. Built in M1 step 6 (`0005_projects.sql`) with `name`, `instructions`, `default_provider`/`default_model` (both NULL = last used model; a default tier replaces it when pinned tiers arrive with Auto routing, step 10) and `deleted_at`. Deleting a project keeps its chats (they move out to no project). | PM-01, RT-17 |
 | `threads.project_id NULL` | FK → projects. Threads can move between projects. Built in M1 step 6. | PM-01 |
 | `threads.instructions NULL` | Per-thread custom instructions. Global instructions live in `settings`. | CH-05 |
 | `threads.pinned`, `threads.archived_at NULL`, `threads.incognito` | Incognito threads never touch memory and aren't listed. | CH-02, CH-15 |
@@ -103,7 +105,7 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 | `threads.memory_injection`, `threads.memory_checked_at` | Memory on/off per chat, and the `last_message_at` the last memory check covered (a chat is checked again only after new messages). | PM-03, PM-04 |
 | `memory_vectors` | M2: sqlite-vec `vec0` virtual table: `memory_id`, `embedding`. The embedding model and dimension are recorded in `settings`, and changing them triggers a re-index (MM-11). | PM-04 |
 
-**How memory v1 works.** Leaving a chat with new messages (or "Suggest memories now" in its menu) sends its transcript, capped to the newest ~24,000 characters, plus the saved facts to the housekeeping model: the cheapest catalog model with a saved key, until the Cheap tier exists (step 9). The call is logged with `purpose: memory`. Before each send, in-use memories (global plus the chat's project) go into the system prompt after the instructions. If they all fit the token budget they all go, otherwise the ones sharing the most and rarest keywords with the question (`src/memory/inject.ts`).
+**How memory v1 works.** Leaving a chat with new messages (or "Suggest memories now" in its menu) sends its transcript, capped to the newest ~24,000 characters, plus the saved facts to the housekeeping model: the cheapest Cheap-tier model (`data/routing.json`) with a saved key. The call is logged with `purpose: memory`. Before each send, in-use memories (global plus the chat's project) go into the system prompt after the instructions. If they all fit the token budget they all go, otherwise the ones sharing the most and rarest keywords with the question (`src/memory/inject.ts`).
 
 ### Files and knowledge: M1+
 

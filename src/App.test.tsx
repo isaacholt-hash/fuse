@@ -2,6 +2,7 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { parseCatalog } from "@/catalog/catalog";
+import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
@@ -42,6 +43,25 @@ const catalog = parseCatalog({
       source_url: "https://example.com",
     },
   ],
+});
+
+// Both test models do housekeeping; the shipped tiers are tested against data/ in src/routing.
+const policy = parsePolicy({
+  policy_version: "2026-10-28",
+  built_from_price_version: "2026-10-26",
+  tiers: [
+    {
+      id: "cheap",
+      label: "Cheap",
+      description: "Test",
+      models: ["anthropic/test-claude", "openai/test-gpt"],
+    },
+    { id: "balanced", label: "Balanced", description: "Test", models: [] },
+    { id: "best", label: "Best", description: "Test", models: [] },
+  ],
+  housekeeping: { title: "cheap", classify: "cheap", memory: "cheap", summary: "cheap" },
+  quality_floor: { default: "balanced", overrides: [] },
+  rules: [{ id: "default", when: {}, tier: "balanced", reason: "Test" }],
 });
 
 /** jsdom can't decode images: pretend every image is 1024×1024 and keep its bytes. */
@@ -131,6 +151,7 @@ function setup(
       keysApi={keys.api}
       adapterFor={adapterFor}
       catalog={catalog}
+      policy={policy}
       files={files}
       prepareImage={fakePrepare}
     />,
@@ -260,7 +281,9 @@ test("no key for the selected provider: composer points to Settings, where the k
 test("an invalid key is not saved and the input is cleared", async () => {
   const db = openTestDb();
   const keys = fakeKeysApi(() => "invalid");
-  render(<App openDb={() => Promise.resolve(db)} keysApi={keys.api} catalog={catalog} />);
+  render(
+    <App openDb={() => Promise.resolve(db)} keysApi={keys.api} catalog={catalog} policy={policy} />,
+  );
   const user = userEvent.setup();
   await user.keyboard("{Control>},{/Control}");
 
@@ -311,7 +334,7 @@ test("reopening the app reopens the last thread, with its messages and costs", a
   const db = openTestDb();
   const keys = fakeKeysApi();
   keys.keys.set("anthropic", "fake-value-for-tests-0000");
-  const props = { openDb: () => Promise.resolve(db), keysApi: keys.api, catalog };
+  const props = { openDb: () => Promise.resolve(db), keysApi: keys.api, catalog, policy };
   const adapterFor = () =>
     ({
       provider: "anthropic",
@@ -340,6 +363,7 @@ test("a storage error is shown instead of failing silently", async () => {
       openDb={() => Promise.reject(new Error("disk full"))}
       keysApi={fakeKeysApi().api}
       catalog={catalog}
+      policy={policy}
     />,
   );
   expect(await screen.findByText(/Storage error: Error: disk full/)).toBeInTheDocument();
@@ -441,6 +465,7 @@ test("a model without vision can't be sent an image", async () => {
       openDb={() => Promise.resolve(db)}
       keysApi={keys.api}
       catalog={textOnly}
+      policy={policy}
       files={memoryFilesApi()}
       prepareImage={fakePrepare}
     />,
@@ -541,6 +566,7 @@ describe("auto-update", () => {
         openDb={() => Promise.resolve(db)}
         keysApi={fakeKeysApi().api}
         catalog={catalog}
+        policy={policy}
         updates={api}
       />,
     );
@@ -784,6 +810,7 @@ describe("encrypted database", () => {
         unlockDb={unlockDb}
         keysApi={fakeKeysApi().api}
         catalog={catalog}
+        policy={policy}
       />,
     );
     const user = userEvent.setup();
@@ -809,6 +836,7 @@ describe("encrypted database", () => {
         recoveryKey={recoveryKey}
         keysApi={fakeKeysApi().api}
         catalog={catalog}
+        policy={policy}
       />,
     );
     const user = userEvent.setup();

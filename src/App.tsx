@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Catalog, ProviderId } from "@/catalog/catalog";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
+import { defaultPolicy } from "@/routing/defaultPolicy";
+import type { RoutingPolicy } from "@/routing/policy";
 import { ChatApp } from "@/app/ChatApp";
 import { tauriFilesApi, type FilesApi } from "@/files/api";
 import { prepareImage as webviewPrepareImage, type PreparedImage } from "@/files/images";
@@ -35,6 +37,7 @@ interface Props {
   keysApi?: KeysApi;
   adapterFor?: (provider: ProviderId) => ProviderAdapter;
   catalog?: Catalog;
+  policy?: RoutingPolicy;
   files?: FilesApi;
   prepareImage?: (file: File) => Promise<PreparedImage>;
   updates?: UpdateApi;
@@ -48,6 +51,7 @@ export default function App({
   keysApi = tauriKeysApi,
   adapterFor = desktopAdapterFor,
   catalog = defaultCatalog,
+  policy = defaultPolicy,
   files = tauriFilesApi,
   prepareImage = webviewPrepareImage,
   updates = desktopUpdates,
@@ -103,6 +107,7 @@ export default function App({
       db={storage.db}
       tenant={DEFAULT_TENANT}
       catalog={catalog}
+      policy={policy}
       keysApi={keysApi}
       adapterFor={adapterFor}
       files={files}

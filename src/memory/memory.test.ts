@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
+import { parseCatalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
+import { parsePolicy } from "@/routing/policy";
 import { sendMessage } from "@/chat/sendMessage";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -227,11 +228,30 @@ describe("extraction (PM-03)", () => {
     vi.restoreAllMocks();
   });
 
-  test("housekeeping uses the cheapest model with a key, the chat's provider first on a tie", () => {
-    expect(housekeepingModel(catalog, ["anthropic", "openai"], "openai")?.id).toBe("small-o");
-    expect(housekeepingModel(catalog, ["anthropic", "openai"], "anthropic")?.id).toBe("small-a");
-    expect(housekeepingModel(catalog, ["openai"])?.id).toBe("small-o");
-    expect(housekeepingModel(catalog, [])).toBeNull();
+  test("housekeeping uses the Cheap tier's cheapest model with a key, the chat's provider first on a tie", () => {
+    const policy = parsePolicy({
+      policy_version: "2026-10-28",
+      built_from_price_version: "2026-10-26",
+      tiers: [
+        {
+          id: "cheap",
+          label: "Cheap",
+          description: "-",
+          models: ["anthropic/small-a", "openai/small-o"],
+        },
+        { id: "balanced", label: "Balanced", description: "-", models: ["anthropic/big"] },
+        { id: "best", label: "Best", description: "-", models: [] },
+      ],
+      housekeeping: { title: "cheap", classify: "cheap", memory: "cheap", summary: "cheap" },
+      quality_floor: { default: "balanced", overrides: [] },
+      rules: [{ id: "default", when: {}, tier: "balanced", reason: "-" }],
+    });
+    const pick = (providers: ProviderId[], prefer?: ProviderId) =>
+      housekeepingModel(policy, catalog, "memory", providers, prefer)?.id;
+    expect(pick(["anthropic", "openai"], "openai")).toBe("small-o");
+    expect(pick(["anthropic", "openai"], "anthropic")).toBe("small-a");
+    expect(pick(["openai"])).toBe("small-o");
+    expect(pick([])).toBeUndefined();
   });
 
   test("parses fenced JSON and drops malformed items", () => {
