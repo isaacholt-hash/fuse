@@ -47,7 +47,7 @@ test.each([
   ["an unknown tier", line({ expected_tier: "great" }), /expected_tier must be/],
   ["an unknown intent", line({ intent: "poetry" }), /intent must be/],
   ["an unknown complexity", line({ complexity: "extreme" }), /complexity must be/],
-  ["a key in the prompt", line({ prompt: "use sk-abcdefghijklmnopqrstuvwx" }), /API key/],
+  ["a key in the prompt", line({ prompt: "AWS key AKIA" + "ABCDEFGHIJKLMNOP" }), /API key/],
   ["a bad needs_context", line({ needs_context: "yes" }), /needs_context/],
 ])("refuses %s", (_name, text, error) => {
   const r = parseGoldenSet(text);
