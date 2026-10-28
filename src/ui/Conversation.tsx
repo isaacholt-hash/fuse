@@ -725,6 +725,7 @@ export function Composer({
   onToggleWebSearch,
   routing,
   insert,
+  status = null,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -749,6 +750,8 @@ export function Composer({
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
   insert?: { text: string; key: number } | null;
+  /** A provider problem to mention under the composer (MM-06). */
+  status?: string | null;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -1126,6 +1129,14 @@ export function Composer({
               <LoaderCircle className="size-2.5 animate-spin" />
               Generating response
             </>
+          ) : status ? (
+            <span
+              role="status"
+              className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
+            >
+              <CircleAlert className="size-2.5" />
+              {status}
+            </span>
           ) : (
             <>
               <span className="size-1 rounded-full bg-muted-foreground/60" />

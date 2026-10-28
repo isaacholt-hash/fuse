@@ -35,7 +35,14 @@ export interface RouteInfo {
 }
 
 export type Routed =
-  { ok: true; model: CatalogModel; info: RouteInfo } | { ok: false; error: string };
+  | {
+      ok: true;
+      model: CatalogModel;
+      info: RouteInfo;
+      /** Same tier on another provider with a key, for failover (MM-06); null when none. */
+      fallback: CatalogModel | null;
+    }
+  | { ok: false; error: string };
 
 export interface RouteOptions {
   /** Providers with a saved key. */
@@ -103,6 +110,8 @@ export function route(
         complexity: null,
         best,
       },
+      // A model you picked yourself isn't swapped behind your back.
+      fallback: null,
     };
   }
 
@@ -135,6 +144,12 @@ export function route(
       complexity: mode.kind === "auto" ? task.complexity : null,
       best,
     },
+    fallback:
+      tierModels(policy, catalog, found.tier, {
+        providers: opts.providers.filter((p) => p !== found.model.provider),
+        needs: needsOf(task),
+        inputTokens: task.contextTokens,
+      })[0] ?? null,
   };
 }
 

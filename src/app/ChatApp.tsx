@@ -18,6 +18,7 @@ import {
 import {
   editQuestion,
   escalateLast,
+  PROVIDER_NAMES,
   regenerate,
   retryLast,
   sendMessage,
@@ -164,6 +165,9 @@ function readLastThread(): string | null {
     return null;
   }
 }
+/** How long the composer mentions a provider's failure (MM-06). */
+const TROUBLE_SHOWN_MS = 10 * 60_000;
+
 /** An answer as a Markdown quote for the composer, trimmed to a readable length. */
 const QUOTE_CHARS = 1_500;
 const quoteOf = (text: string) => {
@@ -237,6 +241,17 @@ export function ChatApp({
   // The project dialog: creating ("new"), editing (a project id), or closed.
   const [projectDialog, setProjectDialog] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
+  // A provider that failed recently, so the composer can say so (MM-06).
+  const [trouble, setTrouble] = useState<{ provider: ProviderId; at: number } | null>(null);
+  useEffect(() => {
+    if (!trouble) return;
+    const timer = setTimeout(() => {
+      setTrouble(null);
+    }, TROUBLE_SHOWN_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [trouble]);
   // Search across chats (CH-02), and the message a result opened at.
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -597,6 +612,7 @@ export function ChatApp({
       threadId,
       model: routed.model,
       route: routed.info,
+      fallback: routed.fallback,
       signal: controller.signal,
       onText,
       webSearch,
@@ -608,7 +624,7 @@ export function ChatApp({
       },
     };
     try {
-      await (job.kind === "send"
+      const result = await (job.kind === "send"
         ? sendMessage(deps, { ...input, text: job.text, fileIds: job.files.map((f) => f.id) })
         : job.kind === "retry"
           ? retryLast(deps, input)
@@ -617,6 +633,11 @@ export function ChatApp({
             : job.kind === "regenerate"
               ? regenerate(deps, { ...input, answerId: job.answerId })
               : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
+      if (result.failedOverFrom) {
+        setTrouble({ provider: result.failedOverFrom, at: Date.now() });
+      } else if (result.status === "complete" && trouble?.provider === routed.model.provider) {
+        setTrouble(null);
+      }
     } catch (e) {
       report(e);
     } finally {
@@ -1398,6 +1419,11 @@ export function ChatApp({
                   chooseMode({ kind: "model", provider: o.provider, id: o.id });
                 }}
                 insert={quote}
+                status={
+                  trouble
+                    ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
+                    : null
+                }
                 routing={{
                   selected: mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
                   descriptions: {

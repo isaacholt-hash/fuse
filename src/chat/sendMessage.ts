@@ -16,6 +16,7 @@ import {
   deleteMessage,
   finishMessage,
   listPath,
+  setMessageModel,
   updateMessageContent,
   type Message,
 } from "@/storage/messages";
@@ -66,6 +67,11 @@ export interface SendInput {
   onCitations?: (sources: Source[]) => void;
   /** How the model was picked (RT-09); saved with the answer. */
   route?: RouteInfo;
+  /**
+   * Same tier, other provider (MM-06): answers instead when `model`'s provider fails with a
+   * retryable error (after its own retries) before any text arrived.
+   */
+  fallback?: CatalogModel | null;
 }
 
 export interface Source {
@@ -88,6 +94,8 @@ export interface SendResult {
   error?: string;
   /** Set when a complete answer hit a length limit (shown next to the answer, not as an error). */
   notice?: string;
+  /** The provider that failed before the fallback answered (MM-06). */
+  failedOverFrom?: ProviderId;
 }
 
 /**
@@ -279,7 +287,7 @@ async function streamAnswer(
   escalatedFromId: string | null = null,
 ): Promise<SendResult> {
   const { db, tenant } = deps;
-  const { model } = input;
+  let model = input.model;
   const now = deps.now ?? Date.now;
   const saveEvery = deps.saveEveryMs ?? 1000;
   const assistantMessageId = await addMessage(db, tenant, {
@@ -304,14 +312,6 @@ async function streamAnswer(
   });
   await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
 
-  const started = now();
-  let firstTokenAt: number | null = null;
-  let answer = "";
-  let lastSave = started;
-  let done: StreamDone | null = null;
-  let failure: ProviderError | null = null;
-  const sources: Source[] = [];
-  const webSearch = Boolean(input.webSearch) && model.capabilities.includes("web_search");
   // Read at send time, so an edit applies from the next message on (and on retry).
   const thread = await getThread(db, tenant, input.threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
@@ -340,40 +340,95 @@ async function streamAnswer(
     injected.map((m) => m.text),
   );
 
-  try {
-    const adapter = deps.adapterFor(model.provider);
-    const options = {
-      ...(system ? { system } : {}),
-      ...(webSearch ? { webSearch } : {}),
-    };
-    for await (const ev of adapter.streamChat(history, model.id, options, input.signal)) {
-      if (ev.type === "status") {
-        input.onStatus?.(ev.status);
-      } else if (ev.type === "citation") {
-        if (!sources.some((s) => s.url === ev.url)) {
-          sources.push({ url: ev.url, title: ev.title });
-          input.onCitations?.([...sources]);
+  /** One provider call, streamed into the answer. */
+  const attempt = async (m: CatalogModel) => {
+    const started = now();
+    let firstTokenAt: number | null = null;
+    let answer = "";
+    let lastSave = started;
+    let done: StreamDone | null = null;
+    let failure: ProviderError | null = null;
+    const sources: Source[] = [];
+    const webSearch = Boolean(input.webSearch) && m.capabilities.includes("web_search");
+    try {
+      const adapter = deps.adapterFor(m.provider);
+      const options = {
+        ...(system ? { system } : {}),
+        ...(webSearch ? { webSearch } : {}),
+      };
+      for await (const ev of adapter.streamChat(history, m.id, options, input.signal)) {
+        if (ev.type === "status") {
+          input.onStatus?.(ev.status);
+        } else if (ev.type === "citation") {
+          if (!sources.some((x) => x.url === ev.url)) {
+            sources.push({ url: ev.url, title: ev.title });
+            input.onCitations?.([...sources]);
+          }
+        } else if (ev.type === "text") {
+          firstTokenAt ??= now();
+          answer += ev.text;
+          input.onText?.(answer);
+          if (now() - lastSave >= saveEvery) {
+            lastSave = now();
+            await updateMessageContent(db, tenant, assistantMessageId, answer);
+          }
+        } else {
+          done = ev;
         }
-      } else if (ev.type === "text") {
-        firstTokenAt ??= now();
-        answer += ev.text;
-        input.onText?.(answer);
-        if (now() - lastSave >= saveEvery) {
-          lastSave = now();
-          await updateMessageContent(db, tenant, assistantMessageId, answer);
-        }
-      } else {
-        done = ev;
       }
+    } catch (e) {
+      failure =
+        e instanceof ProviderError
+          ? e
+          : input.signal?.aborted
+            ? new ProviderError("aborted", "Aborted")
+            : new ProviderError("stream", e instanceof Error ? e.message : String(e));
     }
-  } catch (e) {
-    failure =
-      e instanceof ProviderError
-        ? e
-        : input.signal?.aborted
-          ? new ProviderError("aborted", "Aborted")
-          : new ProviderError("stream", e instanceof Error ? e.message : String(e));
+    return {
+      started,
+      firstTokenAt,
+      answer,
+      done: done,
+      failure: failure,
+      sources,
+    };
+  };
+
+  let run = await attempt(model);
+  // MM-06: a provider that's down, overloaded or rate-limited (after its retries) hands the
+  // answer to the same tier on the other provider, as long as nothing was shown yet.
+  let failedOver: { from: CatalogModel; failure: ProviderError } | null = null;
+  const fallback = input.fallback;
+  if (
+    !run.done &&
+    run.failure?.retryable &&
+    run.answer === "" &&
+    fallback &&
+    fallback.provider !== model.provider &&
+    !input.signal?.aborted
+  ) {
+    await logRequest(db, tenant, {
+      threadId: input.threadId,
+      messageId: assistantMessageId,
+      purpose: "chat",
+      provider: model.provider,
+      model: model.id,
+      attempt: 1,
+      usage: { ...EMPTY_USAGE, latencyMs: now() - run.started },
+      httpStatus: run.failure.status,
+      errorCode: run.failure.code ?? run.failure.kind,
+      errorMessage: run.failure.message.slice(0, 500),
+      providerRequestId: run.failure.providerRequestId,
+      tier: input.route?.tier ?? null,
+      routeRuleId: input.route?.ruleId ?? null,
+    });
+    failedOver = { from: model, failure: run.failure };
+    model = fallback;
+    await setMessageModel(db, tenant, assistantMessageId, model.provider, model.id);
+    input.onStatus?.(null);
+    run = await attempt(model);
   }
+  const { started, firstTokenAt, answer, done, failure, sources } = run;
 
   const latencyMs = now() - started;
   const ttftMs = firstTokenAt === null ? null : firstTokenAt - started;
@@ -409,16 +464,20 @@ async function streamAnswer(
   const providerName = PROVIDER_NAMES[model.provider];
   const truncated = done !== null && LENGTH_LIMIT_STOPS.has(done.stopReason ?? "");
   const paused = done?.stopReason === "pause_turn";
+  const limitNotice = truncated
+    ? answer.trim() === ""
+      ? "The model used its whole output limit thinking and gave no answer. Try again."
+      : "The answer was cut off at the output limit."
+    : paused
+      ? "The search paused before the answer finished. Ask it to continue."
+      : null;
+  const failoverNotice = failedOver
+    ? `${userMessage(failedOver.failure, PROVIDER_NAMES[failedOver.from.provider]).replace(/ Try again in a moment\.$/, "")} ${model.displayName} answered instead.`
+    : null;
   const message =
     failure && status === "error"
       ? userMessage(failure, providerName)
-      : truncated
-        ? answer.trim() === ""
-          ? "The model used its whole output limit thinking and gave no answer. Try again."
-          : "The answer was cut off at the output limit."
-        : paused
-          ? "The search paused before the answer finished. Ask it to continue."
-          : null;
+      : [failoverNotice, limitNotice].filter(Boolean).join(" ") || null;
 
   const requestId = await logRequest(db, tenant, {
     threadId: input.threadId,
@@ -452,5 +511,6 @@ async function streamAnswer(
     status,
     costMicroUsd: usage.costMicroUsd,
     ...(message ? (status === "error" ? { error: message } : { notice: message }) : {}),
+    ...(failedOver ? { failedOverFrom: failedOver.from.provider } : {}),
   };
 }

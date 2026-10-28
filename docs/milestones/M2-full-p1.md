@@ -28,7 +28,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **3. Edit and regenerate with branches (CH-04).** Edit any question or regenerate any answer; both create a branch on the `parent_id` tree. A branch picker (‹ 1/2 ›) switches between siblings. "Try a stronger model" then works on any answer, not just the latest.
 - [x] **4. Thread search (CH-02).** Full-text search across all chats (SQLite FTS5; first check it's in the SQLCipher build). Results open at the matching message.
 - [x] **5. Incognito chat (CH-15).** Not saved to history, no memory read or write, clearly marked.
-- [ ] **6. Provider failover (MM-06).** On 429, 5xx or a timeout after retries, the answer moves to the same tier on the other provider, says so on the answer, and logs it. Provider status shows in the composer.
+- [x] **6. Provider failover (MM-06).** On 429, 5xx or a timeout after retries, the answer moves to the same tier on the other provider, says so on the answer, and logs it. Provider status shows in the composer.
 - [ ] **7. Long threads (PM-06, RT-05).** A context meter in the composer. When a thread nears the window, older turns are replaced by a rolling summary from the Cheap tier (`purpose: summary`); attachments and the latest turns are kept.
 
 ### Cost control
