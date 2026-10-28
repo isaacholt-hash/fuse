@@ -196,8 +196,8 @@ export function ChatApp({
   const [skippedSecrets, setSkippedSecrets] = useState<string[]>([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [checkingMemory, setCheckingMemory] = useState(false);
-  // The search toggle for a chat that hasn't been saved yet.
-  const [draftSearch, setDraftSearch] = useState(false);
+  // The search toggle for a chat that hasn't been saved yet: on by default, saved with the chat.
+  const [draftSearch, setDraftSearch] = useState(true);
   // Instructions for every chat (Settings), and for a chat that hasn't been saved yet.
   const [globalInstructions, setGlobal] = useState<GlobalInstructions | null>(null);
   const [draftInstructions, setDraftInstructions] = useState("");
@@ -379,7 +379,7 @@ export function ChatApp({
       setThreadSources(new Map());
       setThreadMemories(new Map());
       setThreadMemories(new Map());
-      setDraftSearch(false);
+      setDraftSearch(true);
       setDraftInstructions("");
       setDraftProject(projectId);
       // A project's default model pins new chats in it; otherwise they start on Auto.
