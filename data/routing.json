@@ -1,0 +1,64 @@
+{
+  "policy_version": "2026-10-28",
+  "built_from_price_version": "2026-10-27",
+  "notes": "Tier mapping proposed 2026-10-28 from data/models.json (verified 2026-10-26/27). Within a tier the app picks the cheapest model for the request (long-context prices included), so prices stay in models.json only.",
+  "tiers": [
+    {
+      "id": "cheap",
+      "label": "Cheap",
+      "description": "Housekeeping only: titles, classification, memory suggestions, summaries. Never answers you (RT-17).",
+      "models": ["anthropic/claude-haiku-5-5", "openai/gpt-6-luna"]
+    },
+    {
+      "id": "balanced",
+      "label": "Balanced",
+      "description": "Everyday answers: chat, writing, most coding and analysis.",
+      "models": ["anthropic/claude-sonnet-5-5", "openai/gpt-6.1-sol"]
+    },
+    {
+      "id": "best",
+      "label": "Best",
+      "description": "Hard reasoning, architecture, multi-step analysis.",
+      "models": ["anthropic/claude-opus-5-5", "openai/gpt-6-astra"]
+    }
+  ],
+  "housekeeping": {
+    "title": "cheap",
+    "classify": "cheap",
+    "memory": "cheap",
+    "summary": "cheap"
+  },
+  "quality_floor": {
+    "default": "balanced",
+    "overrides": [
+      { "intents": ["reasoning", "analysis", "coding"], "complexities": ["high"], "tier": "best" }
+    ]
+  },
+  "provider_preference": [],
+  "rules": [
+    {
+      "id": "hard-reasoning",
+      "when": { "intents": ["reasoning"], "complexities": ["high"] },
+      "tier": "best",
+      "reason": "Hard reasoning starts on Best"
+    },
+    {
+      "id": "deep-analysis",
+      "when": { "intents": ["analysis"], "complexities": ["high"] },
+      "tier": "best",
+      "reason": "Multi-step analysis starts on Best"
+    },
+    {
+      "id": "architecture",
+      "when": { "intents": ["coding"], "complexities": ["high"] },
+      "tier": "best",
+      "reason": "Complex coding and architecture start on Best"
+    },
+    {
+      "id": "default",
+      "when": {},
+      "tier": "balanced",
+      "reason": "Everyday answers start on Balanced"
+    }
+  ]
+}

@@ -17,7 +17,7 @@
 - [x] **6. Projects.** Create, rename, delete; project instructions and default model; threads belong to a project and can be moved; sidebar groups by project (PM-01, without knowledge files).
 - [x] **7. Memory v1.** Facts you can see, add, edit and delete (PM-02, PM-07). After a thread, a Cheap-tier model proposes facts; you approve them (PM-03). The secrets filter never stores keys or passwords (PM-05). Injection uses keyword match within a token budget (PM-04); vector search comes in M2.
 - [x] **8. Auto-title.** Titles from the Cheap tier after the first exchange (CH-09), logged as `purpose: title`.
-- [ ] **9. Tiers and routing policy as data.** `data/routing.json`: tier → models (Cheap / Balanced / Best), quality floor per intent (RT-17), the default rules (RT-03). Built from the current catalog; **Isaac approves the tier mapping** in the PR.
+- [x] **9. Tiers and routing policy as data.** `data/routing.json`: tier → models (Cheap / Balanced / Best), quality floor per intent (RT-17), the default rules (RT-03). Built from the current catalog; **Isaac approves the tier mapping** in the PR.
 - [ ] **9a. Golden prompt set.** Isaac picks 50 real prompts from his ChatGPT/Claude history with the tier he'd expect (RT-16). Claude builds the import helper; Isaac supplies the prompts.
 - [ ] **10. Auto routing.** Composer mode Auto / pinned tier / pinned model (RT-01); local heuristic classifier (RT-02), checked against the golden set; every answer shows tier, rule and "would have cost $X on Best" (RT-09).
 - [ ] **11. Escalation.** "Try a stronger model" on any answer re-runs it one tier up (RT-04).

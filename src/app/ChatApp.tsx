@@ -17,6 +17,7 @@ import {
 } from "@/chat/instructions";
 import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
+import type { RoutingPolicy } from "@/routing/policy";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
 import { memoryTokens } from "@/memory/inject";
@@ -117,6 +118,7 @@ export interface ChatAppProps {
   db: SqlDb;
   tenant: Tenant;
   catalog: Catalog;
+  policy: RoutingPolicy;
   keysApi: KeysApi;
   adapterFor: (provider: ProviderId) => ProviderAdapter;
   files: FilesApi;
@@ -166,6 +168,7 @@ export function ChatApp({
   db,
   tenant,
   catalog,
+  policy,
   keysApi,
   adapterFor,
   files,
@@ -400,7 +403,7 @@ export function ChatApp({
   const nameThread = (threadId: string, rows: Message[]) => {
     const current = threads.find((t) => t.id === threadId);
     if (!wantsAutoTitle(current?.titleSource ?? "auto", rows)) return;
-    const helper = housekeepingModel(catalog, savedProviders, model.provider);
+    const helper = housekeepingModel(policy, catalog, "title", savedProviders, model.provider);
     if (!helper) return;
     autoTitle(deps, catalog, threadId, helper)
       .then(async (r) => {
@@ -506,7 +509,13 @@ export function ChatApp({
     if (!target || threadId in live) return;
     if (!asked && (!memorySettings.suggest || !needsMemoryCheck(target))) return;
     const last = threadId === selectedId ? lastModelOf(messages, catalog) : undefined;
-    const helper = housekeepingModel(catalog, savedProviders, last?.provider ?? model.provider);
+    const helper = housekeepingModel(
+      policy,
+      catalog,
+      "memory",
+      savedProviders,
+      last?.provider ?? model.provider,
+    );
     if (!helper) {
       if (asked) setProblem("Add an API key in Settings to get memory suggestions.");
       return;
