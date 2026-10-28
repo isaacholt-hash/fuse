@@ -179,3 +179,70 @@ Checked against the live docs on 2026-10-27 (Markdown copies of each page). Wher
 Sources:
 - Anthropic: [vision](https://platform.claude.com/docs/en/build-with-claude/vision), [PDF support](https://platform.claude.com/docs/en/build-with-claude/pdf-support), [files](https://platform.claude.com/docs/en/build-with-claude/files), [citations](https://platform.claude.com/docs/en/build-with-claude/citations), [web search tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool), [web fetch tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool), [migration 2026-10-21](https://platform.claude.com/docs/en/api/migration-2026-10-21), [data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention)
 - OpenAI: [images & vision](https://developers.openai.com/api/docs/guides/images-vision), [file inputs](https://developers.openai.com/api/docs/guides/file-inputs), [web search](https://developers.openai.com/api/docs/guides/tools-web-search), [pricing](https://developers.openai.com/api/docs/pricing), [text / instructions](https://developers.openai.com/api/docs/guides/text), [your data](https://developers.openai.com/api/docs/guides/your-data)
+
+## M2: caching, reasoning effort, embeddings, errors (verified 2026-10-28)
+
+Checked against the Markdown copies of the live docs on 2026-10-28. Decisions for FUSE are in bold.
+
+### Prompt caching (RT-07, step 8)
+
+| Topic | Anthropic | OpenAI |
+| --- | --- | --- |
+| Turn on | Top-level `cache_control: {type:"ephemeral"}` (**automatic caching**: the breakpoint sits on the last cacheable block and moves forward as the thread grows), or up to 4 explicit `cache_control` breakpoints on blocks. Automatic uses one of the 4 slots. | On by default and can't be turned off. GPT-5.6+ can also take explicit `prompt_cache_breakpoint`s. |
+| Minimum | 512 tokens on Opus 5.5, Sonnet 5.5 and Haiku 5.5. Shorter prompts aren't cached (no error). | 1,024 tokens on GPT-5.6+ |
+| Lifetime | 5 min by default, refreshed free on every hit (streaming time counts); `ttl:"1h"` optional | 30 min by default (`prompt_cache_options.ttl`), `"12h"` optional |
+| Write price | 1.25× input (5 min), 2× (1 h) | 1.25× input (30 min), 2.5× (12 h). A write replaces the input charge rather than adding to it. |
+| Read price | 0.05× on Opus 5.5 and Sonnet 5.5; 0.1× on Haiku 5.5 | 0.1×; 0.05× on GPT-6.1 Sol |
+| Prefix order | `tools` → `system` → `messages`; a change invalidates that level and everything after | Whole rendered prefix up to a breakpoint must match |
+| What breaks it | Web search toggle (system + messages); adding or removing images (messages); thinking or **top-level effort changes** (messages) | Any change before the breakpoint |
+| `prompt_cache_key` | — | Optional on GPT-5.6+ (accounting per user); not needed for one user |
+
+**FUSE:**
+- **Anthropic gets top-level automatic caching.** One field, no breakpoint bookkeeping.
+- **The system prompt carries only stable parts,** in this order: global instructions, project instructions, memory block. Anything that changes per message goes after the history.
+- **OpenAI needs no change,** since its caching is already automatic and its costs are already counted (M0).
+- **Cache hit rate** = `cachedInputTokens / all input tokens`, read from the usage we already store.
+
+### Reasoning effort (RT-08, step 9)
+
+| Topic | Anthropic | OpenAI |
+| --- | --- | --- |
+| Parameter | `output_config.effort` | `reasoning.effort` |
+| Values | `low`, `medium`, `high`, `xhigh`, `max` (all five on Opus 5.5, Sonnet 5.5, Haiku 5.5) | `low`, `medium`, `high`, `xhigh`, `max` on gpt-6-astra and gpt-6.1-sol; gpt-6-luna also has `none` |
+| Default | `medium` on Opus 5.5 and Haiku 5.5, `high` on Sonnet 5.5; sending the default = omitting it | `medium` on gpt-6.1-sol and gpt-6-luna; not stated for gpt-6-astra |
+| Thinking | Adaptive thinking is always on with Opus 5.5 (`thinking:{type:"disabled"}` → 400). Sonnet 5.5 rejects `disabled` (use `between_tools`). **Never send `thinking`.** | Reasoning tokens are hidden and billed as output (`output_tokens_details.reasoning_tokens`) |
+| Cache effect | A top-level effort change invalidates the cached messages. Per-message effort keeps the cache but is beta (`mid-conversation-output-config-2026-07-01`). | — |
+
+**FUSE:**
+- **Effort comes from complexity:** low → `low`, medium → omitted (the model's default), high → `high`.
+- **"Think harder" sends `max`** on both providers.
+- **No beta header for per-message effort yet.** A changed effort costs one cache rewrite, which is acceptable.
+- **`max_tokens` is the hard cap on thinking plus text,** so at `max` effort send the model's full `max_output`.
+
+### Embeddings (MM-11, step 13)
+
+- **Anthropic has no embeddings API.** It points to Voyage AI, which needs a separate MongoDB Atlas key.
+- **OpenAI:** `POST /v1/embeddings` with `{model, input: string | string[], dimensions?, encoding_format:"float"}`. The response is `data[].embedding` and `usage.prompt_tokens`.
+  - `text-embedding-3-small`: 1536 dimensions, $0.02 / 1M tokens.
+  - `text-embedding-3-large`: 3072 dimensions, $0.13 / 1M tokens.
+  - Both take at most 8,192 input tokens.
+- **FUSE:**
+  - **Default to `text-embedding-3-small` with the OpenAI key** (now in `data/models.json` → `embedding_models`). Indexing a 300-page book (~150k tokens) costs about $0.003.
+  - **Step 13 decides local versus provider.** With no OpenAI key, retrieval is unavailable and FUSE says so.
+
+### Errors and overload (MM-06, step 6)
+
+Unchanged from M0 (see "Errors and retries"), with these additions from the 2026-10-28 docs:
+
+- **Anthropic error types:**
+  - 409 `conflict_error`
+  - 504 `timeout_error`: use streaming for long requests
+  - 529 `overloaded_error`: can hit all users at once
+  - 429 also covers sudden traffic spikes ("acceleration limits")
+  - A tier spend-cap 429 has **no `retry-after`** and keeps failing
+- **The SDKs retry twice by default and honour `retry-after`.** That matches our 3 attempts.
+- **Failover (FUSE):** once retries are used up on 429 (except spend-cap or quota errors), 500, 503, 504, 529 or a network or timeout error, and before any text has streamed, the answer moves to the cheapest model of the same tier on the other provider. Never fail over on 400, 401, 402, 403, 404, 413 or spend limits: those need the user.
+
+Sources:
+- Anthropic: [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), [effort](https://platform.claude.com/docs/en/build-with-claude/effort), [embeddings](https://platform.claude.com/docs/en/build-with-claude/embeddings), [errors](https://platform.claude.com/docs/en/api/errors)
+- OpenAI: [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [embeddings](https://developers.openai.com/api/docs/guides/embeddings), [pricing](https://developers.openai.com/api/docs/pricing), model pages for [gpt-6-astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [gpt-6.1-sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [gpt-6-luna](https://developers.openai.com/api/docs/models/gpt-6-luna)

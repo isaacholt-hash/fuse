@@ -23,7 +23,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 
 ### Daily-use gaps
 
-- [ ] **1. Provider notes for M2.** Extend `docs/providers.md` from the current official docs: prompt caching on both providers (prefix rules, minimum sizes, TTLs, prices), reasoning-effort and thinking-budget parameters, embedding models and prices, and retryable error and overload codes. Prices go into `data/models.json` with `verified_on` dates.
+- [x] **1. Provider notes for M2.** Extend `docs/providers.md` from the current official docs: prompt caching on both providers (prefix rules, minimum sizes, TTLs, prices), reasoning-effort and thinking-budget parameters, embedding models and prices, and retryable error and overload codes. Prices go into `data/models.json` with `verified_on` dates.
 - [ ] **2. Message actions (CH-07).** Copy an answer, thumbs up/down (stored per message), quote into the composer. A thumbs-down offers "Try a stronger model".
 - [ ] **3. Edit and regenerate with branches (CH-04).** Edit any question or regenerate any answer; both create a branch on the `parent_id` tree. A branch picker (‹ 1/2 ›) switches between siblings. "Try a stronger model" then works on any answer, not just the latest.
 - [ ] **4. Thread search (CH-02).** Full-text search across all chats (SQLite FTS5; first check it's in the SQLCipher build). Results open at the matching message.
