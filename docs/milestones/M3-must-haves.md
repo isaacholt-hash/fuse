@@ -20,7 +20,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 
 - [x] **0. M3 plan.** This file, and CLAUDE.md pointed at it. M2 testing skipped (2026-10-28).
 - [x] **1. Math and diagrams in chat (CH-01).** LaTeX in answers (KaTeX, bundled locally), and Mermaid code fences drawn as diagrams with a Code/Diagram switch.
-- [ ] **2. Pins per message and per project (RT-01, PM-01).**
+- [x] **2. Pins per message and per project (RT-01, PM-01).**
   - A "this message only" pin in the picker that resets after sending.
   - A project's default can be Auto, Balanced, Best or a model, and new chats in it start on that.
 - [ ] **3. Command palette (CH-08).** Ctrl+Shift+P: every action (new chat, incognito, search, settings, usage, mode, search and think toggles) and recent chats, fuzzy-matched, with their shortcuts.

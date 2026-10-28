@@ -137,6 +137,9 @@ export interface RoutingView {
   /** The tier Auto would pick for this draft (e.g. "Best"), or null. Runs as you type. */
   preview: (text: string) => string | null;
   onSelect: (choice: ModeChoice) => void;
+  /** RT-01: the next pick applies to the next message only. */
+  once?: boolean;
+  onOnce?: (on: boolean) => void;
 }
 
 export interface SourceView {
@@ -212,6 +215,8 @@ export interface ProjectForm {
   name: string;
   instructions: string;
   defaultModel: { provider: ProviderId; id: string } | null;
+  /** A tier instead of a model (RT-01); null with no model means Auto. */
+  defaultTier?: "balanced" | "best" | null;
 }
 
 /** Settings → Memory: one saved fact (PM-02, PM-07). */
