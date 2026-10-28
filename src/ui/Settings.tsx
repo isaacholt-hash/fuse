@@ -227,6 +227,7 @@ export function SettingsView({
   budgets,
   quickCapture,
   data,
+  appLock,
   theme,
   onTheme,
   onBack,
@@ -252,6 +253,8 @@ export function SettingsView({
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
   data?: ReactNode;
+  /** Settings → App lock (SE-03). */
+  appLock?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -312,6 +315,7 @@ export function SettingsView({
         {instructions}
         {memory}
         {budgets}
+        {appLock}
         {quickCapture}
         {data}
         {routing}

@@ -29,7 +29,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
   - It can be changed or turned off in Settings, and Settings says when the desktop blocks it.
 - [x] **5. Export everything (SE-07).** A zip holding everything as JSON (chats with branches, memories, projects, artifacts with versions, instructions, budgets, usage) plus one Markdown file per chat. Never keys.
 - [x] **6. Delete everything (SE-07).** A typed confirmation wipes all data and stored files. API keys are removed only if that box is ticked too.
-- [ ] **7. App lock (SE-03).**
+- [x] **7. App lock (SE-03).**
   - An optional passcode at launch and after an idle time (default 15 minutes).
   - Only a salted PBKDF2 hash is stored, and repeated wrong tries slow down.
 - [ ] **8. Import chats from ChatGPT (PL-08).** The ChatGPT data-export zip becomes chats, keeping dates and branches. You see a preview count first, and running it again doesn't duplicate.
