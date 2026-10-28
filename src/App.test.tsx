@@ -478,6 +478,28 @@ test("Think harder sends maximum effort with the model's full output budget, for
   expect(options.at(-1)).not.toHaveProperty("effort");
 });
 
+test("the usage dashboard shows spend for the period, against the one before, and where it went", async () => {
+  const { user } = setup();
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Usage" }));
+  const total = within(await screen.findByRole("region", { name: "Total" }));
+  // The answer ($0.0064) plus its title on the cheap model (1,200 × $1 + 400 × $4 = $0.0028).
+  await waitFor(() => {
+    expect(total.getByText("$0.0092")).toBeInTheDocument();
+  });
+  expect(total.getByText(/2 provider calls/)).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("region", { name: "By model" })).getByText("Test Claude"),
+  ).toBeInTheDocument();
+  const purpose = within(screen.getByRole("region", { name: "By purpose" }));
+  expect(purpose.getByText("Answers")).toBeInTheDocument();
+  expect(purpose.getByText("Chat titles")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Today" }));
+  expect(screen.getByRole("tab", { name: "Today" })).toHaveAttribute("aria-selected", "true");
+  expect(total.getByText("$0.0092")).toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");
