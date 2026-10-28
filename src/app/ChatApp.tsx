@@ -154,6 +154,7 @@ import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/secu
 import { exportAll } from "@/data/exportAll";
 import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
+import { useAppearance, type ZoomApi } from "./appearance";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
   addBudget,
@@ -244,6 +245,7 @@ export interface ChatAppProps {
   exporter?: ExportApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
+  zoom?: ZoomApi;
   /** Starts the app over (after delete-all); a page reload by default. */
   onRestart?: () => void;
 }
@@ -343,6 +345,7 @@ export function ChatApp({
   preview,
   exporter,
   quickCapture,
+  zoom,
   onRestart = () => {
     window.location.reload();
   },
@@ -499,6 +502,7 @@ export function ChatApp({
   const [problem, setProblem] = useState<string | null>(null);
   const [log, setLog] = useState<RequestRow[] | null>(null);
   const [theme, setTheme] = useTheme();
+  const appearance = useAppearance(zoom);
   const controllers = useRef(new Map<string, AbortController>());
   const selectedRef = useRef(selectedId);
   useEffect(() => {
@@ -2359,6 +2363,10 @@ export function ChatApp({
               }
               theme={theme}
               onTheme={setTheme}
+              textSize={appearance.textSize}
+              onTextSize={appearance.setTextSize}
+              motion={appearance.motion}
+              onMotion={appearance.setMotion}
               onBack={() => {
                 setView("chat");
               }}

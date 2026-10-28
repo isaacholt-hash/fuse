@@ -258,3 +258,7 @@ export interface ProposalView {
   source: string | null;
   confidence: number;
 }
+
+/** PL-10: text size, and reduce motion (follow the OS, or on/off). */
+export type TextSize = "small" | "normal" | "large";
+export type Motion = "system" | "reduce" | "full";
