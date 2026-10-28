@@ -36,9 +36,9 @@ export const EXPORTED_TABLES = [
 
 /** A title as a file name: no path separators or characters Windows refuses, no control codes. */
 const safe = (title: string) =>
-  [...title]
-    .map((c) => (c.charCodeAt(0) < 32 || '<>:"/\\|?*'.includes(c) ? "-" : c))
-    .join("")
+  title
+    .replace(/[<>:"/\\|?*]/g, "-")
+    .replace(/[\s\S]/g, (c) => (c.charCodeAt(0) < 32 ? "-" : c))
     .trim()
     .slice(0, 80) || "chat";
 
