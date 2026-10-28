@@ -12,6 +12,7 @@ import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { listThreads } from "@/storage/threads";
+import { searchChats } from "@/storage/search";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
 import App from "./App";
@@ -434,6 +435,27 @@ test("search across chats opens the chat at the matching message (Ctrl+Shift+F)"
   await user.click(hit);
   expect(await screen.findByText("Cook them at 180C for twelve minutes.")).toBeInTheDocument();
   expect(screen.queryByText("Every 10,000 miles.")).not.toBeInTheDocument();
+});
+
+test("incognito: marked, no memory, not listed or searchable, and gone once you leave", async () => {
+  const { db, options, user } = setup({ anthropic: [() => answer("Keep it quiet.")] });
+  await composer();
+  await user.keyboard("{Control>}{Shift>}n{/Shift}{/Control}");
+  expect(screen.getByLabelText("Incognito chat")).toBeInTheDocument();
+  expect(screen.getByRole("note")).toHaveTextContent("deleted when you leave it");
+  await user.type(await composer(), "Plan a surprise party{Enter}");
+  expect(await screen.findByText("Keep it quiet.")).toBeInTheDocument();
+  expect(options[0]).not.toHaveProperty("system"); // no memories sent
+  expect(sidebar().queryByText("Plan a surprise party")).not.toBeInTheDocument();
+  expect(await searchChats(db, DEFAULT_TENANT, "surprise")).toEqual([]);
+
+  await user.keyboard("{Control>}n{/Control}");
+  expect(screen.queryByLabelText("Incognito chat")).not.toBeInTheDocument();
+  await waitFor(async () => {
+    const rows = await db.select<{ n: number }>("SELECT COUNT(*) AS n FROM messages");
+    expect(rows[0]?.n).toBe(0);
+  });
+  expect(await listThreads(db, DEFAULT_TENANT)).toEqual([]);
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

@@ -1,6 +1,6 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
-import { CircleAlert, Folder, PanelLeft, Pencil, X } from "lucide-react";
+import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -86,6 +86,8 @@ import {
   listThreads,
   renameThread,
   setThreadInstructions,
+  purgeIncognito,
+  purgeThread,
   setActiveLeaf,
   setThreadMemory,
   setThreadPins,
@@ -223,6 +225,8 @@ export function ChatApp({
   const [checkingMemory, setCheckingMemory] = useState(false);
   // The search toggle for a chat that hasn't been saved yet: on by default, saved with the chat.
   const [draftSearch, setDraftSearch] = useState(true);
+  // A new chat that will be incognito (CH-15): not kept, no memory.
+  const [draftIncognito, setDraftIncognito] = useState(false);
   // Instructions for every chat (Settings), and for a chat that hasn't been saved yet.
   const [globalInstructions, setGlobal] = useState<GlobalInstructions | null>(null);
   const [draftInstructions, setDraftInstructions] = useState("");
@@ -363,7 +367,9 @@ export function ChatApp({
   );
 
   useEffect(() => {
-    listThreads(db, tenant)
+    // Incognito chats left by a crash or a forced close go before anything is listed.
+    purgeIncognito(db, tenant)
+      .then(() => listThreads(db, tenant))
       .then(async (list) => {
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
@@ -439,7 +445,7 @@ export function ChatApp({
   const clearAttachments = attachments.clear;
   /** A new chat, optionally inside a project (starting on its default model, if it has one). */
   const newChat = useCallback(
-    (projectId: string | null = null) => {
+    (projectId: string | null = null, incognito = false) => {
       setSelectedId(null);
       selectedRef.current = null;
       setMessages([]);
@@ -450,6 +456,7 @@ export function ChatApp({
       setThreadMemories(new Map());
       setThreadMemories(new Map());
       setDraftSearch(true);
+      setDraftIncognito(incognito);
       setDraftInstructions("");
       setDraftProject(projectId);
       // A project's default model pins new chats in it; otherwise they start on Auto.
@@ -521,6 +528,7 @@ export function ChatApp({
   /** After a chat's first answer, the housekeeping model gives it a real title (CH-09). */
   const nameThread = (threadId: string, rows: Message[]) => {
     const current = threads.find((t) => t.id === threadId);
+    if (current?.incognito) return; // nothing about an incognito chat is kept, its title included
     if (!wantsAutoTitle(current?.titleSource ?? "auto", rows)) return;
     const helper = housekeepingModel(policy, catalog, "title", savedProviders, model.provider);
     if (!helper) return;
@@ -631,7 +639,7 @@ export function ChatApp({
     try {
       let threadId = selectedId;
       if (threadId === null) {
-        const thread = await createThread(db, tenant, undefined, draftProject);
+        const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito);
         threadId = thread.id;
         if (search) await setThreadWebSearch(db, tenant, threadId, true);
         if (draftInstructions) {
@@ -763,7 +771,7 @@ export function ChatApp({
    */
   const checkMemory = async (threadId: string, asked: boolean) => {
     const target = threads.find((t) => t.id === threadId);
-    if (!target || threadId in live) return;
+    if (!target || target.incognito || threadId in live) return;
     if (!asked && (!memorySettings.suggest || !needsMemoryCheck(target))) return;
     const last = threadId === selectedId ? lastModelOf(messages, catalog) : undefined;
     const helper = housekeepingModel(
@@ -793,16 +801,24 @@ export function ChatApp({
     }
   };
   const checkMemoryRef = useRef(checkMemory);
+  const threadsRef = useRef(threads);
   useEffect(() => {
     checkMemoryRef.current = checkMemory;
+    threadsRef.current = threads;
   });
   // Leaving a chat (opening another, or a new one) is the "end of a thread" for memory.
   const previousSelected = useRef<string | null>(null);
   useEffect(() => {
     const left = previousSelected.current;
     previousSelected.current = selectedId;
-    if (left && left !== selectedId) checkMemoryRef.current(left, false).catch(report);
-  }, [selectedId]);
+    if (!left || left === selectedId) return;
+    if (threadsRef.current.find((t) => t.id === left)?.incognito) {
+      // Leaving an incognito chat deletes it (CH-15).
+      purgeThread(db, tenant, left).then(refreshThreads).catch(report);
+      return;
+    }
+    checkMemoryRef.current(left, false).catch(report);
+  }, [selectedId, db, tenant, refreshThreads]);
 
   const memoryProblem = (form: MemoryForm) => {
     const secret = findSecret(form.text);
@@ -1007,7 +1023,8 @@ export function ChatApp({
   const streaming = selectedId !== null && selectedId in live;
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
-  const threadViews = threads.map((t) => threadView(t, at));
+  const threadViews = threads.filter((t) => !t.incognito).map((t) => threadView(t, at));
+  const incognito = thread ? thread.incognito : draftIncognito;
   const projectViews: ProjectView[] = projects.map((p) => {
     const inside = threadViews.filter((t) => t.projectId === p.id);
     return {
@@ -1073,7 +1090,7 @@ export function ChatApp({
           setSidebar((open) => !open);
         } else if (key === "n") {
           event.preventDefault();
-          newChat();
+          newChat(null, event.shiftKey);
         } else if (key === "f" && event.shiftKey) {
           event.preventDefault();
           setSearchOpen(true);
@@ -1259,6 +1276,30 @@ export function ChatApp({
                     )}
                   </button>
                 </div>
+                {incognito ? (
+                  <span
+                    className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground"
+                    aria-label="Incognito chat"
+                  >
+                    <EyeOff className="size-3" />
+                    Incognito
+                  </span>
+                ) : (
+                  !thread && (
+                    <Tip label="Incognito: not saved, no memory · Ctrl+Shift+N">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Make this chat incognito"
+                        onClick={() => {
+                          setDraftIncognito(true);
+                        }}
+                      >
+                        <EyeOff />
+                      </Button>
+                    </Tip>
+                  )
+                )}
                 <InstructionsButton
                   count={instructionParts.length}
                   onClick={() => {
@@ -1278,24 +1319,26 @@ export function ChatApp({
                         <span>{number(threadTokens(messages))} tokens</span>
                       </div>
                     </Tip>
-                    <ThreadMenu
-                      projects={projects}
-                      projectId={thread.projectId}
-                      onMove={moveThread}
-                      memoryOn={thread.memoryOn}
-                      onToggleMemory={() => {
-                        setThreadMemory(db, tenant, thread.id, !thread.memoryOn)
-                          .then(refreshThreads)
-                          .catch(report);
-                      }}
-                      onSuggestMemories={() => {
-                        checkMemory(thread.id, true).catch(report);
-                      }}
-                      onRename={showRename}
-                      onDelete={() => {
-                        setDeleting(threadView(thread, at));
-                      }}
-                    />
+                    {!thread.incognito && (
+                      <ThreadMenu
+                        projects={projects}
+                        projectId={thread.projectId}
+                        onMove={moveThread}
+                        memoryOn={thread.memoryOn}
+                        onToggleMemory={() => {
+                          setThreadMemory(db, tenant, thread.id, !thread.memoryOn)
+                            .then(refreshThreads)
+                            .catch(report);
+                        }}
+                        onSuggestMemories={() => {
+                          checkMemory(thread.id, true).catch(report);
+                        }}
+                        onRename={showRename}
+                        onDelete={() => {
+                          setDeleting(threadView(thread, at));
+                        }}
+                      />
+                    )}
                   </>
                 )}
               </header>
@@ -1322,6 +1365,16 @@ export function ChatApp({
                   setQuote((q) => ({ text: quoteOf(text), key: (q?.key ?? 0) + 1 }));
                 }}
               />
+              {incognito && (
+                <p
+                  role="note"
+                  className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
+                >
+                  <EyeOff className="size-3" />
+                  Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use or add
+                  memories. It&apos;s deleted when you leave it.
+                </p>
+              )}
               <MemoryBar
                 count={proposals.length}
                 checking={checkingMemory}
