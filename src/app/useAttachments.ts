@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FilesApi } from "@/files/api";
 import {
   LARGE_TEXT_TOKENS,
+  MAX_SEARCH_TOKENS,
   MAX_TEXT_TOKENS,
+  textTokens,
   prepareDocument as readDocument,
   type PreparedDocument,
 } from "@/files/documents";
@@ -10,6 +12,9 @@ import { isImageType, type PreparedImage } from "@/files/images";
 import type { Tenant } from "@/storage/defaults";
 import { addFile, type FileMode, type FileRecord } from "@/storage/files";
 import type { SqlDb } from "@/storage/sql";
+import { cachedPage, savePage } from "@/storage/webPages";
+import type { WebApi } from "@/web/api";
+import { readable } from "@/web/readable";
 
 /** A file in the composer, before it's sent. */
 export interface PendingFile {
@@ -35,8 +40,10 @@ export function useAttachments(deps: {
   files: FilesApi;
   prepareImage: (file: File) => Promise<PreparedImage>;
   prepareDocument?: (file: File) => Promise<PreparedDocument>;
+  /** Reads pasted links (FK-06); without it links stay plain text. */
+  web?: WebApi;
 }) {
-  const { db, tenant, files, prepareImage, prepareDocument = readDocument } = deps;
+  const { db, tenant, files, prepareImage, prepareDocument = readDocument, web } = deps;
   const [pending, setPending] = useState<PendingFile[]>([]);
   const update = useCallback((id: string, change: Partial<PendingFile>) => {
     setPending((all) => all.map((p) => (p.id === id ? { ...p, ...change } : p)));
@@ -93,6 +100,63 @@ export function useAttachments(deps: {
     [db, tenant, files, prepareImage, prepareDocument, update],
   );
 
+  /**
+   * FK-06: a pasted link is read as text and attached like a document, so the chip shows its
+   * size and cost before anything is sent. The same link within 24 hours isn't read again.
+   */
+  const addLink = useCallback(
+    (url: string) => {
+      if (!web) return;
+      const id = crypto.randomUUID();
+      const host = (() => {
+        try {
+          return new URL(url).hostname.replace(/^www\./, "");
+        } catch {
+          return url;
+        }
+      })();
+      setPending((all) => [...all, { id, name: host, status: "processing" }]);
+      void (async () => {
+        try {
+          let file = await cachedPage(db, tenant, url);
+          if (!file) {
+            const page = await web.fetch(url);
+            const r = readable(page.body, page.contentType, page.url);
+            if (!r.text) throw new Error("That page has no readable text.");
+            const text = [
+              `Source: ${page.url}`,
+              `# ${r.title}`,
+              "",
+              r.text,
+              ...(page.truncated ? ["", "(The page was cut at 2 MB.)"] : []),
+            ].join("\n");
+            const tokens = textTokens(text);
+            if (tokens > MAX_SEARCH_TOKENS) throw new Error("That page is too long to read.");
+            const stored = await files.put(new TextEncoder().encode(text));
+            file = await addFile(db, tenant, {
+              name: `${r.title.slice(0, 80)} (${host})`,
+              mime: "text/plain",
+              sizeBytes: stored.size,
+              sha256: stored.sha256,
+              tokenEstimate: tokens,
+            });
+            await savePage(db, tenant, url, file.id, r.title);
+          }
+          const searched = (file.tokenEstimate ?? 0) > LARGE_TEXT_TOKENS;
+          update(id, {
+            status: "ready",
+            file,
+            name: file.name,
+            ...(searched ? { mode: "retrieval" as const } : {}),
+          });
+        } catch (e) {
+          update(id, { status: "error", error: e instanceof Error ? e.message : String(e) });
+        }
+      })();
+    },
+    [db, tenant, files, web, update],
+  );
+
   const release = (p: PendingFile) => {
     if (p.url) URL.revokeObjectURL(p.url);
   };
@@ -128,7 +192,7 @@ export function useAttachments(deps: {
     pending.forEach(release);
     setPending([]);
   };
-  return { pending, add, remove, take, clear, setMode };
+  return { pending, add, addLink, remove, take, clear, setMode };
 }
 
 /** blob: URLs for stored images (thumbnails), loaded once per file and kept while the app runs. */

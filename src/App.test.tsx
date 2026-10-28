@@ -187,6 +187,19 @@ function setup(
     },
   });
   const files = memoryFilesApi();
+  // Pages for pasted links (FK-06): canned HTML, counted so the 24-hour cache can be checked.
+  const web = {
+    reads: [] as string[],
+    fetch(url: string) {
+      web.reads.push(url);
+      return Promise.resolve({
+        url,
+        contentType: "text/html",
+        body: "<html><head><title>Atlas service</title></head><body><nav>Menu</nav><article><p>Change the oil every 10,000 miles.</p></article></body></html>",
+        truncated: false,
+      });
+    },
+  };
   render(
     <App
       openDb={() => Promise.resolve(db)}
@@ -196,9 +209,10 @@ function setup(
       policy={policy}
       files={files}
       prepareImage={fakePrepare}
+      web={web}
     />,
   );
-  return { db, keys, calls, options: options_, choreCalls, files, user: userEvent.setup() };
+  return { db, keys, calls, options: options_, choreCalls, files, web, user: userEvent.setup() };
 }
 
 const composer = () => screen.findByRole("textbox", { name: "Message" });
@@ -619,6 +633,33 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(note && "text" in note ? note.text : "").toMatch(/isn't sent whole/);
   const cited = within(await screen.findByLabelText("From your files and chats"));
   expect(cited.getAllByText(/notes\.txt, lines \d+–\d+/).length).toBeGreaterThan(0);
+});
+
+test("a pasted link is read as text, attached with its size, and not read again within a day", async () => {
+  const { calls, web, user } = setup({
+    anthropic: [() => answer("Every 10,000 miles."), () => answer("Yes.")],
+  });
+  const box = await composer();
+  await user.click(box);
+  await user.paste("https://www.vw.com/atlas");
+  expect(await screen.findByText("Atlas service (vw.com)")).toBeInTheDocument();
+  expect(screen.getByRole("list", { name: "Attachments" })).toHaveTextContent(
+    /~21 tokens · <\$0\.0001 per turn/,
+  );
+  await user.type(box, "{Enter}");
+  expect(await screen.findByText("Every 10,000 miles.")).toBeInTheDocument();
+  const page = calls.anthropic?.[0]?.[0]?.attachments?.[0];
+  expect(page && "text" in page ? page.text : "").toContain("Change the oil every 10,000 miles.");
+  expect(page && "text" in page ? page.text : "").not.toContain("Menu");
+
+  await user.click(await composer());
+  await user.paste("https://www.vw.com/atlas");
+  expect(
+    await within(await screen.findByRole("list", { name: "Attachments" })).findByText(
+      "Atlas service (vw.com)",
+    ),
+  ).toBeInTheDocument();
+  expect(web.reads).toEqual(["https://www.vw.com/atlas"]);
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

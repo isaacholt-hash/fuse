@@ -173,6 +173,7 @@ import type {
 } from "@/ui/types";
 import { classifyInput } from "./routing";
 import { useAttachments, useFileUrls } from "./useAttachments";
+import type { WebApi } from "@/web/api";
 import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
 import { useUpdate } from "./useUpdate";
@@ -198,6 +199,8 @@ export interface ChatAppProps {
   prepareImage: (file: File) => Promise<PreparedImage>;
   updates: UpdateApi;
   recoveryKey: () => Promise<string>;
+  /** Reads pasted links (FK-06). */
+  web?: WebApi;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -245,6 +248,7 @@ export function ChatApp({
   prepareImage,
   updates,
   recoveryKey,
+  web,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -388,7 +392,7 @@ export function ChatApp({
     [db, tenant, catalog, adapterFor, files],
   );
   const filesApi = files;
-  const attachments = useAttachments({ db, tenant, files, prepareImage });
+  const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
 
   const report = (e: unknown) => {
     setProblem(e instanceof Error ? e.message : String(e));
@@ -1971,6 +1975,7 @@ export function ChatApp({
                 onAddFiles={attachments.add}
                 onRemoveAttachment={attachments.remove}
                 onAttachmentMode={attachments.setMode}
+                {...(web ? { onAddLink: attachments.addLink } : {})}
                 webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                 onToggleWebSearch={toggleSearch}
               />

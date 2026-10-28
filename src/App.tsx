@@ -17,6 +17,7 @@ import { DbLockedError, openTauriDb, tauriRecoveryKey, unlockTauriDb } from "@/s
 import { LockedScreen } from "@/ui/LockedScreen";
 import { providerFetch } from "@/transport/tauriFetch";
 import { defaultUpdateApi, type UpdateApi } from "@/update/api";
+import { tauriWebApi, type WebApi } from "@/web/api";
 
 // On desktop, every provider request goes through the Rust transport, which adds the key.
 const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
@@ -44,6 +45,8 @@ interface Props {
   /** Tries a recovery key on a locked database; true if it opened. */
   unlockDb?: (key: string) => Promise<boolean>;
   recoveryKey?: () => Promise<string>;
+  /** Reads pasted links (FK-06). */
+  web?: WebApi;
 }
 
 export default function App({
@@ -57,6 +60,7 @@ export default function App({
   updates = desktopUpdates,
   unlockDb = unlockTauriDb,
   recoveryKey = tauriRecoveryKey,
+  web = tauriWebApi,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
   // Bumped after a successful unlock, to open the database again.
@@ -111,6 +115,7 @@ export default function App({
       keysApi={keysApi}
       adapterFor={adapterFor}
       files={files}
+      web={web}
       prepareImage={prepareImage}
       updates={updates}
       recoveryKey={recoveryKey}
