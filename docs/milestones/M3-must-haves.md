@@ -38,7 +38,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
   - Paste ChatGPT's or Claude's memory list, and it's split into facts for the usual review, with duplicates merged. (Built as a local split, one fact per line, with no model call: free and works without a key.)
   - Custom instructions fill the global boxes after a confirm.
 
-**All build steps done (2026-10-28).** Next: Isaac tests M3, then starts the P1 gate (two weeks on FUSE).
+**All build steps done (2026-10-28).** Isaac skipped testing M3 on 2026-10-28 to start M4 (`M4-rest-of-p1.md`), which finishes P1.
 
 ## Notes
 

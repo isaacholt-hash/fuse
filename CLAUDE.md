@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude and ChatGPT apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M3-must-haves.md`** — work only on what it lists (M0–M2 are built; Isaac skipped their trial weeks and M2's testing on 2026-10-27/28)
+- **Current milestone: `docs/milestones/M4-rest-of-p1.md`** — work only on what it lists (M0–M3 are built; Isaac skipped their trial weeks and M2/M3 testing on 2026-10-27/28)
 
 ## The 5 things that matter
 
