@@ -136,8 +136,15 @@ import {
   sendGate,
   type BudgetState,
 } from "@/cost/budget";
-import { UsageScreen, type UsagePeriod, type UsageScreenView } from "@/ui/Usage";
-import { listUsage, type UsageRecord } from "@/storage/usageReport";
+import { UsageScreen, type SavingsView, type UsagePeriod, type UsageScreenView } from "@/ui/Usage";
+import {
+  bestExtraSince,
+  cacheTokensSince,
+  listUsage,
+  type UsageRecord,
+} from "@/storage/usageReport";
+import { cacheSavings } from "@/cost/savings";
+import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
@@ -192,6 +199,9 @@ function readLastThread(): string | null {
     return null;
   }
 }
+/** CO-05: new content (question plus attachments) above this many tokens shows its cost first. */
+const BIG_REQUEST_TOKENS = 20_000;
+
 /** How long the composer mentions a provider's failure (MM-06). */
 const TROUBLE_SHOWN_MS = 10 * 60_000;
 
@@ -291,9 +301,20 @@ export function ChatApp({
     text: string;
     thinkHarder: boolean;
   } | null>(null);
+  // A big message waiting for "this costs about $X, send?" (CO-05).
+  const [bigAsk, setBigAsk] = useState<{
+    text: string;
+    thinkHarder: boolean;
+    overConfirmed: boolean;
+    added: number;
+    micro: number;
+    model: string;
+    files: number;
+  } | null>(null);
   // The usage dashboard (CO-02): its period and the calls it covers.
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
+  const [savings, setSavings] = useState<SavingsView | null>(null);
   // Search across chats (CH-02), and the message a result opened at.
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -729,19 +750,39 @@ export function ChatApp({
     }
   };
 
-  const send = async (text: string, thinkHarder = false, overConfirmed = false) => {
-    const ready = attachments.pending.flatMap((p) =>
-      p.status === "ready" && p.file ? [p.file] : [],
-    );
+  const send = async (
+    text: string,
+    thinkHarder = false,
+    confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
+  ) => {
+    const ready = confirmed.dropFiles
+      ? []
+      : attachments.pending.flatMap((p) => (p.status === "ready" && p.file ? [p.file] : []));
     const search = searchOn;
     // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
     const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
-    if (gate.over && !overConfirmed) {
+    if (gate.over && !confirmed.over) {
       setOverAsk({ state: gate.over, text, thinkHarder });
       return;
     }
     const found = routeFor(text, ready, messages, search, gate.downshift !== null);
     if (!found) return;
+    // CO-05: a message that adds a lot (a long paste, big files) shows its cost first. The
+    // history alone doesn't count: it's resent every turn and mostly read from cache.
+    const added = classifyInput(text, ready, [], false).contextTokens ?? 0;
+    if (added > BIG_REQUEST_TOKENS && !confirmed.big) {
+      const total = classifyInput(text, ready, messages, false).contextTokens ?? added;
+      setBigAsk({
+        text,
+        thinkHarder,
+        overConfirmed: Boolean(confirmed.over),
+        added,
+        micro: Math.round((total * priceToMicro(found.model.price.input)) / 1_000_000),
+        model: found.model.displayName,
+        files: ready.length,
+      });
+      return;
+    }
     // RT-08: "Think harder" asks for the most reasoning the model has, for this message only.
     const routed = thinkHarder
       ? {
@@ -753,7 +794,8 @@ export function ChatApp({
           },
         }
       : found;
-    const sent = attachments.take();
+    const sent = confirmed.dropFiles ? [] : attachments.take();
+    if (confirmed.dropFiles) attachments.clear();
     try {
       let threadId = selectedId;
       if (threadId === null) {
@@ -1263,6 +1305,23 @@ export function ChatApp({
       : null,
   }));
 
+  /** CO-04: this calendar month against Best, your subscriptions, and caching. */
+  const loadSavings = async (at: number) => {
+    const month = periodStart("month", at);
+    const [spent, extra, cache, sub] = await Promise.all([
+      spentSince(db, tenant, month),
+      bestExtraSince(db, tenant, month),
+      cacheTokensSince(db, tenant, month),
+      getSetting(db, tenant, "savings.subscription_micro"),
+    ]);
+    setSavings({
+      month: new Date(at).toLocaleDateString(undefined, { month: "long" }),
+      spent,
+      onBest: spent + extra,
+      cache: cacheSavings(catalog, cache),
+      subscription: sub === null ? null : Number(sub),
+    });
+  };
   const openUsage = () => {
     setView("usage");
     const at = Date.now();
@@ -1271,6 +1330,7 @@ export function ChatApp({
     listUsage(db, tenant, since).then((rows) => {
       setUsage({ rows, at });
     }, report);
+    loadSavings(at).catch(report);
   };
   // Screenshots can open on the dashboard (FUSE_VIEW=usage): load it once at start.
   useEffect(() => {
@@ -1468,6 +1528,18 @@ export function ChatApp({
           {view === "usage" ? (
             <UsageScreen
               view={usageView}
+              savings={savings}
+              onSubscription={(usd) => {
+                const micro = usd === null ? null : Math.round(usd * 1_000_000);
+                setSetting(
+                  db,
+                  tenant,
+                  "savings.subscription_micro",
+                  micro === null ? "" : String(micro),
+                )
+                  .then(() => loadSavings(Date.now()))
+                  .catch(report);
+              }}
               onPeriod={setUsagePeriod}
               onBack={() => {
                 setView("chat");
@@ -1866,6 +1938,54 @@ export function ChatApp({
           </div>
         </Modal>
         <Modal
+          open={bigAsk !== null}
+          onOpenChange={(open) => {
+            if (!open) setBigAsk(null);
+          }}
+          title="A big message"
+          description={
+            bigAsk
+              ? `This adds about ${number(bigAsk.added)} tokens. On ${bigAsk.model} the message would cost about ${money(bigAsk.micro)} to read, and the files are sent again with every later message in this chat.`
+              : ""
+          }
+        >
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBigAsk(null);
+              }}
+            >
+              Cancel
+            </Button>
+            {bigAsk && bigAsk.files > 0 && bigAsk.text.trim() && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const ask = bigAsk;
+                  setBigAsk(null);
+                  void send(ask.text, ask.thinkHarder, {
+                    over: ask.overConfirmed,
+                    dropFiles: true,
+                  });
+                }}
+              >
+                Send without the files
+              </Button>
+            )}
+            <Button
+              onClick={() => {
+                const ask = bigAsk;
+                setBigAsk(null);
+                if (ask)
+                  void send(ask.text, ask.thinkHarder, { over: ask.overConfirmed, big: true });
+              }}
+            >
+              Send
+            </Button>
+          </div>
+        </Modal>
+        <Modal
           open={overAsk !== null}
           onOpenChange={(open) => {
             if (!open) setOverAsk(null);
@@ -1897,7 +2017,7 @@ export function ChatApp({
                   .then(() => listBudgets(db, tenant))
                   .then(async (list) => {
                     setBudgets(list);
-                    await send(ask.text, ask.thinkHarder, true);
+                    await send(ask.text, ask.thinkHarder, { over: true });
                   })
                   .catch(report);
               }}
@@ -1909,7 +2029,7 @@ export function ChatApp({
                 onClick={() => {
                   const ask = overAsk;
                   setOverAsk(null);
-                  if (ask) void send(ask.text, ask.thinkHarder, true);
+                  if (ask) void send(ask.text, ask.thinkHarder, { over: true });
                 }}
               >
                 Send anyway
