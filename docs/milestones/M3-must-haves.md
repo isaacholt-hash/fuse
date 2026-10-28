@@ -34,9 +34,11 @@ Voice, agents, image generation and the web version stay in P2/P3.
   - Only a salted PBKDF2 hash is stored, and repeated wrong tries slow down.
 - [x] **8. Import chats from ChatGPT (PL-08).** The ChatGPT data-export zip becomes chats, keeping dates and branches. You see a preview count first, and running it again doesn't duplicate.
 - [x] **9. Import chats from Claude (PL-08).** Claude's data export becomes chats and projects (with their instructions), with the same preview and no duplicates.
-- [ ] **10. Import memories and custom instructions (PM-08).**
-  - Paste ChatGPT's or Claude's memory list, and the Cheap model splits it into facts for the usual review, with duplicates merged.
+- [x] **10. Import memories and custom instructions (PM-08).**
+  - Paste ChatGPT's or Claude's memory list, and it's split into facts for the usual review, with duplicates merged. (Built as a local split, one fact per line, with no model call: free and works without a key.)
   - Custom instructions fill the global boxes after a confirm.
+
+**All build steps done (2026-10-28).** Next: Isaac tests M3, then starts the P1 gate (two weeks on FUSE).
 
 ## Notes
 

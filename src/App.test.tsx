@@ -1049,6 +1049,35 @@ test("import from ChatGPT: preview first, then the chats appear in the sidebar",
   expect(screen.getByText("Yes.")).toBeInTheDocument();
 });
 
+test("pasted memories become suggestions to review; pasted instructions fill a global box after a confirm", async () => {
+  const { user } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Import" }));
+  await user.type(
+    section.getByLabelText("Pasted text"),
+    "## Saved memories{enter}- Prefers short answers{enter}- Lives in Leeds{enter}- lives in leeds",
+  );
+  await user.click(section.getByRole("button", { name: "Suggest these memories" }));
+  const review = within(await screen.findByRole("dialog"));
+  const suggested = await review.findAllByLabelText("Suggested memory");
+  expect(suggested.map((s) => (s as HTMLTextAreaElement).value)).toEqual([
+    "Prefers short answers",
+    "Lives in Leeds",
+  ]);
+  await user.keyboard("{Escape}");
+  expect(await section.findByText("2 memories to review (1 already known).")).toBeInTheDocument();
+
+  await user.click(section.getByRole("radio", { name: "How to answer" }));
+  await user.type(section.getByLabelText("Pasted text"), "Be brief.");
+  await user.click(section.getByRole("button", { name: /Use as "How to answer"/ }));
+  expect(section.getByRole("alert")).toHaveTextContent('This fills "How to answer"');
+  await user.click(section.getByRole("button", { name: "Add to How to answer" }));
+  expect(await section.findByText(/Added to "How to answer"/)).toBeInTheDocument();
+  const instructions = within(screen.getByRole("region", { name: "Custom instructions" }));
+  expect(instructions.getByLabelText("How to answer")).toHaveValue("Be brief.");
+});
+
 test("import from Claude: chats land in their project, which gets its instructions and documents", async () => {
   const { db, user } = setup();
   await composer();
