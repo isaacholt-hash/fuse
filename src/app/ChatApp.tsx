@@ -40,6 +40,7 @@ import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { maybeSummarize, pathTokens, summaryThreshold } from "@/chat/summary";
 import { activeSummary, listSummaries } from "@/storage/summaries";
 import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
+import { memoriesFromText } from "@/memory/importMemories";
 import { memoryTokens } from "@/memory/inject";
 import { findSecret, SECRET_LABELS } from "@/memory/secrets";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
@@ -55,6 +56,7 @@ import {
 } from "@/storage/instructions";
 import {
   addMemory,
+  addProposals,
   approveProposal,
   deleteAllMemories,
   deleteMemory,
@@ -139,6 +141,7 @@ import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
+import { ImportPaste } from "@/ui/ImportPaste";
 import { ImportSection, type ImportSourceView } from "@/ui/ImportSection";
 import { previewImport, writeImport, type ImportedChat, type ImportSource } from "@/import/write";
 import { readChatGptExport } from "@/import/chatgpt";
@@ -2217,7 +2220,30 @@ export function ChatApp({
                     await refreshProjects();
                     return n;
                   }}
-                />
+                >
+                  <ImportPaste
+                    current={globalInstructions ?? NO_INSTRUCTIONS}
+                    onMemories={async (text) => {
+                      const known = [...memories, ...proposals].map((m) => m.text);
+                      const out = memoriesFromText(text, known);
+                      await addProposals(db, tenant, out.proposals);
+                      await refreshMemory();
+                      if (out.proposals.length > 0) setReviewOpen(true);
+                      const extra = [
+                        out.duplicates > 0 ? `${String(out.duplicates)} already known` : "",
+                        out.secrets > 0 ? `${String(out.secrets)} left out as secrets` : "",
+                      ].filter(Boolean);
+                      return `${String(out.proposals.length)} memories to review${extra.length ? ` (${extra.join(", ")})` : ""}.`;
+                    }}
+                    onInstructions={async (box, text) => {
+                      const value = { ...(await getGlobalInstructions(db, tenant)) };
+                      const now = value[box].trim();
+                      value[box] = now ? `${now}\n\n${text.trim()}` : text.trim();
+                      await setGlobalInstructions(db, tenant, value);
+                      setGlobal(await getGlobalInstructions(db, tenant));
+                    }}
+                  />
+                </ImportSection>
               }
               data={
                 exporter && (

@@ -161,7 +161,8 @@ export interface NewProposal {
   category: MemoryCategory;
   projectId: string | null;
   confidence: number;
-  sourceThreadId: string;
+  /** The chat it came from; null for imported memories (PM-08). */
+  sourceThreadId: string | null;
 }
 
 export interface Proposal extends NewProposal {

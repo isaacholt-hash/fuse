@@ -77,6 +77,12 @@ export function GlobalInstructionsSection({
 }) {
   const [draft, setDraft] = useState(value);
   const [saved, setSaved] = useState(false);
+  // A new saved value (after Save, or pasted in Import) replaces the draft.
+  const [shown, setShown] = useState(value);
+  if (shown !== value) {
+    setShown(value);
+    setDraft(value);
+  }
   const dirty = draft.aboutYou !== value.aboutYou || draft.howToAnswer !== value.howToAnswer;
   return (
     <section className="mt-8 border-t pt-6" aria-label="Custom instructions">
