@@ -1,5 +1,6 @@
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
+import { buildPath } from "./tree";
 import type { SqlDb } from "./sql";
 import {
   EMPTY_USAGE,
@@ -251,4 +252,18 @@ export async function setFeedback(
     `UPDATE messages SET feedback = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [feedback, Date.now(), tenant.workspaceId, id],
   );
+}
+
+/** The messages on screen: root to the thread's active leaf (CH-04), oldest first. */
+export async function listPath(
+  db: SqlDb,
+  tenant: Tenant,
+  threadId: string,
+): Promise<{ all: Message[]; path: Message[] }> {
+  const all = await listMessages(db, tenant, threadId);
+  const rows = await db.select<{ active_leaf_id: string | null }>(
+    `SELECT active_leaf_id FROM threads WHERE workspace_id = ? AND id = ?`,
+    [tenant.workspaceId, threadId],
+  );
+  return { all, path: buildPath(all, rows[0]?.active_leaf_id ?? null) };
 }

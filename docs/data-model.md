@@ -88,7 +88,7 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 | `threads.project_id NULL` | FK → projects. Threads can move between projects. Built in M1 step 6. | PM-01 |
 | `threads.instructions NULL` | Per-thread custom instructions. Global instructions live in `settings`. | CH-05 |
 | `threads.pinned`, `threads.archived_at NULL`, `threads.incognito` | Incognito threads never touch memory and aren't listed. | CH-02, CH-15 |
-| `threads.current_leaf_id NULL` | The selected branch tip. | CH-04 |
+| `threads.active_leaf_id NULL` | The selected branch tip. Built in M2 step 3 (`0011_branches.sql`). The screen and the history sent to models are the path from the root to this message (`src/storage/tree.ts`); NULL or a deleted id means the newest leaf. Editing a question adds a sibling question (same parent, same files); regenerating adds a sibling answer; a ‹ n/m › picker switches between siblings and shows the newest path under the chosen one. A stronger re-run sits beside its original on the path and isn't counted as a branch. Thread cost counts every branch, since all were billed. | CH-04 |
 | `threads.memory_injection` | Built in step 7 (below). | PM-04 |
 | `tags`, `thread_tags` | Tags (many-to-many). | CH-02 |
 | `thread_summaries` | Rolling summary: `thread_id`, `covers_up_to_message_id`, `content`, token count, cost. | PM-06 |

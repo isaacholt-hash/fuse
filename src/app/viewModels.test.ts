@@ -139,7 +139,7 @@ describe("live answer overlay", () => {
 
   test("retry: the failed answer is replaced, the question is not repeated", () => {
     const base = [msg({ content: "Hi" }), answer("anthropic", sonnet.id, { status: "error" })];
-    const rows = withLive(base, { ...live, userText: null });
+    const rows = withLive(base, { ...live, userText: null, after: base[0]?.id ?? null });
     expect(rows.map((r) => [r.role, r.status])).toEqual([
       ["user", "complete"],
       ["assistant", "streaming"],
@@ -148,13 +148,26 @@ describe("live answer overlay", () => {
 
   test("a stronger re-run streams under the answer it re-runs", () => {
     const base = [msg({ content: "Hi" }), answer("anthropic", sonnet.id, { content: "Quick" })];
-    const rows = withLive(base, { ...live, userText: null, escalating: true });
+    const rows = withLive(base, { ...live, userText: null, after: base[1]?.id ?? null });
     expect(rows.map((r) => [r.content, r.status])).toEqual([
       ["Hi", "complete"],
       ["Quick", "complete"],
       ["Hel", "streaming"],
     ]);
   });
+});
+
+test("an edited first question replaces the whole path until it's saved", () => {
+  const base = [msg({ content: "Hi" }), answer("anthropic", sonnet.id, { content: "Old" })];
+  const rows = withLive(base, {
+    threadId: "t",
+    model: sonnet,
+    text: "New answer",
+    userText: "Hello instead",
+    files: [],
+    after: null,
+  });
+  expect(rows.map((r) => r.content)).toEqual(["Hello instead", "New answer"]);
 });
 
 test("an escalated answer is labelled Stronger, under a same-question divider", () => {

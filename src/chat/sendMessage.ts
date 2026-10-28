@@ -15,7 +15,7 @@ import {
   addMessage,
   deleteMessage,
   finishMessage,
-  listMessages,
+  listPath,
   updateMessageContent,
   type Message,
 } from "@/storage/messages";
@@ -28,7 +28,7 @@ import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
-import { getThread, renameThread } from "@/storage/threads";
+import { getThread, renameThread, setActiveLeaf } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import type { RouteInfo } from "@/routing/route";
 
@@ -160,13 +160,8 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
   const fileIds = input.fileIds ?? [];
   if (!text && fileIds.length === 0) throw new Error("Message is empty");
 
-  const previous = await listMessages(db, tenant, input.threadId);
-  const userMessageId = await addMessage(db, tenant, {
-    threadId: input.threadId,
-    parentId: previous.at(-1)?.id ?? null,
-    role: "user",
-    content: text,
-  });
+  const { path: previous } = await listPath(db, tenant, input.threadId);
+  const userMessageId = await addQuestion(deps, input.threadId, previous.at(-1)?.id ?? null, text);
   await linkFiles(db, tenant, userMessageId, fileIds);
   if (previous.length === 0) {
     const thread = await getThread(db, tenant, input.threadId);
@@ -174,16 +169,76 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
       await renameThread(db, tenant, input.threadId, titleFrom(text, fileIds.length > 0), "auto");
     }
   }
-  const messages = await listMessages(db, tenant, input.threadId);
-  const history = historyFor(messages, await attachmentsFor(deps, messages));
-  return streamAnswer(deps, input, userMessageId, history);
+  return streamAnswer(deps, input, userMessageId, await historyTo(deps, input.threadId));
+}
+
+/** Saves a question under `parentId` and makes it the end of the thread's path. */
+async function addQuestion(
+  deps: ChatDeps,
+  threadId: string,
+  parentId: string | null,
+  text: string,
+): Promise<string> {
+  const id = await addMessage(deps.db, deps.tenant, {
+    threadId,
+    parentId,
+    role: "user",
+    content: text,
+  });
+  await setActiveLeaf(deps.db, deps.tenant, threadId, id);
+  return id;
+}
+
+/** The history to send: the thread's path, up to and including `lastId` (default: all of it). */
+async function historyTo(deps: ChatDeps, threadId: string, lastId?: string) {
+  const { path } = await listPath(deps.db, deps.tenant, threadId);
+  const end = lastId === undefined ? path.length : path.findIndex((m) => m.id === lastId) + 1;
+  const kept = path.slice(0, end);
+  return historyFor(kept, await attachmentsFor(deps, kept));
+}
+
+/**
+ * Edits a question (CH-04): the new text becomes a sibling of the old question, with its files,
+ * and gets a fresh answer. The old question and everything after it stay on their own branch.
+ */
+export async function editQuestion(
+  deps: ChatDeps,
+  input: RetryInput & { messageId: string; text: string },
+): Promise<SendResult> {
+  const { db, tenant } = deps;
+  const { path } = await listPath(db, tenant, input.threadId);
+  const original = path.find((m) => m.id === input.messageId && m.role === "user");
+  if (!original) throw new Error("That question isn't in this chat any more");
+  const files = (await filesForMessages(db, tenant, [original.id])).get(original.id) ?? [];
+  const text = input.text.trim();
+  if (!text && files.length === 0) throw new Error("Message is empty");
+  const id = await addQuestion(deps, input.threadId, original.parentId, text);
+  await linkFiles(
+    db,
+    tenant,
+    id,
+    files.map((f) => f.id),
+  );
+  return streamAnswer(deps, input, id, await historyTo(deps, input.threadId));
+}
+
+/** Answers a question again (CH-04): the new answer is a sibling of the old one. */
+export async function regenerate(
+  deps: ChatDeps,
+  input: RetryInput & { answerId: string },
+): Promise<SendResult> {
+  const { path } = await listPath(deps.db, deps.tenant, input.threadId);
+  const answer = path.find((m) => m.id === input.answerId && m.role === "assistant");
+  const question = answer && path.find((m) => m.id === answer.parentId);
+  if (!question) throw new Error("That answer isn't in this chat any more");
+  return streamAnswer(deps, input, question.id, await historyTo(deps, input.threadId, question.id));
 }
 
 export type RetryInput = Omit<SendInput, "text" | "fileIds">;
 
 /** The last question, its answers, and the history up to and including that question. */
 async function lastTurn(deps: ChatDeps, threadId: string) {
-  const messages = await listMessages(deps.db, deps.tenant, threadId);
+  const { path: messages } = await listPath(deps.db, deps.tenant, threadId);
   const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
   const question = messages[lastUserIndex];
   if (!question) throw new Error("Nothing to retry");
@@ -247,6 +302,7 @@ async function streamAnswer(
       : null,
     escalatedFromId,
   });
+  await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
 
   const started = now();
   let firstTokenAt: number | null = null;

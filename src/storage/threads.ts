@@ -26,6 +26,8 @@ export interface Thread {
   pinnedTier: "balanced" | "best" | null;
   pinnedProvider: ProviderId | null;
   pinnedModel: string | null;
+  /** The message the thread shows the path to (CH-04); null = the newest leaf. */
+  activeLeafId: string | null;
 }
 
 interface ThreadRow {
@@ -44,6 +46,7 @@ interface ThreadRow {
   pinned_tier: "balanced" | "best" | null;
   pinned_provider: string | null;
   pinned_model: string | null;
+  active_leaf_id: string | null;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -63,12 +66,13 @@ const toThread = (r: ThreadRow): Thread => ({
   pinnedProvider:
     r.pinned_provider === "openai" || r.pinned_provider === "anthropic" ? r.pinned_provider : null,
   pinnedModel: r.pinned_model,
+  activeLeafId: r.active_leaf_id,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
-         t.pinned_tier, t.pinned_provider, t.pinned_model,
+         t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -171,6 +175,20 @@ export async function setThreadMemory(
     `UPDATE threads SET memory_injection = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [on ? "on" : "off", Date.now(), tenant.workspaceId, id],
   );
+}
+
+/** Shows the path to this message (a branch switch, or the newest answer). */
+export async function setActiveLeaf(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  leafId: string | null,
+): Promise<void> {
+  await db.execute(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
+    leafId,
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 /** Pins the thread to a tier or a model (RT-01); nulls put it back on Auto. */

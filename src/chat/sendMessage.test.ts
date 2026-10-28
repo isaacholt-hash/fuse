@@ -9,7 +9,7 @@ import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/p
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { citationsForMessages } from "@/storage/citations";
 import { addFile } from "@/storage/files";
-import { listMessages } from "@/storage/messages";
+import { listMessages, listPath } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { setGlobalInstructions } from "@/storage/instructions";
@@ -20,7 +20,15 @@ import {
   setThreadInstructions,
   setThreadProject,
 } from "@/storage/threads";
-import { escalateLast, historyFor, retryLast, sendMessage, type ChatDeps } from "./sendMessage";
+import {
+  editQuestion,
+  escalateLast,
+  historyFor,
+  regenerate,
+  retryLast,
+  sendMessage,
+  type ChatDeps,
+} from "./sendMessage";
 
 const t = DEFAULT_TENANT;
 // Placeholder prices for arithmetic; real ones live in data/models.json.
@@ -330,6 +338,45 @@ test("retrying a failed escalation keeps the original answer", async () => {
     ["Careful answer", "complete"],
   ]);
   expect(msgs[2]?.escalatedFromId).toBe(msgs[1]?.id);
+});
+
+test("edit and regenerate make branches; the path and the history follow the newest one", async () => {
+  let n = 0;
+  const { db, deps, fakes } = setup({ anthropic: () => answer(`answer ${String(++n)}`) });
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "first" });
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "second" });
+  let { path } = await listPath(db, t, thread.id);
+  const [, firstAnswer, second] = path;
+
+  await editQuestion(deps, {
+    threadId: thread.id,
+    model: claude,
+    messageId: second?.id ?? "",
+    text: "second, better",
+  });
+  ({ path } = await listPath(db, t, thread.id));
+  expect(path.map((x) => x.content)).toEqual(["first", "answer 1", "second, better", "answer 3"]);
+  expect(fakes.anthropic.calls[2]).toEqual([
+    { role: "user", content: "first" },
+    { role: "assistant", content: "answer 1" },
+    { role: "user", content: "second, better" },
+  ]);
+
+  await regenerate(deps, { threadId: thread.id, model: claude, answerId: firstAnswer?.id ?? "" });
+  ({ path } = await listPath(db, t, thread.id));
+  expect(path.map((x) => x.content)).toEqual(["first", "answer 4"]);
+  expect(fakes.anthropic.calls[3]).toEqual([{ role: "user", content: "first" }]);
+  // Nothing was deleted: every version is still in the thread.
+  expect(await listMessages(db, t, thread.id)).toHaveLength(7);
+
+  // A new question continues the branch on screen.
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "third" });
+  expect(fakes.anthropic.calls[4]).toEqual([
+    { role: "user", content: "first" },
+    { role: "assistant", content: "answer 4" },
+    { role: "user", content: "third" },
+  ]);
 });
 
 test("no usage from the provider: cost unknown, not a fake $0", async () => {

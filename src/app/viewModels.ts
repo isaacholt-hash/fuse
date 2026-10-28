@@ -205,8 +205,11 @@ export interface LiveAnswer {
   searching?: boolean;
   /** Sources cited so far. */
   sources?: SourceView[];
-  /** A stronger re-run of the last answer, which stays on screen above it. */
-  escalating?: boolean;
+  /**
+   * Where the answer goes until its saved row loads: after this message id (rows after it are
+   * replaced), at the start (null), or at the end (undefined, a new question).
+   */
+  after?: string | null;
 }
 
 /**
@@ -217,13 +220,14 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
   if (!live) return base;
   const saved = base.findLastIndex((m) => m.role === "assistant" && m.status === "streaming");
   if (saved >= 0) return base.map((m, i) => (i === saved ? { ...m, content: live.text } : m));
-  // Retrying replaces the last answer; a stronger re-run goes under it.
-  const lastAnswer = base.findLastIndex((m) => m.role === "assistant");
-  const replaced =
-    live.userText === null &&
-    !live.escalating &&
-    lastAnswer > base.findLastIndex((m) => m.role === "user");
-  const rows = replaced ? base.slice(0, lastAnswer) : base;
+  // Retry, regenerate and edit replace what came after `after`; a stronger re-run goes under it.
+  const cut =
+    live.after === undefined
+      ? base.length
+      : live.after === null
+        ? 0
+        : base.findIndex((m) => m.id === live.after) + 1;
+  const rows = base.slice(0, cut > 0 || live.after === null ? cut : base.length);
   const row = (id: string, fields: Partial<Message>): Message => ({
     id,
     threadId: live.threadId,

@@ -15,7 +15,14 @@ import {
   instructionTokens,
   MAX_INSTRUCTION_CHARS,
 } from "@/chat/instructions";
-import { escalateLast, retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
+import {
+  editQuestion,
+  escalateLast,
+  regenerate,
+  retryLast,
+  sendMessage,
+  type ChatDeps,
+} from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
 import { classify } from "@/routing/classify";
 import {
@@ -55,7 +62,8 @@ import {
   type Memory,
   type Proposal,
 } from "@/storage/memories";
-import { listMessages, setFeedback, type Message } from "@/storage/messages";
+import { listPath, setFeedback, type Message } from "@/storage/messages";
+import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
   deleteProject,
@@ -78,6 +86,7 @@ import {
   listThreads,
   renameThread,
   setThreadInstructions,
+  setActiveLeaf,
   setThreadMemory,
   setThreadPins,
   setThreadProject,
@@ -191,7 +200,10 @@ export function ChatApp({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Read once at startup: the thread to reopen.
   const [lastThread] = useState(readLastThread);
+  // The path on screen (CH-04), every message in the thread, and where the path has siblings.
   const [messages, setMessages] = useState<Message[]>([]);
+  const [threadAll, setThreadAll] = useState<Message[]>([]);
+  const [threadBranches, setThreadBranches] = useState<Map<string, BranchInfo>>(new Map());
   // Files attached to the messages on screen, by message id.
   const [threadFiles, setThreadFiles] = useState<Map<string, FileRecord[]>>(new Map());
   // Web sources cited by the answers on screen, by message id.
@@ -315,7 +327,7 @@ export function ChatApp({
   /** A thread's messages and their attached files. */
   const loadThread = useCallback(
     async (threadId: string) => {
-      const rows = await listMessages(db, tenant, threadId);
+      const { all, path: rows } = await listPath(db, tenant, threadId);
       const attached = await filesForMessages(
         db,
         tenant,
@@ -324,16 +336,18 @@ export function ChatApp({
       const answers = rows.filter((m) => m.role === "assistant").map((m) => m.id);
       const cited = await citationsForMessages(db, tenant, answers);
       const used = await memoriesForMessages(db, tenant, answers);
-      return { rows, attached, cited, used };
+      return { rows, all, attached, cited, used };
     },
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
   const reload = useCallback(
     async (threadId: string) => {
-      const { rows, attached, cited, used } = await loadThread(threadId);
+      const { rows, all, attached, cited, used } = await loadThread(threadId);
       if (selectedRef.current === threadId) {
         setMessages(rows);
+        setThreadAll(all);
+        setThreadBranches(branchesOf(all, rows));
         setThreadFiles(attached);
         setThreadSources(cited);
         setThreadMemories(used);
@@ -349,11 +363,13 @@ export function ChatApp({
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
         if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, attached, cited, used } = await loadThread(lastThread);
+        const { rows, all, attached, cited, used } = await loadThread(lastThread);
         if (selectedRef.current !== null) return; // the user already moved on
         setSelectedId(lastThread);
         selectedRef.current = lastThread;
         setMessages(rows);
+        setThreadAll(all);
+        setThreadBranches(branchesOf(all, rows));
         setThreadFiles(attached);
         setThreadSources(cited);
         setThreadMemories(used);
@@ -374,6 +390,8 @@ export function ChatApp({
     selectedRef.current = id;
     setView("chat");
     setMessages([]);
+    setThreadAll([]);
+    setThreadBranches(new Map());
     setThreadFiles(new Map());
     setThreadSources(new Map());
     setThreadMemories(new Map());
@@ -388,6 +406,8 @@ export function ChatApp({
       setSelectedId(null);
       selectedRef.current = null;
       setMessages([]);
+      setThreadAll([]);
+      setThreadBranches(new Map());
       setThreadFiles(new Map());
       setThreadSources(new Map());
       setThreadMemories(new Map());
@@ -474,27 +494,40 @@ export function ChatApp({
       .catch(report);
   };
 
-  /** Streams one answer (a new question, or a retry of the last one) into a thread. */
+  /**
+   * What an answer is for: a new question, a retry of the last one, a stronger re-run of the
+   * latest answer, a fresh answer to any question, or an edited question (CH-04).
+   */
+  type Job =
+    | { kind: "send"; text: string; files: FileRecord[] }
+    | { kind: "retry"; questionId: string }
+    | { kind: "escalate"; answerId: string }
+    | { kind: "regenerate"; answerId: string; questionId: string }
+    | { kind: "edit"; messageId: string; parentId: string | null; text: string };
+
+  /** Streams one answer into a thread. */
   const stream = async (
     threadId: string,
-    userText: string | null,
     routed: NonNullable<ReturnType<typeof routeFor>>,
-    sent: FileRecord[] = [],
+    job: Job,
     webSearch = false,
-    escalating = false,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
+    // Where the live answer goes on screen until the saved rows load (see withLive).
+    const placement =
+      job.kind === "send"
+        ? { userText: job.text, files: job.files }
+        : job.kind === "edit"
+          ? { userText: job.text, files: [], after: job.parentId }
+          : {
+              userText: null,
+              files: [],
+              after: job.kind === "escalate" ? job.answerId : job.questionId,
+            };
     setLive((all) => ({
       ...all,
-      [threadId]: {
-        threadId,
-        model: routed.model,
-        text: "",
-        userText,
-        files: sent,
-        ...(escalating ? { escalating } : {}),
-      },
+      [threadId]: { threadId, model: routed.model, text: "", ...placement },
     }));
     let loaded = false;
     const onText = (text: string) => {
@@ -530,11 +563,15 @@ export function ChatApp({
       },
     };
     try {
-      await (escalating
-        ? escalateLast(deps, input)
-        : userText === null
+      await (job.kind === "send"
+        ? sendMessage(deps, { ...input, text: job.text, fileIds: job.files.map((f) => f.id) })
+        : job.kind === "retry"
           ? retryLast(deps, input)
-          : sendMessage(deps, { ...input, text: userText, fileIds: sent.map((f) => f.id) }));
+          : job.kind === "escalate"
+            ? escalateLast(deps, input)
+            : job.kind === "regenerate"
+              ? regenerate(deps, { ...input, answerId: job.answerId })
+              : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
     } catch (e) {
       report(e);
     } finally {
@@ -576,18 +613,64 @@ export function ChatApp({
         selectedRef.current = threadId;
         await refreshThreads();
       }
-      await stream(threadId, text, routed, sent, search);
+      await stream(threadId, routed, { kind: "send", text, files: sent }, search);
     } catch (e) {
       report(e);
     }
   };
+  /** Routes the question at `index` on the path, with what came before it as history. */
+  const routeQuestion = (question: Message, text = question.content) =>
+    routeFor(
+      text,
+      threadFiles.get(question.id) ?? [],
+      messages.slice(0, messages.indexOf(question)),
+      searchOn,
+    );
   const retry = () => {
     if (!selectedId || live[selectedId]) return;
     const question = messages.findLast((m) => m.role === "user");
-    if (!question) return;
-    const before = messages.slice(0, messages.indexOf(question));
-    const routed = routeFor(question.content, threadFiles.get(question.id) ?? [], before, searchOn);
-    if (routed) void stream(selectedId, null, routed, [], searchOn);
+    const routed = question && routeQuestion(question);
+    if (question && routed) {
+      void stream(selectedId, routed, { kind: "retry", questionId: question.id }, searchOn);
+    }
+  };
+  /** A fresh answer to any question (CH-04); the old one stays on its own branch. */
+  const regenerateAnswer = (answerId: string) => {
+    if (!selectedId || live[selectedId]) return;
+    const answer = messages.find((m) => m.id === answerId);
+    const question = answer && messages.find((m) => m.id === answer.parentId);
+    const routed = question && routeQuestion(question);
+    if (!question || !routed) return;
+    void stream(
+      selectedId,
+      routed,
+      { kind: "regenerate", answerId, questionId: question.id },
+      searchOn,
+    );
+  };
+  /** Sends an edited question as a new branch (CH-04). */
+  const editAndSend = (messageId: string, text: string) => {
+    if (!selectedId || live[selectedId]) return;
+    const question = messages.find((m) => m.id === messageId);
+    const routed = question && routeQuestion(question, text);
+    if (!question || !routed) return;
+    void stream(
+      selectedId,
+      routed,
+      { kind: "edit", messageId, parentId: question.parentId, text },
+      searchOn,
+    );
+  };
+  /** Shows another branch: the newest path through the chosen sibling. */
+  const switchBranch = (messageId: string, step: -1 | 1) => {
+    const threadId = selectedId;
+    const info = threadBranches.get(messageId);
+    if (!threadId || !info || live[threadId]) return;
+    const target = info.siblings[info.position - 1 + step];
+    if (!target) return;
+    setActiveLeaf(db, tenant, threadId, leafUnder(threadAll, target))
+      .then(() => reload(threadId))
+      .catch(report);
   };
   const tierLabel = (tier: TierId) => policy.tiers.find((t) => t.id === tier)?.label ?? tier;
   /** The tier the latest answer came from, and the one above it; null when it's already on Best. */
@@ -608,7 +691,7 @@ export function ChatApp({
     const answer = messages.findLast((m) => m.role === "assistant");
     const question = messages.findLast((m) => m.role === "user");
     const step = escalation(answer);
-    if (!question || !step) return;
+    if (!answer || !question || !step) return;
     const before = messages.slice(0, messages.indexOf(question));
     const task = classify(
       classifyInput(question.content, threadFiles.get(question.id) ?? [], before, searchOn),
@@ -626,7 +709,12 @@ export function ChatApp({
       ruleId: "escalation",
       reason: `One tier up from ${tierLabel(step.from)}, at your request`,
     };
-    void stream(selectedId, null, { ...routed, info }, [], searchOn, true);
+    void stream(
+      selectedId,
+      { ...routed, info },
+      { kind: "escalate", answerId: answer.id },
+      searchOn,
+    );
   };
   const stop = useCallback(() => {
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
@@ -857,8 +945,21 @@ export function ChatApp({
       if (liveHere.searching) streamingAnswer.searching = true;
       if (liveHere.sources?.length) streamingAnswer.sources = liveHere.sources;
     }
+    for (const v of views) {
+      const info = threadBranches.get(v.id);
+      if (info) v.branch = { position: info.position, total: info.total };
+    }
     return views;
-  }, [messages, liveHere, threadFiles, threadSources, threadMemories, fileUrls, catalog]);
+  }, [
+    messages,
+    liveHere,
+    threadFiles,
+    threadSources,
+    threadMemories,
+    threadBranches,
+    fileUrls,
+    catalog,
+  ]);
   // "Try a stronger model" goes on the latest answer only: earlier ones would need branching.
   const stronger = liveHere ? null : escalation(messages.findLast((m) => m.role === "assistant"));
   const latest = shown.at(-1);
@@ -1162,6 +1263,10 @@ export function ChatApp({
                 startedAt={messages[0]?.createdAt ?? null}
                 onRetry={retry}
                 onEscalate={escalate}
+                onRegenerate={regenerateAnswer}
+                onEdit={editAndSend}
+                onBranch={switchBranch}
+                busy={streaming}
                 onFeedback={(id, value) => {
                   const threadId = selectedId;
                   if (!threadId) return;
