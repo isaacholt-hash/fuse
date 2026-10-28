@@ -412,6 +412,30 @@ test("edit a question or regenerate an answer: a new version, with ‹ 1/2 › t
   expect(screen.queryByText("Better question")).not.toBeInTheDocument();
 });
 
+test("search across chats opens the chat at the matching message (Ctrl+Shift+F)", async () => {
+  const { user } = setup({
+    anthropic: [
+      () => answer("Cook them at 180C for twelve minutes."),
+      () => answer("Every 10,000 miles."),
+    ],
+  });
+  await user.type(await composer(), "Sausages in the air fryer?{Enter}");
+  expect(await screen.findByText("Cook them at 180C for twelve minutes.")).toBeInTheDocument();
+  await user.keyboard("{Control>}n{/Control}");
+  await user.type(await composer(), "Oil change interval?{Enter}");
+  expect(await screen.findByText("Every 10,000 miles.")).toBeInTheDocument();
+
+  await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+  await user.type(await screen.findByRole("textbox", { name: "Search chats" }), "twelve min");
+  const results = within(await screen.findByRole("list", { name: "Search results" }));
+  const hit = await results.findByRole("listitem");
+  expect(hit).toHaveTextContent("Answer");
+  expect(within(hit).getByText("twelve")).toContainHTML("mark");
+  await user.click(hit);
+  expect(await screen.findByText("Cook them at 180C for twelve minutes.")).toBeInTheDocument();
+  expect(screen.queryByText("Every 10,000 miles.")).not.toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

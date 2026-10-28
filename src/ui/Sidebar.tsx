@@ -10,6 +10,7 @@ import {
   PanelLeftClose,
   Pencil,
   Plus,
+  Search,
   Settings,
   SlidersHorizontal,
   Trash2,
@@ -34,6 +35,8 @@ interface Props {
   onSettings: () => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadView) => void;
+  /** Opens search across all chats (CH-02). */
+  onSearch?: () => void;
 }
 
 const sectionTitle =
@@ -53,6 +56,7 @@ export function Sidebar({
   onSettings,
   onRename,
   onDelete,
+  onSearch,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -121,6 +125,19 @@ export function Sidebar({
             <Hint>Ctrl N</Hint>
           </span>
         </Button>
+        {onSearch && (
+          <Button
+            variant="ghost"
+            className="mt-1.5 h-8 w-full justify-start gap-2.5 text-muted-foreground"
+            onClick={onSearch}
+          >
+            <Search className="size-3.5" />
+            Search chats
+            <span className="ml-auto">
+              <Hint>Ctrl ⇧ F</Hint>
+            </span>
+          </Button>
+        )}
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-5" aria-label="Conversations">
         <section className="mb-5" aria-label="Projects">
