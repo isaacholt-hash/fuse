@@ -55,7 +55,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **21. Live preview (AR-05).** HTML, React, SVG and Mermaid render in a sandboxed frame with no network by default.
 - [x] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
 
-**All build steps done (2026-10-28).** What's left is the "done when": two straight weeks on FUSE instead of ChatGPT and Claude.
+**All build steps done (2026-10-28).** Isaac skipped testing M2 on 2026-10-28 to start M3 (`M3-must-haves.md`), which carries the P1 gate.
 
 ## Notes
 
