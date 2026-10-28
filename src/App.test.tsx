@@ -1,5 +1,5 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
@@ -966,6 +966,39 @@ test("delete everything: typed confirmation, all data gone, keys only when ticke
   expect(keys.keys.size).toBe(0);
 });
 
+test("app lock: set a passcode, it locks on the next start, wrong ones are refused, the right one opens", async () => {
+  const { db, user } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "App lock" }));
+  await user.type(section.getByLabelText("New passcode"), "4321");
+  await user.type(section.getByLabelText("New passcode again"), "4321");
+  await user.click(section.getByRole("button", { name: "Turn on app lock" }));
+  expect(await section.findByText("App lock is on.")).toBeInTheDocument();
+  const [row] = await db.select<{ value: string }>(
+    "SELECT value FROM settings WHERE key = 'lock.passcode_hash'",
+  );
+  expect(row?.value).toMatch(/^pbkdf2-sha256\$600000\$/);
+  expect(row?.value).not.toContain("4321");
+
+  // A fresh start of the app on the same database is locked.
+  cleanup();
+  render(
+    <App
+      openDb={() => Promise.resolve(db)}
+      keysApi={fakeKeysApi().api}
+      catalog={catalog}
+      policy={policy}
+    />,
+  );
+  const lockScreen = within(await screen.findByRole("main", { name: "FUSE is locked" }));
+  expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
+  await user.type(lockScreen.getByLabelText("Passcode"), "0000{Enter}");
+  expect(await lockScreen.findByText("That passcode isn't right.")).toBeInTheDocument();
+  await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
+  expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
+}, 20_000);
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");
@@ -1337,7 +1370,8 @@ describe("auto-update", () => {
   test("no update, or an offline check, shows nothing; Settings shows the version", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const user = renderWith(updates(() => Promise.reject(new Error("offline"))).api);
-    await composer();
+    // No keys here, so the composer asks for one: wait for the app itself.
+    await screen.findByRole("button", { name: "Choose model (Ctrl+K)" });
     await waitFor(() => {
       expect(warn).toHaveBeenCalled();
     });

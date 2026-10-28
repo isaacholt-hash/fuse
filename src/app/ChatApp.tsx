@@ -139,6 +139,8 @@ import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
+import { AppLockSection, LockScreen } from "@/ui/AppLock";
+import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/security/passcode";
 import { exportAll } from "@/data/exportAll";
 import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
@@ -257,6 +259,11 @@ function artifactEditRequest(
     ? `Edit the artifact "${a.title}" (id ${a.key}). Change only this part:\n\n> ${selection.split("\n").join("\n> ")}\n\n${instruction}\n\nReply with the whole updated artifact, same id.`
     : `Edit the artifact "${a.title}" (id ${a.key}): ${instruction}\n\nReply with the whole updated artifact, same id.`;
 }
+
+/** SE-03: settings keys for the app lock, and the default idle time before it locks. */
+const LOCK_HASH = "lock.passcode_hash";
+const LOCK_IDLE = "lock.idle_minutes";
+const DEFAULT_IDLE_MINUTES = 15;
 
 /** CO-05: new content (question plus attachments) above this many tokens shows its cost first. */
 const BIG_REQUEST_TOKENS = 20_000;
@@ -399,6 +406,21 @@ export function ChatApp({
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   const [savings, setSavings] = useState<SavingsView | null>(null);
+  // SE-03: the app lock. `hash` is the stored passcode hash (null = off, undefined = loading).
+  const [lock, setLock] = useState<{
+    hash: string | null | undefined;
+    idleMinutes: number;
+    locked: boolean;
+    wrongTries: number;
+    waitUntil: number;
+  }>({
+    hash: undefined,
+    idleMinutes: DEFAULT_IDLE_MINUTES,
+    locked: false,
+    wrongTries: 0,
+    waitUntil: 0,
+  });
+  const lastActive = useRef(Date.now());
   // Quick capture (CH-08): the active shortcut, and what the desktop said about it.
   const [shortcut, setShortcut] = useState<{
     shortcut: string | null;
@@ -1710,6 +1732,76 @@ export function ChatApp({
     renameThread(db, tenant, id, title).then(refreshThreads).catch(report);
   };
 
+  // SE-03: locked at start when a passcode is set.
+  useEffect(() => {
+    Promise.all([getSetting(db, tenant, LOCK_HASH), getSetting(db, tenant, LOCK_IDLE)]).then(
+      ([hash, idle]) => {
+        const minutes = idle === null ? DEFAULT_IDLE_MINUTES : Number(idle);
+        setLock((l) => ({
+          ...l,
+          hash: hash || null,
+          idleMinutes: Number.isFinite(minutes) ? minutes : DEFAULT_IDLE_MINUTES,
+          locked: Boolean(hash),
+        }));
+      },
+      (e: unknown) => {
+        setLock((l) => ({ ...l, hash: null }));
+        report(e);
+      },
+    );
+  }, [db, tenant]);
+  // ...and again after being left alone for the chosen time.
+  useEffect(() => {
+    if (!lock.hash || lock.idleMinutes <= 0) return;
+    const touch = () => {
+      lastActive.current = Date.now();
+    };
+    const events = ["pointerdown", "keydown", "mousemove", "wheel"] as const;
+    for (const e of events) window.addEventListener(e, touch, { passive: true });
+    const timer = setInterval(() => {
+      if (Date.now() - lastActive.current > lock.idleMinutes * 60_000) {
+        setLock((l) => (l.locked ? l : { ...l, locked: true }));
+      }
+    }, 15_000);
+    return () => {
+      for (const e of events) window.removeEventListener(e, touch);
+      clearInterval(timer);
+    };
+  }, [lock.hash, lock.idleMinutes]);
+  const unlock = async (passcode: string) => {
+    if (!lock.hash) return true;
+    const ok = await verifyPasscode(passcode, lock.hash);
+    setLock((l) => {
+      const wrongTries = ok ? 0 : l.wrongTries + 1;
+      lastActive.current = Date.now();
+      return {
+        ...l,
+        locked: !ok,
+        wrongTries,
+        waitUntil: ok ? 0 : Date.now() + lockoutSeconds(wrongTries) * 1000,
+      };
+    });
+    return ok;
+  };
+  /** Settings: set or change the passcode (the current one is checked first). */
+  const setPasscode = async (next: string, current: string | null) => {
+    if (lock.hash && !(current && (await verifyPasscode(current, lock.hash)))) {
+      return "The current passcode isn't right.";
+    }
+    const hash = await hashPasscode(next);
+    await setSetting(db, tenant, LOCK_HASH, hash);
+    setLock((l) => ({ ...l, hash }));
+    return null;
+  };
+  const removePasscode = async (current: string) => {
+    if (!lock.hash || !(await verifyPasscode(current, lock.hash))) {
+      return "The current passcode isn't right.";
+    }
+    await setSetting(db, tenant, LOCK_HASH, "");
+    setLock((l) => ({ ...l, hash: null }));
+    return null;
+  };
+
   /** Applies a quick-capture shortcut (null = off) and remembers it. */
   const applyShortcut = useCallback(
     async (value: string | null, save: boolean) => {
@@ -1902,6 +1994,10 @@ export function ChatApp({
     };
   });
 
+  // SE-03: nothing of the app shows until the lock is known, and nothing while locked.
+  if (lock.hash === undefined) return null;
+  if (lock.locked) return <LockScreen onUnlock={unlock} waitUntil={lock.waitUntil} />;
+
   return (
     <Tooltip.Provider>
       <div className="flex h-dvh min-h-[480px] min-w-[640px] flex-col overflow-hidden bg-background text-foreground">
@@ -2010,6 +2106,19 @@ export function ChatApp({
                     onSave={saveGlobalInstructions}
                   />
                 )
+              }
+              appLock={
+                <AppLockSection
+                  enabled={Boolean(lock.hash)}
+                  idleMinutes={lock.idleMinutes}
+                  minLength={MIN_LENGTH}
+                  onSet={setPasscode}
+                  onRemove={removePasscode}
+                  onIdle={(minutes) => {
+                    setLock((l) => ({ ...l, idleMinutes: minutes }));
+                    setSetting(db, tenant, LOCK_IDLE, String(minutes)).catch(report);
+                  }}
+                />
               }
               data={
                 exporter && (
