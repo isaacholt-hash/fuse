@@ -206,16 +206,27 @@ export function ProjectDialog({
           <select
             id={ids.model}
             className="h-8 w-full rounded-lg border border-input bg-background px-2 text-sm"
-            value={form.defaultModel ? modelKey(form.defaultModel) : LAST_USED}
+            value={
+              form.defaultModel
+                ? modelKey(form.defaultModel)
+                : form.defaultTier
+                  ? `tier:${form.defaultTier}`
+                  : LAST_USED
+            }
             onChange={(e) => {
-              const m = models.find((x) => modelKey(x) === e.target.value);
+              const value = e.target.value;
+              const m = models.find((x) => modelKey(x) === value);
               setForm((f) => ({
                 ...f,
                 defaultModel: m ? { provider: m.provider, id: m.id } : null,
+                defaultTier:
+                  value === "tier:balanced" ? "balanced" : value === "tier:best" ? "best" : null,
               }));
             }}
           >
             <option value={LAST_USED}>Auto</option>
+            <option value="tier:balanced">Balanced tier</option>
+            <option value="tier:best">Best tier</option>
             {models.map((m) => (
               <option key={modelKey(m)} value={modelKey(m)}>
                 {m.providerName} · {m.name}

@@ -830,6 +830,37 @@ test("export: an artifact saves as its own file, and Markdown also as .docx and 
   expect(panel.getByRole("status")).toHaveTextContent("Saved Lisbon trip.pdf");
 });
 
+test("pins: next message only, then back to the chat's mode; a project can default to a tier", async () => {
+  const { user } = setup({
+    anthropic: [() => answer("From Best."), () => answer("From Balanced.")],
+  });
+  await composer();
+  const modeButton = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  await user.keyboard("{Control>}k{/Control}");
+  await user.click(await screen.findByRole("checkbox", { name: "Next message only" }));
+  await user.click(
+    within(await screen.findByRole("group", { name: "Routing" })).getByRole("button", {
+      name: /Best tier/,
+    }),
+  );
+  expect(modeButton()).toHaveTextContent("Best· once");
+  await user.type(await composer(), "Hard one{Enter}");
+  expect(await screen.findByRole("button", { name: "Routing: Pinned · Best" })).toBeInTheDocument();
+  expect(modeButton()).toHaveTextContent("Auto");
+  await user.type(await composer(), "Easy one{Enter}");
+  expect(
+    await screen.findByRole("button", { name: "Routing: Auto · Balanced" }),
+  ).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "New project" }));
+  const dialog = within(await screen.findByRole("dialog"));
+  await user.type(dialog.getByLabelText("Name"), "Research");
+  await user.selectOptions(dialog.getByLabelText("Default model"), "tier:best");
+  await user.click(dialog.getByRole("button", { name: "Create project" }));
+  await screen.findByRole("button", { name: "Project: Research" });
+  expect(modeButton()).toHaveTextContent("Best");
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

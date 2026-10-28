@@ -10,6 +10,8 @@ export interface Project {
   instructions: string;
   /** The model new chats in this project are pinned to; null means they start on Auto. */
   defaultModel: { provider: ProviderId; id: string } | null;
+  /** Or a tier new chats start pinned to (RT-01); ignored when there's a default model. */
+  defaultTier: "balanced" | "best" | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -20,6 +22,7 @@ interface ProjectRow {
   instructions: string;
   default_provider: string | null;
   default_model: string | null;
+  default_tier: "balanced" | "best" | null;
   created_at: number;
   updated_at: number;
 }
@@ -32,11 +35,13 @@ const toProject = (r: ProjectRow): Project => ({
     (r.default_provider === "openai" || r.default_provider === "anthropic") && r.default_model
       ? { provider: r.default_provider, id: r.default_model }
       : null,
+  defaultTier: r.default_tier,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
-const COLUMNS = "id, name, instructions, default_provider, default_model, created_at, updated_at";
+const COLUMNS =
+  "id, name, instructions, default_provider, default_model, default_tier, created_at, updated_at";
 
 export async function createProject(db: SqlDb, tenant: Tenant, name: string): Promise<Project> {
   const now = Date.now();
@@ -74,6 +79,7 @@ export interface ProjectChanges {
   name: string;
   instructions: string;
   defaultModel: Project["defaultModel"];
+  defaultTier?: Project["defaultTier"];
 }
 
 export async function updateProject(
@@ -84,13 +90,14 @@ export async function updateProject(
 ): Promise<void> {
   await db.execute(
     `UPDATE projects SET name = ?, instructions = ?, default_provider = ?, default_model = ?,
-       updated_at = ?
+       default_tier = ?, updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [
       cleanName(changes.name),
       changes.instructions.trim(),
       changes.defaultModel?.provider ?? null,
       changes.defaultModel?.id ?? null,
+      changes.defaultModel ? null : (changes.defaultTier ?? null),
       Date.now(),
       tenant.workspaceId,
       id,

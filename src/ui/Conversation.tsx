@@ -1046,6 +1046,7 @@ export function Composer({
                 >
                   <Sparkles className="size-3.5" />
                   <span>{modeLabel ?? model.name}</span>
+                  {routing?.once && <span className="text-muted-foreground">· once</span>}
                   {preview && (
                     <span className="text-muted-foreground" aria-label={`Auto picks ${preview}`}>
                       → {preview}
@@ -1178,7 +1179,20 @@ export function Composer({
                   </div>
                   <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[10px] text-muted-foreground">
                     <Command className="size-3" />
-                    Switch models anytime. Your history comes along.
+                    <span className="flex-1">Switch models anytime. Your history comes along.</span>
+                    {routing?.onOnce && (
+                      <label className="flex items-center gap-1.5 text-foreground">
+                        <input
+                          type="checkbox"
+                          aria-label="Next message only"
+                          checked={routing.once ?? false}
+                          onChange={(e) => {
+                            routing.onOnce?.(e.target.checked);
+                          }}
+                        />
+                        Next message only
+                      </label>
+                    )}
                   </div>
                 </Popover.Content>
               </Popover.Portal>

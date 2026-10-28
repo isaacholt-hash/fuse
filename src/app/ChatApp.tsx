@@ -392,6 +392,9 @@ export function ChatApp({
   const [quote, setQuote] = useState<{ text: string; key: number } | null>(null);
   // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
   const [draftMode, setDraftMode] = useState<RouteMode>(AUTO);
+  // RT-01: "next message only" is armed in the picker; the pick then goes here, not the chat.
+  const [onceArmed, setOnceArmed] = useState(false);
+  const [oneShot, setOneShot] = useState<RouteMode | null>(null);
   const [view, setView] = useState<"chat" | "settings" | "usage">(
     import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
@@ -563,6 +566,8 @@ export function ChatApp({
 
   const select = (id: string) => {
     setFocusId(null);
+    setOneShot(null);
+    setOnceArmed(false);
     setSelectedId(id);
     selectedRef.current = id;
     setView("chat");
@@ -628,11 +633,17 @@ export function ChatApp({
       setThreadMemories(new Map());
       setDraftSearch(true);
       setDraftIncognito(incognito);
+      setOneShot(null);
+      setOnceArmed(false);
       setDraftInstructions("");
       setDraftProject(projectId);
       // A project's default model pins new chats in it; otherwise they start on Auto.
-      const preferred = projects.find((p) => p.id === projectId)?.defaultModel;
-      setDraftMode(preferred ? { kind: "model", ...preferred } : AUTO);
+      const project = projects.find((p) => p.id === projectId);
+      const preferred = project?.defaultModel;
+      const tier = project?.defaultTier;
+      setDraftMode(
+        preferred ? { kind: "model", ...preferred } : tier ? { kind: "tier", tier } : AUTO,
+      );
       clearAttachments();
       setView("chat");
     },
@@ -642,7 +653,9 @@ export function ChatApp({
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
   const openThread = threads.find((t) => t.id === selectedId);
   /** Auto, a pinned tier, or a pinned model (RT-01): saved per chat. */
-  const mode: RouteMode = openThread ? modeOf(openThread) : draftMode;
+  const savedMode: RouteMode = openThread ? modeOf(openThread) : draftMode;
+  // RT-01: a pin for the next message only overrides the chat's mode, then clears.
+  const mode: RouteMode = oneShot ?? savedMode;
   /** The chat keeps to its provider on a price tie (RT-06). */
   const stayOn = lastModelOf(messages, catalog)?.provider;
   /**
@@ -663,6 +676,11 @@ export function ChatApp({
     return pick(savedProviders) ?? pick(["anthropic", "openai"]) ?? fallback;
   })();
   const chooseMode = (next: RouteMode) => {
+    if (onceArmed) {
+      setOneShot(next);
+      return;
+    }
+    setOneShot(null);
     if (!openThread) {
       setDraftMode(next);
       return;
@@ -905,6 +923,9 @@ export function ChatApp({
         }
       : found;
     const sent = confirmed.dropFiles ? [] : attachments.take();
+    // A one-message pin is used up by this send.
+    setOneShot(null);
+    setOnceArmed(false);
     if (confirmed.dropFiles) attachments.clear();
     try {
       let threadId = selectedId;
@@ -1281,7 +1302,13 @@ export function ChatApp({
         await refreshProjects();
         // `projects` in newChat's closure doesn't have the new one yet: apply its model here.
         newChat(created.id);
-        setDraftMode(form.defaultModel ? { kind: "model", ...form.defaultModel } : AUTO);
+        setDraftMode(
+          form.defaultModel
+            ? { kind: "model", ...form.defaultModel }
+            : form.defaultTier
+              ? { kind: "tier", tier: form.defaultTier }
+              : AUTO,
+        );
         return;
       }
       await refreshProjects();
@@ -2081,6 +2108,11 @@ export function ChatApp({
                         best: tierDescription("best"),
                       },
                       preview: previewTier,
+                      once: onceArmed || oneShot !== null,
+                      onOnce: (on) => {
+                        setOnceArmed(on);
+                        if (!on) setOneShot(null);
+                      },
                       onSelect: (choice) => {
                         chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
                       },
@@ -2185,6 +2217,7 @@ export function ChatApp({
                   name: editedProject.name,
                   instructions: editedProject.instructions,
                   defaultModel: editedProject.defaultModel,
+                  defaultTier: editedProject.defaultTier,
                 }
               : null
           }
