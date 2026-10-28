@@ -24,7 +24,7 @@ import {
 import { addCitations, addFileCitations } from "@/storage/citations";
 import { retrieveExcerpts } from "@/knowledge/retrieve";
 import { ARTIFACT_GUIDE, artifactsIn } from "@/artifacts/parse";
-import { saveArtifacts } from "@/storage/artifacts";
+import { listArtifacts, saveArtifacts } from "@/storage/artifacts";
 import { listProjectFiles } from "@/storage/projectFiles";
 import { isRecallQuestion, memorySimilarity, recallPastChats } from "@/knowledge/recall";
 import { summarizedPath } from "./summary";
@@ -429,6 +429,25 @@ async function streamAnswer(
   });
   await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
 
+  /** AR-02: artifacts you edited or restored, so the model works from what you have now. */
+  const editedArtifacts = async () => {
+    const changed = (await listArtifacts(db, tenant, input.threadId)).filter(
+      (a) => a.source !== "model",
+    );
+    return changed.length === 0
+      ? []
+      : [
+          [
+            "<edited_artifacts>",
+            "The user changed these artifacts after you last wrote them. This is their current content; build on it (same id) rather than on your earlier version.",
+            ...changed.map(
+              (a) =>
+                `<artifact id="${a.key}" type="${a.type}" title="${a.title.replace(/"/g, "'")}"${a.language ? ` language="${a.language}"` : ""}>\n${a.content}\n</artifact>`,
+            ),
+            "</edited_artifacts>",
+          ].join("\n"),
+        ];
+  };
   /**
    * PM-04: the memories for this question. When they don't all fit the budget they're ranked by
    * shared words and, with an embedding model, by meaning.
@@ -473,6 +492,7 @@ async function streamAnswer(
     injected.map((m) => m.text),
     earlier,
     [ARTIFACT_GUIDE],
+    await editedArtifacts(),
   );
 
   /** One provider call, streamed into the answer. */

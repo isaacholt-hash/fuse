@@ -49,6 +49,8 @@ export function systemPrompt(
   memories: string[] = [],
   earlier: string | null = null,
   guides: string[] = [],
+  /** Sections that change often, after everything else so the rest stays cached. */
+  tail: string[] = [],
 ): string | undefined {
   // App guides (e.g. artifacts) first: they never change, so they head the cached prefix.
   const sections: string[] = [...guides];
@@ -83,6 +85,7 @@ export function systemPrompt(
       ].join("\n"),
     );
   }
+  sections.push(...tail);
   return sections.length > 0 ? sections.join("\n\n") : undefined;
 }
 

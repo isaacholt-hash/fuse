@@ -117,7 +117,14 @@ import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog, type KnowledgeFileView } from "@/ui/Projects";
 import { ArtifactPanel, type ArtifactView } from "@/ui/Artifacts";
-import { listArtifacts, type Artifact } from "@/storage/artifacts";
+import {
+  addVersion,
+  listArtifacts,
+  listVersions,
+  type Artifact,
+  type ArtifactVersion,
+} from "@/storage/artifacts";
+import { diffLines } from "@/artifacts/diff";
 import { artifactsIn, splitAnswer } from "@/artifacts/parse";
 import {
   addProjectFile,
@@ -269,6 +276,10 @@ export function ChatApp({
   // The chat's artifacts (AR-01), and the one open in the side panel, by key.
   const [threadArtifacts, setThreadArtifacts] = useState<Artifact[]>([]);
   const [openArtifact, setOpenArtifact] = useState<string | null>(null);
+  // AR-02: the open artifact's versions, the one on screen (null = latest) and a diff base.
+  const [versions, setVersions] = useState<ArtifactVersion[]>([]);
+  const [shownVersion, setShownVersion] = useState<number | null>(null);
+  const [compareWith, setCompareWith] = useState<number | null>(null);
   // The last message the model gets as a summary rather than in full (PM-06), on this path.
   const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
@@ -793,7 +804,7 @@ export function ChatApp({
         const made = artifactsIn(rows.findLast((m) => m.role === "assistant")?.content ?? "").at(
           -1,
         );
-        if (made && selectedRef.current === threadId) setOpenArtifact(made.key);
+        if (made && selectedRef.current === threadId) showArtifact(made.key);
         nameThread(threadId, rows);
         summarizeIfLong(threadId, routed.model);
       }
@@ -1326,6 +1337,17 @@ export function ChatApp({
       ? [...shown.slice(0, -1), { ...latest, escalateTo: tierLabel(stronger.to) }]
       : shown;
   const streaming = selectedId !== null && selectedId in live;
+  const openSaved = threadArtifacts.find((a) => a.key === openArtifact);
+  useEffect(() => {
+    if (!openSaved) return;
+    listVersions(db, tenant, openSaved.id).then(setVersions, report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
+  }, [db, tenant, openSaved?.id, openSaved?.version]);
+  const showArtifact = (key: string | null) => {
+    setOpenArtifact(key);
+    setShownVersion(null);
+    setCompareWith(null);
+  };
   // The open artifact: as it streams in, or its saved latest version.
   const panelArtifact = ((): ArtifactView | null => {
     if (!openArtifact) return null;
@@ -1335,18 +1357,36 @@ export function ChatApp({
         )
       : undefined;
     if (writing?.kind === "artifact") return { ...writing.artifact, version: null };
-    const saved = threadArtifacts.find((a) => a.key === openArtifact);
+    const saved = openSaved;
+    const shown = versions.find((v) => v.version === shownVersion);
     return saved
       ? {
           key: saved.key,
           title: saved.title,
           type: saved.type,
           language: saved.language,
-          content: saved.content,
+          content: shown?.content ?? saved.content,
           version: saved.version,
         }
       : null;
   })();
+  const artifactDiff = (() => {
+    if (!panelArtifact || compareWith === null) return null;
+    const base = versions.find((v) => v.version === compareWith);
+    return base ? diffLines(base.content, panelArtifact.content) : null;
+  })();
+  /** Restores a version or saves an edit: either way a new version on top (AR-02). */
+  const newVersion = (content: string, source: "user" | "restore") => {
+    const threadId = selectedId;
+    if (!openSaved || !threadId) return;
+    addVersion(db, tenant, openSaved.id, content, source)
+      .then(() => {
+        setShownVersion(null);
+        setCompareWith(null);
+        return reload(threadId);
+      })
+      .catch(report);
+  };
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
@@ -1939,7 +1979,7 @@ export function ChatApp({
                     busy={streaming}
                     focusId={focusId}
                     openArtifact={openArtifact}
-                    onOpenArtifact={setOpenArtifact}
+                    onOpenArtifact={showArtifact}
                     onFeedback={(id, value) => {
                       const threadId = selectedId;
                       if (!threadId) return;
@@ -2028,9 +2068,37 @@ export function ChatApp({
                 </div>
                 {panelArtifact && (
                   <ArtifactPanel
+                    key={panelArtifact.key}
                     artifact={panelArtifact}
                     onClose={() => {
-                      setOpenArtifact(null);
+                      showArtifact(null);
+                    }}
+                    versions={{
+                      versions: versions.map((v) => ({
+                        version: v.version,
+                        by: v.source === "model" ? "AI" : v.source === "user" ? "You" : "Restored",
+                        when: new Date(v.createdAt).toLocaleString([], {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        }),
+                      })),
+                      shown: shownVersion,
+                      compareWith,
+                      diff: artifactDiff,
+                      onShow: (v) => {
+                        setShownVersion(v);
+                        setCompareWith(null);
+                      },
+                      onCompare: setCompareWith,
+                      onRestore: (v) => {
+                        const old = versions.find((x) => x.version === v);
+                        if (old) newVersion(old.content, "restore");
+                      },
+                      onSaveEdit: (content) => {
+                        newVersion(content, "user");
+                      },
                     }}
                   />
                 )}

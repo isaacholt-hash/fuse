@@ -687,6 +687,44 @@ test("an artifact shows as a card, opens in the side panel, and the same id make
   ).toBeInTheDocument();
 });
 
+test("artifact versions: pick one, diff, restore, and your edits go back to the model", async () => {
+  const doc = (body: string) =>
+    `<artifact id="note" type="markdown" title="Note">\n${body}\n</artifact>\nDone.`;
+  const { options, user } = setup({
+    anthropic: [() => answer(doc("Alpha")), () => answer(doc("Beta")), () => answer("Noted.")],
+  });
+  await user.type(await composer(), "Write a note{Enter}");
+  await screen.findByRole("complementary", { name: "Artifact: Note" });
+  await user.type(await composer(), "Change it{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Note" }));
+  expect(await panel.findByText("Beta")).toBeInTheDocument();
+
+  await user.selectOptions(panel.getByLabelText("Compare with"), "1");
+  const changes = panel.getByLabelText("Changes");
+  expect(changes).toHaveTextContent("−Alpha");
+  expect(changes).toHaveTextContent("+Beta");
+
+  await user.selectOptions(panel.getByLabelText("Version"), "1");
+  expect(panel.getByText("Alpha")).toBeInTheDocument();
+  await user.click(panel.getByRole("button", { name: /Restore/ }));
+  expect(await panel.findByText(/version 3/)).toBeInTheDocument();
+  expect(panel.getByText("Alpha")).toBeInTheDocument();
+
+  await user.click(panel.getByRole("button", { name: "Edit artifact" }));
+  const box = panel.getByLabelText("Artifact content");
+  await user.clear(box);
+  await user.type(box, "Gamma");
+  await user.click(panel.getByRole("button", { name: "Save as a new version" }));
+  expect(await panel.findByText(/version 4/)).toBeInTheDocument();
+  expect(panel.getByText("Gamma")).toBeInTheDocument();
+
+  await user.type(await composer(), "Thanks{Enter}");
+  expect(await screen.findByText("Noted.")).toBeInTheDocument();
+  const system = (options.at(-1) as { system?: string }).system ?? "";
+  expect(system).toContain("<edited_artifacts>");
+  expect(system).toContain('<artifact id="note" type="markdown" title="Note">\nGamma\n</artifact>');
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

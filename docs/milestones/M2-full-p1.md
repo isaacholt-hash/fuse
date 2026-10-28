@@ -50,7 +50,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 ### Artifacts
 
 - [x] **18. Artifacts v1 (AR-01).** Long or structured output (Markdown documents, code files) opens in a side panel; the model is instructed when to make one.
-- [ ] **19. Versions (AR-02).** Every edit is a new version: a list, a diff between any two, restore.
+- [x] **19. Versions (AR-02).** Every edit is a new version: a list, a diff between any two, restore.
 - [ ] **20. Ask AI to edit (AR-03).** Select text, "edit this": it routes like a message, shows its cost, and the result is a new version with the diff highlighted.
 - [ ] **21. Live preview (AR-05).** HTML, React, SVG and Mermaid render in a sandboxed frame with no network by default.
 - [ ] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
