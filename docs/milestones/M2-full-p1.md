@@ -42,7 +42,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 ### Knowledge & files
 
 - [x] **13. Embeddings + local vector index (MM-11).** sqlite-vec alongside SQLCipher; an embedding model per provider; calls logged as `purpose: embed`. **Isaac decides in that PR:** provider embeddings (recommended: cheap and simple) or a local model.
-- [ ] **14. Retrieval over large files (FK-02, FK-03).** Big files are chunked and indexed instead of refused; answers cite file and page; whole-file versus retrieval can be overridden per file.
+- [x] **14. Retrieval over large files (FK-02, FK-03).** Big files are chunked and indexed instead of refused; answers cite file and page; whole-file versus retrieval can be overridden per file.
 - [ ] **15. Project knowledge (PM-09).** Files attached to a project, indexed once, available to every chat in it, with index status and cost.
 - [ ] **16. Memory and history recall (PM-04, PM-10).** Memories found by meaning as well as keywords; "what did we decide about X" searches past chats and cites the thread.
 - [ ] **17. URL fetch (FK-06).** A pasted link is read as text (no scripts), cached for 24 hours, with a size cap and a cost estimate.
@@ -56,6 +56,8 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [ ] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
 
 ## Notes
+
+- Follow-up from step 14: search inside large PDFs (needs a local PDF text extractor; PDFs are still sent whole, up to 100 pages).
 
 - Each step keeps the M1 rules: one PR, tests, screenshot, secret scan, CI green, then merge.
 - Provider facts change monthly: step 1 is verified against the live docs, and every price keeps a `verified_on` date.

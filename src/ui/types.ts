@@ -60,6 +60,9 @@ export interface PendingAttachment {
   /** e.g. "1,229 tokens · $0.0025 per turn" */
   detail?: string;
   error?: string;
+  /** Large text files (FK-03): sent whole or searched; `canWhole` false past the whole limit. */
+  mode?: "whole" | "retrieval";
+  canWhole?: boolean;
 }
 
 export interface MessageView {
@@ -95,6 +98,8 @@ export interface MessageView {
   branch?: { position: number; total: number };
   /** The messages above go to the model as a summary (PM-06). */
   summaryAbove?: boolean;
+  /** Parts of attached files this answer was given, e.g. "book.txt, lines 120–140" (FK-02). */
+  fileSources?: string[];
 }
 
 /** The routing badge on an answer. */

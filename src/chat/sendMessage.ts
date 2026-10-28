@@ -3,6 +3,7 @@ import {
   toolPrice,
   type Catalog,
   type CatalogModel,
+  type EmbeddingModel,
   type ProviderId,
 } from "@/catalog/catalog";
 import { cost } from "@/cost/cost";
@@ -20,14 +21,15 @@ import {
   updateMessageContent,
   type Message,
 } from "@/storage/messages";
-import { addCitations } from "@/storage/citations";
+import { addCitations, addFileCitations } from "@/storage/citations";
+import { retrieveExcerpts } from "@/knowledge/retrieve";
 import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
 import { selectMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
-import { filesForMessages, linkFiles } from "@/storage/files";
+import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
 import { getThread, renameThread, setActiveLeaf } from "@/storage/threads";
@@ -68,6 +70,10 @@ export interface SendInput {
   onCitations?: (sources: Source[]) => void;
   /** How the model was picked (RT-09); saved with the answer. */
   route?: RouteInfo;
+  /** Embeds questions to search large attached files (FK-02); null when there's no OpenAI key. */
+  embedding?: EmbeddingModel | null;
+  /** How each attached file is sent (FK-03); missing = whole. */
+  fileModes?: Partial<Record<string, FileMode>>;
   /**
    * Same tier, other provider (MM-06): answers instead when `model`'s provider fails with a
    * retryable error (after its own retries) before any text arrived.
@@ -142,6 +148,16 @@ async function attachmentsFor(
     if (!deps.files) throw new Error("This message has attachments but no file store is set up");
     const loaded: Attachment[] = [];
     for (const f of files) {
+      if (f.mode === "retrieval") {
+        // Searched per question (FK-03): only a note goes in the history; excerpts come with
+        // the question being answered (contextOf).
+        loaded.push({
+          kind: "text",
+          name: f.name,
+          text: "(A large file. It isn't sent whole: the parts that match each question are.)",
+        });
+        continue;
+      }
       const bytes = await deps.files.get(f.sha256);
       if (f.mime.startsWith("image/")) {
         loaded.push({ kind: "image", mediaType: f.mime, data: toBase64(bytes) });
@@ -171,14 +187,19 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
 
   const { path: previous } = await listPath(db, tenant, input.threadId);
   const userMessageId = await addQuestion(deps, input.threadId, previous.at(-1)?.id ?? null, text);
-  await linkFiles(db, tenant, userMessageId, fileIds);
+  await linkFiles(db, tenant, userMessageId, fileIds, input.fileModes);
   if (previous.length === 0) {
     const thread = await getThread(db, tenant, input.threadId);
     if (thread?.titleSource === "auto") {
       await renameThread(db, tenant, input.threadId, titleFrom(text, fileIds.length > 0), "auto");
     }
   }
-  return streamAnswer(deps, input, userMessageId, await historyTo(deps, input.threadId));
+  return streamAnswer(
+    deps,
+    input,
+    userMessageId,
+    await historyTo(deps, input.threadId, input.embedding),
+  );
 }
 
 /** Saves a question under `parentId` and makes it the end of the thread's path. */
@@ -202,19 +223,67 @@ async function addQuestion(
 interface Context {
   history: ChatMessage[];
   earlier: string | null;
+  /** File excerpts sent with the question, for the answer's citations (FK-02). */
+  fileSources: { chunkId: string; label: string }[];
 }
 
 /** The history to send: the thread's path, up to and including `lastId` (default: all of it). */
-async function historyTo(deps: ChatDeps, threadId: string, lastId?: string): Promise<Context> {
+async function historyTo(
+  deps: ChatDeps,
+  threadId: string,
+  embedding: EmbeddingModel | null | undefined,
+  lastId?: string,
+): Promise<Context> {
   const { path } = await listPath(deps.db, deps.tenant, threadId);
   const end = lastId === undefined ? path.length : path.findIndex((m) => m.id === lastId) + 1;
-  return contextOf(deps, threadId, path.slice(0, end));
+  return contextOf(deps, threadId, path.slice(0, end), embedding);
 }
 
-/** Older turns go as a summary once the thread has one (PM-06); the rest is sent in full. */
-async function contextOf(deps: ChatDeps, threadId: string, path: Message[]): Promise<Context> {
+/**
+ * Older turns go as a summary once the thread has one (PM-06); the rest is sent in full. Large
+ * files are searched: the question gets the excerpts that match it (FK-02).
+ */
+async function contextOf(
+  deps: ChatDeps,
+  threadId: string,
+  path: Message[],
+  embedding: EmbeddingModel | null | undefined,
+): Promise<Context> {
   const { earlier, kept } = await summarizedPath(deps, threadId, path);
-  return { history: historyFor(kept, await attachmentsFor(deps, kept)), earlier };
+  const history = historyFor(kept, await attachmentsFor(deps, kept));
+  const files = await filesForMessages(
+    deps.db,
+    deps.tenant,
+    kept.filter((m) => m.role === "user").map((m) => m.id),
+  );
+  const searched = [
+    ...new Map(
+      [...files.values()]
+        .flat()
+        .filter((f) => f.mode === "retrieval")
+        .map((f) => [f.id, f]),
+    ).values(),
+  ];
+  const last = history.at(-1);
+  if (searched.length === 0 || last?.role !== "user") return { history, earlier, fileSources: [] };
+  if (!embedding) {
+    throw new Error(
+      "Searching inside large files needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or attach the file again and send it whole.",
+    );
+  }
+  if (!deps.files) throw new Error("This message has attachments but no file store is set up");
+  const excerpts = await retrieveExcerpts(
+    { ...deps, files: deps.files, priceVersion: deps.catalog.priceVersion },
+    embedding,
+    searched,
+    kept.findLast((m) => m.role === "user")?.content ?? "",
+    threadId,
+  );
+  last.attachments = [
+    ...(last.attachments ?? []),
+    { kind: "text", name: "Excerpts from your files", text: excerpts.text },
+  ];
+  return { history, earlier, fileSources: excerpts.sources };
 }
 
 /**
@@ -238,8 +307,9 @@ export async function editQuestion(
     tenant,
     id,
     files.map((f) => f.id),
+    Object.fromEntries(files.map((f) => [f.id, f.mode ?? "whole"])),
   );
-  return streamAnswer(deps, input, id, await historyTo(deps, input.threadId));
+  return streamAnswer(deps, input, id, await historyTo(deps, input.threadId, input.embedding));
 }
 
 /** Answers a question again (CH-04): the new answer is a sibling of the old one. */
@@ -251,13 +321,22 @@ export async function regenerate(
   const answer = path.find((m) => m.id === input.answerId && m.role === "assistant");
   const question = answer && path.find((m) => m.id === answer.parentId);
   if (!question) throw new Error("That answer isn't in this chat any more");
-  return streamAnswer(deps, input, question.id, await historyTo(deps, input.threadId, question.id));
+  return streamAnswer(
+    deps,
+    input,
+    question.id,
+    await historyTo(deps, input.threadId, input.embedding, question.id),
+  );
 }
 
 export type RetryInput = Omit<SendInput, "text" | "fileIds">;
 
 /** The last question, its answers, and the history up to and including that question. */
-async function lastTurn(deps: ChatDeps, threadId: string) {
+async function lastTurn(
+  deps: ChatDeps,
+  threadId: string,
+  embedding: EmbeddingModel | null | undefined,
+) {
   const { path: messages } = await listPath(deps.db, deps.tenant, threadId);
   const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
   const question = messages[lastUserIndex];
@@ -265,7 +344,7 @@ async function lastTurn(deps: ChatDeps, threadId: string) {
   return {
     question,
     answer: messages.slice(lastUserIndex + 1).findLast((m) => m.role === "assistant"),
-    context: await contextOf(deps, threadId, messages.slice(0, lastUserIndex + 1)),
+    context: await contextOf(deps, threadId, messages.slice(0, lastUserIndex + 1), embedding),
   };
 }
 
@@ -275,7 +354,7 @@ async function lastTurn(deps: ChatDeps, threadId: string) {
  * stronger re-run of stays, and the new one is a re-run of it too.
  */
 export async function retryLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
-  const { question, answer, context } = await lastTurn(deps, input.threadId);
+  const { question, answer, context } = await lastTurn(deps, input.threadId, input.embedding);
   if (answer) await deleteMessage(deps.db, deps.tenant, answer.id);
   return streamAnswer(deps, input, question.id, context, answer?.escalatedFromId ?? null);
 }
@@ -285,7 +364,7 @@ export async function retryLast(deps: ChatDeps, input: RetryInput): Promise<Send
  * old answer on screen. Later turns send only the new one.
  */
 export async function escalateLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
-  const { question, answer, context } = await lastTurn(deps, input.threadId);
+  const { question, answer, context } = await lastTurn(deps, input.threadId, input.embedding);
   if (!answer) throw new Error("There's no answer to try again");
   return streamAnswer(deps, input, question.id, context, answer.id);
 }
@@ -294,7 +373,7 @@ async function streamAnswer(
   deps: ChatDeps,
   input: RetryInput,
   userMessageId: string,
-  { history, earlier }: Context,
+  { history, earlier, fileSources }: Context,
   escalatedFromId: string | null = null,
 ): Promise<SendResult> {
   const { db, tenant } = deps;
@@ -521,6 +600,9 @@ async function streamAnswer(
     requestId,
   });
   if (sources.length > 0) await addCitations(db, tenant, assistantMessageId, sources);
+  if (fileSources.length > 0) {
+    await addFileCitations(db, tenant, assistantMessageId, fileSources);
+  }
 
   return {
     userMessageId,

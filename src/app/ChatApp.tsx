@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input";
 import { findModel, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
-import { LARGE_TEXT_TOKENS } from "@/files/documents";
+import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
+import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
 import {
   effectiveInstructions,
@@ -44,7 +45,7 @@ import { findSecret, SECRET_LABELS } from "@/memory/secrets";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
 import type { ProviderAdapter } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
-import { citationsForMessages, type Citation } from "@/storage/citations";
+import { citationsForMessages, fileCitationsForMessages, type Citation } from "@/storage/citations";
 import { filesForMessages, type FileRecord } from "@/storage/files";
 import {
   getGlobalInstructions,
@@ -255,6 +256,8 @@ export function ChatApp({
   const [threadFiles, setThreadFiles] = useState<Map<string, FileRecord[]>>(new Map());
   // Web sources cited by the answers on screen, by message id.
   const [threadSources, setThreadSources] = useState<Map<string, Citation[]>>(new Map());
+  // Parts of large files the answers on screen were given, by message id (FK-02).
+  const [threadFileSources, setThreadFileSources] = useState<Map<string, string[]>>(new Map());
   // Memories sent with the answers on screen, by message id.
   const [threadMemories, setThreadMemories] = useState<Map<string, { text: string }[]>>(new Map());
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
@@ -426,18 +429,20 @@ export function ChatApp({
       );
       const answers = rows.filter((m) => m.role === "assistant").map((m) => m.id);
       const cited = await citationsForMessages(db, tenant, answers);
+      const fromFiles = await fileCitationsForMessages(db, tenant, answers);
       const used = await memoriesForMessages(db, tenant, answers);
       const upto = activeSummary(rows, await listSummaries(db, tenant, threadId))?.summary
         .uptoMessageId;
-      return { rows, all, attached, cited, used, upto: upto ?? null };
+      return { rows, all, attached, cited, used, upto: upto ?? null, fromFiles };
     },
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
   const reload = useCallback(
     async (threadId: string) => {
-      const { rows, all, attached, cited, used, upto } = await loadThread(threadId);
+      const { rows, all, attached, cited, used, upto, fromFiles } = await loadThread(threadId);
       if (selectedRef.current === threadId) {
+        setThreadFileSources(fromFiles);
         setMessages(rows);
         setSummaryUpto(upto);
         setThreadAll(all);
@@ -459,8 +464,9 @@ export function ChatApp({
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
         if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, all, attached, cited, used, upto } = await loadThread(lastThread);
+        const { rows, all, attached, cited, used, upto, fromFiles } = await loadThread(lastThread);
         if (selectedRef.current !== null) return; // the user already moved on
+        setThreadFileSources(fromFiles);
         setSelectedId(lastThread);
         selectedRef.current = lastThread;
         setMessages(rows);
@@ -710,6 +716,7 @@ export function ChatApp({
       model: routed.model,
       route: routed.info,
       fallback: routed.fallback,
+      embedding: embeddingModel(catalog, savedProviders),
       signal: controller.signal,
       onText,
       webSearch,
@@ -722,7 +729,12 @@ export function ChatApp({
     };
     try {
       const result = await (job.kind === "send"
-        ? sendMessage(deps, { ...input, text: job.text, fileIds: job.files.map((f) => f.id) })
+        ? sendMessage(deps, {
+            ...input,
+            text: job.text,
+            fileIds: job.files.map((f) => f.id),
+            fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
+          })
         : job.kind === "retry"
           ? retryLast(deps, input)
           : job.kind === "escalate"
@@ -757,7 +769,19 @@ export function ChatApp({
   ) => {
     const ready = confirmed.dropFiles
       ? []
-      : attachments.pending.flatMap((p) => (p.status === "ready" && p.file ? [p.file] : []));
+      : attachments.pending.flatMap((p) =>
+          p.status === "ready" && p.file
+            ? [{ ...p.file, ...(p.mode ? { mode: p.mode } : {}) }]
+            : [],
+        );
+    // FK-02: searching a file embeds it, and only OpenAI has embeddings.
+    const embedding = embeddingModel(catalog, savedProviders);
+    if (!embedding && ready.some((f) => f.mode === "retrieval")) {
+      setProblem(
+        "Searching inside a large file needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or switch the file to Whole.",
+      );
+      return;
+    }
     const search = searchOn;
     // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
     const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
@@ -1159,6 +1183,8 @@ export function ChatApp({
       if (liveHere.sources?.length) streamingAnswer.sources = liveHere.sources;
     }
     for (const v of views) {
+      const fromFiles = threadFileSources.get(v.id);
+      if (fromFiles?.length) v.fileSources = fromFiles;
       const info = threadBranches.get(v.id);
       if (info) v.branch = { position: info.position, total: info.total };
     }
@@ -1173,6 +1199,7 @@ export function ChatApp({
     threadSources,
     threadMemories,
     threadBranches,
+    threadFileSources,
     summaryUpto,
     fileUrls,
     catalog,
@@ -1209,6 +1236,7 @@ export function ChatApp({
       : 0;
     const micro = Math.round((tokens * priceToMicro(model.price.input)) / 1_000_000);
     const pages = p.pages ? `${number(p.pages)} page${p.pages === 1 ? "" : "s"} · ` : "";
+    const searched = p.mode === "retrieval";
     return {
       id: p.id,
       name: p.name,
@@ -1216,8 +1244,15 @@ export function ChatApp({
       kind: isImage ? "image" : "document",
       ...(p.url ? { url: p.url } : {}),
       ...(p.error ? { error: p.error } : {}),
-      ...(tokens ? { detail: `${pages}~${number(tokens)} tokens · ${money(micro)} per turn` } : {}),
-      ...(!isImage && tokens > LARGE_TEXT_TOKENS ? { large: true } : {}),
+      ...(tokens
+        ? {
+            detail: searched
+              ? `~${number(tokens)} tokens · searched: the best ~3,000 a turn`
+              : `${pages}~${number(tokens)} tokens · ${money(micro)} per turn`,
+          }
+        : {}),
+      ...(!isImage && !searched && tokens > LARGE_TEXT_TOKENS ? { large: true } : {}),
+      ...(p.mode ? { mode: p.mode, canWhole: tokens <= MAX_TEXT_TOKENS } : {}),
     };
   });
   const sendingImages = attachments.pending.some(
@@ -1845,6 +1880,7 @@ export function ChatApp({
                 blocked={blocked}
                 onAddFiles={attachments.add}
                 onRemoveAttachment={attachments.remove}
+                onAttachmentMode={attachments.setMode}
                 webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                 onToggleWebSearch={toggleSearch}
               />

@@ -584,6 +584,21 @@ export function Messages({
                         </ol>
                       </nav>
                     )}
+                    {message.fileSources && message.fileSources.length > 0 && (
+                      <div className="mt-4" aria-label="From your files">
+                        <p className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                          From your files
+                        </p>
+                        <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+                          {message.fileSources.map((label, i) => (
+                            <li key={`${String(i)}-${label}`} className="flex items-center gap-1.5">
+                              <FileText className="size-3 shrink-0" />
+                              {label}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {message.notice && (
                       <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
                         <CircleAlert className="size-3" />
@@ -743,6 +758,7 @@ export function Composer({
   blocked = null,
   onAddFiles,
   onRemoveAttachment,
+  onAttachmentMode,
   webSearch = null,
   onToggleWebSearch,
   routing,
@@ -767,6 +783,8 @@ export function Composer({
   blocked?: string | null;
   onAddFiles?: (files: File[]) => void;
   onRemoveAttachment?: (id: string) => void;
+  /** Whole or searched, for a large text file (FK-03). */
+  onAttachmentMode?: (id: string, mode: "whole" | "retrieval") => void;
   /** On / off, or null when the selected model can't search. */
   webSearch?: boolean | null;
   onToggleWebSearch?: () => void;
@@ -875,6 +893,34 @@ export function Composer({
                         : a.detail}
                   </span>
                 </span>
+                {a.mode && onAttachmentMode && (
+                  <span
+                    className="flex shrink-0 rounded-md border p-0.5 text-[10px]"
+                    role="group"
+                    aria-label={`How ${a.name} is sent`}
+                  >
+                    {(["retrieval", "whole"] as const).map((m) => (
+                      <button
+                        key={m}
+                        aria-pressed={a.mode === m}
+                        disabled={m === "whole" && !a.canWhole}
+                        title={
+                          m === "retrieval"
+                            ? "Send only the parts that match each question"
+                            : a.canWhole
+                              ? "Send the whole file with every message"
+                              : "Too long to send whole"
+                        }
+                        className={`rounded px-1.5 py-0.5 disabled:opacity-40 ${a.mode === m ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                        onClick={() => {
+                          onAttachmentMode(a.id, m);
+                        }}
+                      >
+                        {m === "retrieval" ? "Search" : "Whole"}
+                      </button>
+                    ))}
+                  </span>
+                )}
                 <Button
                   variant="ghost"
                   size="icon-xs"

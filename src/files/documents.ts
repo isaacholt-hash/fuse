@@ -3,11 +3,13 @@
 // provider after a model switch.
 import { strFromU8, unzipSync } from "fflate";
 
-/** Whole-file only in M1 (retrieval over large files is M2). */
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
 export const MAX_PDF_PAGES = 100;
+/** The most a text file can be sent whole; bigger ones are searched (FK-03). */
 export const MAX_TEXT_TOKENS = 200_000;
-/** Above this, the chip warns that the file is expensive to keep in a thread. */
+/** The most a text file can be to be searched (about 20 MB of text). */
+export const MAX_SEARCH_TOKENS = 5_000_000;
+/** Above this, a text file is searched by default (FK-03); the chip can switch it to whole. */
 export const LARGE_TEXT_TOKENS = 20_000;
 
 const TEXT_EXTENSIONS = new Set(
@@ -120,9 +122,9 @@ export async function prepareDocument(file: File): Promise<PreparedDocument> {
   const text = kind === "docx" ? docxText(bytes) : decodeText(bytes);
   if (!text.trim()) throw new Error("This file has no text.");
   const tokens = textTokens(text);
-  if (tokens > MAX_TEXT_TOKENS) {
+  if (tokens > MAX_SEARCH_TOKENS) {
     throw new Error(
-      `Too long to send whole (~${tokens.toLocaleString("en-US")} tokens). Search inside large files comes later.`,
+      `Too long even to search (~${tokens.toLocaleString("en-US")} tokens; the limit is ${MAX_SEARCH_TOKENS.toLocaleString("en-US")}).`,
     );
   }
   return {

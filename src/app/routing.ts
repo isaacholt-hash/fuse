@@ -3,6 +3,9 @@ import type { ClassifyInput } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
 import type { Message } from "@/storage/messages";
 
+/** What a searched file adds to a question: its excerpts (src/knowledge/retrieve.ts). */
+const SEARCHED_TOKENS = 3_200;
+
 /** A rough size for an image before the provider is known (about 1,000×1,000 px). */
 const IMAGE_TOKENS = 1_600;
 
@@ -30,7 +33,11 @@ export function classifyInput(
       historyTokens(history) +
       Math.ceil(text.length / 4) +
       images.length * IMAGE_TOKENS +
-      documents.reduce((sum, f) => sum + (f.tokenEstimate ?? 0), 0),
+      // A searched file sends excerpts, not itself (FK-03).
+      documents.reduce(
+        (sum, f) => sum + (f.mode === "retrieval" ? SEARCHED_TOKENS : (f.tokenEstimate ?? 0)),
+        0,
+      ),
     webSearch,
   };
 }
