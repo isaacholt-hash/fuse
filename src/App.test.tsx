@@ -1028,6 +1028,58 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
 
+test("prices: edit one model's price, then check the repo for a newer list and use it", async () => {
+  const { user, web } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Prices" }));
+  await user.click(section.getByRole("button", { name: "Edit Test Claude price" }));
+  const input = section.getByLabelText("Test Claude input price");
+  await user.clear(input);
+  await user.type(input, "4");
+  await user.click(section.getByRole("button", { name: "Save" }));
+  expect(await section.findByText("(yours)")).toBeInTheDocument();
+  const row = (name: string) => section.getByText(name, { exact: false }).closest("tr");
+  expect(row("Test Claude")).toHaveTextContent("Test Claude(yours)$4$10");
+
+  const model = (id: string, name: string, provider: string, input: number) => ({
+    provider,
+    id,
+    display_name: name,
+    context_window: 200000,
+    max_output: 1000,
+    price: { input, output: input * 4 },
+    capabilities: ["vision", "web_search"],
+    verified_on: "2026-11-01",
+    source_url: "https://example.com",
+  });
+  web.fetch = (url: string) => {
+    web.reads.push(url);
+    return Promise.resolve({
+      url,
+      contentType: "text/plain",
+      body: JSON.stringify({
+        price_version: "2026-11-01",
+        models: [
+          model("test-claude", "Test Claude", "anthropic", 2),
+          model("test-gpt", "Test GPT", "openai", 0.5),
+          model("test-best", "Test Best", "anthropic", 10),
+        ],
+      }),
+      truncated: false,
+    });
+  };
+  await user.click(section.getByRole("button", { name: "Check for new prices" }));
+  const changes = within(await section.findByLabelText("New prices"));
+  expect(changes.getByText(/input \$1 → \$0\.5, output \$4 → \$2/)).toBeInTheDocument();
+  expect(web.reads.at(-1)).toMatch(/raw\.githubusercontent\.com\/.*\/data\/models\.json$/);
+  await user.click(changes.getByRole("button", { name: "Use these prices" }));
+  expect(await section.findByText("Now using price list 2026-11-01.")).toBeInTheDocument();
+  expect(row("Test GPT")).toHaveTextContent("Test GPT$0.5$2");
+  // Your own edit stays.
+  expect(section.getByText("(yours)")).toBeInTheDocument();
+});
+
 test("chats can be pinned to the top, archived out of the list, and tagged and filtered", async () => {
   const { user } = setup();
   const gardenTitle = "Plan the vegetable garden";

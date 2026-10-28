@@ -5,7 +5,26 @@ import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { findModel, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
+import {
+  findModel,
+  parseCatalog,
+  type Catalog,
+  type CatalogModel,
+  type ProviderId,
+} from "@/catalog/catalog";
+import {
+  applyEdits,
+  baseCatalog,
+  diffPrices,
+  EDITS_SETTING,
+  FETCHED_SETTING,
+  modelKey,
+  oldestPriceDays,
+  parseEdits,
+  PRICES_URL,
+  STALE_DAYS,
+  type PriceEdits,
+} from "@/catalog/prices";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -28,6 +47,7 @@ import {
 import { housekeepingModel } from "@/chat/housekeeping";
 import { classify } from "@/routing/classify";
 import {
+  checkPolicy,
   chooseTier,
   tierModels,
   tierOf,
@@ -145,6 +165,7 @@ import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
 import { ImportPaste } from "@/ui/ImportPaste";
+import { PricesSection } from "@/ui/Prices";
 import { ImportSection, type ImportSourceView } from "@/ui/ImportSection";
 import { previewImport, writeImport, type ImportedChat, type ImportSource } from "@/import/write";
 import { readChatGptExport } from "@/import/chatgpt";
@@ -333,7 +354,7 @@ const lastModelOf = (messages: Message[], catalog: Catalog) => {
 export function ChatApp({
   db,
   tenant,
-  catalog,
+  catalog: shippedCatalog,
   policy,
   keysApi,
   adapterFor,
@@ -383,6 +404,15 @@ export function ChatApp({
   // Memories sent with the answers on screen, by message id.
   const [threadMemories, setThreadMemories] = useState<Map<string, { text: string }[]>>(new Map());
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
+  // MM-04: a newer fetched price list and your own edits, on top of the shipped catalog.
+  const [fetchedPrices, setFetchedPrices] = useState<string | null>(null);
+  const [priceEdits, setPriceEdits] = useState<PriceEdits>({});
+  const [pricesNoticeOff, setPricesNoticeOff] = useState(false);
+  const catalog = useMemo(
+    () => applyEdits(baseCatalog(shippedCatalog, fetchedPrices), priceEdits),
+    [shippedCatalog, fetchedPrices, priceEdits],
+  );
+  const checkedPrices = useRef<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [golden, setGolden] = useState<GoldenPrompt[] | null>(null);
@@ -570,6 +600,13 @@ export function ChatApp({
       report,
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
+    Promise.all([
+      getSetting(db, tenant, FETCHED_SETTING),
+      getSetting(db, tenant, EDITS_SETTING),
+    ]).then(([fetched, edits]) => {
+      setFetchedPrices(fetched);
+      setPriceEdits(parseEdits(edits));
+    }, report);
     listGoldenPrompts(db, tenant).then((p) => {
       setGolden(p);
     }, report);
@@ -2112,6 +2149,38 @@ export function ChatApp({
             </Button>
           </div>
         )}
+        {!pricesNoticeOff && oldestPriceDays(catalog, at) > STALE_DAYS && (
+          <div
+            aria-label="Prices notice"
+            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+          >
+            <CircleAlert className="size-3.5 text-amber-600" />
+            <span className="flex-1">
+              Some prices were last checked {oldestPriceDays(catalog, at)} days ago, so costs may be
+              off.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setPricesNoticeOff(true);
+                setView("settings");
+              }}
+            >
+              Check prices
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss prices notice"
+              onClick={() => {
+                setPricesNoticeOff(true);
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        )}
         {alerts.map((a, i) => (
           <div
             key={`${String(i)}-${a}`}
@@ -2304,6 +2373,63 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              prices={
+                <PricesSection
+                  rows={catalog.models.map((m) => ({
+                    key: modelKey(m),
+                    name: m.displayName,
+                    ...m.price,
+                    verifiedOn: m.verifiedOn,
+                    edited: modelKey(m) in priceEdits,
+                  }))}
+                  version={catalog.priceVersion}
+                  oldestDays={oldestPriceDays(catalog, at)}
+                  staleDays={STALE_DAYS}
+                  onSave={(key, price) => {
+                    const next = Object.fromEntries(
+                      Object.entries(priceEdits).filter(([k]) => k !== key),
+                    );
+                    if (price && price.input !== undefined && price.output !== undefined) {
+                      next[key] = {
+                        input: price.input,
+                        output: price.output,
+                        ...(price.cachedInput === undefined
+                          ? {}
+                          : { cachedInput: price.cachedInput }),
+                        ...(price.cacheWrite === undefined ? {} : { cacheWrite: price.cacheWrite }),
+                        editedOn: new Date().toISOString().slice(0, 10),
+                      };
+                    }
+                    setPriceEdits(next);
+                    setSetting(db, tenant, EDITS_SETTING, JSON.stringify(next)).catch(report);
+                  }}
+                  onCheck={async () => {
+                    if (!web) throw new Error("Checking prices needs the desktop app.");
+                    const page = await web.fetch(PRICES_URL);
+                    const next = parseCatalog(JSON.parse(page.body));
+                    const problems = checkPolicy(policy, next);
+                    if (problems.length > 0) {
+                      throw new Error(
+                        `That price list doesn't fit the routing tiers: ${problems.join("; ")}`,
+                      );
+                    }
+                    const current = baseCatalog(shippedCatalog, fetchedPrices);
+                    checkedPrices.current = page.body;
+                    return {
+                      version: next.priceVersion,
+                      changes:
+                        next.priceVersion < current.priceVersion ? [] : diffPrices(current, next),
+                    };
+                  }}
+                  onApply={async () => {
+                    const body = checkedPrices.current;
+                    if (!body) return;
+                    await setSetting(db, tenant, FETCHED_SETTING, body);
+                    setFetchedPrices(body);
+                    setPricesNoticeOff(true);
+                  }}
+                />
               }
               budgets={
                 <BudgetsSection
