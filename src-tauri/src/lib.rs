@@ -2,6 +2,7 @@ mod db;
 mod files;
 mod keys;
 mod transport;
+mod web;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +22,7 @@ pub fn run() {
             keys::commands::key_delete,
             transport::commands::provider_fetch,
             transport::commands::provider_abort,
+            web::commands::url_fetch,
             files::commands::file_put,
             files::commands::file_get,
             db::commands::db_open,

@@ -759,6 +759,7 @@ export function Composer({
   onAddFiles,
   onRemoveAttachment,
   onAttachmentMode,
+  onAddLink,
   webSearch = null,
   onToggleWebSearch,
   routing,
@@ -785,6 +786,8 @@ export function Composer({
   onRemoveAttachment?: (id: string) => void;
   /** Whole or searched, for a large text file (FK-03). */
   onAttachmentMode?: (id: string, mode: "whole" | "retrieval") => void;
+  /** A pasted link: read the page and attach its text (FK-06). */
+  onAddLink?: (url: string) => void;
   /** On / off, or null when the selected model can't search. */
   webSearch?: boolean | null;
   onToggleWebSearch?: () => void;
@@ -955,7 +958,11 @@ export function Composer({
               if (onAddFiles && e.clipboardData.files.length > 0) {
                 e.preventDefault();
                 addFiles(e.clipboardData.files);
+                return;
               }
+              // A pasted link is also read as an attachment; the link text stays in the message.
+              const pasted = e.clipboardData.getData("text/plain").trim();
+              if (onAddLink && /^https?:\/\/\S+$/i.test(pasted)) onAddLink(pasted);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
