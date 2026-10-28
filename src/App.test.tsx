@@ -1,5 +1,5 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
@@ -188,6 +188,19 @@ function setup(
     },
   });
   const files = memoryFilesApi();
+  // The global shortcut (CH-08): what was registered, and a way to "press" it.
+  const quick = {
+    registered: [] as (string | null)[],
+    press: (): void => undefined,
+    set(shortcut: string | null) {
+      quick.registered.push(shortcut);
+      return Promise.resolve({ shortcut, mayNotWork: false });
+    },
+    onCapture(run: () => void) {
+      quick.press = run;
+      return Promise.resolve(() => undefined);
+    },
+  };
   // Files handed to "Save as…" (AR-04).
   const saves: { name: string; bytes: Uint8Array }[] = [];
   // Pages handed to the preview scheme (AR-05).
@@ -215,6 +228,7 @@ function setup(
       files={files}
       prepareImage={fakePrepare}
       web={web}
+      quickCapture={quick}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -239,6 +253,7 @@ function setup(
     web,
     previews,
     saves,
+    quick,
     user: userEvent.setup(),
   };
 }
@@ -878,6 +893,36 @@ test("command palette: Ctrl+Shift+P, type, Enter runs it; recent chats are there
   expect(screen.getAllByRole("option")[0]).toHaveTextContent("Settings");
   await user.keyboard("{Enter}");
   expect(await screen.findByRole("region", { name: "Budgets" })).toBeInTheDocument();
+});
+
+test("quick capture: the default shortcut is registered, pressing it opens a new chat, Settings changes it", async () => {
+  const { quick, user } = setup({ anthropic: [() => answer("Ok.")] });
+  await user.type(await composer(), "First{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(quick.registered).toEqual(["Ctrl+Alt+Space"]);
+  });
+  act(() => {
+    quick.press();
+  });
+  expect(await screen.findByText("What are you working on?")).toBeInTheDocument();
+
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Quick capture" }));
+  expect(section.getByRole("status")).toHaveTextContent("On: Ctrl+Alt+Space");
+  await user.clear(section.getByLabelText("Quick capture shortcut"));
+  await user.type(section.getByLabelText("Quick capture shortcut"), "Super+J{Enter}");
+  await waitFor(() => {
+    expect(quick.registered.at(-1)).toBe("Super+J");
+  });
+  await user.click(
+    within(screen.getByRole("region", { name: "Quick capture" })).getByRole("button", {
+      name: "Turn off",
+    }),
+  );
+  await waitFor(() => {
+    expect(quick.registered.at(-1)).toBeNull();
+  });
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

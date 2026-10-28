@@ -137,6 +137,8 @@ import { prepareDocument } from "@/files/documents";
 import { addFile } from "@/storage/files";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
+import { QuickCaptureSection } from "@/ui/QuickCapture";
+import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
   addBudget,
@@ -224,6 +226,8 @@ export interface ChatAppProps {
   preview?: PreviewApi;
   /** "Save as…" for artifact exports (AR-04). */
   exporter?: ExportApi;
+  /** The global quick-capture shortcut (CH-08, PL-07). */
+  quickCapture?: QuickCaptureApi;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -288,6 +292,7 @@ export function ChatApp({
   web,
   preview,
   exporter,
+  quickCapture,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -386,6 +391,12 @@ export function ChatApp({
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   const [savings, setSavings] = useState<SavingsView | null>(null);
+  // Quick capture (CH-08): the active shortcut, and what the desktop said about it.
+  const [shortcut, setShortcut] = useState<{
+    shortcut: string | null;
+    mayNotWork: boolean;
+    error: string | null;
+  }>({ shortcut: null, mayNotWork: false, error: null });
   // The command palette (CH-08).
   const [paletteOpen, setPaletteOpen] = useState(false);
   // Search across chats (CH-02), and the message a result opened at.
@@ -1691,6 +1702,56 @@ export function ChatApp({
     renameThread(db, tenant, id, title).then(refreshThreads).catch(report);
   };
 
+  /** Applies a quick-capture shortcut (null = off) and remembers it. */
+  const applyShortcut = useCallback(
+    async (value: string | null, save: boolean) => {
+      if (!quickCapture) return;
+      try {
+        const status = await quickCapture.set(value);
+        setShortcut({ ...status, error: null });
+        if (save) await setSetting(db, tenant, SHORTCUT_SETTING, value ?? "off");
+      } catch (e) {
+        setShortcut((s) => ({ ...s, error: e instanceof Error ? e.message : String(e) }));
+      }
+    },
+    [quickCapture, db, tenant],
+  );
+  useEffect(() => {
+    if (!quickCapture) return;
+    getSetting(db, tenant, SHORTCUT_SETTING).then(
+      (saved) => applyShortcut(saved === "off" ? null : (saved ?? DEFAULT_SHORTCUT), false),
+      report,
+    );
+  }, [quickCapture, db, tenant, applyShortcut]);
+  // The shortcut was pressed anywhere: a new chat, ready to type.
+  const newChatRef = useRef(newChat);
+  useEffect(() => {
+    newChatRef.current = newChat;
+  });
+  useEffect(() => {
+    if (!quickCapture) return;
+    let stop: (() => void) | null = null;
+    let gone = false;
+    void quickCapture
+      .onCapture(() => {
+        newChatRef.current();
+        setTimeout(() => {
+          document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+        }, 50);
+      })
+      .then(
+        (unlisten) => {
+          if (gone) unlisten();
+          else stop = unlisten;
+        },
+        () => undefined, // outside the desktop app there's no event bus to listen on
+      );
+    return () => {
+      gone = true;
+      stop?.();
+    };
+  }, [quickCapture]);
+
   /** CH-08: everything the app can do, plus recent chats, for the palette. */
   const paletteItems: PaletteItem[] = [
     {
@@ -1939,6 +2000,19 @@ export function ChatApp({
                     value={globalInstructions}
                     maxChars={MAX_INSTRUCTION_CHARS}
                     onSave={saveGlobalInstructions}
+                  />
+                )
+              }
+              quickCapture={
+                quickCapture && (
+                  <QuickCaptureSection
+                    key={shortcut.shortcut ?? "off"}
+                    shortcut={shortcut.shortcut}
+                    mayNotWork={shortcut.mayNotWork}
+                    error={shortcut.error}
+                    onSave={(value) => {
+                      void applyShortcut(value, true);
+                    }}
                   />
                 )
               }
