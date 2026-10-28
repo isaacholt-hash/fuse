@@ -379,6 +379,64 @@ test("edit and regenerate make branches; the path and the history follow the new
   ]);
 });
 
+describe("failover (MM-06)", () => {
+  const overloaded = async function* (): AsyncGenerator<StreamEvent> {
+    await Promise.resolve();
+    yield* [];
+    throw new ProviderError("overloaded", "Overloaded", { status: 529, code: "overloaded_error" });
+  };
+
+  test("a provider that's down hands the answer to the fallback, and both calls are logged", async () => {
+    const { db, deps, fakes } = setup({ anthropic: overloaded, openai: () => answer("From GPT") });
+    const thread = await createThread(db, t);
+    const r = await sendMessage(deps, {
+      threadId: thread.id,
+      model: claude,
+      fallback: gpt,
+      text: "question",
+    });
+    expect(r).toMatchObject({ status: "complete", failedOverFrom: "anthropic" });
+    expect(r.notice).toBe("Anthropic is overloaded right now. Test GPT answered instead.");
+    const [, saved] = await listMessages(db, t, thread.id);
+    expect(saved).toMatchObject({ provider: "openai", model: "test-gpt", content: "From GPT" });
+    expect(fakes.openai.calls[0]).toEqual([{ role: "user", content: "question" }]);
+    const log = await listRecentRequests(db, t, 10);
+    expect(log.map((x) => [x.provider, x.errorCode])).toEqual([
+      ["openai", null],
+      ["anthropic", "overloaded_error"],
+    ]);
+  });
+
+  test("no failover without a fallback, for errors the user must fix, or after text streamed", async () => {
+    const auth = async function* (): AsyncGenerator<StreamEvent> {
+      await Promise.resolve();
+      yield* [];
+      throw new ProviderError("auth", "bad key", { status: 401 });
+    };
+    const midway = async function* (): AsyncGenerator<StreamEvent> {
+      yield { type: "text", text: "Half" };
+      await Promise.resolve();
+      throw new ProviderError("overloaded", "Overloaded");
+    };
+    for (const [script, fallback] of [
+      [overloaded, null],
+      [auth, gpt],
+      [midway, gpt],
+    ] as const) {
+      const { db, deps, fakes } = setup({ anthropic: script });
+      const thread = await createThread(db, t);
+      const r = await sendMessage(deps, {
+        threadId: thread.id,
+        model: claude,
+        fallback,
+        text: "q",
+      });
+      expect(r.status).toBe("error");
+      expect(fakes.openai.calls).toHaveLength(0);
+    }
+  });
+});
+
 test("no usage from the provider: cost unknown, not a fake $0", async () => {
   const { db, deps } = setup({
     anthropic: async function* () {

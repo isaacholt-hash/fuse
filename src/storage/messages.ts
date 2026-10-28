@@ -267,3 +267,17 @@ export async function listPath(
   );
   return { all, path: buildPath(all, rows[0]?.active_leaf_id ?? null) };
 }
+
+/** The answer moved to another model before any text arrived (failover, MM-06). */
+export async function setMessageModel(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  provider: string,
+  model: string,
+): Promise<void> {
+  await db.execute(
+    `UPDATE messages SET provider = ?, model = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [provider, model, Date.now(), tenant.workspaceId, id],
+  );
+}

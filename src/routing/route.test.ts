@@ -155,3 +155,18 @@ test("a thread's pins read back as a mode", () => {
     id: "mid-o",
   });
 });
+
+test("a fallback on the other provider in the same tier, for failover; none for a pinned model", () => {
+  const r = route(policy, catalog, AUTO, task(), both);
+  expect(r.ok && [r.model.id, r.fallback?.id]).toEqual(["mid-o", "mid-a"]);
+  const one = route(policy, catalog, AUTO, task(), { providers: ["openai"] });
+  expect(one.ok && one.fallback).toBeNull();
+  const pinned = route(
+    policy,
+    catalog,
+    { kind: "model", provider: "openai", id: "mid-o" },
+    task(),
+    both,
+  );
+  expect(pinned.ok && pinned.fallback).toBeNull();
+});
