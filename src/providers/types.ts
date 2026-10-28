@@ -49,7 +49,14 @@ export interface ChatOptions {
   maxOutputTokens?: number;
   /** Let the model use the provider's web search tool (billed per search). */
   webSearch?: boolean;
+  /**
+   * Reasoning effort (RT-08), the same five levels on both providers. Omitted = the model's
+   * default (docs/providers.md, M2).
+   */
+  effort?: Effort;
 }
+
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Normalised token counts (no cost: pricing is the chat layer's job, from data/models.json). */
 export type TokenUsage = Omit<Usage, "costMicroUsd" | "priceVersion" | "latencyMs" | "ttftMs">;

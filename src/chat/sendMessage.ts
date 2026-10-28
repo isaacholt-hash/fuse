@@ -364,9 +364,14 @@ async function streamAnswer(
     const webSearch = Boolean(input.webSearch) && m.capabilities.includes("web_search");
     try {
       const adapter = deps.adapterFor(m.provider);
+      const effort = input.route?.effort ?? null;
       const options = {
         ...(system ? { system } : {}),
         ...(webSearch ? { webSearch } : {}),
+        // High effort thinks at length, and thinking counts against the output limit: give it
+        // the model's whole output budget (docs/providers.md, M2).
+        ...(effort ? { effort } : {}),
+        ...(effort && effort !== "low" ? { maxOutputTokens: m.maxOutput } : {}),
       };
       for await (const ev of adapter.streamChat(history, m.id, options, input.signal)) {
         if (ev.type === "status") {

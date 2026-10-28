@@ -143,6 +143,8 @@ export function buildRequestBody(
     messages: messages.map((m) => ({ role: m.role, content: anthropicContent(m) })),
   };
   if (options.system) body.system = options.system;
+  // Effort only; never `thinking` (Opus 5.5 rejects "disabled", Sonnet 5.5 too).
+  if (options.effort) body.output_config = { effort: options.effort };
   if (options.webSearch) {
     // Basic version: ZDR-eligible and no code execution (docs/providers.md, M1).
     body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }];

@@ -458,6 +458,26 @@ test("incognito: marked, no memory, not listed or searchable, and gone once you 
   expect(await listThreads(db, DEFAULT_TENANT)).toEqual([]);
 });
 
+test("Think harder sends maximum effort with the model's full output budget, for one message", async () => {
+  const { options, user } = setup({
+    anthropic: [() => answer("Deep answer."), () => answer("Normal answer.")],
+  });
+  await composer();
+  const think = screen.getByRole("button", { name: "Think harder" });
+  await user.click(think);
+  expect(think).toHaveAttribute("aria-pressed", "true");
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("Deep answer.")).toBeInTheDocument();
+  expect(options[0]).toMatchObject({ effort: "max", maxOutputTokens: 1000 });
+  expect(screen.getByRole("button", { name: "Think harder" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await user.type(await composer(), "And then?{Enter}");
+  expect(await screen.findByText("Normal answer.")).toBeInTheDocument();
+  expect(options.at(-1)).not.toHaveProperty("effort");
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

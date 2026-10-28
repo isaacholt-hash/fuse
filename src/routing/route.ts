@@ -1,5 +1,6 @@
 /** Picks the model for one answer from the composer's mode (RT-01): Auto, a pinned tier, or a pinned model. */
 import type { Capability, Catalog, CatalogModel, ProviderId } from "@/catalog/catalog";
+import type { Effort } from "@/providers/types";
 import { findModel } from "@/catalog/catalog";
 import {
   chooseTier,
@@ -32,6 +33,17 @@ export interface RouteInfo {
   complexity: Complexity | null;
   /** The cheapest Best model for this request, to price "would have cost $X on Best". */
   best: CatalogModel | null;
+  /** Reasoning effort (RT-08); null = the model's default. */
+  effort: Effort | null;
+}
+
+/**
+ * RT-08: hard questions think more; the rest keep the model's default. Not lowered for easy
+ * ones: on Anthropic a change of effort rewrites the thread's cache (docs/providers.md, M2), and
+ * easy and medium questions alternate all the time. Hard ones mostly go to Best, a separate cache.
+ */
+export function effortFor(complexity: Complexity): Effort | null {
+  return complexity === "high" ? "high" : null;
 }
 
 export type Routed =
@@ -109,6 +121,7 @@ export function route(
         intent: null,
         complexity: null,
         best,
+        effort: effortFor(task.complexity),
       },
       // A model you picked yourself isn't swapped behind your back.
       fallback: null,
@@ -143,6 +156,7 @@ export function route(
       intent: mode.kind === "auto" ? task.intent : null,
       complexity: mode.kind === "auto" ? task.complexity : null,
       best,
+      effort: effortFor(task.complexity),
     },
     fallback:
       tierModels(policy, catalog, found.tier, {

@@ -680,13 +680,24 @@ export function ChatApp({
     }
   };
 
-  const send = async (text: string) => {
+  const send = async (text: string, thinkHarder = false) => {
     const ready = attachments.pending.flatMap((p) =>
       p.status === "ready" && p.file ? [p.file] : [],
     );
     const search = searchOn;
-    const routed = routeFor(text, ready, messages, search);
-    if (!routed) return;
+    const found = routeFor(text, ready, messages, search);
+    if (!found) return;
+    // RT-08: "Think harder" asks for the most reasoning the model has, for this message only.
+    const routed = thinkHarder
+      ? {
+          ...found,
+          info: {
+            ...found.info,
+            effort: "max" as const,
+            reason: `${found.info.reason}; you asked it to think harder`,
+          },
+        }
+      : found;
     const sent = attachments.take();
     try {
       let threadId = selectedId;
@@ -1493,7 +1504,7 @@ export function ChatApp({
                     chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
                   },
                 }}
-                onSend={(text) => void send(text)}
+                onSend={(text, opts) => void send(text, opts?.thinkHarder)}
                 onStop={stop}
                 onSettings={() => {
                   setView("settings");

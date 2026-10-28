@@ -82,6 +82,15 @@ test("request: right endpoint and headers, no key, no temperature", async () => 
   });
 });
 
+test("effort goes in output_config.effort, never as thinking", async () => {
+  const { a, sent } = adapter([sse(DOCS_STREAM)]);
+  await collect(
+    a.streamChat([{ role: "user", content: "a" }], "claude-opus-5-5", { effort: "high" }),
+  );
+  expect(sent[0]?.body).toMatchObject({ output_config: { effort: "high" } });
+  expect(sent[0]?.body).not.toHaveProperty("thinking");
+});
+
 test("images go first as base64 blocks, then the text", async () => {
   const { a, sent } = adapter([sse(DOCS_STREAM)]);
   const img = { kind: "image" as const, mediaType: "image/png", data: "iVBORw0KGgo=" };
