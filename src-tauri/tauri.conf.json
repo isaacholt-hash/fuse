@@ -32,7 +32,8 @@
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'",
-        "frame-ancestors": "'none'"
+        "frame-ancestors": "'none'",
+        "frame-src": "preview: http://preview.localhost"
       },
       "devCsp": {
         "default-src": "'self'",
@@ -44,7 +45,8 @@
         "object-src": "'none'",
         "base-uri": "'none'",
         "form-action": "'none'",
-        "frame-ancestors": "'none'"
+        "frame-ancestors": "'none'",
+        "frame-src": "preview: http://preview.localhost"
       }
     }
   },

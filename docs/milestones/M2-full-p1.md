@@ -52,11 +52,12 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **18. Artifacts v1 (AR-01).** Long or structured output (Markdown documents, code files) opens in a side panel; the model is instructed when to make one.
 - [x] **19. Versions (AR-02).** Every edit is a new version: a list, a diff between any two, restore.
 - [x] **20. Ask AI to edit (AR-03).** Select text, "edit this": it routes like a message, shows its cost, and the result is a new version with the diff highlighted.
-- [ ] **21. Live preview (AR-05).** HTML, React, SVG and Mermaid render in a sandboxed frame with no network by default.
+- [x] **21. Live preview (AR-05).** HTML, React, SVG and Mermaid render in a sandboxed frame with no network by default.
 - [ ] **22. Export (AR-04).** Download, copy, save to a folder; Markdown also exports as .docx and .pdf.
 
 ## Notes
 
+- Follow-ups from step 21: React previews (need a bundled React and a JSX transform inside the sandbox) and AR-05's per-artifact switch to allow listed CDNs.
 - Follow-up from step 14: search inside large PDFs (needs a local PDF text extractor; PDFs are still sent whole, up to 100 pages).
 
 - Each step keeps the M1 rules: one PR, tests, screenshot, secret scan, CI green, then merge.

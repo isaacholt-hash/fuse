@@ -184,6 +184,7 @@ import type {
 import { classifyInput } from "./routing";
 import { useAttachments, useFileUrls } from "./useAttachments";
 import type { WebApi } from "@/web/api";
+import type { PreviewApi } from "@/artifacts/preview";
 import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
 import { useUpdate } from "./useUpdate";
@@ -211,6 +212,8 @@ export interface ChatAppProps {
   recoveryKey: () => Promise<string>;
   /** Reads pasted links (FK-06). */
   web?: WebApi;
+  /** Live previews of HTML artifacts (AR-05). */
+  preview?: PreviewApi;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -273,6 +276,7 @@ export function ChatApp({
   updates,
   recoveryKey,
   web,
+  preview,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -2090,6 +2094,7 @@ export function ChatApp({
                   <ArtifactPanel
                     key={panelArtifact.key}
                     artifact={panelArtifact}
+                    {...(preview ? { preview } : {})}
                     onClose={() => {
                       showArtifact(null);
                     }}

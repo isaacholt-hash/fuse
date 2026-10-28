@@ -9,7 +9,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { asPage, mermaidSvg, svgDataUrl, type PreviewApi } from "@/artifacts/preview";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
 
@@ -115,16 +116,71 @@ function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
   );
 }
 
+/** Types that have a live preview (AR-05); React's comes later. */
+const PREVIEWABLE: ReadonlySet<ArtifactView["type"]> = new Set(["html", "svg", "mermaid"]);
+
+/** The rendered artifact: HTML in a no-network sandbox, SVG and Mermaid as images. */
+function Preview({ artifact, api }: { artifact: ArtifactView; api: PreviewApi }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    const dark = document.documentElement.classList.contains("dark");
+    const job =
+      artifact.type === "html"
+        ? api.url(asPage(artifact.content))
+        : artifact.type === "svg"
+          ? Promise.resolve(svgDataUrl(artifact.content))
+          : mermaidSvg(artifact.content, dark).then(svgDataUrl);
+    job.then(
+      (url) => {
+        if (current) setSrc(url);
+      },
+      (e: unknown) => {
+        if (current) setError(e instanceof Error ? e.message : String(e));
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [artifact.type, artifact.content, api]);
+  if (error) {
+    return (
+      <p role="alert" className="text-[12px] text-destructive">
+        Couldn&apos;t show a preview: {error}
+      </p>
+    );
+  }
+  if (!src) return <p className="text-[12px] text-muted-foreground">Rendering…</p>;
+  return artifact.type === "html" ? (
+    <iframe
+      title={`Preview of ${artifact.title}`}
+      src={src}
+      // Scripts run, but in an opaque origin: no access to the app, its storage or its keys.
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      className="h-full min-h-[480px] w-full rounded-lg border bg-white"
+    />
+  ) : (
+    <img src={src} alt={artifact.title} className="mx-auto max-w-full rounded-lg bg-white p-2" />
+  );
+}
+
 /** The side panel with one artifact (AR-01), its versions, diffs and edits (AR-02). */
 export function ArtifactPanel({
   artifact,
   onClose,
   versions,
+  preview,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
   versions?: VersionsProps;
+  /** Live previews (AR-05); without it everything shows as code. */
+  preview?: PreviewApi;
 }) {
+  const canPreview = Boolean(preview) && PREVIEWABLE.has(artifact.type);
+  const [tab, setTab] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   // AR-03: the text selected in the panel when "Ask AI" was opened, and the instruction.
@@ -249,6 +305,27 @@ export function ArtifactPanel({
         >
           {copied ? <Check /> : <Copy />}
         </Button>
+        {canPreview && (
+          <span
+            className="flex rounded-md border p-0.5 text-[11px]"
+            role="tablist"
+            aria-label="View"
+          >
+            {(["preview", "code"] as const).map((t) => (
+              <button
+                key={t}
+                role="tab"
+                aria-selected={tab === t}
+                className={`rounded px-2 py-0.5 ${tab === t ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                onClick={() => {
+                  setTab(t);
+                }}
+              >
+                {t === "preview" ? "Preview" : "Code"}
+              </button>
+            ))}
+          </span>
+        )}
         <Button variant="ghost" size="icon-sm" aria-label="Close artifact" onClick={onClose}>
           <X />
         </Button>
@@ -330,6 +407,8 @@ export function ArtifactPanel({
           </div>
         ) : versions?.diff ? (
           <DiffView lines={versions.diff} />
+        ) : canPreview && preview && tab === "preview" && artifact.version !== null ? (
+          <Preview artifact={artifact} api={preview} />
         ) : artifact.type === "markdown" ? (
           <div className="text-[13px] leading-[1.85] text-foreground/85">
             <Markdown content={artifact.content} />
