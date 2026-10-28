@@ -21,6 +21,7 @@ import { tauriWebApi, type WebApi } from "@/web/api";
 import { tauriPreviewApi, type PreviewApi } from "@/artifacts/preview";
 import { tauriExportApi, type ExportApi } from "@/artifacts/export";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
+import { tauriZoom, type ZoomApi } from "@/app/appearance";
 
 // On desktop, every provider request goes through the Rust transport, which adds the key.
 const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
@@ -53,6 +54,8 @@ interface Props {
   preview?: PreviewApi;
   exporter?: ExportApi;
   quickCapture?: QuickCaptureApi;
+  /** Sets the webview zoom for the text size (PL-10). */
+  zoom?: ZoomApi;
   /** Starts the app over after delete-all (tests pass a spy). */
   onRestart?: () => void;
 }
@@ -72,6 +75,7 @@ export default function App({
   preview = tauriPreviewApi,
   exporter = tauriExportApi,
   quickCapture = tauriQuickCapture,
+  zoom = tauriZoom,
   onRestart,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
@@ -131,6 +135,7 @@ export default function App({
       preview={preview}
       exporter={exporter}
       quickCapture={quickCapture}
+      zoom={zoom}
       {...(onRestart ? { onRestart } : {})}
       prepareImage={prepareImage}
       updates={updates}

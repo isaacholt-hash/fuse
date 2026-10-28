@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import type { ProviderId } from "@/catalog/catalog";
 import { openExternal } from "./openExternal";
 import { Modal } from "./primitives";
-import type { KeyView, RequestRow, Theme } from "./types";
+import type { KeyView, Motion, RequestRow, TextSize, Theme } from "./types";
 
 function KeyResult({ state }: { state: KeyView }) {
   if (state.busy === "testing" || state.busy === "saving")
@@ -231,6 +231,10 @@ export function SettingsView({
   importer,
   theme,
   onTheme,
+  textSize,
+  onTextSize,
+  motion,
+  onMotion,
   onBack,
   onSaveKey,
   onTestKey,
@@ -260,6 +264,11 @@ export function SettingsView({
   importer?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
+  /** PL-10 */
+  textSize: TextSize;
+  onTextSize: (size: TextSize) => void;
+  motion: Motion;
+  onMotion: (motion: Motion) => void;
   onBack: () => void;
   onSaveKey: (provider: ProviderId, key: string) => void;
   onTestKey: (provider: ProviderId) => void;
@@ -349,6 +358,26 @@ export function SettingsView({
               </Button>
             ))}
           </div>
+          <Choice
+            label="Text size"
+            value={textSize}
+            options={[
+              { value: "small", label: "Small" },
+              { value: "normal", label: "Normal" },
+              { value: "large", label: "Large" },
+            ]}
+            onChange={onTextSize}
+          />
+          <Choice
+            label="Motion"
+            value={motion}
+            options={[
+              { value: "system", label: "Like the system" },
+              { value: "reduce", label: "Reduced" },
+              { value: "full", label: "Full" },
+            ]}
+            onChange={onMotion}
+          />
         </section>
         <button
           className="mt-7 flex w-full items-center gap-3 border-t pt-5 text-left"
@@ -491,5 +520,40 @@ function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
       )}
       {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
     </section>
+  );
+}
+
+function Choice<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="mt-4 flex items-center justify-between gap-3">
+      <span className="text-xs">{label}</span>
+      <div className="flex gap-1" role="radiogroup" aria-label={label}>
+        {options.map((o) => (
+          <Button
+            key={o.value}
+            size="sm"
+            variant={o.value === value ? "secondary" : "ghost"}
+            role="radio"
+            aria-checked={o.value === value}
+            className="text-xs"
+            onClick={() => {
+              onChange(o.value);
+            }}
+          >
+            {o.label}
+          </Button>
+        ))}
+      </div>
+    </div>
   );
 }

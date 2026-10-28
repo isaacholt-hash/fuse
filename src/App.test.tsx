@@ -192,6 +192,7 @@ function setup(
   // Times the app asked to start over (delete-all).
   const restarts: number[] = [];
   // The global shortcut (CH-08): what was registered, and a way to "press" it.
+  const zooms: number[] = [];
   const quick = {
     registered: [] as (string | null)[],
     press: (): void => undefined,
@@ -232,6 +233,10 @@ function setup(
       prepareImage={fakePrepare}
       web={web}
       quickCapture={quick}
+      zoom={(scale) => {
+        zooms.push(scale);
+        return Promise.resolve();
+      }}
       onRestart={() => {
         restarts.push(Date.now());
       }}
@@ -260,6 +265,7 @@ function setup(
     previews,
     saves,
     quick,
+    zooms,
     restarts,
     user: userEvent.setup(),
   };
@@ -999,6 +1005,28 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
 }, 20_000);
+
+test("text size zooms the window and reduced motion stops animations; both are remembered", async () => {
+  const { user, zooms } = setup();
+  await composer();
+  expect(zooms).toEqual([1]);
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(
+    within(await screen.findByRole("radiogroup", { name: "Text size" })).getByRole("radio", {
+      name: "Large",
+    }),
+  );
+  expect(zooms.at(-1)).toBe(1.15);
+  expect(document.documentElement).not.toHaveClass("reduce-motion");
+  await user.click(
+    within(screen.getByRole("radiogroup", { name: "Motion" })).getByRole("radio", {
+      name: "Reduced",
+    }),
+  );
+  expect(document.documentElement).toHaveClass("reduce-motion");
+  expect(localStorage.getItem("fuse.text_size")).toBe("large");
+  expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
 
 test("chats can be pinned to the top, archived out of the list, and tagged and filtered", async () => {
   const { user } = setup();
