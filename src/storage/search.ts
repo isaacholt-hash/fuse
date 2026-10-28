@@ -47,7 +47,7 @@ export async function searchChats(
   const words = text.match(/[\p{L}\p{N}_]+/gu) ?? [];
   const titles = await db.select<{ id: string; title: string; created_at: number }>(
     `SELECT id, title, created_at FROM threads
-     WHERE workspace_id = ? AND deleted_at IS NULL AND ${words.map(() => "title LIKE ?").join(" AND ")}
+     WHERE workspace_id = ? AND deleted_at IS NULL AND incognito = 0 AND ${words.map(() => "title LIKE ?").join(" AND ")}
      ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 5`,
     [tenant.workspaceId, ...words.map((w) => `%${w.replace(/[%_\\]/g, "")}%`)],
   );
@@ -58,7 +58,7 @@ export async function searchChats(
      JOIN messages m ON m.rowid = messages_fts.rowid
      JOIN threads t ON t.id = m.thread_id
      WHERE messages_fts MATCH ? AND m.workspace_id = ? AND m.deleted_at IS NULL
-       AND t.deleted_at IS NULL AND m.role IN ('user', 'assistant')
+       AND t.deleted_at IS NULL AND t.incognito = 0 AND m.role IN ('user', 'assistant')
      ORDER BY rank LIMIT ?`,
     [MARK_START, MARK_END, query, tenant.workspaceId, limit],
   );

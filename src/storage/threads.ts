@@ -28,6 +28,8 @@ export interface Thread {
   pinnedModel: string | null;
   /** The message the thread shows the path to (CH-04); null = the newest leaf. */
   activeLeafId: string | null;
+  /** Incognito (CH-15): not listed or searched, no memory, purged when you leave it. */
+  incognito: boolean;
 }
 
 interface ThreadRow {
@@ -47,6 +49,7 @@ interface ThreadRow {
   pinned_provider: string | null;
   pinned_model: string | null;
   active_leaf_id: string | null;
+  incognito: number;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -67,12 +70,13 @@ const toThread = (r: ThreadRow): Thread => ({
     r.pinned_provider === "openai" || r.pinned_provider === "anthropic" ? r.pinned_provider : null,
   pinnedModel: r.pinned_model,
   activeLeafId: r.active_leaf_id,
+  incognito: r.incognito === 1,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
-         t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id,
+         t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -82,14 +86,26 @@ export async function createThread(
   tenant: Tenant,
   title = "New chat",
   projectId: string | null = null,
+  incognito = false,
 ): Promise<Thread> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO threads
-       (id, workspace_id, user_id, title, title_source, project_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?)`,
-    [id, tenant.workspaceId, tenant.userId, title, projectId, now, now],
+       (id, workspace_id, user_id, title, title_source, project_id, incognito, memory_injection,
+        created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?)`,
+    [
+      id,
+      tenant.workspaceId,
+      tenant.userId,
+      title,
+      projectId,
+      incognito ? 1 : 0,
+      incognito ? "off" : "on",
+      now,
+      now,
+    ],
   );
   const thread = await getThread(db, tenant, id);
   if (!thread) throw new Error("Thread insert failed");
@@ -235,4 +251,40 @@ export async function deleteThread(db: SqlDb, tenant: Tenant, id: string): Promi
     `UPDATE threads SET deleted_at = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [now, now, tenant.workspaceId, id],
   );
+}
+
+/**
+ * Removes an incognito chat for good (CH-15): its messages, their files links, citations and
+ * memory links, and the chat itself. Request-log rows stay for cost totals, unlinked (they hold
+ * no text). Safe to run again if it was interrupted.
+ */
+export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  const ws = tenant.workspaceId;
+  const inThread = `SELECT id FROM messages WHERE workspace_id = ? AND thread_id = ?`;
+  for (const table of ["message_files", "message_citations", "message_memories"]) {
+    await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inThread})`, [ws, id]);
+  }
+  await db.execute(
+    `UPDATE request_log SET thread_id = NULL, message_id = NULL WHERE workspace_id = ? AND thread_id = ?`,
+    [ws, id],
+  );
+  await db.execute(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND id = ?`, [
+    ws,
+    id,
+  ]);
+  await db.execute(`DELETE FROM messages WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  await db.execute(`UPDATE files SET thread_id = NULL WHERE workspace_id = ? AND thread_id = ?`, [
+    ws,
+    id,
+  ]);
+  await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
+}
+
+/** Purges every incognito chat (run at start, in case the app closed inside one). */
+export async function purgeIncognito(db: SqlDb, tenant: Tenant): Promise<void> {
+  const rows = await db.select<{ id: string }>(
+    `SELECT id FROM threads WHERE workspace_id = ? AND incognito = 1`,
+    [tenant.workspaceId],
+  );
+  for (const r of rows) await purgeThread(db, tenant, r.id);
 }
