@@ -1,7 +1,12 @@
 import { Check, Copy } from "lucide-react";
-import { isValidElement, memo, useState, type ReactNode } from "react";
+import { isValidElement, memo, useEffect, useState, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
+import { mermaidSvg, svgDataUrl } from "@/artifacts/preview";
+import { normaliseMath } from "./math";
 import { Button } from "@/components/ui/button";
 import { openExternal } from "./openExternal";
 
@@ -53,6 +58,69 @@ export function CodeBlock({ language, code }: { language: string; code: string }
   );
 }
 
+/** Waits this long after the last change before drawing (answers stream in token by token). */
+const DIAGRAM_DELAY_MS = 400;
+
+/** A ```mermaid fence drawn as a diagram (CH-01), with its code a click away. */
+function MermaidBlock({ code }: { code: string }) {
+  const [view, setView] = useState<"diagram" | "code">("diagram");
+  const [svg, setSvg] = useState<{ code: string; url: string } | null>(null);
+  const [error, setError] = useState<{ code: string; message: string } | null>(null);
+  useEffect(() => {
+    let current = true;
+    const timer = setTimeout(() => {
+      const dark = document.documentElement.classList.contains("dark");
+      mermaidSvg(code, dark).then(
+        (out) => {
+          if (current) setSvg({ code, url: svgDataUrl(out) });
+        },
+        (e: unknown) => {
+          if (current) setError({ code, message: e instanceof Error ? e.message : String(e) });
+        },
+      );
+    }, DIAGRAM_DELAY_MS);
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [code]);
+  const failed = error?.code === code;
+  const drawn = svg?.code === code ? svg.url : null;
+  return (
+    <div className="my-5 overflow-hidden rounded-xl border" aria-label="Mermaid diagram">
+      <div className="flex items-center gap-1 border-b px-3 py-1.5 text-[11px]" role="tablist">
+        {(["diagram", "code"] as const).map((v) => (
+          <button
+            key={v}
+            role="tab"
+            aria-selected={view === v}
+            className={`rounded px-2 py-0.5 ${view === v ? "bg-accent font-medium" : "text-muted-foreground"}`}
+            onClick={() => {
+              setView(v);
+            }}
+          >
+            {v === "diagram" ? "Diagram" : "Code"}
+          </button>
+        ))}
+      </div>
+      {view === "code" || failed ? (
+        <>
+          {failed && (
+            <p className="px-4 pt-3 text-[11px] text-muted-foreground">
+              Couldn&apos;t draw this diagram, so here is its code.
+            </p>
+          )}
+          <CodeBlock language="mermaid" code={code} />
+        </>
+      ) : drawn ? (
+        <img src={drawn} alt="Diagram" className="mx-auto max-w-full bg-white p-3" />
+      ) : (
+        <p className="p-4 text-[11px] text-muted-foreground">Drawing…</p>
+      )}
+    </div>
+  );
+}
+
 const textOf = (node: ReactNode): string =>
   typeof node === "string" || typeof node === "number"
     ? String(node)
@@ -67,7 +135,9 @@ const components: Components = {
       ? children.props
       : { children };
     const language = /language-(\S+)/.exec(code.className ?? "")?.[1] ?? "";
-    return <CodeBlock language={language} code={textOf(code.children).replace(/\n$/, "")} />;
+    const text = textOf(code.children).replace(/\n$/, "");
+    if (language === "mermaid") return <MermaidBlock code={text} />;
+    return <CodeBlock language={language} code={text} />;
   },
   code: ({ children }) => (
     <code className="rounded border bg-muted/60 px-1 py-0.5 font-mono text-[0.85em]">
@@ -118,8 +188,12 @@ const components: Components = {
 export const Markdown = memo(function Markdown({ content }: { content: string }) {
   return (
     <div className="break-words">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {content}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, [remarkMath, { singleDollarTextMath: false }]]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: "ignore" }]]}
+        components={components}
+      >
+        {normaliseMath(content)}
       </ReactMarkdown>
     </div>
   );
