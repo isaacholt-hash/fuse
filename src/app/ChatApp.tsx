@@ -115,7 +115,16 @@ import {
 } from "@/ui/Instructions";
 import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
-import { ProjectDialog } from "@/ui/Projects";
+import { ProjectDialog, type KnowledgeFileView } from "@/ui/Projects";
+import {
+  addProjectFile,
+  listProjectFiles,
+  removeProjectFile,
+  type ProjectFile,
+} from "@/storage/projectFiles";
+import { ensureIndexed } from "@/knowledge/retrieve";
+import { prepareDocument } from "@/files/documents";
+import { addFile } from "@/storage/files";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
@@ -282,6 +291,13 @@ export function ChatApp({
   const [draftProject, setDraftProject] = useState<string | null>(null);
   // The project dialog: creating ("new"), editing (a project id), or closed.
   const [projectDialog, setProjectDialog] = useState<string | null>(null);
+  // The open project's knowledge files (PM-09), and what adding or indexing them is doing.
+  const [knowledge, setKnowledge] = useState<{
+    projectId: string;
+    files: ProjectFile[];
+    busy: boolean;
+    error: string | null;
+  } | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
   // A provider that failed recently, so the composer can say so (MM-06).
   const [trouble, setTrouble] = useState<{ provider: ProviderId; at: number } | null>(null);
@@ -371,6 +387,7 @@ export function ChatApp({
     () => ({ db, tenant, catalog, adapterFor, files }),
     [db, tenant, catalog, adapterFor, files],
   );
+  const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage });
 
   const report = (e: unknown) => {
@@ -1110,6 +1127,79 @@ export function ChatApp({
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
   };
   const editedProject = projects.find((p) => p.id === projectDialog);
+  useEffect(() => {
+    if (!projectDialog || projectDialog === "new") return;
+    const projectId = projectDialog;
+    listProjectFiles(db, tenant, projectId).then((files) => {
+      setKnowledge({ projectId, files, busy: false, error: null });
+    }, report);
+  }, [projectDialog, db, tenant]);
+  /** Indexes a project's files that aren't fully searchable yet (needs an OpenAI key). */
+  const indexKnowledge = async (projectId: string) => {
+    const model = embeddingModel(catalog, savedProviders);
+    const files = await listProjectFiles(db, tenant, projectId);
+    if (model) {
+      for (const f of files.filter((x) => x.chunks === 0 || x.embedded < x.chunks)) {
+        await ensureIndexed(
+          { db, tenant, adapterFor, files: filesApi, priceVersion: catalog.priceVersion },
+          model,
+          f,
+        );
+      }
+    }
+    return listProjectFiles(db, tenant, projectId);
+  };
+  const addKnowledge = (projectId: string, list: File[]) => {
+    setKnowledge((k) => (k ? { ...k, busy: true, error: null } : k));
+    void (async () => {
+      const problems: string[] = [];
+      for (const f of list) {
+        try {
+          const doc = await prepareDocument(f);
+          if (doc.kind === "pdf") throw new Error("PDFs can't be searched yet.");
+          const stored = await filesApi.put(doc.bytes);
+          const file = await addFile(db, tenant, {
+            name: f.name,
+            mime: doc.mime,
+            sizeBytes: stored.size,
+            sha256: stored.sha256,
+            tokenEstimate: doc.tokens,
+          });
+          await addProjectFile(db, tenant, projectId, file.id);
+        } catch (e) {
+          problems.push(`${f.name}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      setKnowledge((k) => (k ? { ...k, error: problems.length ? problems.join(" ") : null } : k));
+      try {
+        const files = await indexKnowledge(projectId);
+        setKnowledge((k) => (k ? { ...k, files, busy: false } : k));
+      } catch (e) {
+        const files = await listProjectFiles(db, tenant, projectId);
+        setKnowledge((k) =>
+          k ? { ...k, files, busy: false, error: e instanceof Error ? e.message : String(e) } : k,
+        );
+      }
+    })();
+  };
+  const knowledgeViews: KnowledgeFileView[] = (knowledge?.files ?? []).map((f) => {
+    const tokens = f.tokenEstimate ?? 0;
+    const ready = f.chunks > 0 && f.embedded >= f.chunks;
+    return {
+      id: f.id,
+      name: f.name,
+      tokens,
+      ready,
+      status: ready
+        ? "Searchable"
+        : !embeddingModel(catalog, savedProviders)
+          ? "Needs an OpenAI key"
+          : knowledge?.busy
+            ? "Indexing…"
+            : "Not indexed",
+      wholeMicro: Math.round((tokens * priceToMicro(model.price.input)) / 1_000_000),
+    };
+  });
   const saveProject = (form: ProjectForm) => {
     const editing = editedProject;
     setProjectDialog(null);
@@ -1158,7 +1248,7 @@ export function ChatApp({
     () => [...[...threadFiles.values()].flat(), ...(liveHere?.files ?? [])],
     [threadFiles, liveHere],
   );
-  const fileUrls = useFileUrls(files, wantedFiles);
+  const fileUrls = useFileUrls(filesApi, wantedFiles);
   const shown = useMemo(() => {
     const images = new Map<string, ImageView[]>();
     const view = (f: FileRecord): ImageView => ({
@@ -1912,6 +2002,27 @@ export function ChatApp({
           maxChars={MAX_INSTRUCTION_CHARS}
           onSave={saveProject}
           {...(editedProject ? { onDelete: removeProject } : {})}
+          {...(editedProject && knowledge?.projectId === editedProject.id
+            ? {
+                knowledge: {
+                  files: knowledgeViews,
+                  busy: knowledge.busy,
+                  error: knowledge.error,
+                  onAdd: (list: File[]) => {
+                    addKnowledge(editedProject.id, list);
+                  },
+                  onRemove: (fileId: string) => {
+                    const projectId = editedProject.id;
+                    removeProjectFile(db, tenant, projectId, fileId)
+                      .then(() => listProjectFiles(db, tenant, projectId))
+                      .then((files) => {
+                        setKnowledge((k) => (k ? { ...k, files } : k));
+                      })
+                      .catch(report);
+                  },
+                },
+              }
+            : {})}
         />
         <MemoryReviewDialog
           open={reviewOpen}
