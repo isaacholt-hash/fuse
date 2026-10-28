@@ -292,6 +292,7 @@ export function Messages({
   onRegenerate,
   onEdit,
   busy = false,
+  focusId = null,
 }: {
   messages: MessageView[];
   /** Selected model, for the empty state. */
@@ -313,6 +314,8 @@ export function Messages({
   onEdit?: (messageId: string, text: string) => void;
   /** An answer is streaming: edits, regenerates and branch switches wait. */
   busy?: boolean;
+  /** A message to scroll to and highlight (a search result). */
+  focusId?: string | null;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -328,6 +331,13 @@ export function Messages({
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages.length]);
+  // A search result opens at its message (after the jump to the latest one above).
+  useEffect(() => {
+    if (!focusId) return;
+    const el = document.getElementById(`message-${focusId}`);
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- jsdom has no scrollIntoView
+    el?.scrollIntoView?.({ block: "center" });
+  }, [focusId, messages.length]);
   return (
     <div className="relative min-h-0 flex-1">
       <div
@@ -367,7 +377,15 @@ export function Messages({
               <span className="h-px w-8 bg-border" />
             </div>
             {messages.map((message) => (
-              <div key={message.id}>
+              <div
+                key={message.id}
+                id={`message-${message.id}`}
+                className={
+                  focusId === message.id
+                    ? "-mx-3 rounded-xl bg-amber-100/40 px-3 dark:bg-amber-500/10"
+                    : undefined
+                }
+              >
                 {message.switchLabel && (
                   <div className="my-8 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />

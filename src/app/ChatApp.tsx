@@ -110,7 +110,9 @@ import {
 import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog } from "@/ui/Projects";
+import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { Sidebar } from "@/ui/Sidebar";
+import { searchChats } from "@/storage/search";
 import { UpdateBar } from "@/ui/UpdateBar";
 import type {
   ImageView,
@@ -231,6 +233,9 @@ export function ChatApp({
   // The project dialog: creating ("new"), editing (a project id), or closed.
   const [projectDialog, setProjectDialog] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
+  // Search across chats (CH-02), and the message a result opened at.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [focusId, setFocusId] = useState<string | null>(null);
   // An answer quoted into the composer; `key` changes on every quote.
   const [quote, setQuote] = useState<{ text: string; key: number } | null>(null);
   // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
@@ -386,6 +391,7 @@ export function ChatApp({
   }, [selectedId]);
 
   const select = (id: string) => {
+    setFocusId(null);
     setSelectedId(id);
     selectedRef.current = id;
     setView("chat");
@@ -397,6 +403,37 @@ export function ChatApp({
     setThreadMemories(new Map());
     attachments.clear();
     reload(id).catch(report);
+  };
+
+  const search = useCallback(
+    async (text: string): Promise<SearchHitView[]> =>
+      (await searchChats(db, tenant, text)).map((h) => ({
+        key: h.messageId ?? `title-${h.threadId}`,
+        threadId: h.threadId,
+        threadTitle: h.threadTitle,
+        messageId: h.messageId,
+        kind: h.role === "user" ? "You" : h.role === "assistant" ? "Answer" : "Title",
+        snippet: h.snippet,
+        date: new Date(h.createdAt).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        }),
+      })),
+    [db, tenant],
+  );
+  /** Opens a search result: its chat, on the branch that holds the message, scrolled to it. */
+  const openHit = (hit: SearchHitView) => {
+    setSearchOpen(false);
+    void (async () => {
+      if (hit.messageId) {
+        const { all, path } = await listPath(db, tenant, hit.threadId);
+        if (!path.some((m) => m.id === hit.messageId)) {
+          await setActiveLeaf(db, tenant, hit.threadId, leafUnder(all, hit.messageId));
+        }
+      }
+      select(hit.threadId);
+      setFocusId(hit.messageId);
+    })().catch(report);
   };
 
   const clearAttachments = attachments.clear;
@@ -1037,6 +1074,9 @@ export function ChatApp({
         } else if (key === "n") {
           event.preventDefault();
           newChat();
+        } else if (key === "f" && event.shiftKey) {
+          event.preventDefault();
+          setSearchOpen(true);
         } else if (key === "k") {
           event.preventDefault();
           setView("chat");
@@ -1106,6 +1146,9 @@ export function ChatApp({
               }}
               onRename={rename}
               onDelete={setDeleting}
+              onSearch={() => {
+                setSearchOpen(true);
+              }}
             />
           )}
           {view === "settings" ? (
@@ -1267,6 +1310,7 @@ export function ChatApp({
                 onEdit={editAndSend}
                 onBranch={switchBranch}
                 busy={streaming}
+                focusId={focusId}
                 onFeedback={(id, value) => {
                   const threadId = selectedId;
                   if (!threadId) return;
@@ -1328,6 +1372,12 @@ export function ChatApp({
             </main>
           )}
         </div>
+        <SearchDialog
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          onSearch={search}
+          onOpen={openHit}
+        />
         <ProjectDialog
           key={projectDialog ?? "closed"}
           open={projectDialog !== null}
