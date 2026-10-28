@@ -79,6 +79,9 @@ import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
+import { GoldenSetSection } from "@/ui/GoldenSet";
+import { parseGoldenSet, summarize, type GoldenSummary } from "@/routing/golden";
+import { listGoldenPrompts, replaceGoldenPrompts } from "@/storage/goldenPrompts";
 import {
   GlobalInstructionsSection,
   InstructionsButton,
@@ -195,6 +198,7 @@ export function ChatApp({
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
   const [memories, setMemories] = useState<Memory[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [golden, setGolden] = useState<GoldenSummary | null>(null);
   const [memorySettings, setMemorySettingsState] =
     useState<MemorySettings>(DEFAULT_MEMORY_SETTINGS);
   const [skippedSecrets, setSkippedSecrets] = useState<string[]>([]);
@@ -290,7 +294,18 @@ export function ChatApp({
       report,
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
+    listGoldenPrompts(db, tenant).then((p) => {
+      setGolden(summarize(p));
+    }, report);
   }, [db, tenant]);
+  /** Settings → Routing test set: a bad line refuses the whole file. */
+  const importGolden = async (text: string): Promise<string[]> => {
+    const parsed = parseGoldenSet(text);
+    if (!parsed.ok) return parsed.errors;
+    await replaceGoldenPrompts(db, tenant, parsed.prompts);
+    setGolden(summarize(parsed.prompts));
+    return [];
+  };
   /** A thread's messages and their attached files. */
   const loadThread = useCallback(
     async (threadId: string) => {
@@ -875,6 +890,7 @@ export function ChatApp({
                   />
                 )
               }
+              routing={golden && <GoldenSetSection summary={golden} onImport={importGolden} />}
               memory={
                 <MemorySection
                   key={memorySettings.budgetTokens}

@@ -223,6 +223,7 @@ export function SettingsView({
   onRecoveryKey,
   instructions,
   memory,
+  routing,
   theme,
   onTheme,
   onBack,
@@ -240,6 +241,8 @@ export function SettingsView({
   instructions: ReactNode;
   /** Settings → Memory; rendered once loaded. */
   memory?: ReactNode;
+  /** Settings → Routing test set; rendered once loaded. */
+  routing?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -299,6 +302,7 @@ export function SettingsView({
         </div>
         {instructions}
         {memory}
+        {routing}
         <RecoveryKeySection load={onRecoveryKey} />
         <section className="mt-8 border-t pt-6">
           <h2 className="text-sm font-medium">Appearance</h2>

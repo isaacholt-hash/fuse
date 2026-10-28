@@ -72,7 +72,7 @@ Routing columns (`tier`, `route_rule_id`) are not in M0; they arrive with routin
 | `threads.pinned_tier NULL`, `threads.pinned_model NULL`, `threads.pinned_provider NULL` | Per-thread pins. | RT-01, RT-06 |
 | `budgets` | `scope` (`global`/`project`), `project_id NULL`, `period` (`day`/`month`), `limit_micro_usd`, `hard_stop`, `temp_raise_until NULL`. | CO-03, MM-09 |
 | `budget_events` | Alerts fired (50/80/100%, anomaly), so each one shows once. | CO-03, CO-07 |
-| `golden_prompts` | Eval set: `prompt`, `expected_tier`, `rating`, `notes`. | RT-16 |
+| `golden_prompts` | Eval set: `prompt`, `expected_tier` (`balanced`/`best`), `intent`, `complexity`, `needs_context`, `notes`, `position`. Built in M1 step 9a (`0007_golden_prompts.sql`), imported from a JSON Lines file in Settings; an import replaces the set. `rating` is left out until something uses it. | RT-16 |
 
 The routing policy, tiers, model catalog and prices are **data files** in `data/`, not tables. User edits to them are saved as override files, not rows.
 
