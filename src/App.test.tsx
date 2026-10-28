@@ -725,6 +725,26 @@ test("artifact versions: pick one, diff, restore, and your edits go back to the 
   expect(system).toContain('<artifact id="note" type="markdown" title="Note">\nGamma\n</artifact>');
 });
 
+test("Ask AI to edit: the request routes like a message and the result shows as a diff", async () => {
+  const doc = (body: string) =>
+    `<artifact id="note" type="markdown" title="Note">\n${body}\n</artifact>\nDone.`;
+  const { calls, user } = setup({
+    anthropic: [() => answer(doc("Hello world")), () => answer(doc("Hello there, friend"))],
+  });
+  await user.type(await composer(), "Write a note{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Note" }));
+  await user.click(panel.getByRole("button", { name: "Ask AI to edit" }));
+  await user.type(panel.getByLabelText("What should change"), "Make it warmer{Enter}");
+
+  expect(await panel.findByLabelText("Changes")).toHaveTextContent("−Hello world");
+  expect(panel.getByLabelText("Changes")).toHaveTextContent("+Hello there, friend");
+  expect(panel.getByText(/version 2/)).toBeInTheDocument();
+  const asked = calls.anthropic?.[1]?.at(-1)?.content ?? "";
+  expect(asked).toContain('Edit the artifact "Note" (id note): Make it warmer');
+  // Costed like any answer.
+  expect(screen.getAllByRole("button", { name: /Cost breakdown/ })).toHaveLength(2);
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

@@ -1,5 +1,15 @@
-import { Check, Code2, Copy, FileText, LoaderCircle, Pencil, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import {
+  Check,
+  Code2,
+  Copy,
+  FileText,
+  LoaderCircle,
+  Pencil,
+  RotateCcw,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
 
@@ -77,6 +87,8 @@ export interface VersionsProps {
   onCompare: (version: number | null) => void;
   onRestore: (version: number) => void;
   onSaveEdit: (content: string) => void;
+  /** AR-03: asks the model to change the selection (or the whole artifact when it's empty). */
+  onAskEdit?: (selection: string, instruction: string) => void;
 }
 
 function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
@@ -115,6 +127,14 @@ export function ArtifactPanel({
 }) {
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
+  // AR-03: the text selected in the panel when "Ask AI" was opened, and the instruction.
+  const [asking, setAsking] = useState<{ selection: string; instruction: string } | null>(null);
+  const body = useRef<HTMLDivElement>(null);
+  const selectedText = () => {
+    const sel = window.getSelection();
+    const node = sel?.anchorNode;
+    return sel && node && body.current?.contains(node) ? sel.toString().trim() : "";
+  };
   const latest = versions?.versions.at(-1)?.version ?? artifact.version;
   const shown = versions?.shown ?? latest;
   const old = shown !== null && latest !== null && shown < latest;
@@ -186,6 +206,23 @@ export function ArtifactPanel({
                 Restore
               </Button>
             )}
+            {!old && versions.onAskEdit && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                aria-label="Ask AI to edit"
+                onMouseDown={(e) => {
+                  e.preventDefault(); // keep the selection
+                }}
+                onClick={() => {
+                  setAsking({ selection: selectedText(), instruction: "" });
+                }}
+              >
+                <Sparkles className="size-3.5" />
+                Ask AI
+              </Button>
+            )}
             {!old && (
               <Button
                 variant="ghost"
@@ -216,7 +253,50 @@ export function ArtifactPanel({
           <X />
         </Button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
+      {asking && versions?.onAskEdit && (
+        <form
+          className="border-b bg-muted/30 px-4 py-3"
+          aria-label="Ask AI to edit"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!asking.instruction.trim()) return;
+            versions.onAskEdit?.(asking.selection, asking.instruction.trim());
+            setAsking(null);
+          }}
+        >
+          <p className="mb-1.5 text-[11px] text-muted-foreground">
+            {asking.selection
+              ? `Change the selected part (${String(asking.selection.length)} characters):`
+              : "Change the whole artifact (select text first to change just a part):"}
+          </p>
+          <div className="flex gap-2">
+            <input
+              aria-label="What should change"
+              autoFocus
+              placeholder="e.g. make this shorter and friendlier"
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-xs outline-none focus:border-ring"
+              value={asking.instruction}
+              onChange={(e) => {
+                setAsking({ ...asking, instruction: e.target.value });
+              }}
+            />
+            <Button type="submit" size="sm" disabled={!asking.instruction.trim()}>
+              Send
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setAsking(null);
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      )}
+      <div ref={body} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         {draft !== null && versions ? (
           <div className="flex h-full flex-col gap-2">
             <textarea
