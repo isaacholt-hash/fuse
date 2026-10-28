@@ -1,12 +1,17 @@
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
 import {
+  Archive,
+  ArchiveRestore,
   Brain,
   Check,
   Folder,
   FolderMinus,
   MoreHorizontal,
   Pencil,
+  Pin,
+  PinOff,
   Sparkles,
+  Tag,
   Trash2,
   X,
   Zap,
@@ -99,7 +104,18 @@ export function ThreadMenu({
   memoryOn,
   onToggleMemory,
   onSuggestMemories,
+  pinned,
+  archived,
+  onTogglePin,
+  onToggleArchive,
+  onEditTags,
 }: {
+  /** CH-02 */
+  pinned: boolean;
+  archived: boolean;
+  onTogglePin: () => void;
+  onToggleArchive: () => void;
+  onEditTags: () => void;
   onRename: () => void;
   onDelete: () => void;
   /** Saved memories are sent with this chat (PM-04). */
@@ -133,6 +149,20 @@ export function ThreadMenu({
           <DropdownMenu.Item className={item} onSelect={onRename}>
             <Pencil className="size-3.5" />
             Rename chat
+          </DropdownMenu.Item>
+          {!archived && (
+            <DropdownMenu.Item className={item} onSelect={onTogglePin}>
+              {pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+              {pinned ? "Unpin" : "Pin to top"}
+            </DropdownMenu.Item>
+          )}
+          <DropdownMenu.Item className={item} onSelect={onEditTags}>
+            <Tag className="size-3.5" />
+            Tags…
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={item} onSelect={onToggleArchive}>
+            {archived ? <ArchiveRestore className="size-3.5" /> : <Archive className="size-3.5" />}
+            {archived ? "Unarchive" : "Archive"}
           </DropdownMenu.Item>
           <DropdownMenu.CheckboxItem className={item} checked={memoryOn} onSelect={onToggleMemory}>
             <Brain className="size-3.5" />

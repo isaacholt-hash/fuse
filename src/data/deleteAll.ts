@@ -27,6 +27,7 @@ const ORDER = [
   "user_instructions",
   "settings",
   "imports",
+  "thread_tags",
   "messages",
   "request_log",
   "files",

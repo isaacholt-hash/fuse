@@ -1,6 +1,9 @@
 /** Full-text search across chats (CH-02), on the messages_fts index (0012_search.sql). */
 import type { Tenant } from "./defaults";
 import type { SqlDb } from "./sql";
+import { normaliseTag } from "./threads";
+
+const TAG_WORD = /#[\p{L}\p{N}_-]+/gu;
 
 export interface SearchHit {
   threadId: string;
@@ -42,15 +45,35 @@ export async function searchChats(
   text: string,
   limit = 30,
 ): Promise<SearchHit[]> {
-  const query = ftsQuery(text);
-  if (!query) return [];
-  const words = text.match(/[\p{L}\p{N}_]+/gu) ?? [];
+  // `#tag` words narrow the search to chats with that tag (CH-02).
+  const tags = [...text.matchAll(TAG_WORD)].map((m) => normaliseTag(m[0])).filter(Boolean);
+  const rest = text.replace(TAG_WORD, " ");
+  const tagSql = tags
+    .map(() => ` AND EXISTS (SELECT 1 FROM thread_tags g WHERE g.thread_id = t.id AND g.tag = ?)`)
+    .join("");
+  const query = ftsQuery(rest);
+  if (!query && tags.length === 0) return [];
+  const words = rest.match(/[\p{L}\p{N}_]+/gu) ?? [];
   const titles = await db.select<{ id: string; title: string; created_at: number }>(
-    `SELECT id, title, created_at FROM threads
-     WHERE workspace_id = ? AND deleted_at IS NULL AND incognito = 0 AND ${words.map(() => "title LIKE ?").join(" AND ")}
-     ORDER BY COALESCE(last_message_at, created_at) DESC LIMIT 5`,
-    [tenant.workspaceId, ...words.map((w) => `%${w.replace(/[%_\\]/g, "")}%`)],
+    `SELECT t.id, t.title, t.created_at FROM threads t
+     WHERE t.workspace_id = ? AND t.deleted_at IS NULL AND t.incognito = 0${words.map(() => " AND t.title LIKE ?").join("")}${tagSql}
+     ORDER BY COALESCE(t.last_message_at, t.created_at) DESC LIMIT ?`,
+    [
+      tenant.workspaceId,
+      ...words.map((w) => `%${w.replace(/[%_\\]/g, "")}%`),
+      ...tags,
+      query ? 5 : limit,
+    ],
   );
+  const asTitle = (t: { id: string; title: string; created_at: number }): SearchHit => ({
+    threadId: t.id,
+    threadTitle: t.title,
+    messageId: null,
+    role: null,
+    snippet: t.title,
+    createdAt: t.created_at,
+  });
+  if (!query) return titles.map(asTitle);
   const rows = await db.select<MessageHitRow>(
     `SELECT m.thread_id, t.title, m.id, m.role, m.created_at,
             snippet(messages_fts, 0, ?, ?, '…', 14) AS snippet
@@ -58,19 +81,12 @@ export async function searchChats(
      JOIN messages m ON m.rowid = messages_fts.rowid
      JOIN threads t ON t.id = m.thread_id
      WHERE messages_fts MATCH ? AND m.workspace_id = ? AND m.deleted_at IS NULL
-       AND t.deleted_at IS NULL AND t.incognito = 0 AND m.role IN ('user', 'assistant')
+       AND t.deleted_at IS NULL AND t.incognito = 0 AND m.role IN ('user', 'assistant')${tagSql}
      ORDER BY rank LIMIT ?`,
-    [MARK_START, MARK_END, query, tenant.workspaceId, limit],
+    [MARK_START, MARK_END, query, tenant.workspaceId, ...tags, limit],
   );
   return [
-    ...titles.map((t) => ({
-      threadId: t.id,
-      threadTitle: t.title,
-      messageId: null,
-      role: null,
-      snippet: t.title,
-      createdAt: t.created_at,
-    })),
+    ...titles.map(asTitle),
     ...rows.map((r) => ({
       threadId: r.thread_id,
       threadTitle: r.title,

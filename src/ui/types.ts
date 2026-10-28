@@ -153,6 +153,10 @@ export interface ThreadView {
   group: ThreadGroup;
   costMicro: number;
   projectId: string | null;
+  /** CH-02 */
+  pinned: boolean;
+  archived: boolean;
+  tags: string[];
 }
 
 export type KeyBusy = null | "loading" | "saving" | "testing" | "deleting";

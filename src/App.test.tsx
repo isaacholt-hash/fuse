@@ -1000,6 +1000,41 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
 }, 20_000);
 
+test("chats can be pinned to the top, archived out of the list, and tagged and filtered", async () => {
+  const { user } = setup();
+  const gardenTitle = "Plan the vegetable garden";
+  await user.type(await composer(), `${gardenTitle}{Enter}`);
+  await sidebar().findByText(gardenTitle);
+  await user.click(screen.getByRole("button", { name: /^New chat/ }));
+  await user.type(await composer(), "Draft the quarterly report{Enter}");
+  await sidebar().findByText("Draft the quarterly report");
+
+  await user.click(screen.getByRole("button", { name: "Conversation actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Tags…" }));
+  await user.type(within(await screen.findByRole("dialog")).getByLabelText("Tags"), "work");
+  await user.click(screen.getByRole("button", { name: "Save tags" }));
+  const filter = within(await screen.findByRole("group", { name: "Filter by tag" }));
+  await user.click(filter.getByRole("button", { name: "#work" }));
+  await waitFor(() => {
+    expect(sidebar().queryByText(gardenTitle)).not.toBeInTheDocument();
+  });
+  await user.click(filter.getByRole("button", { name: "#work" }));
+
+  await user.click(await sidebar().findByRole("button", { name: `Pin ${gardenTitle}` }));
+  const pinned = within(await sidebar().findByRole("region", { name: "Pinned" }));
+  expect(pinned.getByText(gardenTitle)).toBeInTheDocument();
+  await user.click(pinned.getByRole("button", { name: `Archive ${gardenTitle}` }));
+  await waitFor(() => {
+    expect(sidebar().queryByRole("region", { name: "Pinned" })).not.toBeInTheDocument();
+  });
+  const archived = within(sidebar().getByRole("region", { name: "Archived" }));
+  await user.click(archived.getByRole("button", { name: "Archived (1)" }));
+  await user.click(archived.getByRole("button", { name: `Unarchive ${gardenTitle}` }));
+  await waitFor(() => {
+    expect(sidebar().queryByRole("region", { name: "Archived" })).not.toBeInTheDocument();
+  });
+});
+
 test("import from ChatGPT: preview first, then the chats appear in the sidebar", async () => {
   const { user } = setup();
   await composer();
