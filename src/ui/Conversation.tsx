@@ -758,7 +758,8 @@ export function Composer({
   pickerOpen: boolean;
   onPickerOpen: (open: boolean) => void;
   onSelectModel: (model: ModelOption) => void;
-  onSend: (content: string) => void;
+  /** `thinkHarder`: maximum reasoning effort for this one message (RT-08). */
+  onSend: (content: string, opts?: { thinkHarder: boolean }) => void;
   onStop: () => void;
   onSettings: () => void;
   attachments?: PendingAttachment[];
@@ -804,10 +805,12 @@ export function Composer({
       field.current.style.height = `${String(Math.min(field.current.scrollHeight, window.innerHeight * 0.3))}px`;
     }
   }, [text]);
+  const [thinkHarder, setThinkHarder] = useState(false);
   const send = () => {
     if (!canSend || streaming || missingKey) return;
-    onSend(text.trim());
+    onSend(text.trim(), { thinkHarder });
     setText("");
+    setThinkHarder(false);
     field.current?.focus();
   };
   const modelPinned = !routing || routing.selected === null;
@@ -1127,6 +1130,27 @@ export function Composer({
                 </Button>
               </Tip>
             )}
+            <Tip
+              label={
+                thinkHarder
+                  ? "Think harder: maximum reasoning for this message (slower, more output tokens)"
+                  : "Think harder for this message"
+              }
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Think harder"
+                aria-pressed={thinkHarder}
+                className={`gap-1.5 text-xs ${thinkHarder ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                onClick={() => {
+                  setThinkHarder((on) => !on);
+                }}
+              >
+                <Brain className="size-3.5" />
+                <span className="hidden min-[900px]:inline">Think</span>
+              </Button>
+            </Tip>
           </div>
           {streaming ? (
             <Button size="sm" variant="outline" onClick={onStop}>

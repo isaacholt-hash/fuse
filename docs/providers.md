@@ -216,7 +216,8 @@ Checked against the Markdown copies of the live docs on 2026-10-28. Decisions fo
 | Cache effect | A top-level effort change invalidates the cached messages. Per-message effort keeps the cache but is beta (`mid-conversation-output-config-2026-07-01`). | — |
 
 **FUSE:**
-- **Effort comes from complexity:** low → `low`, medium → omitted (the model's default), high → `high`.
+- **Effort comes from complexity:** high → `high`. Everything else is omitted and keeps the model's default. Built in M2 step 9.
+  - **Why easy questions aren't lowered:** on Anthropic a top-level effort change rewrites the thread's cache, and easy and medium questions alternate constantly. Hard questions mostly go to Best, a different model with its own cache anyway.
 - **"Think harder" sends `max`** on both providers.
 - **No beta header for per-message effort yet.** A changed effort costs one cache rewrite, which is acceptable.
 - **`max_tokens` is the hard cap on thinking plus text,** so at `max` effort send the model's full `max_output`.

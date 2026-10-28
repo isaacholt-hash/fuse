@@ -72,6 +72,12 @@ test("request: Responses API, store false, Standard tier, no temperature, no key
   });
 });
 
+test("effort goes in reasoning.effort; omitted when not set", async () => {
+  const { a, sent } = adapter([sse(STREAM)]);
+  await collect(a.streamChat([{ role: "user", content: "a" }], "gpt-6.1-sol", { effort: "max" }));
+  expect(sent[0]?.body).toMatchObject({ reasoning: { effort: "max" } });
+});
+
 test("usage: cache reads and writes are taken out of input_tokens", () => {
   expect(
     normaliseUsage({

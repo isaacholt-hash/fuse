@@ -34,7 +34,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 ### Cost control
 
 - [x] **8. Prompt caching (RT-07).** Instructions, memory and documents go in the cacheable prefix, ordered for the most reuse. Cache hit rate shows per thread.
-- [ ] **9. Reasoning control (RT-08).** The router sets reasoning effort from complexity; "Think harder" in the composer forces the maximum for one message.
+- [x] **9. Reasoning control (RT-08).** The router sets reasoning effort from complexity; "Think harder" in the composer forces the maximum for one message.
 - [ ] **10. Usage dashboard (CO-02).** Spend by day, week and month; by provider, model, tier, project and intent; against the previous period.
 - [ ] **11. Budgets (CO-03, RT-10, CO-07).** Monthly and daily budgets, global or per project; alerts at 50, 80 and 100%. At 80% Auto drops a tier, never below the floor; at 100% every send asks first. Plus the anomaly alert (a day's spend over 3× the trailing 14-day average).
 - [ ] **12. Savings and cost preview (CO-04, CO-05).** Monthly savings report: actual spend against the same requests on Best and a subscription baseline Isaac enters. Cost preview with options before any request over 20k tokens.

@@ -170,3 +170,12 @@ test("a fallback on the other provider in the same tier, for failover; none for 
   );
   expect(pinned.ok && pinned.fallback).toBeNull();
 });
+
+test("hard questions get high reasoning effort; the rest keep the model's default", () => {
+  const hard = route(policy, catalog, AUTO, task({ intent: "chat", complexity: "high" }), both);
+  expect(hard.ok && hard.info.effort).toBe("high");
+  for (const complexity of ["low", "medium"] as const) {
+    const r = route(policy, catalog, AUTO, task({ complexity }), both);
+    expect(r.ok && r.info.effort).toBeNull();
+  }
+});

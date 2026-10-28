@@ -143,6 +143,7 @@ export function buildRequestBody(
     max_output_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   };
   if (options.system) body.instructions = options.system;
+  if (options.effort) body.reasoning = { effort: options.effort };
   if (options.webSearch) {
     // An empty approximate location stops OpenAI defaulting results to the US.
     body.tools = [{ type: "web_search", user_location: { type: "approximate" } }];
