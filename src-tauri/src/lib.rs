@@ -3,6 +3,7 @@ mod export;
 mod files;
 mod keys;
 mod preview;
+mod quick;
 mod transport;
 mod web;
 
@@ -16,6 +17,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // Native "Save as" dialogs, used from Rust only (src/export.rs); no JS permission needed.
         .plugin(tauri_plugin_dialog::init())
+        // Global quick capture; the app sets the shortcut from Settings (src/quick.rs).
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(db::Database::default())
         .manage(keys::Keys::default())
         .manage(transport::Transport::default())
@@ -35,6 +38,7 @@ pub fn run() {
             web::commands::url_fetch,
             preview::commands::preview_put,
             export::commands::save_as,
+            quick::commands::quick_capture_set,
             files::commands::file_put,
             files::commands::file_get,
             db::commands::db_open,

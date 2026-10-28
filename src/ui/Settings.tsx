@@ -225,6 +225,7 @@ export function SettingsView({
   memory,
   routing,
   budgets,
+  quickCapture,
   theme,
   onTheme,
   onBack,
@@ -246,6 +247,8 @@ export function SettingsView({
   routing?: ReactNode;
   /** Settings → Budgets (CO-03). */
   budgets?: ReactNode;
+  /** Settings → Quick capture (CH-08). */
+  quickCapture?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -306,6 +309,7 @@ export function SettingsView({
         {instructions}
         {memory}
         {budgets}
+        {quickCapture}
         {routing}
         <RecoveryKeySection load={onRecoveryKey} />
         <section className="mt-8 border-t pt-6">
