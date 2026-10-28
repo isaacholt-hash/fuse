@@ -375,6 +375,43 @@ test("answer actions: copy, quote into the composer, thumbs up/down (saved), and
   expect(rows.map((r) => r.feedback)).toEqual(["down"]);
 });
 
+test("edit a question or regenerate an answer: a new version, with ‹ 1/2 › to flip back", async () => {
+  const { user } = setup({
+    anthropic: [
+      () => answer("First answer."),
+      () => answer("Edited answer."),
+      () => answer("Fresh answer."),
+    ],
+  });
+  await user.type(await composer(), "Original question{Enter}");
+  expect(await screen.findByText("First answer.")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Edit message" }));
+  const box = screen.getByRole("textbox", { name: "Edit message" });
+  await user.clear(box);
+  await user.type(box, "Better question{Enter}");
+  expect(await screen.findByText("Edited answer.")).toBeInTheDocument();
+  expect(screen.queryByText("First answer.")).not.toBeInTheDocument();
+  const questionVersions = within(await screen.findByRole("group", { name: "question versions" }));
+  expect(questionVersions.getByText("2/2")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Regenerate answer" }));
+  expect(await screen.findByText("Fresh answer.")).toBeInTheDocument();
+  const answerVersions = within(await screen.findByRole("group", { name: "answer versions" }));
+  expect(answerVersions.getByText("2/2")).toBeInTheDocument();
+  await user.click(answerVersions.getByRole("button", { name: "Previous answer" }));
+  expect(await screen.findByText("Edited answer.")).toBeInTheDocument();
+
+  // Back to the first question: its own answer comes with it.
+  await user.click(
+    within(screen.getByRole("group", { name: "question versions" })).getByRole("button", {
+      name: "Previous question",
+    }),
+  );
+  expect(await screen.findByText("First answer.")).toBeInTheDocument();
+  expect(screen.queryByText("Better question")).not.toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

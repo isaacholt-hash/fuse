@@ -91,6 +91,8 @@ export interface MessageView {
   escalateTo?: string;
   /** Thumbs up or down (CH-07). */
   feedback?: "up" | "down" | null;
+  /** This message's place among its siblings, when an edit or regenerate made some (CH-04). */
+  branch?: { position: number; total: number };
 }
 
 /** The routing badge on an answer. */

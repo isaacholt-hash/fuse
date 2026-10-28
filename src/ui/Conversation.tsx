@@ -5,6 +5,8 @@ import {
   Brain,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Command,
   Copy,
@@ -14,6 +16,8 @@ import {
   CornerDownLeft,
   LoaderCircle,
   FileText,
+  Pencil,
+  RotateCcw,
   Globe,
   Paperclip,
   Search,
@@ -179,6 +183,95 @@ function MemoryBadge({ memories }: { memories: string[] }) {
   );
 }
 
+/** ‹ 2/3 › between an edited question's or a regenerated answer's versions (CH-04). */
+function BranchPicker({
+  branch,
+  label,
+  onStep,
+}: {
+  branch: { position: number; total: number };
+  label: string;
+  onStep?: (step: -1 | 1) => void;
+}) {
+  return (
+    <span
+      className="flex items-center font-mono text-[10px] text-muted-foreground"
+      role="group"
+      aria-label={`${label} versions`}
+    >
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Previous ${label}`}
+        disabled={!onStep || branch.position <= 1}
+        onClick={() => onStep?.(-1)}
+      >
+        <ChevronLeft />
+      </Button>
+      <span>
+        {branch.position}/{branch.total}
+      </span>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Next ${label}`}
+        disabled={!onStep || branch.position >= branch.total}
+        onClick={() => onStep?.(1)}
+      >
+        <ChevronRight />
+      </Button>
+    </span>
+  );
+}
+
+/** Edits a question in place; sending makes a new branch. */
+function EditQuestion({
+  initial,
+  onSend,
+  onCancel,
+}: {
+  initial: string;
+  onSend: (text: string) => void;
+  onCancel: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  return (
+    <div className="self-stretch rounded-2xl border bg-background p-3">
+      <textarea
+        aria-label="Edit message"
+        autoFocus
+        value={text}
+        rows={Math.min(10, Math.max(2, text.split("\n").length))}
+        onChange={(e) => {
+          setText(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onCancel();
+          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && text.trim()) {
+            e.preventDefault();
+            onSend(text.trim());
+          }
+        }}
+        className="block w-full resize-none bg-transparent text-[13px] leading-6 outline-none"
+      />
+      <div className="mt-2 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          disabled={!text.trim()}
+          onClick={() => {
+            onSend(text.trim());
+          }}
+        >
+          Send edit
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 const startedLabel = (ms: number) => {
   const d = new Date(ms);
   const time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -195,6 +288,10 @@ export function Messages({
   onEscalate,
   onFeedback,
   onQuote,
+  onBranch,
+  onRegenerate,
+  onEdit,
+  busy = false,
 }: {
   messages: MessageView[];
   /** Selected model, for the empty state. */
@@ -208,7 +305,16 @@ export function Messages({
   onFeedback?: (id: string, value: "up" | "down" | null) => void;
   /** Puts an answer into the composer as a quote. */
   onQuote?: (text: string) => void;
+  /** Shows the previous or next version of a message (CH-04). */
+  onBranch?: (id: string, step: -1 | 1) => void;
+  /** A fresh answer to the same question, on a new branch. */
+  onRegenerate?: (answerId: string) => void;
+  /** Sends an edited question on a new branch. */
+  onEdit?: (messageId: string, text: string) => void;
+  /** An answer is streaming: edits, regenerates and branch switches wait. */
+  busy?: boolean;
 }) {
+  const [editing, setEditing] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
@@ -302,13 +408,56 @@ export function Messages({
                         )}
                       </div>
                     )}
-                    {message.content && (
-                      <div className="self-stretch rounded-2xl rounded-tr-md border border-border/50 bg-muted/65 px-4 py-3.5 text-[13px] leading-[1.8] whitespace-pre-wrap">
-                        {message.content}
-                      </div>
+                    {editing === message.id && onEdit ? (
+                      <EditQuestion
+                        initial={message.content}
+                        onCancel={() => {
+                          setEditing(null);
+                        }}
+                        onSend={(text) => {
+                          setEditing(null);
+                          onEdit(message.id, text);
+                        }}
+                      />
+                    ) : (
+                      message.content && (
+                        <div className="self-stretch rounded-2xl rounded-tr-md border border-border/50 bg-muted/65 px-4 py-3.5 text-[13px] leading-[1.8] whitespace-pre-wrap">
+                          {message.content}
+                        </div>
+                      )
                     )}
-                    <div className="mt-2 pr-1 text-right text-[10px] text-muted-foreground">
-                      You
+                    <div className="mt-1 flex items-center gap-1 pr-1 text-[10px] text-muted-foreground">
+                      {message.branch && (
+                        <BranchPicker
+                          branch={message.branch}
+                          label="question"
+                          {...(onBranch && !busy
+                            ? {
+                                onStep: (step: -1 | 1) => {
+                                  onBranch(message.id, step);
+                                },
+                              }
+                            : {})}
+                        />
+                      )}
+                      {onEdit &&
+                        !busy &&
+                        editing !== message.id &&
+                        message.id !== "live-question" && (
+                          <Tip label="Edit and send again (keeps this version)">
+                            <Button
+                              variant="ghost"
+                              size="icon-xs"
+                              aria-label="Edit message"
+                              onClick={() => {
+                                setEditing(message.id);
+                              }}
+                            >
+                              <Pencil />
+                            </Button>
+                          </Tip>
+                        )}
+                      <span className="ml-1">You</span>
                     </div>
                   </div>
                 ) : (
@@ -447,6 +596,33 @@ export function Messages({
                                   <Quote />
                                 </Button>
                               </Tip>
+                            )}
+                            {onRegenerate && !busy && (
+                              <Tip label="New answer (keeps this one)">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Regenerate answer"
+                                  onClick={() => {
+                                    onRegenerate(message.id);
+                                  }}
+                                >
+                                  <RotateCcw />
+                                </Button>
+                              </Tip>
+                            )}
+                            {message.branch && (
+                              <BranchPicker
+                                branch={message.branch}
+                                label="answer"
+                                {...(onBranch && !busy
+                                  ? {
+                                      onStep: (step: -1 | 1) => {
+                                        onBranch(message.id, step);
+                                      },
+                                    }
+                                  : {})}
+                              />
                             )}
                             {onFeedback &&
                               (["up", "down"] as const).map((value) => {
