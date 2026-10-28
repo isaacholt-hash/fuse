@@ -1,0 +1,3 @@
+# Build scripts dependencies may run on install. core-js (via jspdf) only prints a banner.
+allowBuilds:
+  core-js: false
