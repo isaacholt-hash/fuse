@@ -30,6 +30,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
+import { ArtifactCard } from "./Artifacts";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Tip } from "./primitives";
 import type {
@@ -301,6 +302,8 @@ export function Messages({
   onEdit,
   busy = false,
   focusId = null,
+  openArtifact = null,
+  onOpenArtifact,
 }: {
   messages: MessageView[];
   /** Selected model, for the empty state. */
@@ -324,6 +327,9 @@ export function Messages({
   busy?: boolean;
   /** A message to scroll to and highlight (a search result). */
   focusId?: string | null;
+  /** The artifact open in the side panel, by key (AR-01). */
+  openArtifact?: string | null;
+  onOpenArtifact?: (key: string) => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -511,7 +517,25 @@ export function Messages({
                     </div>
                     {message.content && (
                       <div className="text-[13px] leading-[1.85] text-foreground/85">
-                        <Markdown content={message.content} />
+                        {message.parts ? (
+                          message.parts.map((part, i) =>
+                            part.kind === "text" ? (
+                              <Markdown key={i} content={part.text} />
+                            ) : (
+                              <ArtifactCard
+                                key={i}
+                                title={part.title}
+                                type={part.type}
+                                language={part.language}
+                                writing={!part.complete}
+                                open={openArtifact === part.key}
+                                onOpen={() => onOpenArtifact?.(part.key)}
+                              />
+                            ),
+                          )
+                        ) : (
+                          <Markdown content={message.content} />
+                        )}
                         {message.status === "streaming" && (
                           <span
                             className="mt-2 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground"

@@ -48,8 +48,10 @@ export function systemPrompt(
   parts: InstructionPart[],
   memories: string[] = [],
   earlier: string | null = null,
+  guides: string[] = [],
 ): string | undefined {
-  const sections: string[] = [];
+  // App guides (e.g. artifacts) first: they never change, so they head the cached prefix.
+  const sections: string[] = [...guides];
   if (parts.length > 0) {
     const blocks = parts.map((p) => {
       const tag = PARTS.find((x) => x.source === p.source)?.tag ?? p.source;

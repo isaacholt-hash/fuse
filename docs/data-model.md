@@ -132,8 +132,8 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 
 | Table | Purpose | Req |
 | --- | --- | --- |
-| `artifacts` | `type` (`markdown`/`code`/`html`/`react`/`svg`/`mermaid`/`table`/`image`), `title`, `language NULL`, `project_id NULL`, `thread_id NULL`, `source_message_id NULL`, `current_version_id`, `allow_cdns_json NULL`, `deleted_at`. | AR-01, AR-05, AR-06 |
-| `artifact_versions` | `artifact_id`, `version` (1, 2, …), `content`, `author` (`model`/`user`), `message_id NULL`, `request_id NULL`. Kept forever; diffs are computed, not stored. | AR-02, AR-03 |
+| `artifacts` | `thread_id`, `key` (the model's id, unique per thread), `title`, `type` (`markdown`/`code`/`html`/`svg`/`mermaid`/`react`), `language` (code), `deleted_at`. Built in M2 step 18 (`0019_artifacts.sql`). Every chat's system prompt opens with the artifact guide (`ARTIFACT_GUIDE`, first so it caches), which tells the model to wrap long documents, code files, pages and diagrams in `<artifact id type title language>`. Finished blocks in an answer are saved after it completes; the same id again in the thread is a new version. The chat shows a card for each and the content opens in a side panel (it streams live there too). Purged with incognito chats. Not built yet: `project_id` (AR-06), `allow_cdns_json` (AR-05). | AR-01, AR-05, AR-06 |
+| `artifact_versions` | `artifact_id`, `version` (1, 2, …), `content`, `source` (`model`/`user`/`restore`), `message_id NULL`. Built with `artifacts` (step 18); a version is only added when the content changed. Kept forever; diffs are computed, not stored. | AR-02, AR-03 |
 
 ### Out of P1 (not designed here)
 

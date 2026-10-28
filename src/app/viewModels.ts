@@ -2,6 +2,7 @@
 import { findModel, priceFor, toolPrice, type Catalog, type CatalogModel } from "@/catalog/catalog";
 import { PROVIDER_NAMES } from "@/chat/sendMessage";
 import { cost } from "@/cost/cost";
+import { splitAnswer } from "@/artifacts/parse";
 import { INTENT_LABELS } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
 import type { Message } from "@/storage/messages";
@@ -156,6 +157,21 @@ export function messageViews(
       model: name,
       feedback: m.feedback,
     };
+    const parts = splitAnswer(m.content);
+    if (parts.some((p) => p.kind === "artifact")) {
+      view.parts = parts.map((p) =>
+        p.kind === "text"
+          ? p
+          : {
+              kind: "artifact",
+              key: p.artifact.key,
+              title: p.artifact.title,
+              type: p.artifact.type,
+              language: p.artifact.language,
+              complete: p.artifact.complete,
+            },
+      );
+    }
     if (m.escalatedFromId) {
       view.switchLabel = `Stronger model: ${name} · same question`;
     } else if (lastModel !== null && key !== lastModel) {

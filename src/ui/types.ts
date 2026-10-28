@@ -100,6 +100,18 @@ export interface MessageView {
   summaryAbove?: boolean;
   /** Parts of attached files this answer was given, e.g. "book.txt, lines 120–140" (FK-02). */
   fileSources?: string[];
+  /** The answer split around its artifacts (AR-01); absent when it has none. */
+  parts?: (
+    | { kind: "text"; text: string }
+    | {
+        kind: "artifact";
+        key: string;
+        title: string;
+        type: "markdown" | "code" | "html" | "svg" | "mermaid" | "react";
+        language: string;
+        complete: boolean;
+      }
+  )[];
 }
 
 /** The routing badge on an answer. */

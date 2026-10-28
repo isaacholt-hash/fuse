@@ -16,6 +16,7 @@ import { searchChats } from "@/storage/search";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
 import App from "./App";
+import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 
 // Placeholder prices for arithmetic; real ones live in data/models.json.
 const catalog = parseCatalog({
@@ -486,7 +487,7 @@ test("incognito: marked, no memory, not listed or searchable, and gone once you 
   expect(screen.getByRole("note")).toHaveTextContent("deleted when you leave it");
   await user.type(await composer(), "Plan a surprise party{Enter}");
   expect(await screen.findByText("Keep it quiet.")).toBeInTheDocument();
-  expect(options[0]).not.toHaveProperty("system"); // no memories sent
+  expect(options[0]).toHaveProperty("system", ARTIFACT_GUIDE); // only the app guide: no memories
   expect(sidebar().queryByText("Plan a surprise party")).not.toBeInTheDocument();
   expect(await searchChats(db, DEFAULT_TENANT, "surprise")).toEqual([]);
 
@@ -660,6 +661,30 @@ test("a pasted link is read as text, attached with its size, and not read again 
     ),
   ).toBeInTheDocument();
   expect(web.reads).toEqual(["https://www.vw.com/atlas"]);
+});
+
+test("an artifact shows as a card, opens in the side panel, and the same id makes version 2", async () => {
+  const doc = (body: string) =>
+    `Here's the plan.\n<artifact id="trip" type="markdown" title="Lisbon trip">\n# Day 1\n${body}\n</artifact>\nEnjoy!`;
+  const { user } = setup({
+    anthropic: [() => answer(doc("Tram 28.")), () => answer(doc("Tram 28, then Belém."))],
+  });
+  await user.type(await composer(), "Plan my trip{Enter}");
+  expect(await screen.findByText("Enjoy!")).toBeInTheDocument();
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Lisbon trip" }));
+  expect(panel.getByText("Tram 28.")).toBeInTheDocument();
+  expect(panel.getByText(/version 1/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open Lisbon trip" })).toBeInTheDocument();
+
+  await user.type(await composer(), "Add Belém{Enter}");
+  expect(await screen.findByText("Tram 28, then Belém.")).toBeInTheDocument();
+  expect(screen.getByText(/version 2/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Close artifact" }));
+  expect(screen.queryByRole("complementary", { name: /Artifact:/ })).not.toBeInTheDocument();
+  await user.click(screen.getAllByRole("button", { name: "Open Lisbon trip" })[0] as HTMLElement);
+  expect(
+    await screen.findByRole("complementary", { name: "Artifact: Lisbon trip" }),
+  ).toBeInTheDocument();
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {
@@ -972,7 +997,7 @@ test("web search: on by default, toggle per thread, live status, cited sources a
   expect(await screen.findByText("Searching the web…")).toBeInTheDocument();
   release();
   expect(await screen.findByText("It was 1916.")).toBeInTheDocument();
-  expect(options[0]).toEqual({ webSearch: true });
+  expect(options[0]).toEqual({ webSearch: true, system: ARTIFACT_GUIDE });
 
   const sources = within(await screen.findByRole("navigation", { name: "Sources" }));
   expect(sources.getByRole("link", { name: "Claude Shannon" })).toHaveAttribute(
@@ -1078,7 +1103,7 @@ describe("custom instructions", () => {
     const { options, user } = setup();
     await user.type(await composer(), "Hi{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();
-    expect(options[0]).toEqual({ webSearch: true }); // no `system` key
+    expect(options[0]).toEqual({ webSearch: true, system: ARTIFACT_GUIDE }); // just the app guide
     await user.click(screen.getByRole("button", { name: "Instructions (none)" }));
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText("None set.")).toBeInTheDocument();
