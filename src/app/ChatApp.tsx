@@ -91,7 +91,10 @@ import {
   deleteThread,
   listThreads,
   renameThread,
+  setThreadArchived,
   setThreadInstructions,
+  setThreadPinned,
+  setThreadTags,
   purgeIncognito,
   purgeThread,
   setActiveLeaf,
@@ -183,6 +186,7 @@ import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
+import { TagsDialog } from "@/ui/Tags";
 import { searchChats } from "@/storage/search";
 import { UpdateBar } from "@/ui/UpdateBar";
 import type {
@@ -489,6 +493,7 @@ export function ChatApp({
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   const [picker, setPicker] = useState(false);
   const [deleting, setDeleting] = useState<ThreadView | null>(null);
+  const [tagging, setTagging] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -1567,6 +1572,13 @@ export function ChatApp({
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
   const threadViews = threads.filter((t) => !t.incognito).map((t) => threadView(t, at));
+  const togglePin = (t: { id: string; pinned: boolean }) => {
+    setThreadPinned(db, tenant, t.id, !t.pinned).then(refreshThreads).catch(report);
+  };
+  const toggleArchive = (t: { id: string; archived: boolean }) => {
+    setThreadArchived(db, tenant, t.id, !t.archived).then(refreshThreads).catch(report);
+  };
+  const taggingThread = threads.find((t) => t.id === tagging);
   const incognito = thread ? thread.incognito : draftIncognito;
   const projectViews: ProjectView[] = projects.map((p) => {
     const inside = threadViews.filter((t) => t.projectId === p.id);
@@ -2138,6 +2150,8 @@ export function ChatApp({
               }}
               onRename={rename}
               onDelete={setDeleting}
+              onPin={togglePin}
+              onArchive={toggleArchive}
               onSearch={() => {
                 setSearchOpen(true);
               }}
@@ -2477,6 +2491,17 @@ export function ChatApp({
                         onDelete={() => {
                           setDeleting(threadView(thread, at));
                         }}
+                        pinned={thread.pinnedAt !== null}
+                        archived={thread.archivedAt !== null}
+                        onTogglePin={() => {
+                          togglePin({ id: thread.id, pinned: thread.pinnedAt !== null });
+                        }}
+                        onToggleArchive={() => {
+                          toggleArchive({ id: thread.id, archived: thread.archivedAt !== null });
+                        }}
+                        onEditTags={() => {
+                          setTagging(thread.id);
+                        }}
                       />
                     )}
                   </>
@@ -2733,6 +2758,20 @@ export function ChatApp({
             setView("settings");
           }}
         />
+        {taggingThread && (
+          <TagsDialog
+            open
+            tags={taggingThread.tags}
+            known={[...new Set(threads.flatMap((t) => t.tags))].sort()}
+            onOpenChange={(open) => {
+              if (!open) setTagging(null);
+            }}
+            onSave={(tags) => {
+              setTagging(null);
+              setThreadTags(db, tenant, taggingThread.id, tags).then(refreshThreads).catch(report);
+            }}
+          />
+        )}
         <Modal
           open={Boolean(deleting)}
           onOpenChange={(open) => {

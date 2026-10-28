@@ -12,7 +12,7 @@
 
 ### P1 Musts still missing
 
-- [ ] **1. Pin, archive and tags (CH-02).** Pinned chats at the top of the sidebar, archived ones behind a toggle, tags from the chat header, filterable in the sidebar and search.
+- [x] **1. Pin, archive and tags (CH-02).** Pinned chats at the top of the sidebar, archived ones behind a toggle, tags from the chat header, filterable in the sidebar and search.
 - [ ] **2. Font size and reduced motion (PL-10).** Small, normal or large text; Reduce motion follows the OS by default.
 - [ ] **3. Editable price list with refresh (MM-04).**
   - Prices are editable per model, and the shipped ones stay as defaults.

@@ -30,6 +30,11 @@ export interface Thread {
   activeLeafId: string | null;
   /** Incognito (CH-15): not listed or searched, no memory, purged when you leave it. */
   incognito: boolean;
+  /** CH-02: pinned to the top of the sidebar, or archived out of it; null when not. */
+  pinnedAt: number | null;
+  archivedAt: number | null;
+  /** CH-02 tags, sorted. */
+  tags: string[];
 }
 
 interface ThreadRow {
@@ -50,7 +55,12 @@ interface ThreadRow {
   pinned_model: string | null;
   active_leaf_id: string | null;
   incognito: number;
+  pinned_at: number | null;
+  archived_at: number | null;
+  tags: string | null;
 }
+
+const TAG_SEP = "\u001f";
 
 const toThread = (r: ThreadRow): Thread => ({
   id: r.id,
@@ -71,12 +81,17 @@ const toThread = (r: ThreadRow): Thread => ({
   pinnedModel: r.pinned_model,
   activeLeafId: r.active_leaf_id,
   incognito: r.incognito === 1,
+  pinnedAt: r.pinned_at,
+  archivedAt: r.archived_at,
+  tags: r.tags ? r.tags.split(TAG_SEP).sort() : [],
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
+         t.pinned_at, t.archived_at,
+         (SELECT GROUP_CONCAT(g.tag, char(31)) FROM thread_tags g WHERE g.thread_id = t.id) AS tags,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -288,7 +303,70 @@ export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promis
     id,
   ]);
   await db.execute(`DELETE FROM imports WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  await db.execute(`DELETE FROM thread_tags WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
+}
+
+/** A tag as stored: lowercase, spaces as dashes, no leading #, at most 32 characters. */
+export function normaliseTag(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^#+/, "")
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]/gu, "")
+    .slice(0, 32);
+}
+
+/** Pins a chat to the top of the sidebar, or unpins it (CH-02). */
+export async function setThreadPinned(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  pinned: boolean,
+): Promise<void> {
+  await db.execute(`UPDATE threads SET pinned_at = ? WHERE workspace_id = ? AND id = ?`, [
+    pinned ? Date.now() : null,
+    tenant.workspaceId,
+    id,
+  ]);
+}
+
+/** Archives a chat out of the sidebar, or brings it back (CH-02). */
+export async function setThreadArchived(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  archived: boolean,
+): Promise<void> {
+  await db.execute(`UPDATE threads SET archived_at = ? WHERE workspace_id = ? AND id = ?`, [
+    archived ? Date.now() : null,
+    tenant.workspaceId,
+    id,
+  ]);
+}
+
+/** Replaces a chat's tags; blanks and repeats are dropped. */
+export async function setThreadTags(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  tags: readonly string[],
+): Promise<string[]> {
+  const clean = [...new Set(tags.map(normaliseTag).filter(Boolean))].sort();
+  await db.execute(`DELETE FROM thread_tags WHERE workspace_id = ? AND thread_id = ?`, [
+    tenant.workspaceId,
+    id,
+  ]);
+  const now = Date.now();
+  for (const tag of clean) {
+    await db.execute(
+      `INSERT INTO thread_tags (id, workspace_id, user_id, thread_id, tag, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [uuidv7(now), tenant.workspaceId, tenant.userId, id, tag, now, now],
+    );
+  }
+  return clean;
 }
 
 /** Purges every incognito chat (run at start, in case the app closed inside one). */

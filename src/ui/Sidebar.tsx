@@ -1,5 +1,7 @@
 import { money } from "./format";
 import {
+  Archive,
+  ArchiveRestore,
   BarChart3,
   Check,
   ChevronDown,
@@ -10,6 +12,8 @@ import {
   MessageSquare,
   PanelLeftClose,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   Search,
   Settings,
@@ -36,6 +40,9 @@ interface Props {
   onSettings: () => void;
   onRename: (id: string, title: string) => void;
   onDelete: (thread: ThreadView) => void;
+  /** CH-02: pin to the top, or archive out of the list (each toggles). */
+  onPin: (thread: ThreadView) => void;
+  onArchive: (thread: ThreadView) => void;
   /** Opens search across all chats (CH-02). */
   onSearch?: () => void;
   /** Opens the usage dashboard (CO-02). */
@@ -59,9 +66,13 @@ export function Sidebar({
   onSettings,
   onRename,
   onDelete,
+  onPin,
+  onArchive,
   onSearch,
   onUsage,
 }: Props) {
+  const [tag, setTag] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   // Projects the user opened or closed; the active project is open unless closed.
@@ -92,9 +103,25 @@ export function Sidebar({
       onDelete={() => {
         onDelete(thread);
       }}
+      onPin={() => {
+        onPin(thread);
+      }}
+      onArchive={() => {
+        onArchive(thread);
+      }}
     />
   );
-  const loose = threads.filter((t) => t.projectId === null);
+  const tags = [...new Set(threads.filter((t) => !t.archived).flatMap((t) => t.tags))].sort();
+  const filter = tag !== null && tags.includes(tag) ? tag : null;
+  const shown = (t: ThreadView) => !t.archived && (filter === null || t.tags.includes(filter));
+  // Pinned chats show once, at the top, instead of in their project or date group.
+  const listed = (t: ThreadView) => shown(t) && !t.pinned;
+  const pinned = threads.filter((t) => shown(t) && t.pinned);
+  const archived = threads.filter((t) => t.archived);
+  const loose = threads.filter((t) => t.projectId === null && listed(t));
+  const visibleProjects = projects
+    .map((p) => ({ ...p, threads: p.threads.filter(listed) }))
+    .filter((p) => filter === null || p.threads.length > 0);
   return (
     <aside
       className="flex h-full w-[248px] shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-[800px]:w-[218px]"
@@ -142,8 +169,30 @@ export function Sidebar({
             </span>
           </Button>
         )}
+        {tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter by tag">
+            {tags.map((t) => (
+              <button
+                key={t}
+                aria-pressed={filter === t}
+                className={`rounded-full border px-2 py-0.5 text-[10px] ${filter === t ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
+                onClick={() => {
+                  setTag(filter === t ? null : t);
+                }}
+              >
+                #{t}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       <nav className="min-h-0 flex-1 overflow-y-auto px-3 pb-5" aria-label="Conversations">
+        {pinned.length > 0 && (
+          <section className="mb-5" aria-label="Pinned">
+            <h2 className={`mb-2 ${sectionTitle}`}>Pinned</h2>
+            <div className="space-y-1">{pinned.map(row)}</div>
+          </section>
+        )}
         <section className="mb-5" aria-label="Projects">
           <div className="mb-1 flex items-center justify-between pr-1">
             <h2 className={sectionTitle}>Projects</h2>
@@ -159,12 +208,12 @@ export function Sidebar({
               </Button>
             </Tip>
           </div>
-          {projects.length === 0 && (
+          {visibleProjects.length === 0 && filter === null && (
             <p className="px-3 py-1 text-[11px] text-muted-foreground">
               Group chats that share instructions.
             </p>
           )}
-          {projects.map((project) => {
+          {visibleProjects.map((project) => {
             const open = toggled[project.id] ?? project.id === activeProjectId;
             return (
               <div key={project.id} className="mb-1">
@@ -245,6 +294,23 @@ export function Sidebar({
             )
           );
         })}
+        {archived.length > 0 && (
+          <section aria-label="Archived">
+            <button
+              className={`flex w-full items-center gap-1.5 py-1 ${sectionTitle}`}
+              aria-expanded={showArchived}
+              onClick={() => {
+                setShowArchived((v) => !v);
+              }}
+            >
+              <ChevronRight
+                className={`size-3 transition-transform ${showArchived ? "rotate-90" : ""}`}
+              />
+              Archived ({archived.length})
+            </button>
+            {showArchived && <div className="mt-1 space-y-1">{archived.map(row)}</div>}
+          </section>
+        )}
       </nav>
       <div className="mx-4 border-t py-3">
         {onUsage && (
@@ -294,6 +360,8 @@ function ThreadRow({
   onSelect,
   onStartRename,
   onDelete,
+  onPin,
+  onArchive,
 }: {
   thread: ThreadView;
   selected: boolean;
@@ -305,6 +373,8 @@ function ThreadRow({
   onSelect: () => void;
   onStartRename: () => void;
   onDelete: () => void;
+  onPin: () => void;
+  onArchive: () => void;
 }) {
   return (
     <div
@@ -342,11 +412,26 @@ function ThreadRow({
             onClick={onSelect}
           >
             <span className="block truncate pr-1 text-[12px] font-medium">{thread.title}</span>
-            <span className="mt-1 block font-mono text-[10px] text-muted-foreground">
+            <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
               {money(thread.costMicro)}
+              {thread.tags.map((t) => (
+                <span key={t} className="ml-1.5">
+                  #{t}
+                </span>
+              ))}
             </span>
           </button>
           <div className="absolute right-2 bottom-1.5 flex gap-0.5 rounded bg-sidebar-accent opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
+            {!thread.archived && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`${thread.pinned ? "Unpin" : "Pin"} ${thread.title}`}
+                onClick={onPin}
+              >
+                {thread.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon-xs"
@@ -354,6 +439,18 @@ function ThreadRow({
               onClick={onStartRename}
             >
               <Pencil className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label={`${thread.archived ? "Unarchive" : "Archive"} ${thread.title}`}
+              onClick={onArchive}
+            >
+              {thread.archived ? (
+                <ArchiveRestore className="size-3" />
+              ) : (
+                <Archive className="size-3" />
+              )}
             </Button>
             <Button
               variant="ghost"

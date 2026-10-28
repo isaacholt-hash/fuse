@@ -32,6 +32,7 @@ export const EXPORTED_TABLES = [
   "golden_prompts",
   "web_pages",
   "imports",
+  "thread_tags",
   "request_log",
 ] as const;
 
