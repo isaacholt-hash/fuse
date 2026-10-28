@@ -95,6 +95,16 @@ export interface ProviderAdapter {
     options: ChatOptions,
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent>;
+  /** Text embeddings (MM-11), one vector per input, in order. Only providers that offer them. */
+  embed?(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResult>;
+}
+
+export interface EmbedResult {
+  vectors: Float32Array[];
+  /** Billed input tokens. */
+  tokens: number;
+  providerRequestId: string | null;
+  attempts: number;
 }
 
 export const DEFAULT_MAX_OUTPUT_TOKENS = 16_000;
