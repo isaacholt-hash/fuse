@@ -14,7 +14,7 @@
 
 - [x] **1. Pin, archive and tags (CH-02).** Pinned chats at the top of the sidebar, archived ones behind a toggle, tags from the chat header, filterable in the sidebar and search.
 - [x] **2. Font size and reduced motion (PL-10).** Small, normal or large text; Reduce motion follows the OS by default.
-- [ ] **3. Editable price list with refresh (MM-04).**
+- [x] **3. Editable price list with refresh (MM-04).**
   - Prices are editable per model, and the shipped ones stay as defaults.
   - When a price is over 30 days old, FUSE offers to refresh from the repo's `data/models.json` and shows the changes first, so prices update without a release.
 - [ ] **4. Model discovery and deprecations (MM-03, MM-08).**
