@@ -23,7 +23,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **2. Pins per message and per project (RT-01, PM-01).**
   - A "this message only" pin in the picker that resets after sending.
   - A project's default can be Auto, Balanced, Best or a model, and new chats in it start on that.
-- [ ] **3. Command palette (CH-08).** Ctrl+Shift+P: every action (new chat, incognito, search, settings, usage, mode, search and think toggles) and recent chats, fuzzy-matched, with their shortcuts.
+- [x] **3. Command palette (CH-08).** Ctrl+Shift+P: every action (new chat, incognito, search, settings, usage, mode, search and think toggles) and recent chats, fuzzy-matched, with their shortcuts.
 - [ ] **4. Global quick capture (CH-08, PL-07).**
   - A system-wide shortcut (default Ctrl+Alt+Space) brings FUSE forward on a new chat, ready to type.
   - It can be changed or turned off in Settings, and Settings says when the desktop blocks it.

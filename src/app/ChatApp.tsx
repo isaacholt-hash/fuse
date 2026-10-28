@@ -136,6 +136,7 @@ import { ensureIndexed } from "@/knowledge/retrieve";
 import { prepareDocument } from "@/files/documents";
 import { addFile } from "@/storage/files";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
+import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
   addBudget,
@@ -385,6 +386,8 @@ export function ChatApp({
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   const [savings, setSavings] = useState<SavingsView | null>(null);
+  // The command palette (CH-08).
+  const [paletteOpen, setPaletteOpen] = useState(false);
   // Search across chats (CH-02), and the message a result opened at.
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -1688,6 +1691,112 @@ export function ChatApp({
     renameThread(db, tenant, id, title).then(refreshThreads).catch(report);
   };
 
+  /** CH-08: everything the app can do, plus recent chats, for the palette. */
+  const paletteItems: PaletteItem[] = [
+    {
+      id: "new",
+      group: "Actions",
+      label: "New chat",
+      shortcut: "Ctrl N",
+      run: () => {
+        newChat();
+      },
+    },
+    {
+      id: "incognito",
+      group: "Actions",
+      label: "New incognito chat",
+      shortcut: "Ctrl ⇧ N",
+      run: () => {
+        newChat(null, true);
+      },
+    },
+    {
+      id: "search",
+      group: "Actions",
+      label: "Search chats",
+      shortcut: "Ctrl ⇧ F",
+      run: () => {
+        setSearchOpen(true);
+      },
+    },
+    {
+      id: "model",
+      group: "Actions",
+      label: "Choose model or tier",
+      shortcut: "Ctrl K",
+      run: () => {
+        setView("chat");
+        setPicker(true);
+      },
+    },
+    ...(["auto", "balanced", "best"] as const).map((choice) => ({
+      id: `mode-${choice}`,
+      group: "Mode",
+      label: choice === "auto" ? "Auto" : `${choice === "best" ? "Best" : "Balanced"} tier`,
+      run: () => {
+        chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
+      },
+    })),
+    {
+      id: "web",
+      group: "Actions",
+      label: searchOn ? "Turn web search off" : "Turn web search on",
+      run: toggleSearch,
+    },
+    {
+      id: "sidebar",
+      group: "View",
+      label: sidebar ? "Hide sidebar" : "Show sidebar",
+      shortcut: "Ctrl B",
+      run: () => {
+        setSidebar((open) => !open);
+      },
+    },
+    {
+      id: "settings",
+      group: "View",
+      label: "Settings",
+      shortcut: "Ctrl ,",
+      run: () => {
+        setView("settings");
+      },
+    },
+    { id: "usage", group: "View", label: "Usage and savings", run: openUsage },
+    ...(["light", "dark", "system"] as const).map((t) => ({
+      id: `theme-${t}`,
+      group: "View",
+      label: `Theme: ${t}`,
+      run: () => {
+        setTheme(t);
+      },
+    })),
+    ...(thread && !thread.incognito
+      ? [
+          {
+            id: "memories",
+            group: "Actions",
+            label: "Suggest memories from this chat",
+            run: () => {
+              checkMemory(thread.id, true).catch(report);
+            },
+          },
+          { id: "rename", group: "Actions", label: "Rename this chat", run: showRename },
+        ]
+      : []),
+    ...threads
+      .filter((t) => !t.incognito && t.id !== selectedId)
+      .slice(0, 30)
+      .map((t) => ({
+        id: `chat-${t.id}`,
+        group: "Chats",
+        label: t.title,
+        run: () => {
+          select(t.id);
+        },
+      })),
+  ];
+
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey) {
@@ -1701,6 +1810,9 @@ export function ChatApp({
         } else if (key === "f" && event.shiftKey) {
           event.preventDefault();
           setSearchOpen(true);
+        } else if (key === "p" && event.shiftKey) {
+          event.preventDefault();
+          setPaletteOpen((open) => !open);
         } else if (key === "k") {
           event.preventDefault();
           setView("chat");
@@ -2199,6 +2311,7 @@ export function ChatApp({
             </main>
           )}
         </div>
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} items={paletteItems} />
         <SearchDialog
           open={searchOpen}
           onOpenChange={setSearchOpen}
