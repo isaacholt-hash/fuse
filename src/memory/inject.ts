@@ -1,5 +1,5 @@
-// Memory injection v1 (PM-04): which saved facts go with a message. Keyword match within a token
-// budget; vector search replaces the scoring in M2.
+// Memory injection (PM-04): which saved facts go with a message. Keyword match within a token
+// budget, plus meaning (embeddings) when an OpenAI key is there (M2 step 16).
 import { textTokens } from "@/files/documents";
 import type { Memory } from "@/storage/memories";
 
@@ -24,6 +24,10 @@ export function keywords(text: string): Set<string> {
   return out;
 }
 
+/** Below this cosine similarity a memory isn't related; above it, it scores like a shared word. */
+const SIMILARITY_FLOOR = 0.3;
+const SIMILARITY_WEIGHT = 6;
+
 /** Rough tokens one memory adds to the prompt (its text plus the list marker). */
 export const memoryTokens = (m: Pick<Memory, "text">) => textTokens(m.text) + 2;
 
@@ -37,6 +41,8 @@ export function selectMemories(
   query: string,
   projectId: string | null,
   budgetTokens: number,
+  /** Cosine similarity of each memory to the question, by memory id (when embedded). */
+  similarity: ReadonlyMap<string, number> = new Map(),
 ): Memory[] {
   const pool = memories.filter((m) => m.projectId === null || m.projectId === projectId);
   if (budgetTokens <= 0 || pool.length === 0) return [];
@@ -53,6 +59,8 @@ export function selectMemories(
       for (const w of words[i] ?? []) {
         if (asked.has(w)) score += Math.log(1 + pool.length / (docFreq.get(w) ?? 1));
       }
+      // Meaning counts too: "my daughter" finds "Has a girl, Maya, aged 7".
+      score += Math.max(0, (similarity.get(m.id) ?? 0) - SIMILARITY_FLOOR) * SIMILARITY_WEIGHT;
       return { m, score };
     })
     .filter((s) => s.score > 0)

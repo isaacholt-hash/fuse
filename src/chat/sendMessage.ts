@@ -24,11 +24,12 @@ import {
 import { addCitations, addFileCitations } from "@/storage/citations";
 import { retrieveExcerpts } from "@/knowledge/retrieve";
 import { listProjectFiles } from "@/storage/projectFiles";
+import { isRecallQuestion, memorySimilarity, recallPastChats } from "@/knowledge/recall";
 import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
-import { selectMemories } from "@/memory/inject";
+import { memoryTokens, selectMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -270,10 +271,25 @@ async function contextOf(
     ).values(),
   ];
   const last = history.at(-1);
-  if (searched.length === 0 || last?.role !== "user") return { history, earlier, fileSources: [] };
+  const question = kept.findLast((m) => m.role === "user")?.content ?? "";
+  // PM-10: "what did we decide about X" gets the matching parts of past chats.
+  const recalled =
+    last?.role === "user" && isRecallQuestion(question)
+      ? await recallPastChats(deps, question, threadId)
+      : null;
+  if (recalled && last) {
+    last.attachments = [
+      ...(last.attachments ?? []),
+      { kind: "text", name: "From your earlier chats", text: recalled.text },
+    ];
+  }
+  const recallSources = recalled?.sources ?? [];
+  if (searched.length === 0 || last?.role !== "user") {
+    return { history, earlier, fileSources: recallSources };
+  }
   // Without an OpenAI key a project's files simply aren't used; a file attached to search fails.
   if (!embedding && knowledge.length === searched.length) {
-    return { history, earlier, fileSources: [] };
+    return { history, earlier, fileSources: recallSources };
   }
   if (!embedding) {
     throw new Error(
@@ -285,14 +301,14 @@ async function contextOf(
     { ...deps, files: deps.files, priceVersion: deps.catalog.priceVersion },
     embedding,
     searched,
-    kept.findLast((m) => m.role === "user")?.content ?? "",
+    question,
     threadId,
   );
   last.attachments = [
     ...(last.attachments ?? []),
     { kind: "text", name: "Excerpts from your files", text: excerpts.text },
   ];
-  return { history, earlier, fileSources: excerpts.sources };
+  return { history, earlier, fileSources: [...excerpts.sources, ...recallSources] };
 }
 
 /**
@@ -411,19 +427,35 @@ async function streamAnswer(
   });
   await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
 
+  /**
+   * PM-04: the memories for this question. When they don't all fit the budget they're ranked by
+   * shared words and, with an embedding model, by meaning.
+   */
+  const pickMemories = async () => {
+    const all = await listMemories(db, tenant);
+    const budget = (await getMemorySettings(db, tenant)).budgetTokens;
+    const question = history.findLast((m) => m.role === "user")?.content ?? "";
+    const query = `${thread?.title ?? ""}\n${question}`;
+    const projectId = thread?.projectId ?? null;
+    const pool = all.filter((m) => m.projectId === null || m.projectId === projectId);
+    const overBudget = pool.reduce((sum, m) => sum + memoryTokens(m), 0) > budget;
+    const similarity =
+      overBudget && input.embedding && budget > 0
+        ? await memorySimilarity(
+            { ...deps, priceVersion: deps.catalog.priceVersion },
+            input.embedding,
+            pool,
+            question,
+            input.threadId,
+          ).catch(() => new Map<string, number>()) // keywords alone still work
+        : new Map<string, number>();
+    return selectMemories(all, query, projectId, budget, similarity);
+  };
   // Read at send time, so an edit applies from the next message on (and on retry).
   const thread = await getThread(db, tenant, input.threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
   // Memories matched to the question being answered (PM-04), unless this chat turned them off.
-  const injected =
-    thread && !thread.memoryOn
-      ? []
-      : selectMemories(
-          await listMemories(db, tenant),
-          `${thread?.title ?? ""}\n${history.findLast((m) => m.role === "user")?.content ?? ""}`,
-          thread?.projectId ?? null,
-          (await getMemorySettings(db, tenant)).budgetTokens,
-        );
+  const injected = thread && !thread.memoryOn ? [] : await pickMemories();
   await recordInjected(
     db,
     tenant,
