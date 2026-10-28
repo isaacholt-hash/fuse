@@ -140,6 +140,7 @@ import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
 import { exportAll } from "@/data/exportAll";
+import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
@@ -230,6 +231,8 @@ export interface ChatAppProps {
   exporter?: ExportApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
+  /** Starts the app over (after delete-all); a page reload by default. */
+  onRestart?: () => void;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -295,6 +298,9 @@ export function ChatApp({
   preview,
   exporter,
   quickCapture,
+  onRestart = () => {
+    window.location.reload();
+  },
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -2015,6 +2021,21 @@ export function ChatApp({
                       return saved
                         ? `Saved ${saved}: ${String(out.chats)} chats, ${String(out.files)} files.`
                         : null;
+                    }}
+                    onDeleteAll={async (removeKeys) => {
+                      for (const c of controllers.current.values()) c.abort();
+                      await deleteAllData(db, tenant, filesApi);
+                      if (removeKeys) {
+                        for (const k of keys.keys) {
+                          if (k.saved) await keysApi.remove(k.provider);
+                        }
+                      }
+                      try {
+                        localStorage.removeItem(LAST_THREAD_KEY);
+                      } catch {
+                        // nothing remembered
+                      }
+                      onRestart();
                     }}
                   />
                 )

@@ -4,12 +4,15 @@ import { invoke } from "@tauri-apps/api/core";
 export interface FilesApi {
   put(bytes: Uint8Array): Promise<{ sha256: string; size: number }>;
   get(sha256: string): Promise<Uint8Array>;
+  /** Removes every stored file (SE-07 delete-all); returns how many. */
+  wipe?(): Promise<number>;
 }
 
 export const tauriFilesApi: FilesApi = {
   // A Uint8Array payload goes over IPC as a raw body, not JSON.
   put: (bytes) => invoke("file_put", bytes),
   get: async (sha256) => new Uint8Array(await invoke<ArrayBuffer>("file_get", { sha256 })),
+  wipe: () => invoke<number>("file_wipe"),
 };
 
 /** In-memory FilesApi for tests. */
@@ -26,6 +29,11 @@ export function memoryFilesApi(): FilesApi & { files: Map<string, Uint8Array> } 
     get(sha256) {
       const f = files.get(sha256);
       return f ? Promise.resolve(f) : Promise.reject(new Error("can't read the file"));
+    },
+    wipe() {
+      const n = files.size;
+      files.clear();
+      return Promise.resolve(n);
     },
   };
 }

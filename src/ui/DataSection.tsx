@@ -1,18 +1,28 @@
-import { Database, Download, LoaderCircle } from "lucide-react";
+import { Database, Download, LoaderCircle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Modal } from "./primitives";
 
-/** Settings → Your data (SE-07): export everything; delete-all comes with step 6. */
+/** What has to be typed before everything is deleted. */
+export const DELETE_PHRASE = "delete everything";
+
+/** Settings → Your data (SE-07): export everything, or delete everything. */
 export function DataSection({
   onExport,
-  children,
+  onDeleteAll,
 }: {
   /** Builds and saves the export; returns a line to show, or null if cancelled. */
   onExport: () => Promise<string | null>;
-  children?: React.ReactNode;
+  /** Wipes all data (and the keys, when asked); the app then starts over empty. */
+  onDeleteAll?: (removeKeys: boolean) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [removeKeys, setRemoveKeys] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   return (
     <section className="mt-8 border-t pt-6" aria-label="Your data">
       <div className="mb-1 flex items-center gap-2">
@@ -55,7 +65,76 @@ export function DataSection({
           {status}
         </p>
       )}
-      {children}
+      {onDeleteAll && (
+        <>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-3 text-destructive"
+            onClick={() => {
+              setTyped("");
+              setRemoveKeys(false);
+              setConfirming(true);
+            }}
+          >
+            <Trash2 className="size-3.5" />
+            Delete everything…
+          </Button>
+          <Modal
+            open={confirming}
+            onOpenChange={(open) => {
+              if (!deleting) setConfirming(open);
+            }}
+            title="Delete everything?"
+            description="Every chat, memory, project, artifact, budget, usage record and attached file on this computer is deleted for good. Export first if you might want any of it."
+          >
+            <label className="mb-1.5 block text-xs">
+              Type <span className="font-mono font-medium">{DELETE_PHRASE}</span> to confirm
+            </label>
+            <Input
+              aria-label="Confirmation"
+              value={typed}
+              onChange={(e) => {
+                setTyped(e.target.value);
+              }}
+            />
+            <label className="mt-3 flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={removeKeys}
+                onChange={(e) => {
+                  setRemoveKeys(e.target.checked);
+                }}
+              />
+              Also remove my API keys from this computer
+            </label>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                disabled={deleting}
+                onClick={() => {
+                  setConfirming(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={typed.trim().toLowerCase() !== DELETE_PHRASE || deleting}
+                onClick={() => {
+                  setDeleting(true);
+                  onDeleteAll(removeKeys).catch((e: unknown) => {
+                    setDeleting(false);
+                    setStatus(e instanceof Error ? e.message : String(e));
+                  });
+                }}
+              >
+                {deleting ? "Deleting…" : "Delete everything"}
+              </Button>
+            </div>
+          </Modal>
+        </>
+      )}
     </section>
   );
 }

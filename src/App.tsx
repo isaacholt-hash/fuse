@@ -53,6 +53,8 @@ interface Props {
   preview?: PreviewApi;
   exporter?: ExportApi;
   quickCapture?: QuickCaptureApi;
+  /** Starts the app over after delete-all (tests pass a spy). */
+  onRestart?: () => void;
 }
 
 export default function App({
@@ -70,6 +72,7 @@ export default function App({
   preview = tauriPreviewApi,
   exporter = tauriExportApi,
   quickCapture = tauriQuickCapture,
+  onRestart,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
   // Bumped after a successful unlock, to open the database again.
@@ -128,6 +131,7 @@ export default function App({
       preview={preview}
       exporter={exporter}
       quickCapture={quickCapture}
+      {...(onRestart ? { onRestart } : {})}
       prepareImage={prepareImage}
       updates={updates}
       recoveryKey={recoveryKey}
