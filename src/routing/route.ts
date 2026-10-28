@@ -4,6 +4,7 @@ import type { Effort } from "@/providers/types";
 import { findModel } from "@/catalog/catalog";
 import {
   chooseTier,
+  floorFor,
   tierModels,
   tierOf,
   TIER_ORDER,
@@ -61,6 +62,8 @@ export interface RouteOptions {
   providers: readonly ProviderId[];
   /** The chat's current provider, preferred on a price tie. */
   prefer?: ProviderId;
+  /** RT-10: a budget is past 80%, so Auto goes one tier lower (never below the floor). */
+  downshift?: boolean;
 }
 
 const TIER_LABEL = (policy: RoutingPolicy, tier: TierId) =>
@@ -128,7 +131,17 @@ export function route(
     };
   }
 
-  const start = mode.kind === "tier" ? { tier: mode.tier, rule: null } : chooseTier(policy, task);
+  const chosen = mode.kind === "tier" ? { tier: mode.tier, rule: null } : chooseTier(policy, task);
+  // RT-10: one tier lower while a budget is past 80%, but the quality floor still holds.
+  const lowered =
+    opts.downshift && mode.kind === "auto"
+      ? TIER_ORDER[Math.max(TIER_ORDER.indexOf(chosen.tier) - 1, 0)]
+      : undefined;
+  const floor = floorFor(policy, task.intent, task.complexity);
+  const start =
+    lowered && TIER_ORDER.indexOf(lowered) >= TIER_ORDER.indexOf(floor) && lowered !== chosen.tier
+      ? { ...chosen, tier: lowered, budgetDown: true }
+      : chosen;
   const found = climb(policy, catalog, start.tier, task, opts);
   if (!found) {
     return {
@@ -138,6 +151,7 @@ export function route(
   }
   const raised =
     "raisedToFloor" in start && start.raisedToFloor ? " (raised to the quality floor)" : "";
+  const budget = "budgetDown" in start ? " (one tier lower: a budget is past 80%)" : "";
   const moved =
     found.tier === start.tier
       ? ""
@@ -152,6 +166,7 @@ export function route(
       reason:
         (start.rule ? start.rule.reason : `You pinned ${TIER_LABEL(policy, start.tier)}`) +
         raised +
+        budget +
         moved,
       intent: mode.kind === "auto" ? task.intent : null,
       complexity: mode.kind === "auto" ? task.complexity : null,

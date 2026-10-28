@@ -179,3 +179,25 @@ test("hard questions get high reasoning effort; the rest keep the model's defaul
     expect(r.ok && r.info.effort).toBeNull();
   }
 });
+
+test("a budget past 80% lowers Auto one tier, never below the floor, and says why", () => {
+  const hard = task({ intent: "reasoning", complexity: "high" });
+  const down = route(policy, catalog, AUTO, hard, { ...both, downshift: true });
+  expect(down.ok && [down.info.tier, down.info.reason]).toEqual([
+    "balanced",
+    "Hard (one tier lower: a budget is past 80%)",
+  ]);
+  // Analysis-high has Best as its floor: no lower.
+  const floored = route(policy, catalog, AUTO, task({ intent: "analysis", complexity: "high" }), {
+    ...both,
+    downshift: true,
+  });
+  expect(floored.ok && floored.info.tier).toBe("best");
+  // Balanced is the default floor; a pinned tier is never lowered.
+  expect(route(policy, catalog, AUTO, task(), { ...both, downshift: true }).ok).toBe(true);
+  const pinned = route(policy, catalog, { kind: "tier", tier: "best" }, hard, {
+    ...both,
+    downshift: true,
+  });
+  expect(pinned.ok && pinned.info.tier).toBe("best");
+});

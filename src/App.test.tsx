@@ -500,6 +500,33 @@ test("the usage dashboard shows spend for the period, against the one before, an
   expect(total.getByText("$0.0092")).toBeInTheDocument();
 });
 
+test("budgets: alerts as spend crosses them, and over the limit a message asks first", async () => {
+  const { user } = setup({
+    anthropic: [() => answer("First."), () => answer("Second.")],
+  });
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const budgets = within(await screen.findByRole("region", { name: "Budgets" }));
+  await user.selectOptions(budgets.getByLabelText("Budget period"), "day");
+  await user.type(budgets.getByLabelText("Budget limit in dollars"), "0.005");
+  await user.click(budgets.getByRole("button", { name: "Add budget" }));
+  expect(await budgets.findByText(/\$0\.005 a day/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Back to conversation/ }));
+
+  // $0.0064 answer + $0.0028 title = $0.0092: past the $0.005 budget.
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("First.")).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Everything: .* this day \(\d+%\)\. Messages now ask before sending\./),
+  ).toBeInTheDocument();
+
+  await user.type(await composer(), "And then?{Enter}");
+  const ask = within(await screen.findByRole("dialog"));
+  expect(ask.getByText(/Everything: \$0\.0092 of \$0\.005 this day/)).toBeInTheDocument();
+  await user.click(ask.getByRole("button", { name: "Send anyway" }));
+  expect(await screen.findByText("Second.")).toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

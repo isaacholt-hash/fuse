@@ -224,6 +224,7 @@ export function SettingsView({
   instructions,
   memory,
   routing,
+  budgets,
   theme,
   onTheme,
   onBack,
@@ -243,6 +244,8 @@ export function SettingsView({
   memory?: ReactNode;
   /** Settings → Routing test set; rendered once loaded. */
   routing?: ReactNode;
+  /** Settings → Budgets (CO-03). */
+  budgets?: ReactNode;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onBack: () => void;
@@ -302,6 +305,7 @@ export function SettingsView({
         </div>
         {instructions}
         {memory}
+        {budgets}
         {routing}
         <RecoveryKeySection load={onRecoveryKey} />
         <section className="mt-8 border-t pt-6">
