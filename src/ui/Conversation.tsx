@@ -84,6 +84,14 @@ function RouteBadge({ route }: { route: RouteView }) {
   );
 }
 
+/** 45K, 1M: token counts for the context meter. */
+const compact = (n: number) =>
+  n >= 1_000_000
+    ? `${String(+(n / 1_000_000).toFixed(1))}M`
+    : n >= 1000
+      ? `${String(Math.round(n / 1000))}K`
+      : String(n);
+
 const tokensIn = (u: UsageView) => u.freshInput + u.cachedInput + u.cacheWrite;
 
 function CostBadge({ message }: { message: MessageView }) {
@@ -386,6 +394,20 @@ export function Messages({
                     : undefined
                 }
               >
+                {message.summaryAbove && (
+                  <div
+                    className="my-8 flex items-center gap-3 font-mono text-[10px] text-muted-foreground"
+                    role="separator"
+                    aria-label="Earlier messages are summarized"
+                  >
+                    <div className="h-px flex-1 border-t border-dashed" />
+                    <span className="text-center">
+                      Above: sent to the model as a summary (files and the latest turns stay in
+                      full)
+                    </span>
+                    <div className="h-px flex-1 border-t border-dashed" />
+                  </div>
+                )}
                 {message.switchLabel && (
                   <div className="my-8 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />
@@ -726,6 +748,7 @@ export function Composer({
   routing,
   insert,
   status = null,
+  context,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -752,6 +775,9 @@ export function Composer({
   insert?: { text: string; key: number } | null;
   /** A provider problem to mention under the composer (MM-06). */
   status?: string | null;
+  /** How full the context is: tokens the next turn sends, the model's window, and where
+   * summarizing starts (PM-06). */
+  context?: { used: number; window: number; summarizeAt: number };
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -1144,6 +1170,27 @@ export function Composer({
             </>
           )}
         </span>
+        {context && context.used > 0 && (
+          <Tip
+            label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
+          >
+            <span
+              tabIndex={0}
+              aria-label="Context used"
+              className={`flex items-center gap-1.5 font-mono ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
+            >
+              <span className="h-1 w-10 overflow-hidden rounded-full bg-muted">
+                <span
+                  className="block h-full bg-current"
+                  style={{
+                    width: `${String(Math.min(100, (context.used / context.window) * 100))}%`,
+                  }}
+                />
+              </span>
+              {compact(context.used)} / {compact(context.window)}
+            </span>
+          </Tip>
+        )}
         <span className="flex items-center gap-1.5">
           <CornerDownLeft className="size-2.5" />
           Enter to send<span className="mx-1 opacity-30">/</span>Shift+Enter for a new line

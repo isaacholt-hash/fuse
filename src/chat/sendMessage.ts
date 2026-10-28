@@ -21,6 +21,7 @@ import {
   type Message,
 } from "@/storage/messages";
 import { addCitations } from "@/storage/citations";
+import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
@@ -197,12 +198,23 @@ async function addQuestion(
   return id;
 }
 
+/** What a model is sent before the new answer: the history and any summary of older turns. */
+interface Context {
+  history: ChatMessage[];
+  earlier: string | null;
+}
+
 /** The history to send: the thread's path, up to and including `lastId` (default: all of it). */
-async function historyTo(deps: ChatDeps, threadId: string, lastId?: string) {
+async function historyTo(deps: ChatDeps, threadId: string, lastId?: string): Promise<Context> {
   const { path } = await listPath(deps.db, deps.tenant, threadId);
   const end = lastId === undefined ? path.length : path.findIndex((m) => m.id === lastId) + 1;
-  const kept = path.slice(0, end);
-  return historyFor(kept, await attachmentsFor(deps, kept));
+  return contextOf(deps, threadId, path.slice(0, end));
+}
+
+/** Older turns go as a summary once the thread has one (PM-06); the rest is sent in full. */
+async function contextOf(deps: ChatDeps, threadId: string, path: Message[]): Promise<Context> {
+  const { earlier, kept } = await summarizedPath(deps, threadId, path);
+  return { history: historyFor(kept, await attachmentsFor(deps, kept)), earlier };
 }
 
 /**
@@ -250,11 +262,10 @@ async function lastTurn(deps: ChatDeps, threadId: string) {
   const lastUserIndex = messages.findLastIndex((m) => m.role === "user");
   const question = messages[lastUserIndex];
   if (!question) throw new Error("Nothing to retry");
-  const upToQuestion = messages.slice(0, lastUserIndex + 1);
   return {
     question,
     answer: messages.slice(lastUserIndex + 1).findLast((m) => m.role === "assistant"),
-    history: historyFor(upToQuestion, await attachmentsFor(deps, upToQuestion)),
+    context: await contextOf(deps, threadId, messages.slice(0, lastUserIndex + 1)),
   };
 }
 
@@ -264,9 +275,9 @@ async function lastTurn(deps: ChatDeps, threadId: string) {
  * stronger re-run of stays, and the new one is a re-run of it too.
  */
 export async function retryLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
-  const { question, answer, history } = await lastTurn(deps, input.threadId);
+  const { question, answer, context } = await lastTurn(deps, input.threadId);
   if (answer) await deleteMessage(deps.db, deps.tenant, answer.id);
-  return streamAnswer(deps, input, question.id, history, answer?.escalatedFromId ?? null);
+  return streamAnswer(deps, input, question.id, context, answer?.escalatedFromId ?? null);
 }
 
 /**
@@ -274,16 +285,16 @@ export async function retryLast(deps: ChatDeps, input: RetryInput): Promise<Send
  * old answer on screen. Later turns send only the new one.
  */
 export async function escalateLast(deps: ChatDeps, input: RetryInput): Promise<SendResult> {
-  const { question, answer, history } = await lastTurn(deps, input.threadId);
+  const { question, answer, context } = await lastTurn(deps, input.threadId);
   if (!answer) throw new Error("There's no answer to try again");
-  return streamAnswer(deps, input, question.id, history, answer.id);
+  return streamAnswer(deps, input, question.id, context, answer.id);
 }
 
 async function streamAnswer(
   deps: ChatDeps,
   input: RetryInput,
   userMessageId: string,
-  history: ChatMessage[],
+  { history, earlier }: Context,
   escalatedFromId: string | null = null,
 ): Promise<SendResult> {
   const { db, tenant } = deps;
@@ -338,6 +349,7 @@ async function streamAnswer(
       thread?.instructions ?? "",
     ),
     injected.map((m) => m.text),
+    earlier,
   );
 
   /** One provider call, streamed into the answer. */

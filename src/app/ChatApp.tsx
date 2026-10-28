@@ -5,7 +5,7 @@ import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { findModel, type Catalog, type ProviderId } from "@/catalog/catalog";
+import { findModel, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import { LARGE_TEXT_TOKENS } from "@/files/documents";
@@ -36,6 +36,8 @@ import {
 } from "@/routing/policy";
 import { AUTO, modeOf, route, type RouteMode } from "@/routing/route";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
+import { maybeSummarize, pathTokens, summaryThreshold } from "@/chat/summary";
+import { activeSummary, listSummaries } from "@/storage/summaries";
 import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
 import { memoryTokens } from "@/memory/inject";
 import { findSecret, SECRET_LABELS } from "@/memory/secrets";
@@ -212,6 +214,8 @@ export function ChatApp({
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadAll, setThreadAll] = useState<Message[]>([]);
   const [threadBranches, setThreadBranches] = useState<Map<string, BranchInfo>>(new Map());
+  // The last message the model gets as a summary rather than in full (PM-06), on this path.
+  const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
   const [threadFiles, setThreadFiles] = useState<Map<string, FileRecord[]>>(new Map());
   // Web sources cited by the answers on screen, by message id.
@@ -360,16 +364,19 @@ export function ChatApp({
       const answers = rows.filter((m) => m.role === "assistant").map((m) => m.id);
       const cited = await citationsForMessages(db, tenant, answers);
       const used = await memoriesForMessages(db, tenant, answers);
-      return { rows, all, attached, cited, used };
+      const upto = activeSummary(rows, await listSummaries(db, tenant, threadId))?.summary
+        .uptoMessageId;
+      return { rows, all, attached, cited, used, upto: upto ?? null };
     },
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
   const reload = useCallback(
     async (threadId: string) => {
-      const { rows, all, attached, cited, used } = await loadThread(threadId);
+      const { rows, all, attached, cited, used, upto } = await loadThread(threadId);
       if (selectedRef.current === threadId) {
         setMessages(rows);
+        setSummaryUpto(upto);
         setThreadAll(all);
         setThreadBranches(branchesOf(all, rows));
         setThreadFiles(attached);
@@ -389,11 +396,12 @@ export function ChatApp({
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
         if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, all, attached, cited, used } = await loadThread(lastThread);
+        const { rows, all, attached, cited, used, upto } = await loadThread(lastThread);
         if (selectedRef.current !== null) return; // the user already moved on
         setSelectedId(lastThread);
         selectedRef.current = lastThread;
         setMessages(rows);
+        setSummaryUpto(upto);
         setThreadAll(all);
         setThreadBranches(branchesOf(all, rows));
         setThreadFiles(attached);
@@ -417,6 +425,7 @@ export function ChatApp({
     selectedRef.current = id;
     setView("chat");
     setMessages([]);
+    setSummaryUpto(null);
     setThreadAll([]);
     setThreadBranches(new Map());
     setThreadFiles(new Map());
@@ -464,6 +473,7 @@ export function ChatApp({
       setSelectedId(null);
       selectedRef.current = null;
       setMessages([]);
+      setSummaryUpto(null);
       setThreadAll([]);
       setThreadBranches(new Map());
       setThreadFiles(new Map());
@@ -565,6 +575,23 @@ export function ChatApp({
     | { kind: "regenerate"; answerId: string; questionId: string }
     | { kind: "edit"; messageId: string; parentId: string | null; text: string };
 
+  /** After an answer: once the thread nears what its model takes, older turns get summarized. */
+  const summarizeIfLong = (threadId: string, answeredBy: CatalogModel) => {
+    const helper = housekeepingModel(
+      policy,
+      catalog,
+      "summary",
+      savedProviders,
+      answeredBy.provider,
+    );
+    if (!helper) return;
+    maybeSummarize(deps, catalog, threadId, helper, summaryThreshold(answeredBy))
+      .then(async (r) => {
+        if (r.summarized) await reload(threadId);
+      })
+      .catch(report);
+  };
+
   /** Streams one answer into a thread. */
   const stream = async (
     threadId: string,
@@ -643,7 +670,10 @@ export function ChatApp({
     } finally {
       controllers.current.delete(threadId);
       const rows = await reload(threadId).catch(report);
-      if (rows) nameThread(threadId, rows);
+      if (rows) {
+        nameThread(threadId, rows);
+        summarizeIfLong(threadId, routed.model);
+      }
       setLive((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== threadId)));
       await refreshThreads().catch(report);
     }
@@ -1023,6 +1053,9 @@ export function ChatApp({
       const info = threadBranches.get(v.id);
       if (info) v.branch = { position: info.position, total: info.total };
     }
+    const after = summaryUpto ? views.findIndex((v) => v.id === summaryUpto) + 1 : 0;
+    const firstInFull = after > 0 ? views[after] : undefined;
+    if (firstInFull) firstInFull.summaryAbove = true;
     return views;
   }, [
     messages,
@@ -1031,6 +1064,7 @@ export function ChatApp({
     threadSources,
     threadMemories,
     threadBranches,
+    summaryUpto,
     fileUrls,
     catalog,
   ]);
@@ -1419,6 +1453,15 @@ export function ChatApp({
                   chooseMode({ kind: "model", provider: o.provider, id: o.id });
                 }}
                 insert={quote}
+                {...(messages.length > 0
+                  ? {
+                      context: {
+                        used: pathTokens(messages),
+                        window: model.contextWindow,
+                        summarizeAt: summaryThreshold(model),
+                      },
+                    }
+                  : {})}
                 status={
                   trouble
                     ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
