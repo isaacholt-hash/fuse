@@ -96,3 +96,25 @@ test("the shipped catalog prices web search for both providers", () => {
     expect(toolPrice(defaultCatalog, p, "web_search")?.usdPerCall).toBeGreaterThan(0);
   }
 });
+
+test("embedding models: optional, priced per input token, with a source", () => {
+  expect(parseCatalog(catalog([model()])).embeddingModels).toEqual([]);
+  const small = defaultCatalog.embeddingModels.find((e) => e.id === "text-embedding-3-small");
+  expect(small).toMatchObject({ provider: "openai", dimensions: 1536, inputPrice: 0.02 });
+  expect(() =>
+    parseCatalog({
+      ...catalog([model()]),
+      embedding_models: [
+        {
+          provider: "openai",
+          id: "e",
+          dimensions: 8,
+          max_input_tokens: 10,
+          input_price: 1,
+          verified_on: "2026-10-28",
+          source_url: "http://insecure",
+        },
+      ],
+    }),
+  ).toThrow(/https/);
+});

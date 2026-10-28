@@ -39,11 +39,25 @@ export interface ToolPrice {
   notes?: string;
 }
 
+/** A text-embedding model (MM-11): input tokens only, no output. */
+export interface EmbeddingModel {
+  provider: ProviderId;
+  id: string;
+  dimensions: number;
+  maxInputTokens: number;
+  /** US dollars per 1M input tokens. */
+  inputPrice: number;
+  verifiedOn: string;
+  sourceUrl: string;
+  notes?: string;
+}
+
 export interface Catalog {
   /** Stamped on every priced row (messages, request_log). */
   priceVersion: string;
   models: CatalogModel[];
   toolPrices: ToolPrice[];
+  embeddingModels: EmbeddingModel[];
 }
 
 const PROVIDERS: readonly ProviderId[] = ["openai", "anthropic"];
@@ -177,7 +191,35 @@ export function parseCatalog(raw: unknown): Catalog {
       return price;
     },
   );
-  return { priceVersion, models, toolPrices };
+  const embeddingModels = (Array.isArray(root.embedding_models) ? root.embedding_models : []).map(
+    (e: unknown, i): EmbeddingModel => {
+      const where = `embedding_models[${String(i)}]`;
+      const o = obj(e, where);
+      const provider = str(o, "provider", where);
+      if (!PROVIDERS.includes(provider as ProviderId)) {
+        throw new CatalogError(`${where}.provider: unknown provider "${provider}"`);
+      }
+      const verifiedOn = str(o, "verified_on", where);
+      if (!DATE.test(verifiedOn))
+        throw new CatalogError(`${where}.verified_on: expected YYYY-MM-DD`);
+      const sourceUrl = str(o, "source_url", where);
+      if (!sourceUrl.startsWith("https://")) {
+        throw new CatalogError(`${where}.source_url: expected an https URL`);
+      }
+      const model: EmbeddingModel = {
+        provider: provider as ProviderId,
+        id: str(o, "id", where),
+        dimensions: num(o, "dimensions", where),
+        maxInputTokens: num(o, "max_input_tokens", where),
+        inputPrice: num(o, "input_price", where),
+        verifiedOn,
+        sourceUrl,
+      };
+      if (typeof o.notes === "string") model.notes = o.notes;
+      return model;
+    },
+  );
+  return { priceVersion, models, toolPrices, embeddingModels };
 }
 
 export function toolPrice(
@@ -206,7 +248,7 @@ export function findModel(
 
 /** Days since the oldest `verified_on` in the catalog; MM-04 asks to prompt a refresh after 30. */
 export function oldestPriceAgeDays(catalog: Catalog, today: Date = new Date()): number {
-  const oldest = [...catalog.models, ...catalog.toolPrices]
+  const oldest = [...catalog.models, ...catalog.toolPrices, ...catalog.embeddingModels]
     .map((m) => Date.parse(m.verifiedOn))
     .reduce((a, b) => Math.min(a, b));
   return Math.floor((today.getTime() - oldest) / 86_400_000);
