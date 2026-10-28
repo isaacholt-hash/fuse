@@ -8,7 +8,7 @@ export interface Project {
   id: string;
   name: string;
   instructions: string;
-  /** The model new chats in this project start on; null means the last model used. */
+  /** The model new chats in this project are pinned to; null means they start on Auto. */
   defaultModel: { provider: ProviderId; id: string } | null;
   createdAt: number;
   updatedAt: number;

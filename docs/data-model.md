@@ -59,17 +59,17 @@ Requirement IDs refer to `docs/requirements.md`.
 | `http_status NULL`, `error_code NULL`, `error_message NULL` | Sanitised: no headers, no bodies. |
 | `provider_request_id NULL` | The provider's request id header, for support. |
 
-Routing columns (`tier`, `route_rule_id`) are not in M0; they arrive with routing in M1 via `ALTER TABLE ADD COLUMN`. Cache hits come from `cached_input_tokens > 0`, so no separate column is needed. Retention: 90 days, then purge (section 16).
+Routing columns (`tier`, `route_rule_id`) were added in M1 step 10 (`0008_routing.sql`); they are NULL on housekeeping calls. Cache hits come from `cached_input_tokens > 0`, so no separate column is needed. Retention: 90 days, then purge (section 16).
 
 ### Routing and cost: M1+
 
 | Table / column | Purpose | Req |
 | --- | --- | --- |
-| `messages.tier`, `messages.route_rule_id`, `messages.route_reason`, `messages.pinned_mode` | What tier and rule picked the model, and why. `pinned_mode`: `auto` / `tier` / `model`. | RT-01, RT-09 |
+| `messages.tier`, `messages.route_rule_id`, `messages.route_reason`, `messages.pinned_mode`, `messages.route_intent`, `messages.route_complexity`, `messages.best_cost_micro_usd` | What tier and rule picked the model, and why. `pinned_mode`: `auto` / `tier` / `model` (NULL on answers from before routing). Intent and complexity are what the classifier read (Auto only). `best_cost_micro_usd` is the same tokens priced on the cheapest Best model with a key: an estimate, since another model would use a different number of tokens. Built in M1 step 10 (`0008_routing.sql`). | RT-01, RT-09 |
 | `messages.feedback` | `up` / `down` / null. | CH-07, RT-11 |
 | `messages.escalated_from_id NULL` | The answer this one escalated from. | RT-04 |
 | `request_log.tier`, `request_log.route_rule_id` | Same as above, per call. | RT-09 |
-| `threads.pinned_tier NULL`, `threads.pinned_model NULL`, `threads.pinned_provider NULL` | Per-thread pins. | RT-01, RT-06 |
+| `threads.pinned_tier NULL`, `threads.pinned_model NULL`, `threads.pinned_provider NULL` | Per-thread pins: a tier (`balanced`/`best`) or a model; all NULL = Auto. Built in M1 step 10; chats from before it start on Auto. Per-message and per-project pins are not built yet. | RT-01, RT-06 |
 | `budgets` | `scope` (`global`/`project`), `project_id NULL`, `period` (`day`/`month`), `limit_micro_usd`, `hard_stop`, `temp_raise_until NULL`. | CO-03, MM-09 |
 | `budget_events` | Alerts fired (50/80/100%, anomaly), so each one shows once. | CO-03, CO-07 |
 | `golden_prompts` | Eval set: `prompt`, `expected_tier` (`balanced`/`best`), `intent`, `complexity`, `needs_context`, `notes`, `position`. Built in M1 step 9a (`0007_golden_prompts.sql`), imported from a JSON Lines file in Settings; an import replaces the set. `rating` is left out until something uses it. | RT-16 |
@@ -78,11 +78,13 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
 
 **`data/routing.json`** (M1 step 9, `src/routing/policy.ts`): three tiers in order (Cheap, Balanced, Best), each a list of `provider/model-id` from `data/models.json`; within a tier the app picks the cheapest model for the request's input size, ties going to `provider_preference`, then the chat's provider. `housekeeping` maps titles, classification, memory and summaries to a tier. `quality_floor` is the lowest tier allowed to answer per intent and complexity (RT-17). `rules` are first-match-wins (intent, complexity, capabilities, context size → tier, with a `reason` shown on the answer); the last must match everything. Neither a rule nor a floor may name Cheap: the file is refused at startup.
 
+**Auto routing** (M1 step 10, `src/routing/classify.ts`, `src/routing/route.ts`): before each send a local classifier reads the question (length, code, attachments, keywords) as an intent and complexity. The first matching rule picks a tier, never below the floor. The cheapest model in that tier with a key and the needed capabilities answers. If none qualifies, the next tier up is tried; routing never moves down. The Cheap-model fallback for unsure classifications (RT-02) is not built yet. Settings → Routing test set scores the classifier against the imported prompts.
+
 ### Projects, instructions, threads: M1+
 
 | Table / column | Purpose | Req |
 | --- | --- | --- |
-| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. Built in M1 step 6 (`0005_projects.sql`) with `name`, `instructions`, `default_provider`/`default_model` (both NULL = last used model; a default tier replaces it when pinned tiers arrive with Auto routing, step 10) and `deleted_at`. Deleting a project keeps its chats (they move out to no project). | PM-01, RT-17 |
+| `projects` | `name`, `instructions`, `default_tier NULL`, `provider_preference NULL`, `quality_floor_json NULL`, `deleted_at`. Built in M1 step 6 (`0005_projects.sql`) with `name`, `instructions`, `default_provider`/`default_model` (both NULL = new chats start on Auto; set = new chats in the project are pinned to that model since step 10; a project default tier is not built yet) and `deleted_at`. Deleting a project keeps its chats (they move out to no project). | PM-01, RT-17 |
 | `threads.project_id NULL` | FK → projects. Threads can move between projects. Built in M1 step 6. | PM-01 |
 | `threads.instructions NULL` | Per-thread custom instructions. Global instructions live in `settings`. | CH-05 |
 | `threads.pinned`, `threads.archived_at NULL`, `threads.incognito` | Incognito threads never touch memory and aren't listed. | CH-02, CH-15 |

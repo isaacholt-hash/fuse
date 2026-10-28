@@ -2,6 +2,7 @@
 import { findModel, priceFor, toolPrice, type Catalog, type CatalogModel } from "@/catalog/catalog";
 import { PROVIDER_NAMES } from "@/chat/sendMessage";
 import { cost } from "@/cost/cost";
+import { INTENT_LABELS } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
 import type { Message } from "@/storage/messages";
 import type { RequestLogRecord } from "@/storage/requestLog";
@@ -12,6 +13,7 @@ import type {
   MessageView,
   ModelOption,
   RequestRow,
+  RouteView,
   SourceView,
   ThreadGroup,
   ThreadView,
@@ -96,6 +98,25 @@ function usageView(m: Message, catalog: Catalog, model: CatalogModel | undefined
   };
 }
 
+const TIER_LABELS: Record<string, string> = { cheap: "Cheap", balanced: "Balanced", best: "Best" };
+
+/** The routing badge: how the model was picked, and the same tokens priced on Best (RT-09). */
+export function routeView(m: Message): RouteView | undefined {
+  const r = m.route;
+  if (!r) return undefined;
+  const tier = r.tier ? (TIER_LABELS[r.tier] ?? r.tier) : null;
+  const label =
+    r.mode === "model" ? "Your pick" : `${r.mode === "auto" ? "Auto" : "Pinned"} · ${tier ?? "?"}`;
+  const labels: Partial<Record<string, string>> = INTENT_LABELS;
+  const intent = r.intent ? (labels[r.intent] ?? r.intent) : null;
+  return {
+    label,
+    reason: r.reason,
+    readAs: intent && r.complexity ? `${intent}, ${r.complexity}` : null,
+    bestMicro: r.tier === "best" ? null : m.bestCostMicroUsd,
+  };
+}
+
 /** Messages for display, with model-switch dividers between answers from different models. */
 export function messageViews(
   messages: Message[],
@@ -139,6 +160,8 @@ export function messageViews(
     if (m.status !== "streaming" && (m.usage.priceVersion !== null || m.status === "complete")) {
       view.usage = usageView(m, catalog, model);
     }
+    const routed = m.status === "streaming" ? undefined : routeView(m);
+    if (routed) view.route = routed;
     const cited = sources.get(m.id);
     if (cited?.length) view.sources = cited;
     const used = memories.get(m.id);
@@ -202,6 +225,8 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
     model: null,
     usage: EMPTY_USAGE,
     requestId: null,
+    route: null,
+    bestCostMicroUsd: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...fields,

@@ -23,6 +23,8 @@ const msg = (fields: Partial<Message>): Message => ({
   model: null,
   usage: EMPTY_USAGE,
   requestId: null,
+  route: null,
+  bestCostMicroUsd: null,
   createdAt: 0,
   updatedAt: 0,
   ...fields,
