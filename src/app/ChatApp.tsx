@@ -116,6 +116,10 @@ import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog } from "@/ui/Projects";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
+import { UsageScreen, type UsagePeriod, type UsageScreenView } from "@/ui/Usage";
+import { listUsage, type UsageRecord } from "@/storage/usageReport";
+import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
+import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { searchChats } from "@/storage/search";
 import { UpdateBar } from "@/ui/UpdateBar";
@@ -257,6 +261,9 @@ export function ChatApp({
       clearTimeout(timer);
     };
   }, [trouble]);
+  // The usage dashboard (CO-02): its period and the calls it covers.
+  const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
+  const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   // Search across chats (CH-02), and the message a result opened at.
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
@@ -264,8 +271,12 @@ export function ChatApp({
   const [quote, setQuote] = useState<{ text: string; key: number } | null>(null);
   // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
   const [draftMode, setDraftMode] = useState<RouteMode>(AUTO);
-  const [view, setView] = useState<"chat" | "settings">(
-    import.meta.env.VITE_FUSE_VIEW === "settings" ? "settings" : "chat",
+  const [view, setView] = useState<"chat" | "settings" | "usage">(
+    import.meta.env.VITE_FUSE_VIEW === "settings"
+      ? "settings"
+      : import.meta.env.VITE_FUSE_VIEW === "usage"
+        ? "usage"
+        : "chat",
   );
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   const [picker, setPicker] = useState(false);
@@ -1131,6 +1142,82 @@ export function ChatApp({
       ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
       : null;
 
+  const openUsage = () => {
+    setView("usage");
+    const at = Date.now();
+    // Two of the longest periods back, so "against the 30 days before" has its data.
+    const since = at - 2 * PERIOD_DAYS.month * 86_400_000 - 86_400_000;
+    listUsage(db, tenant, since).then((rows) => {
+      setUsage({ rows, at });
+    }, report);
+  };
+  // Screenshots can open on the dashboard (FUSE_VIEW=usage): load it once at start.
+  useEffect(() => {
+    if (import.meta.env.VITE_FUSE_VIEW !== "usage") return;
+    listUsage(db, tenant, 0).then((rows) => {
+      setUsage({ rows, at: Date.now() });
+    }, report);
+  }, [db, tenant]);
+  const usageView = ((): UsageScreenView | null => {
+    if (!usage) return null;
+    const r = usageReport(usage.rows, usagePeriod, usage.at);
+    const intentLabels: Partial<Record<string, string>> = INTENT_LABELS;
+    const purposeLabels: Partial<Record<string, string>> = {
+      chat: "Answers",
+      title: "Chat titles",
+      memory: "Memory suggestions",
+      summary: "Summaries of long chats",
+      key_test: "Key tests",
+      classify: "Classification",
+      embed: "Embeddings",
+    };
+    const label: Record<Dimension, (key: string) => string> = {
+      provider: (k) => (k === "openai" || k === "anthropic" ? PROVIDER_NAMES[k] : k),
+      model: (k) => {
+        const [p, ...id] = k.split("/");
+        const m =
+          p === "openai" || p === "anthropic" ? findModel(catalog, p, id.join("/")) : undefined;
+        return m?.displayName ?? id.join("/");
+      },
+      tier: (k) =>
+        k ? (policy.tiers.find((t) => t.id === k)?.label ?? k) : "No tier (housekeeping)",
+      project: (k) =>
+        k ? (projects.find((p) => p.id === k)?.name ?? "Deleted project") : "No project",
+      intent: (k) => (k ? (intentLabels[k] ?? k) : "Not classified"),
+      purpose: (k) => purposeLabels[k] ?? k,
+    };
+    const titles: [Dimension, string][] = [
+      ["model", "model"],
+      ["tier", "tier"],
+      ["project", "project"],
+      ["intent", "kind of question"],
+      ["provider", "provider"],
+      ["purpose", "purpose"],
+    ];
+    const day = (ms: number) =>
+      new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return {
+      period: usagePeriod,
+      total: r.current,
+      previous: r.previous,
+      calls: r.calls,
+      bars: r.buckets.map((b) => ({
+        label:
+          usagePeriod === "day"
+            ? new Date(b.start).toLocaleTimeString([], { hour: "numeric" })
+            : day(b.start),
+        micro: b.micro,
+      })),
+      sections: titles.map(([dim, title]) => ({
+        title,
+        rows: r.groups[dim].map((g) => ({
+          label: label[dim](g.key),
+          micro: g.micro,
+          calls: g.calls,
+        })),
+      })),
+    };
+  })();
   const tierDescription = (id: "balanced" | "best") =>
     policy.tiers.find((t) => t.id === id)?.description ?? "";
   const modeName =
@@ -1234,9 +1321,18 @@ export function ChatApp({
               onSearch={() => {
                 setSearchOpen(true);
               }}
+              onUsage={openUsage}
             />
           )}
-          {view === "settings" ? (
+          {view === "usage" ? (
+            <UsageScreen
+              view={usageView}
+              onPeriod={setUsagePeriod}
+              onBack={() => {
+                setView("chat");
+              }}
+            />
+          ) : view === "settings" ? (
             <SettingsView
               keys={keys.keys}
               version={appUpdate.version}

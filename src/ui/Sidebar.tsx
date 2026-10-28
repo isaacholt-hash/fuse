@@ -1,5 +1,6 @@
 import { money } from "./format";
 import {
+  BarChart3,
   Check,
   ChevronDown,
   ChevronRight,
@@ -37,6 +38,8 @@ interface Props {
   onDelete: (thread: ThreadView) => void;
   /** Opens search across all chats (CH-02). */
   onSearch?: () => void;
+  /** Opens the usage dashboard (CO-02). */
+  onUsage?: () => void;
 }
 
 const sectionTitle =
@@ -57,6 +60,7 @@ export function Sidebar({
   onRename,
   onDelete,
   onSearch,
+  onUsage,
 }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
@@ -243,6 +247,16 @@ export function Sidebar({
         })}
       </nav>
       <div className="mx-4 border-t py-3">
+        {onUsage && (
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2.5 text-xs text-muted-foreground"
+            onClick={onUsage}
+          >
+            <BarChart3 className="size-4" />
+            Usage
+          </Button>
+        )}
         <Button
           variant="ghost"
           className="w-full justify-start gap-2.5 text-xs text-muted-foreground"
