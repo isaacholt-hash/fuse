@@ -258,7 +258,13 @@ mod tests {
         assert!(validate(&req(Provider::Openai, "POST", "/v1/responses", &[]), base).is_ok());
         assert!(validate(&req(Provider::Openai, "POST", "/v1/files", &[]), base).is_err());
         assert!(validate(&req(Provider::Openai, "POST", "/v1/embeddings", &[]), base).is_ok());
-        assert!(validate(&req(Provider::Anthropic, "POST", "/v1/embeddings", &[]), base).is_err());
+        assert!(
+            validate(
+                &req(Provider::Anthropic, "POST", "/v1/embeddings", &[]),
+                base
+            )
+            .is_err()
+        );
         // No way to point the key at another host.
         assert!(
             validate(
