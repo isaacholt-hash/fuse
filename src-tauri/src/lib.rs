@@ -1,6 +1,7 @@
 mod db;
 mod files;
 mod keys;
+mod preview;
 mod transport;
 mod web;
 
@@ -15,6 +16,12 @@ pub fn run() {
         .manage(db::Database::default())
         .manage(keys::Keys::default())
         .manage(transport::Transport::default())
+        .manage(preview::Previews::default())
+        // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
+        .register_uri_scheme_protocol("preview", |ctx, request| {
+            use tauri::Manager;
+            preview::respond(&ctx.app_handle().state::<preview::Previews>(), &request)
+        })
         .invoke_handler(tauri::generate_handler![
             keys::commands::key_status,
             keys::commands::key_save,
@@ -23,6 +30,7 @@ pub fn run() {
             transport::commands::provider_fetch,
             transport::commands::provider_abort,
             web::commands::url_fetch,
+            preview::commands::preview_put,
             files::commands::file_put,
             files::commands::file_get,
             db::commands::db_open,

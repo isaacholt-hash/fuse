@@ -188,6 +188,8 @@ function setup(
     },
   });
   const files = memoryFilesApi();
+  // Pages handed to the preview scheme (AR-05).
+  const previews: string[] = [];
   // Pages for pasted links (FK-06): canned HTML, counted so the 24-hour cache can be checked.
   const web = {
     reads: [] as string[],
@@ -211,9 +213,25 @@ function setup(
       files={files}
       prepareImage={fakePrepare}
       web={web}
+      preview={{
+        url: (html: string) => {
+          previews.push(html);
+          return Promise.resolve(`preview://localhost/p${String(previews.length)}`);
+        },
+      }}
     />,
   );
-  return { db, keys, calls, options: options_, choreCalls, files, web, user: userEvent.setup() };
+  return {
+    db,
+    keys,
+    calls,
+    options: options_,
+    choreCalls,
+    files,
+    web,
+    previews,
+    user: userEvent.setup(),
+  };
 }
 
 const composer = () => screen.findByRole("textbox", { name: "Message" });
@@ -743,6 +761,36 @@ test("Ask AI to edit: the request routes like a message and the result shows as 
   expect(asked).toContain('Edit the artifact "Note" (id note): Make it warmer');
   // Costed like any answer.
   expect(screen.getAllByRole("button", { name: /Cost breakdown/ })).toHaveLength(2);
+});
+
+test("HTML and SVG artifacts preview live: HTML in a no-network sandbox, SVG as an image", async () => {
+  const { previews, user } = setup({
+    anthropic: [
+      () =>
+        answer(
+          '<artifact id="page" type="html" title="Counter"><button onclick="n++">+</button></artifact>',
+        ),
+      () =>
+        answer(
+          '<artifact id="dot" type="svg" title="Dot"><svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/></svg></artifact>',
+        ),
+    ],
+  });
+  await user.type(await composer(), "Make a counter page{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Counter" }));
+  const frame = await panel.findByTitle("Preview of Counter");
+  expect(frame).toHaveAttribute("src", "preview://localhost/p1");
+  expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  expect(previews[0]).toMatch(/^<!doctype html>[\s\S]*<button onclick="n\+\+">\+<\/button>/);
+  await user.click(panel.getByRole("tab", { name: "Code" }));
+  expect(panel.getByText('<button onclick="n++">+</button>')).toBeInTheDocument();
+
+  await user.type(await composer(), "Now an SVG dot{Enter}");
+  const svg = within(await screen.findByRole("complementary", { name: "Artifact: Dot" }));
+  expect(await svg.findByRole("img", { name: "Dot" })).toHaveAttribute(
+    "src",
+    expect.stringMatching(/^data:image\/svg\+xml/),
+  );
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {
