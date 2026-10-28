@@ -188,6 +188,8 @@ function setup(
     },
   });
   const files = memoryFilesApi();
+  // Times the app asked to start over (delete-all).
+  const restarts: number[] = [];
   // The global shortcut (CH-08): what was registered, and a way to "press" it.
   const quick = {
     registered: [] as (string | null)[],
@@ -229,6 +231,9 @@ function setup(
       prepareImage={fakePrepare}
       web={web}
       quickCapture={quick}
+      onRestart={() => {
+        restarts.push(Date.now());
+      }}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -254,6 +259,7 @@ function setup(
     previews,
     saves,
     quick,
+    restarts,
     user: userEvent.setup(),
   };
 }
@@ -936,6 +942,28 @@ test("Settings → Your data exports everything as one zip", async () => {
     /Saved fuse-export-\d{4}-\d{2}-\d{2}\.zip: 1 chats, 0 files\./,
   );
   expect(saves[0]?.bytes.slice(0, 2)).toEqual(new Uint8Array([0x50, 0x4b]));
+});
+
+test("delete everything: typed confirmation, all data gone, keys only when ticked, then a restart", async () => {
+  const { db, keys, restarts, user } = setup({ anthropic: [() => answer("Ok.")] });
+  await user.type(await composer(), "Hello{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+  await user.keyboard("{Control>},{/Control}");
+  const data = within(await screen.findByRole("region", { name: "Your data" }));
+  await user.click(data.getByRole("button", { name: /Delete everything/ }));
+  const dialog = within(await screen.findByRole("dialog"));
+  const go = dialog.getByRole("button", { name: "Delete everything" });
+  expect(go).toBeDisabled();
+  await user.type(dialog.getByLabelText("Confirmation"), "delete everything");
+  await user.click(dialog.getByRole("checkbox"));
+  await user.click(go);
+  await waitFor(() => {
+    expect(restarts).toHaveLength(1);
+  });
+  const [messages] = await db.select<{ n: number }>("SELECT COUNT(*) AS n FROM messages");
+  expect(messages?.n).toBe(0);
+  expect(await listThreads(db, DEFAULT_TENANT)).toEqual([]);
+  expect(keys.keys.size).toBe(0);
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {

@@ -41,6 +41,7 @@ pub fn run() {
             quick::commands::quick_capture_set,
             files::commands::file_put,
             files::commands::file_get,
+            files::commands::file_wipe,
             db::commands::db_open,
             db::commands::db_recover,
             db::commands::db_recovery_key,

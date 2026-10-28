@@ -69,6 +69,24 @@ pub fn get(root: &Path, sha256: &str) -> Result<Vec<u8>, String> {
     fs::read(path_for(root, sha256)).map_err(|e| format!("can't read the file: {e}"))
 }
 
+/// Removes every stored attachment (SE-07 delete-all). Only files named by a SHA-256 in the
+/// attachments folder are touched; returns how many were removed.
+pub fn wipe(root: &Path) -> Result<usize, String> {
+    let dir = root.join(DIR);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Ok(0);
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name.to_str().is_some_and(is_sha256) {
+            fs::remove_file(entry.path()).map_err(|e| format!("can't remove a file: {e}"))?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 pub mod commands {
     use super::*;
     use tauri::ipc::{InvokeBody, Request, Response};
@@ -92,11 +110,29 @@ pub mod commands {
     pub fn file_get(app: AppHandle, sha256: String) -> Result<Response, String> {
         Ok(Response::new(get(&root(&app)?, &sha256)?))
     }
+
+    /// Deletes every stored attachment (delete-all); returns how many.
+    #[tauri::command]
+    pub fn file_wipe(app: AppHandle) -> Result<usize, String> {
+        wipe(&root(&app)?)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wipe_removes_stored_files_only() {
+        let root = temp_root();
+        let a = put(&root, b"one").unwrap();
+        put(&root, b"two").unwrap();
+        fs::write(root.join(DIR).join("notes.txt"), b"keep").unwrap();
+        assert_eq!(wipe(&root).unwrap(), 2);
+        assert!(get(&root, &a.sha256).is_err());
+        assert!(root.join(DIR).join("notes.txt").exists());
+        assert_eq!(wipe(&root.join("missing")).unwrap(), 0);
+    }
 
     fn temp_root() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
