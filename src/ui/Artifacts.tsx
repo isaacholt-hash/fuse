@@ -1,4 +1,4 @@
-import { Check, Code2, Copy, FileText, LoaderCircle, X } from "lucide-react";
+import { Check, Code2, Copy, FileText, LoaderCircle, Pencil, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
@@ -58,15 +58,66 @@ export function ArtifactCard({
   );
 }
 
-/** The side panel with one artifact (AR-01). */
+/** One saved version, for the picker (AR-02). */
+export interface VersionView {
+  version: number;
+  /** "AI", "You" or "Restored" */
+  by: string;
+  when: string;
+}
+
+export interface VersionsProps {
+  versions: VersionView[];
+  /** The version on screen; null = the latest. */
+  shown: number | null;
+  /** Shown as a diff against this version; null = no diff. */
+  compareWith: number | null;
+  diff: { kind: "same" | "add" | "del"; text: string }[] | null;
+  onShow: (version: number | null) => void;
+  onCompare: (version: number | null) => void;
+  onRestore: (version: number) => void;
+  onSaveEdit: (content: string) => void;
+}
+
+function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
+  return (
+    <pre
+      className="overflow-x-auto rounded-lg border font-mono text-[12px] leading-6"
+      aria-label="Changes"
+    >
+      {lines.map((l, i) => (
+        <span
+          key={i}
+          className={`block px-3 ${l.kind === "add" ? "bg-emerald-500/15" : l.kind === "del" ? "bg-destructive/10 text-muted-foreground line-through" : ""}`}
+        >
+          <span
+            className="mr-3 inline-block w-3 text-muted-foreground select-none"
+            aria-hidden="true"
+          >
+            {l.kind === "add" ? "+" : l.kind === "del" ? "−" : " "}
+          </span>
+          {l.text || " "}
+        </span>
+      ))}
+    </pre>
+  );
+}
+
+/** The side panel with one artifact (AR-01), its versions, diffs and edits (AR-02). */
 export function ArtifactPanel({
   artifact,
   onClose,
+  versions,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
+  versions?: VersionsProps;
 }) {
   const [copied, setCopied] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
+  const latest = versions?.versions.at(-1)?.version ?? artifact.version;
+  const shown = versions?.shown ?? latest;
+  const old = shown !== null && latest !== null && shown < latest;
   return (
     <aside
       className="flex w-[46%] max-w-[760px] min-w-[340px] shrink-0 flex-col border-l bg-background"
@@ -78,9 +129,77 @@ export function ArtifactPanel({
           <span className="block text-[10px] text-muted-foreground">
             {KIND[artifact.type]}
             {artifact.language ? ` · ${artifact.language}` : ""}
-            {artifact.version === null ? " · writing…" : ` · version ${String(artifact.version)}`}
+            {artifact.version === null
+              ? " · writing…"
+              : ` · version ${String(shown ?? artifact.version)}`}
           </span>
         </span>
+        {versions && artifact.version !== null && draft === null && (
+          <>
+            {versions.versions.length > 1 && (
+              <select
+                aria-label="Version"
+                className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
+                value={String(shown)}
+                onChange={(e) => {
+                  const v = Number(e.target.value);
+                  versions.onShow(v === latest ? null : v);
+                }}
+              >
+                {[...versions.versions].reverse().map((v) => (
+                  <option key={v.version} value={v.version}>
+                    v{v.version} · {v.by} · {v.when}
+                    {v.version === latest ? " (latest)" : ""}
+                  </option>
+                ))}
+              </select>
+            )}
+            {versions.versions.length > 1 && (
+              <select
+                aria-label="Compare with"
+                className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
+                value={versions.compareWith === null ? "" : String(versions.compareWith)}
+                onChange={(e) => {
+                  versions.onCompare(e.target.value === "" ? null : Number(e.target.value));
+                }}
+              >
+                <option value="">No diff</option>
+                {versions.versions
+                  .filter((v) => v.version !== shown)
+                  .map((v) => (
+                    <option key={v.version} value={v.version}>
+                      Diff with v{v.version}
+                    </option>
+                  ))}
+              </select>
+            )}
+            {old && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs"
+                onClick={() => {
+                  versions.onRestore(shown);
+                }}
+              >
+                <RotateCcw className="size-3.5" />
+                Restore
+              </Button>
+            )}
+            {!old && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Edit artifact"
+                onClick={() => {
+                  setDraft(artifact.content);
+                }}
+              >
+                <Pencil />
+              </Button>
+            )}
+          </>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"
@@ -98,7 +217,40 @@ export function ArtifactPanel({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
-        {artifact.type === "markdown" ? (
+        {draft !== null && versions ? (
+          <div className="flex h-full flex-col gap-2">
+            <textarea
+              aria-label="Artifact content"
+              className="min-h-0 flex-1 resize-none rounded-lg border bg-background p-3 font-mono text-[12px] leading-6 outline-none focus:border-ring"
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setDraft(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => {
+                  versions.onSaveEdit(draft);
+                  setDraft(null);
+                }}
+              >
+                Save as a new version
+              </Button>
+            </div>
+          </div>
+        ) : versions?.diff ? (
+          <DiffView lines={versions.diff} />
+        ) : artifact.type === "markdown" ? (
           <div className="text-[13px] leading-[1.85] text-foreground/85">
             <Markdown content={artifact.content} />
           </div>
