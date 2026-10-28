@@ -30,6 +30,7 @@ import { logRequest } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
 import { getThread, renameThread } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
+import type { RouteInfo } from "@/routing/route";
 
 export const PROVIDER_NAMES: Record<ProviderId, string> = {
   anthropic: "Anthropic",
@@ -63,6 +64,8 @@ export interface SendInput {
   onStatus?: (status: "searching" | null) => void;
   /** Called with the sources cited so far, in first-cited order. */
   onCitations?: (sources: Source[]) => void;
+  /** How the model was picked (RT-09); saved with the answer. */
+  route?: RouteInfo;
 }
 
 export interface Source {
@@ -209,6 +212,16 @@ async function streamAnswer(
     status: "streaming",
     provider: model.provider,
     model: model.id,
+    route: input.route
+      ? {
+          mode: input.route.mode,
+          tier: input.route.tier,
+          ruleId: input.route.ruleId,
+          reason: input.route.reason,
+          intent: input.route.intent,
+          complexity: input.route.complexity,
+        }
+      : null,
   });
 
   const started = now();
@@ -285,17 +298,26 @@ async function streamAnswer(
   const latencyMs = now() - started;
   const ttftMs = firstTokenAt === null ? null : firstTokenAt - started;
   let usage: Usage = { ...EMPTY_USAGE, latencyMs, ttftMs };
+  let bestCostMicroUsd: number | null = null;
   if (done) {
     const tokens = done.usage;
     const totalInput = tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens;
     // Searches are billed per call on top of tokens (data/models.json tool_prices).
-    const perSearch = toolPrice(deps.catalog, model.provider, "web_search")?.usdPerCall ?? 0;
-    const searchFee = Math.round(tokens.webSearchCalls * perSearch * 1_000_000);
+    const searchFee = (m: CatalogModel) =>
+      Math.round(
+        tokens.webSearchCalls *
+          (toolPrice(deps.catalog, m.provider, "web_search")?.usdPerCall ?? 0) *
+          1_000_000,
+      );
+    const priced = (m: CatalogModel) =>
+      cost({ ...usage, ...tokens }, priceFor(m, totalInput)) + searchFee(m);
+    // RT-09: the same tokens on the cheapest Best model. An estimate: another model would
+    // have used a different number of tokens.
+    const best = input.route?.best;
+    if (done.usageReported && best) bestCostMicroUsd = priced(best);
     usage = {
       ...tokens,
-      costMicroUsd: done.usageReported
-        ? cost({ ...usage, ...tokens }, priceFor(model, totalInput)) + searchFee
-        : 0,
+      costMicroUsd: done.usageReported ? priced(model) : 0,
       // null price version = cost unknown (the provider sent no usage)
       priceVersion: done.usageReported ? deps.catalog.priceVersion : null,
       latencyMs,
@@ -330,8 +352,11 @@ async function streamAnswer(
     errorCode: failure ? (failure.code ?? failure.kind) : null,
     errorMessage: failure && status === "error" ? failure.message.slice(0, 500) : null,
     providerRequestId: done?.providerRequestId ?? failure?.providerRequestId ?? null,
+    tier: input.route?.tier ?? null,
+    routeRuleId: input.route?.ruleId ?? null,
   });
   await finishMessage(db, tenant, assistantMessageId, {
+    bestCostMicroUsd,
     content: answer,
     status,
     usage,

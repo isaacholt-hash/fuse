@@ -24,7 +24,15 @@ import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Tip } from "./primitives";
-import type { MessageView, ModelOption, PendingAttachment, UsageView } from "./types";
+import type {
+  MessageView,
+  ModeChoice,
+  ModelOption,
+  PendingAttachment,
+  RouteView,
+  RoutingView,
+  UsageView,
+} from "./types";
 
 const hostOf = (url: string) => {
   try {
@@ -33,6 +41,40 @@ const hostOf = (url: string) => {
     return url;
   }
 };
+
+const MODE_LABELS: Record<ModeChoice, string> = {
+  auto: "Auto",
+  balanced: "Balanced",
+  best: "Best",
+};
+
+/** How the answer's model was picked, and what Best would have cost (RT-09). */
+function RouteBadge({ route }: { route: RouteView }) {
+  return (
+    <Tip
+      label={
+        <div className="w-64 space-y-1.5 py-1 text-[11px] leading-4">
+          <p className="font-medium">Why this model</p>
+          <p>{route.reason}</p>
+          {route.readAs && <p className="text-muted-foreground">Read as: {route.readAs}</p>}
+          {route.bestMicro !== null && (
+            <p className="text-muted-foreground">
+              On Best: about {money(route.bestMicro)} (the same tokens on the cheapest Best model)
+            </p>
+          )}
+        </div>
+      }
+    >
+      <button
+        className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        aria-label={`Routing: ${route.label}`}
+      >
+        <span className="text-foreground/70">{route.label}</span>
+        {route.bestMicro !== null && <span>· {money(route.bestMicro)} on Best</span>}
+      </button>
+    </Tip>
+  );
+}
 
 const tokensIn = (u: UsageView) => u.freshInput + u.cachedInput + u.cacheWrite;
 
@@ -186,7 +228,7 @@ export function Messages({
             </p>
             <h1 className="text-2xl font-medium tracking-tight">What are you working on?</h1>
             <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-              A fresh conversation. Your choice of model.
+              A fresh conversation. The right model for each message.
               <br />
               Every answer, accounted for.
             </p>
@@ -194,7 +236,7 @@ export function Messages({
               <Sparkles className="size-3" />
               {modelName}
               <span className="mx-1 opacity-40">/</span>
-              <span>Ctrl+K to change model</span>
+              <span>Ctrl+K to change</span>
             </div>
           </div>
         ) : (
@@ -353,6 +395,7 @@ export function Messages({
                     )}
                     {message.status !== "streaming" && (
                       <div className="flex flex-wrap items-center gap-x-3">
+                        {message.route && <RouteBadge route={message.route} />}
                         <CostBadge message={message} />
                         {message.memories && message.memories.length > 0 && (
                           <MemoryBadge memories={message.memories} />
@@ -400,6 +443,7 @@ export function Composer({
   onRemoveAttachment,
   webSearch = null,
   onToggleWebSearch,
+  routing,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -420,6 +464,8 @@ export function Composer({
   /** On / off, or null when the selected model can't search. */
   webSearch?: boolean | null;
   onToggleWebSearch?: () => void;
+  /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
+  routing?: RoutingView;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -445,6 +491,9 @@ export function Composer({
     setText("");
     field.current?.focus();
   };
+  const modelPinned = !routing || routing.selected === null;
+  const preview = routing?.selected === "auto" ? routing.preview(text) : null;
+  const modeLabel = routing?.selected ? MODE_LABELS[routing.selected] : null;
   const filtered = models.filter((item) =>
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
   );
@@ -597,7 +646,12 @@ export function Composer({
                   aria-label="Choose model (Ctrl+K)"
                 >
                   <Sparkles className="size-3.5" />
-                  <span>{model.name}</span>
+                  <span>{modeLabel ?? model.name}</span>
+                  {preview && (
+                    <span className="text-muted-foreground" aria-label={`Auto picks ${preview}`}>
+                      → {preview}
+                    </span>
+                  )}
                   <ChevronDown className="size-3" />
                   <span className="ml-1 hidden min-[900px]:inline">
                     <Hint>Ctrl K</Hint>
@@ -647,8 +701,35 @@ export function Composer({
                     />
                     <Hint>Esc</Hint>
                   </div>
+                  {routing && !search && (
+                    <div className="border-b p-2" role="group" aria-label="Routing">
+                      {(["auto", "balanced", "best"] as const).map((choice) => (
+                        <button
+                          key={choice}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${routing.selected === choice ? "bg-accent/70" : ""}`}
+                          onClick={() => {
+                            routing.onSelect(choice);
+                            onPickerOpen(false);
+                            field.current?.focus();
+                          }}
+                        >
+                          <span className="flex-1">
+                            <span className="block text-xs font-medium">
+                              {choice === "auto" ? "Auto" : `${MODE_LABELS[choice]} tier`}
+                            </span>
+                            <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                              {routing.descriptions[choice]}
+                            </span>
+                          </span>
+                          <span className="w-4">
+                            {routing.selected === choice && <Check className="size-3.5" />}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex justify-between px-4 pt-3 text-[9px] tracking-wide text-muted-foreground uppercase">
-                    <span>Model / context</span>
+                    <span>{routing ? "Or pin a model" : "Model / context"}</span>
                     <span>Input / output per 1M</span>
                   </div>
                   <div className="max-h-[45dvh] overflow-y-auto p-2">
@@ -664,7 +745,7 @@ export function Composer({
                           .map((item) => (
                             <button
                               key={item.id}
-                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${item.id === model.id ? "bg-accent/70" : ""}`}
+                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${modelPinned && item.id === model.id ? "bg-accent/70" : ""}`}
                               onClick={() => {
                                 onSelectModel(item);
                                 onPickerOpen(false);
@@ -682,7 +763,9 @@ export function Composer({
                                 ${item.inputPrice.toFixed(2)} / ${item.outputPrice.toFixed(2)}
                               </span>
                               <span className="w-4">
-                                {item.id === model.id && <Check className="size-3.5" />}
+                                {modelPinned && item.id === model.id && (
+                                  <Check className="size-3.5" />
+                                )}
                               </span>
                             </button>
                           ))}

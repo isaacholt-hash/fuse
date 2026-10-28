@@ -5,7 +5,7 @@ import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { findModel, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
+import { findModel, type Catalog, type ProviderId } from "@/catalog/catalog";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import { LARGE_TEXT_TOKENS } from "@/files/documents";
@@ -17,7 +17,9 @@ import {
 } from "@/chat/instructions";
 import { retryLast, sendMessage, type ChatDeps } from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
-import type { RoutingPolicy } from "@/routing/policy";
+import { classify } from "@/routing/classify";
+import { chooseTier, tierModels, type RoutingPolicy } from "@/routing/policy";
+import { AUTO, modeOf, route, type RouteMode } from "@/routing/route";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { needsMemoryCheck, suggestMemories } from "@/memory/extract";
 import { memoryTokens } from "@/memory/inject";
@@ -70,6 +72,7 @@ import {
   renameThread,
   setThreadInstructions,
   setThreadMemory,
+  setThreadPins,
   setThreadProject,
   setThreadWebSearch,
   type Thread,
@@ -80,7 +83,8 @@ import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
-import { parseGoldenSet, summarize, type GoldenSummary } from "@/routing/golden";
+import { parseGoldenSet, summarize, type GoldenPrompt } from "@/routing/golden";
+import { scoreGoldenSet } from "@/routing/evaluate";
 import { listGoldenPrompts, replaceGoldenPrompts } from "@/storage/goldenPrompts";
 import {
   GlobalInstructionsSection,
@@ -103,6 +107,7 @@ import type {
   RequestRow,
   ThreadView,
 } from "@/ui/types";
+import { classifyInput } from "./routing";
 import { useAttachments, useFileUrls } from "./useAttachments";
 import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
@@ -130,7 +135,6 @@ export interface ChatAppProps {
   recoveryKey: () => Promise<string>;
 }
 
-const MODEL_KEY = "fuse.model";
 const LAST_THREAD_KEY = "fuse.lastThread";
 
 function readLastThread(): string | null {
@@ -140,25 +144,6 @@ function readLastThread(): string | null {
     return null;
   }
 }
-const DEFAULT_MODEL = { provider: "anthropic", id: "claude-sonnet-5-5" } as const;
-
-function initialModel(catalog: Catalog): CatalogModel {
-  let saved: string | null = null;
-  try {
-    saved = localStorage.getItem(MODEL_KEY);
-  } catch {
-    // no remembered model
-  }
-  const [provider, id] = saved?.split("/") ?? [];
-  const remembered =
-    (provider === "openai" || provider === "anthropic") && id
-      ? findModel(catalog, provider, id)
-      : undefined;
-  const fallback = catalog.models[0];
-  if (!fallback) throw new Error("The model catalog is empty");
-  return remembered ?? findModel(catalog, DEFAULT_MODEL.provider, DEFAULT_MODEL.id) ?? fallback;
-}
-
 const lastModelOf = (messages: Message[], catalog: Catalog) => {
   const m = messages.findLast((x) => x.role === "assistant" && x.model);
   const provider = m?.provider;
@@ -198,7 +183,7 @@ export function ChatApp({
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
   const [memories, setMemories] = useState<Memory[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
-  const [golden, setGolden] = useState<GoldenSummary | null>(null);
+  const [golden, setGolden] = useState<GoldenPrompt[] | null>(null);
   const [memorySettings, setMemorySettingsState] =
     useState<MemorySettings>(DEFAULT_MEMORY_SETTINGS);
   const [skippedSecrets, setSkippedSecrets] = useState<string[]>([]);
@@ -216,7 +201,8 @@ export function ChatApp({
   // The project dialog: creating ("new"), editing (a project id), or closed.
   const [projectDialog, setProjectDialog] = useState<string | null>(null);
   const [live, setLive] = useState<Record<string, LiveAnswer>>({});
-  const [model, setModel] = useState(() => initialModel(catalog));
+  // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
+  const [draftMode, setDraftMode] = useState<RouteMode>(AUTO);
   const [view, setView] = useState<"chat" | "settings">(
     import.meta.env.VITE_FUSE_VIEW === "settings" ? "settings" : "chat",
   );
@@ -295,7 +281,7 @@ export function ChatApp({
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
     listGoldenPrompts(db, tenant).then((p) => {
-      setGolden(summarize(p));
+      setGolden(p);
     }, report);
   }, [db, tenant]);
   /** Settings → Routing test set: a bad line refuses the whole file. */
@@ -303,7 +289,7 @@ export function ChatApp({
     const parsed = parseGoldenSet(text);
     if (!parsed.ok) return parsed.errors;
     await replaceGoldenPrompts(db, tenant, parsed.prompts);
-    setGolden(summarize(parsed.prompts));
+    setGolden(parsed.prompts);
     return [];
   };
   /** A thread's messages and their attached files. */
@@ -351,8 +337,6 @@ export function ChatApp({
         setThreadFiles(attached);
         setThreadSources(cited);
         setThreadMemories(used);
-        const last = lastModelOf(rows, catalog);
-        if (last) setModel(last);
       })
       .catch(report);
   }, [db, tenant, catalog, lastThread, loadThread]);
@@ -365,15 +349,6 @@ export function ChatApp({
     }
   }, [selectedId]);
 
-  const chooseModel = (next: CatalogModel) => {
-    setModel(next);
-    try {
-      localStorage.setItem(MODEL_KEY, `${next.provider}/${next.id}`);
-    } catch {
-      // not remembered
-    }
-  };
-
   const select = (id: string) => {
     setSelectedId(id);
     selectedRef.current = id;
@@ -383,11 +358,7 @@ export function ChatApp({
     setThreadSources(new Map());
     setThreadMemories(new Map());
     attachments.clear();
-    reload(id).then((rows) => {
-      // Continue on the model this thread last used.
-      const last = live[id]?.model ?? lastModelOf(rows, catalog);
-      if (last) setModel(last);
-    }, report);
+    reload(id).catch(report);
   };
 
   const clearAttachments = attachments.clear;
@@ -404,16 +375,72 @@ export function ChatApp({
       setDraftSearch(false);
       setDraftInstructions("");
       setDraftProject(projectId);
+      // A project's default model pins new chats in it; otherwise they start on Auto.
       const preferred = projects.find((p) => p.id === projectId)?.defaultModel;
-      const start = preferred && findModel(catalog, preferred.provider, preferred.id);
-      if (start) setModel(start);
+      setDraftMode(preferred ? { kind: "model", ...preferred } : AUTO);
       clearAttachments();
       setView("chat");
     },
-    [clearAttachments, projects, catalog],
+    [clearAttachments, projects],
   );
 
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  const openThread = threads.find((t) => t.id === selectedId);
+  /** Auto, a pinned tier, or a pinned model (RT-01): saved per chat. */
+  const mode: RouteMode = openThread ? modeOf(openThread) : draftMode;
+  /** The chat keeps to its provider on a price tie (RT-06). */
+  const stayOn = lastModelOf(messages, catalog)?.provider;
+  /**
+   * The model the composer shows and estimates with: the pinned one, or the cheapest at the
+   * pinned tier (Auto: the quality floor). With no usable key, the tier's first model, so the
+   * composer can say which key is missing.
+   */
+  const model = (() => {
+    if (mode.kind === "model") {
+      const pinned = findModel(catalog, mode.provider, mode.id);
+      if (pinned) return pinned;
+    }
+    const tier = mode.kind === "tier" ? mode.tier : policy.floor.default;
+    const pick = (providers: readonly ProviderId[]) =>
+      tierModels(policy, catalog, tier, { providers, ...(stayOn ? { prefer: stayOn } : {}) })[0];
+    const fallback = catalog.models[0];
+    if (!fallback) throw new Error("The model catalog is empty");
+    return pick(savedProviders) ?? pick(["anthropic", "openai"]) ?? fallback;
+  })();
+  const chooseMode = (next: RouteMode) => {
+    if (!openThread) {
+      setDraftMode(next);
+      return;
+    }
+    setThreadPins(db, tenant, openThread.id, {
+      tier: next.kind === "tier" ? next.tier : null,
+      model: next.kind === "model" ? { provider: next.provider, id: next.id } : null,
+    })
+      .then(refreshThreads)
+      .catch(report);
+  };
+  /** The model for one question under the current mode; null (with a message) if none can take it. */
+  const routeFor = (text: string, files: FileRecord[], history: Message[], webSearch: boolean) => {
+    const task = classify(classifyInput(text, files, history, webSearch));
+    const routed = route(policy, catalog, mode, task, {
+      providers: savedProviders,
+      ...(stayOn ? { prefer: stayOn } : {}),
+    });
+    if (!routed.ok) {
+      setProblem(routed.error);
+      return null;
+    }
+    return routed;
+  };
+  /** The tier Auto would pick for the draft, shown on the mode button as you type. */
+  const previewTier = (text: string) => {
+    if (mode.kind !== "auto" || !text.trim()) return null;
+    const ready = attachments.pending.flatMap((p) => (p.file ? [p.file] : []));
+    const task = classify(classifyInput(text, ready, messages, searchOn));
+    const tier = chooseTier(policy, task).tier;
+    return policy.tiers.find((t) => t.id === tier)?.label ?? tier;
+  };
+
   /** After a chat's first answer, the housekeeping model gives it a real title (CH-09). */
   const nameThread = (threadId: string, rows: Message[]) => {
     const current = threads.find((t) => t.id === threadId);
@@ -431,6 +458,7 @@ export function ChatApp({
   const stream = async (
     threadId: string,
     userText: string | null,
+    routed: NonNullable<ReturnType<typeof routeFor>>,
     sent: FileRecord[] = [],
     webSearch = false,
   ) => {
@@ -438,7 +466,7 @@ export function ChatApp({
     controllers.current.set(threadId, controller);
     setLive((all) => ({
       ...all,
-      [threadId]: { threadId, model, text: "", userText, files: sent },
+      [threadId]: { threadId, model: routed.model, text: "", userText, files: sent },
     }));
     let loaded = false;
     const onText = (text: string) => {
@@ -461,7 +489,8 @@ export function ChatApp({
     };
     const input = {
       threadId,
-      model,
+      model: routed.model,
+      route: routed.info,
       signal: controller.signal,
       onText,
       webSearch,
@@ -488,10 +517,15 @@ export function ChatApp({
   };
 
   const send = async (text: string) => {
+    const ready = attachments.pending.flatMap((p) =>
+      p.status === "ready" && p.file ? [p.file] : [],
+    );
+    const search = searchOn;
+    const routed = routeFor(text, ready, messages, search);
+    if (!routed) return;
     const sent = attachments.take();
     try {
       let threadId = selectedId;
-      const search = searchOn;
       if (threadId === null) {
         const thread = await createThread(db, tenant, undefined, draftProject);
         threadId = thread.id;
@@ -499,17 +533,31 @@ export function ChatApp({
         if (draftInstructions) {
           await setThreadInstructions(db, tenant, threadId, draftInstructions);
         }
+        if (draftMode.kind !== "auto") {
+          await setThreadPins(db, tenant, threadId, {
+            tier: draftMode.kind === "tier" ? draftMode.tier : null,
+            model:
+              draftMode.kind === "model"
+                ? { provider: draftMode.provider, id: draftMode.id }
+                : null,
+          });
+        }
         setSelectedId(threadId);
         selectedRef.current = threadId;
         await refreshThreads();
       }
-      await stream(threadId, text, sent, search);
+      await stream(threadId, text, routed, sent, search);
     } catch (e) {
       report(e);
     }
   };
   const retry = () => {
-    if (selectedId && !live[selectedId]) void stream(selectedId, null, [], searchOn);
+    if (!selectedId || live[selectedId]) return;
+    const question = messages.findLast((m) => m.role === "user");
+    if (!question) return;
+    const before = messages.slice(0, messages.indexOf(question));
+    const routed = routeFor(question.content, threadFiles.get(question.id) ?? [], before, searchOn);
+    if (routed) void stream(selectedId, null, routed, [], searchOn);
   };
   const stop = useCallback(() => {
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
@@ -680,9 +728,7 @@ export function ChatApp({
         await refreshProjects();
         // `projects` in newChat's closure doesn't have the new one yet: apply its model here.
         newChat(created.id);
-        const start =
-          form.defaultModel && findModel(catalog, form.defaultModel.provider, form.defaultModel.id);
-        if (start) setModel(start);
+        setDraftMode(form.defaultModel ? { kind: "model", ...form.defaultModel } : AUTO);
         return;
       }
       await refreshProjects();
@@ -782,9 +828,18 @@ export function ChatApp({
     (p) => p.status !== "error" && (p.file?.mime.startsWith("image/") ?? p.url !== undefined),
   );
   const blocked =
-    sendingImages && !model.capabilities.includes("vision")
+    sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
       ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
       : null;
+
+  const tierDescription = (id: "balanced" | "best") =>
+    policy.tiers.find((t) => t.id === id)?.description ?? "";
+  const modeName =
+    mode.kind === "auto"
+      ? "Auto"
+      : mode.kind === "tier"
+        ? `${policy.tiers.find((t) => t.id === mode.tier)?.label ?? mode.tier} tier`
+        : model.displayName;
 
   const showRename = () => {
     if (!thread) return;
@@ -890,7 +945,15 @@ export function ChatApp({
                   />
                 )
               }
-              routing={golden && <GoldenSetSection summary={golden} onImport={importGolden} />}
+              routing={
+                golden && (
+                  <GoldenSetSection
+                    summary={summarize(golden)}
+                    score={golden.length > 0 ? scoreGoldenSet(policy, golden) : null}
+                    onImport={importGolden}
+                  />
+                )
+              }
               memory={
                 <MemorySection
                   key={memorySettings.budgetTokens}
@@ -1019,7 +1082,7 @@ export function ChatApp({
               <Messages
                 key={selectedId ?? "new"}
                 messages={shown}
-                modelName={model.displayName}
+                modelName={modeName}
                 startedAt={messages[0]?.createdAt ?? null}
                 onRetry={retry}
               />
@@ -1043,8 +1106,19 @@ export function ChatApp({
                 pickerOpen={picker}
                 onPickerOpen={setPicker}
                 onSelectModel={(o) => {
-                  const next = findModel(catalog, o.provider, o.id);
-                  if (next) chooseModel(next);
+                  chooseMode({ kind: "model", provider: o.provider, id: o.id });
+                }}
+                routing={{
+                  selected: mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
+                  descriptions: {
+                    auto: "Picks Balanced or Best for each message from what you ask",
+                    balanced: tierDescription("balanced"),
+                    best: tierDescription("best"),
+                  },
+                  preview: previewTier,
+                  onSelect: (choice) => {
+                    chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
+                  },
                 }}
                 onSend={(text) => void send(text)}
                 onStop={stop}

@@ -1,3 +1,4 @@
+import type { ProviderId } from "@/catalog/catalog";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import type { SqlDb } from "./sql";
@@ -21,6 +22,10 @@ export interface Thread {
   memoryOn: boolean;
   /** The last_message_at the memory check last covered; null if never checked. */
   memoryCheckedAt: number | null;
+  /** RT-01 pins: a tier, or a model (provider + id); all null means Auto. */
+  pinnedTier: "balanced" | "best" | null;
+  pinnedProvider: ProviderId | null;
+  pinnedModel: string | null;
 }
 
 interface ThreadRow {
@@ -36,6 +41,9 @@ interface ThreadRow {
   project_id: string | null;
   memory_injection: "on" | "off";
   memory_checked_at: number | null;
+  pinned_tier: "balanced" | "best" | null;
+  pinned_provider: string | null;
+  pinned_model: string | null;
 }
 
 const toThread = (r: ThreadRow): Thread => ({
@@ -51,11 +59,16 @@ const toThread = (r: ThreadRow): Thread => ({
   projectId: r.project_id,
   memoryOn: r.memory_injection === "on",
   memoryCheckedAt: r.memory_checked_at,
+  pinnedTier: r.pinned_tier,
+  pinnedProvider:
+    r.pinned_provider === "openai" || r.pinned_provider === "anthropic" ? r.pinned_provider : null,
+  pinnedModel: r.pinned_model,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
+         t.pinned_tier, t.pinned_provider, t.pinned_model,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
   FROM threads t`;
@@ -157,6 +170,30 @@ export async function setThreadMemory(
   await db.execute(
     `UPDATE threads SET memory_injection = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [on ? "on" : "off", Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** Pins the thread to a tier or a model (RT-01); nulls put it back on Auto. */
+export async function setThreadPins(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  pins: {
+    tier: "balanced" | "best" | null;
+    model: { provider: ProviderId; id: string } | null;
+  },
+): Promise<void> {
+  await db.execute(
+    `UPDATE threads SET pinned_tier = ?, pinned_provider = ?, pinned_model = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [
+      pins.model ? null : pins.tier,
+      pins.model?.provider ?? null,
+      pins.model?.id ?? null,
+      Date.now(),
+      tenant.workspaceId,
+      id,
+    ],
   );
 }
 

@@ -26,6 +26,9 @@ export interface RequestLogEntry {
   errorCode: string | null;
   errorMessage: string | null;
   providerRequestId: string | null;
+  /** Chat calls: the answer's tier and the routing rule that fired (RT-09). */
+  tier?: string | null;
+  routeRuleId?: string | null;
 }
 
 export interface RequestLogRecord extends RequestLogEntry {
@@ -45,6 +48,8 @@ interface RequestLogRow extends UsageRow {
   error_code: string | null;
   error_message: string | null;
   provider_request_id: string | null;
+  tier: string | null;
+  route_rule_id: string | null;
   created_at: number;
 }
 
@@ -54,8 +59,8 @@ export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry):
   await db.execute(
     `INSERT INTO request_log (id, workspace_id, user_id, thread_id, message_id, purpose, provider,
        model, attempt, ${USAGE_COLUMNS}, http_status, error_code, error_message,
-       provider_request_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?)`,
+       provider_request_id, tier, route_rule_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -71,6 +76,8 @@ export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry):
       e.errorCode,
       e.errorMessage,
       e.providerRequestId,
+      e.tier ?? null,
+      e.routeRuleId ?? null,
       now,
       now,
     ],
@@ -85,7 +92,8 @@ export async function listRecentRequests(
 ): Promise<RequestLogRecord[]> {
   const rows = await db.select<RequestLogRow>(
     `SELECT id, thread_id, message_id, purpose, provider, model, attempt, ${USAGE_COLUMNS},
-            http_status, error_code, error_message, provider_request_id, created_at
+            http_status, error_code, error_message, provider_request_id, tier, route_rule_id,
+            created_at
      FROM request_log WHERE workspace_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
     [tenant.workspaceId, limit],
   );
@@ -102,6 +110,8 @@ export async function listRecentRequests(
     errorCode: r.error_code,
     errorMessage: r.error_message,
     providerRequestId: r.provider_request_id,
+    tier: r.tier,
+    routeRuleId: r.route_rule_id,
     createdAt: r.created_at,
   }));
 }

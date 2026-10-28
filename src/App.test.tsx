@@ -42,26 +42,40 @@ const catalog = parseCatalog({
       verified_on: "2026-10-26",
       source_url: "https://example.com",
     },
+    {
+      provider: "anthropic",
+      id: "test-best",
+      display_name: "Test Best",
+      context_window: 200000,
+      max_output: 1000,
+      price: { input: 10, output: 50 },
+      capabilities: ["vision", "web_search"],
+      verified_on: "2026-10-26",
+      source_url: "https://example.com",
+    },
   ],
 });
 
-// Both test models do housekeeping; the shipped tiers are tested against data/ in src/routing.
+// One model per tier; the shipped tiers are tested against data/ in src/routing.
 const policy = parsePolicy({
   policy_version: "2026-10-28",
   built_from_price_version: "2026-10-26",
   tiers: [
-    {
-      id: "cheap",
-      label: "Cheap",
-      description: "Test",
-      models: ["anthropic/test-claude", "openai/test-gpt"],
-    },
-    { id: "balanced", label: "Balanced", description: "Test", models: [] },
-    { id: "best", label: "Best", description: "Test", models: [] },
+    { id: "cheap", label: "Cheap", description: "Test", models: ["openai/test-gpt"] },
+    { id: "balanced", label: "Balanced", description: "Test", models: ["anthropic/test-claude"] },
+    { id: "best", label: "Best", description: "Hard work", models: ["anthropic/test-best"] },
   ],
   housekeeping: { title: "cheap", classify: "cheap", memory: "cheap", summary: "cheap" },
   quality_floor: { default: "balanced", overrides: [] },
-  rules: [{ id: "default", when: {}, tier: "balanced", reason: "Test" }],
+  rules: [
+    {
+      id: "hard-reasoning",
+      when: { intents: ["reasoning"], complexities: ["high"] },
+      tier: "best",
+      reason: "Hard reasoning starts on Best",
+    },
+    { id: "default", when: {}, tier: "balanced", reason: "Everyday answers start on Balanced" },
+  ],
 });
 
 /** jsdom can't decode images: pretend every image is 1024×1024 and keep its bytes. */
@@ -231,6 +245,72 @@ test("switching model mid-thread: divider shown, the new model gets the whole hi
     { role: "assistant", content: "Hello there." },
     { role: "user", content: "Second question" },
   ]);
+});
+
+describe("auto routing", () => {
+  const modeButton = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  const HARD =
+    "Design the technical architecture and a phased implementation plan for our billing system.";
+
+  test("Auto picks a tier per message; each answer shows tier, rule and what Best would cost", async () => {
+    const { db, user } = setup({
+      anthropic: [() => answer("Everyday answer."), () => answer("Careful answer.")],
+    });
+    await composer();
+    expect(modeButton()).toHaveTextContent("Auto");
+    await user.type(await composer(), "What is FUSE?{Enter}");
+    expect(await screen.findByText("Everyday answer.")).toBeInTheDocument();
+    // Same 1,200 in / 400 out on Test Best: 1,200 × $10 + 400 × $50 per MTok = $0.032.
+    const everyday = await screen.findByRole("button", { name: "Routing: Auto · Balanced" });
+    expect(everyday).toHaveTextContent("Auto · Balanced· $0.032 on Best");
+    expect(
+      screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
+    ).toBeInTheDocument();
+
+    // The button previews Auto's pick while you type.
+    await user.type(await composer(), HARD);
+    expect(screen.getByLabelText("Auto picks Best")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByText("Careful answer.")).toBeInTheDocument();
+    const careful = await screen.findByRole("button", { name: "Routing: Auto · Best" });
+    expect(careful).not.toHaveTextContent("on Best");
+    expect(
+      screen.getByRole("button", { name: "Cost breakdown for Test Best" }),
+    ).toBeInTheDocument();
+
+    const chats = (await listRecentRequests(db, DEFAULT_TENANT, 10)).filter(
+      (r) => r.purpose === "chat",
+    );
+    expect(chats.map((r) => [r.model, r.tier, r.routeRuleId])).toEqual([
+      ["test-best", "best", "hard-reasoning"],
+      ["test-claude", "balanced", "default"],
+    ]);
+  });
+
+  test("a pinned tier or model sticks to its chat; new chats start on Auto", async () => {
+    const { user } = setup({ anthropic: [() => answer("From Best.")] });
+    await user.keyboard("{Control>}k{/Control}");
+    const picker = within(await screen.findByRole("group", { name: "Routing" }));
+    await user.click(picker.getByRole("button", { name: /Best tier/ }));
+    expect(modeButton()).toHaveTextContent("Best");
+    await user.type(await composer(), "hi{Enter}");
+    expect(await screen.findByText("From Best.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Routing: Pinned · Best" }),
+    ).toBeInTheDocument();
+
+    await user.keyboard("{Control>}n{/Control}");
+    expect(modeButton()).toHaveTextContent("Auto");
+    await user.keyboard("{Control>}k{/Control}");
+    await user.click(await screen.findByRole("button", { name: /Test GPT/ }));
+    expect(modeButton()).toHaveTextContent("Test GPT");
+
+    // Back in the first chat, its pin is still there.
+    await user.click(sidebar().getByText("hi"));
+    await waitFor(() => {
+      expect(modeButton()).toHaveTextContent("Best");
+    });
+  });
 });
 
 test("stop keeps the partial answer, marked Stopped", async () => {
@@ -440,7 +520,7 @@ test("an image can be sent on its own; unsupported files are refused with a reas
   });
 });
 
-test("a model without vision can't be sent an image", async () => {
+test("a pinned model without vision can't be sent an image", async () => {
   const db = openTestDb();
   const keys = fakeKeysApi();
   keys.keys.set("anthropic", "fake-value-for-tests-0000");
@@ -472,6 +552,9 @@ test("a model without vision can't be sent an image", async () => {
   );
   const user = userEvent.setup();
   await composer();
+  // Auto would look for a model that can read images; a pinned model can't change.
+  await user.keyboard("{Control>}k{/Control}");
+  await user.click(await screen.findByRole("button", { name: /Text Only/ }));
   await user.upload(
     screen.getByLabelText("Attach files"),
     new File([new Uint8Array([1])], "a.png", { type: "image/png" }),
@@ -884,6 +967,14 @@ test("Settings imports the routing test set; a bad file changes nothing", async 
   expect(section.getByRole("status")).toHaveTextContent(
     "3 prompts · 2 Balanced · 1 Best · 1 need earlier context",
   );
+  // "Design the sync engine" reads as medium coding: Auto would answer on Balanced.
+  const score = within(section.getByLabelText("Auto routing score"));
+  expect(score.getByText(/Auto picks the tier you expected for/)).toHaveTextContent(
+    "Auto picks the tier you expected for 1 of 2 prompts (50%).",
+  );
+  expect(score.getByText(/Mid-conversation prompts/)).toHaveTextContent("1 of 1");
+  await user.click(score.getByText("Show the 1 it got wrong"));
+  expect(score.getByText(/expected Best, got Balanced/)).toBeInTheDocument();
 
   const bad = [line({}), line({ expected_tier: "cheap" }), "not json"].join("\n");
   await user.upload(section.getByLabelText("Test set file"), new File([bad], "bad.jsonl"));

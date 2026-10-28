@@ -85,6 +85,33 @@ export interface MessageView {
   searching?: boolean;
   /** Saved memories that were sent with this answer (PM-04). */
   memories?: string[];
+  /** How the model was picked (RT-09); absent on answers from before routing. */
+  route?: RouteView;
+}
+
+/** The routing badge on an answer. */
+export interface RouteView {
+  /** e.g. "Auto · Balanced", "Pinned · Best", "Your pick" */
+  label: string;
+  /** The rule's reason, e.g. "Everyday answers start on Balanced". */
+  reason: string;
+  /** What the classifier read, e.g. "coding, high" (Auto only). */
+  readAs: string | null;
+  /** The same tokens on the cheapest Best model; null when this answer was on Best or unknown. */
+  bestMicro: number | null;
+}
+
+/** A composer mode (RT-01): Auto, or a pinned tier. A pinned model is picked from the model list. */
+export type ModeChoice = "auto" | "balanced" | "best";
+
+export interface RoutingView {
+  /** The current mode, or null when a model is pinned. */
+  selected: ModeChoice | null;
+  /** One line under each choice in the picker. */
+  descriptions: Record<ModeChoice, string>;
+  /** The tier Auto would pick for this draft (e.g. "Best"), or null. Runs as you type. */
+  preview: (text: string) => string | null;
+  onSelect: (choice: ModeChoice) => void;
 }
 
 export interface SourceView {

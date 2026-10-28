@@ -14,6 +14,16 @@ import {
 export type MessageRole = "user" | "assistant" | "system";
 export type MessageStatus = "complete" | "streaming" | "stopped" | "error";
 
+/** How an answer's model was picked (RT-01, RT-09); null on answers from before routing. */
+export interface MessageRoute {
+  mode: "auto" | "tier" | "model";
+  tier: "cheap" | "balanced" | "best" | null;
+  ruleId: string | null;
+  reason: string;
+  intent: string | null;
+  complexity: string | null;
+}
+
 export interface Message {
   id: string;
   threadId: string;
@@ -27,6 +37,9 @@ export interface Message {
   model: string | null;
   usage: Usage;
   requestId: string | null;
+  route: MessageRoute | null;
+  /** The same tokens priced on the cheapest Best model; null when unknown. */
+  bestCostMicroUsd: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -43,6 +56,13 @@ interface MessageRow extends UsageRow {
   provider: string | null;
   model: string | null;
   request_id: string | null;
+  pinned_mode: MessageRoute["mode"] | null;
+  tier: MessageRoute["tier"];
+  route_rule_id: string | null;
+  route_reason: string | null;
+  route_intent: string | null;
+  route_complexity: string | null;
+  best_cost_micro_usd: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -60,6 +80,17 @@ const toMessage = (r: MessageRow): Message => ({
   model: r.model,
   usage: usageFromRow(r),
   requestId: r.request_id,
+  route: r.pinned_mode
+    ? {
+        mode: r.pinned_mode,
+        tier: r.tier,
+        ruleId: r.route_rule_id,
+        reason: r.route_reason ?? "",
+        intent: r.route_intent,
+        complexity: r.route_complexity,
+      }
+    : null,
+  bestCostMicroUsd: r.best_cost_micro_usd,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -72,6 +103,7 @@ export interface NewMessage {
   status?: MessageStatus;
   provider?: string | null;
   model?: string | null;
+  route?: MessageRoute | null;
 }
 
 export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Promise<string> {
@@ -79,8 +111,9 @@ export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Prom
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO messages (id, workspace_id, user_id, thread_id, parent_id, role, content, status,
-                           provider, model, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                           provider, model, pinned_mode, tier, route_rule_id, route_reason,
+                           route_intent, route_complexity, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -92,6 +125,12 @@ export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Prom
       m.status ?? "complete",
       m.provider ?? null,
       m.model ?? null,
+      m.route?.mode ?? null,
+      m.route?.tier ?? null,
+      m.route?.ruleId ?? null,
+      m.route?.reason ?? null,
+      m.route?.intent ?? null,
+      m.route?.complexity ?? null,
       now,
       now,
     ],
@@ -110,6 +149,7 @@ export interface MessageResult {
   errorCode?: string | null;
   errorMessage?: string | null;
   requestId?: string | null;
+  bestCostMicroUsd?: number | null;
 }
 
 /** Final state of an assistant message once streaming ends (complete, stopped or error). */
@@ -122,7 +162,7 @@ export async function finishMessage(
   const usage = r.usage ?? EMPTY_USAGE;
   await db.execute(
     `UPDATE messages SET content = ?, status = ?, error_code = ?, error_message = ?, request_id = ?,
-       (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}), updated_at = ?
+       best_cost_micro_usd = ?, (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}), updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [
       r.content,
@@ -130,6 +170,7 @@ export async function finishMessage(
       r.errorCode ?? null,
       r.errorMessage ?? null,
       r.requestId ?? null,
+      r.bestCostMicroUsd ?? null,
       ...usageValues(usage),
       Date.now(),
       tenant.workspaceId,
@@ -167,7 +208,8 @@ export async function listMessages(
 ): Promise<Message[]> {
   const rows = await db.select<MessageRow>(
     `SELECT id, thread_id, parent_id, role, content, status, error_code, error_message, provider,
-            model, ${USAGE_COLUMNS}, request_id, created_at, updated_at
+            model, ${USAGE_COLUMNS}, request_id, pinned_mode, tier, route_rule_id, route_reason,
+            route_intent, route_complexity, best_cost_micro_usd, created_at, updated_at
      FROM messages
      WHERE workspace_id = ? AND thread_id = ? AND deleted_at IS NULL
      ORDER BY created_at, id`,

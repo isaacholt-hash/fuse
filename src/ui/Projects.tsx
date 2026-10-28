@@ -108,7 +108,7 @@ export function ProjectDialog({
               }));
             }}
           >
-            <option value={LAST_USED}>Last used model</option>
+            <option value={LAST_USED}>Auto</option>
             {models.map((m) => (
               <option key={modelKey(m)} value={modelKey(m)}>
                 {m.providerName} · {m.name}
@@ -116,7 +116,7 @@ export function ProjectDialog({
             ))}
           </select>
           <p className="mt-1 text-[10px] text-muted-foreground">
-            New chats in this project start on it. You can still switch per message.
+            New chats in this project start on it. You can still change it in any chat.
           </p>
         </div>
         <div className="flex items-center gap-2 pt-2">
