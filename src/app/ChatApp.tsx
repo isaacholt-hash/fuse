@@ -222,6 +222,20 @@ function readLastThread(): string | null {
     return null;
   }
 }
+/**
+ * AR-03: an "Ask AI to edit" request, sent as an ordinary message so it routes and is costed like
+ * one. The model answers with the whole artifact under the same id, which becomes a new version.
+ */
+function artifactEditRequest(
+  a: { key: string; title: string },
+  selection: string,
+  instruction: string,
+): string {
+  return selection
+    ? `Edit the artifact "${a.title}" (id ${a.key}). Change only this part:\n\n> ${selection.split("\n").join("\n> ")}\n\n${instruction}\n\nReply with the whole updated artifact, same id.`
+    : `Edit the artifact "${a.title}" (id ${a.key}): ${instruction}\n\nReply with the whole updated artifact, same id.`;
+}
+
 /** CO-05: new content (question plus attachments) above this many tokens shows its cost first. */
 const BIG_REQUEST_TOKENS = 20_000;
 
@@ -280,6 +294,8 @@ export function ChatApp({
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
   const [shownVersion, setShownVersion] = useState<number | null>(null);
   const [compareWith, setCompareWith] = useState<number | null>(null);
+  // AR-03: after an AI edit lands, show it as a diff against the version it changed.
+  const editFrom = useRef<{ key: string; version: number } | null>(null);
   // The last message the model gets as a summary rather than in full (PM-06), on this path.
   const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
@@ -804,7 +820,11 @@ export function ChatApp({
         const made = artifactsIn(rows.findLast((m) => m.role === "assistant")?.content ?? "").at(
           -1,
         );
-        if (made && selectedRef.current === threadId) showArtifact(made.key);
+        if (made && selectedRef.current === threadId) {
+          showArtifact(made.key);
+          if (editFrom.current?.key === made.key) setCompareWith(editFrom.current.version);
+        }
+        editFrom.current = null;
         nameThread(threadId, rows);
         summarizeIfLong(threadId, routed.model);
       }
@@ -2098,6 +2118,11 @@ export function ChatApp({
                       },
                       onSaveEdit: (content) => {
                         newVersion(content, "user");
+                      },
+                      onAskEdit: (selection, instruction) => {
+                        if (!openSaved || streaming) return;
+                        editFrom.current = { key: openSaved.key, version: openSaved.version };
+                        void send(artifactEditRequest(openSaved, selection, instruction));
                       },
                     }}
                   />
