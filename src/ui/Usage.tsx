@@ -1,5 +1,7 @@
-import { ArrowLeft, BarChart3, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowLeft, BarChart3, PiggyBank, TrendingDown, TrendingUp } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { money, number } from "./format";
 
 export type UsagePeriod = "day" | "week" | "month";
@@ -20,6 +22,88 @@ export interface UsageScreenView {
   sections: { title: string; rows: UsageRowView[] }[];
 }
 
+/** This month's savings (CO-04), all in micro-dollars. */
+export interface SavingsView {
+  /** e.g. "October" */
+  month: string;
+  spent: number;
+  onBest: number;
+  cache: number;
+  subscription: number | null;
+}
+
+/** Spent against Best, against your subscriptions, and what caching saved. */
+function SavingsCard({
+  savings,
+  onSubscription,
+}: {
+  savings: SavingsView;
+  onSubscription: (usd: number | null) => void;
+}) {
+  const [draft, setDraft] = useState(
+    savings.subscription === null ? "" : String(savings.subscription / 1_000_000),
+  );
+  const row = (label: string, value: string, note?: string) => (
+    <div className="flex items-baseline justify-between gap-3 border-t py-2 first:border-t-0">
+      <span>
+        {label}
+        {note && <span className="block text-[10px] text-muted-foreground">{note}</span>}
+      </span>
+      <span className="font-mono">{value}</span>
+    </div>
+  );
+  const vsBest = savings.onBest - savings.spent;
+  const vsSubs = savings.subscription === null ? null : savings.subscription - savings.spent;
+  return (
+    <section className="mt-6 rounded-xl border p-5 text-xs" aria-label="Savings">
+      <h2 className="mb-3 flex items-center gap-2 text-sm font-medium">
+        <PiggyBank className="size-4 text-muted-foreground" />
+        Savings in {savings.month}
+      </h2>
+      {row("Spent", money(savings.spent))}
+      {row(
+        "The same answers on Best",
+        money(savings.onBest),
+        vsBest > 0
+          ? `Routing saved ${money(vsBest)} (an estimate: other models use other token counts)`
+          : undefined,
+      )}
+      {row(
+        "Prompt caching saved",
+        money(savings.cache),
+        "Cheaper cached reads, minus what writing the cache cost",
+      )}
+      <div className="flex items-baseline justify-between gap-3 border-t py-2">
+        <label htmlFor="subscription" className="flex-1">
+          Your subscriptions (a month)
+          <span className="block text-[10px] text-muted-foreground">
+            {vsSubs === null
+              ? "What you paid for ChatGPT, Claude and the like"
+              : vsSubs >= 0
+                ? `${money(vsSubs)} less than your subscriptions so far`
+                : `${money(-vsSubs)} more than your subscriptions so far`}
+          </span>
+        </label>
+        <Input
+          id="subscription"
+          aria-label="Subscriptions per month in dollars"
+          inputMode="decimal"
+          className="h-7 w-20 text-right font-mono text-xs"
+          value={draft}
+          placeholder="$"
+          onChange={(e) => {
+            setDraft(e.target.value);
+          }}
+          onBlur={() => {
+            const n = Number(draft);
+            onSubscription(draft.trim() === "" ? null : Number.isFinite(n) && n >= 0 ? n : null);
+          }}
+        />
+      </div>
+    </section>
+  );
+}
+
 const PERIODS: { id: UsagePeriod; label: string; previous: string }[] = [
   { id: "day", label: "Today", previous: "yesterday" },
   { id: "week", label: "7 days", previous: "the 7 days before" },
@@ -29,11 +113,15 @@ const PERIODS: { id: UsagePeriod; label: string; previous: string }[] = [
 /** Spend by period and where it went (CO-02). Costs come from the request log. */
 export function UsageScreen({
   view,
+  savings = null,
   onPeriod,
+  onSubscription,
   onBack,
 }: {
   view: UsageScreenView | null;
+  savings?: SavingsView | null;
   onPeriod: (period: UsagePeriod) => void;
+  onSubscription?: (usd: number | null) => void;
   onBack: () => void;
 }) {
   const period = PERIODS.find((p) => p.id === view?.period) ?? PERIODS[1];
@@ -127,6 +215,9 @@ export function UsageScreen({
                 <span>{view.bars.at(-1)?.label}</span>
               </div>
             </section>
+            {savings && onSubscription && (
+              <SavingsCard savings={savings} onSubscription={onSubscription} />
+            )}
             <div className="mt-6 grid grid-cols-2 gap-4 max-[800px]:grid-cols-1">
               {view.sections.map((s) => (
                 <section

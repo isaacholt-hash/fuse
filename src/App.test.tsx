@@ -527,6 +527,34 @@ test("budgets: alerts as spend crosses them, and over the limit a message asks f
   expect(await screen.findByText("Second.")).toBeInTheDocument();
 });
 
+test("a big message shows its cost first; it can go without its files", async () => {
+  const { calls, user } = setup({ anthropic: [() => answer("Read it.")] });
+  await composer();
+  const big = new File(["word ".repeat(30_000)], "book.txt", { type: "text/plain" });
+  await user.upload(screen.getByLabelText("Attach files"), big);
+  expect(await screen.findByText(/tokens ·/)).toBeInTheDocument();
+  await user.type(await composer(), "Summarize this{Enter}");
+  const ask = within(await screen.findByRole("dialog"));
+  expect(ask.getByText(/This adds about [\d,]+ tokens\. On Test Claude/)).toBeInTheDocument();
+  await user.click(ask.getByRole("button", { name: "Send without the files" }));
+  expect(await screen.findByText("Read it.")).toBeInTheDocument();
+  expect(calls.anthropic?.[0]).toEqual([{ role: "user", content: "Summarize this" }]);
+});
+
+test("the savings card compares this month with Best and with your subscriptions", async () => {
+  const { user } = setup();
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Usage" }));
+  const card = within(await screen.findByRole("region", { name: "Savings" }));
+  // $0.0064 answer + $0.0028 title spent; the answer on Test Best would be $0.032.
+  expect(await card.findByText("$0.0092")).toBeInTheDocument();
+  expect(card.getByText(/Routing saved \$0\.0256/)).toBeInTheDocument();
+  await user.type(card.getByLabelText("Subscriptions per month in dollars"), "40");
+  await user.tab();
+  expect(await card.findByText(/less than your subscriptions so far/)).toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");
