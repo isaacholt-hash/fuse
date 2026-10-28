@@ -435,7 +435,7 @@ describe("memories in chat", () => {
 
     await setThreadMemory(db, t, thread.id, false);
     const second = await sendMessage(deps, { threadId: thread.id, model: big, text: "And K2?" });
-    expect(calls[1]?.options.system).toBeUndefined();
+    expect(calls[1]?.options.system).not.toContain("<memories>");
     expect((await memoriesForMessages(db, t, [second.assistantMessageId])).size).toBe(0);
   });
 

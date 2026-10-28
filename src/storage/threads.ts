@@ -272,6 +272,12 @@ export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promis
     ws,
     id,
   ]);
+  await db.execute(
+    `DELETE FROM artifact_versions WHERE workspace_id = ? AND artifact_id IN
+       (SELECT id FROM artifacts WHERE workspace_id = ? AND thread_id = ?)`,
+    [ws, ws, id],
+  );
+  await db.execute(`DELETE FROM artifacts WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   await db.execute(`DELETE FROM thread_summaries WHERE workspace_id = ? AND thread_id = ?`, [
     ws,
     id,

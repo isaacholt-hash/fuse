@@ -116,6 +116,9 @@ import {
 import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { CATEGORY_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog, type KnowledgeFileView } from "@/ui/Projects";
+import { ArtifactPanel, type ArtifactView } from "@/ui/Artifacts";
+import { listArtifacts, type Artifact } from "@/storage/artifacts";
+import { artifactsIn, splitAnswer } from "@/artifacts/parse";
 import {
   addProjectFile,
   listProjectFiles,
@@ -263,6 +266,9 @@ export function ChatApp({
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadAll, setThreadAll] = useState<Message[]>([]);
   const [threadBranches, setThreadBranches] = useState<Map<string, BranchInfo>>(new Map());
+  // The chat's artifacts (AR-01), and the one open in the side panel, by key.
+  const [threadArtifacts, setThreadArtifacts] = useState<Artifact[]>([]);
+  const [openArtifact, setOpenArtifact] = useState<string | null>(null);
   // The last message the model gets as a summary rather than in full (PM-06), on this path.
   const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
@@ -454,15 +460,18 @@ export function ChatApp({
       const used = await memoriesForMessages(db, tenant, answers);
       const upto = activeSummary(rows, await listSummaries(db, tenant, threadId))?.summary
         .uptoMessageId;
-      return { rows, all, attached, cited, used, upto: upto ?? null, fromFiles };
+      const artifacts = await listArtifacts(db, tenant, threadId);
+      return { rows, all, attached, cited, used, upto: upto ?? null, fromFiles, artifacts };
     },
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
   const reload = useCallback(
     async (threadId: string) => {
-      const { rows, all, attached, cited, used, upto, fromFiles } = await loadThread(threadId);
+      const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
+        await loadThread(threadId);
       if (selectedRef.current === threadId) {
+        setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
         setMessages(rows);
         setSummaryUpto(upto);
@@ -485,8 +494,10 @@ export function ChatApp({
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
         if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, all, attached, cited, used, upto, fromFiles } = await loadThread(lastThread);
+        const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
+          await loadThread(lastThread);
         if (selectedRef.current !== null) return; // the user already moved on
+        setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
         setSelectedId(lastThread);
         selectedRef.current = lastThread;
@@ -515,6 +526,8 @@ export function ChatApp({
     selectedRef.current = id;
     setView("chat");
     setMessages([]);
+    setThreadArtifacts([]);
+    setOpenArtifact(null);
     setSummaryUpto(null);
     setThreadAll([]);
     setThreadBranches(new Map());
@@ -563,6 +576,8 @@ export function ChatApp({
       setSelectedId(null);
       selectedRef.current = null;
       setMessages([]);
+      setThreadArtifacts([]);
+      setOpenArtifact(null);
       setSummaryUpto(null);
       setThreadAll([]);
       setThreadBranches(new Map());
@@ -774,6 +789,11 @@ export function ChatApp({
       controllers.current.delete(threadId);
       const rows = await reload(threadId).catch(report);
       if (rows) {
+        // A new or updated artifact opens in the panel when its answer finishes.
+        const made = artifactsIn(rows.findLast((m) => m.role === "assistant")?.content ?? "").at(
+          -1,
+        );
+        if (made && selectedRef.current === threadId) setOpenArtifact(made.key);
         nameThread(threadId, rows);
         summarizeIfLong(threadId, routed.model);
       }
@@ -1306,6 +1326,27 @@ export function ChatApp({
       ? [...shown.slice(0, -1), { ...latest, escalateTo: tierLabel(stronger.to) }]
       : shown;
   const streaming = selectedId !== null && selectedId in live;
+  // The open artifact: as it streams in, or its saved latest version.
+  const panelArtifact = ((): ArtifactView | null => {
+    if (!openArtifact) return null;
+    const writing = liveHere
+      ? splitAnswer(liveHere.text).find(
+          (p) => p.kind === "artifact" && p.artifact.key === openArtifact && !p.artifact.complete,
+        )
+      : undefined;
+    if (writing?.kind === "artifact") return { ...writing.artifact, version: null };
+    const saved = threadArtifacts.find((a) => a.key === openArtifact);
+    return saved
+      ? {
+          key: saved.key,
+          title: saved.title,
+          type: saved.type,
+          language: saved.language,
+          content: saved.content,
+          version: saved.version,
+        }
+      : null;
+  })();
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
@@ -1883,102 +1924,117 @@ export function ChatApp({
                   </>
                 )}
               </header>
-              <Messages
-                key={selectedId ?? "new"}
-                messages={withEscalation}
-                modelName={modeName}
-                startedAt={messages[0]?.createdAt ?? null}
-                onRetry={retry}
-                onEscalate={escalate}
-                onRegenerate={regenerateAnswer}
-                onEdit={editAndSend}
-                onBranch={switchBranch}
-                busy={streaming}
-                focusId={focusId}
-                onFeedback={(id, value) => {
-                  const threadId = selectedId;
-                  if (!threadId) return;
-                  setFeedback(db, tenant, id, value)
-                    .then(() => reload(threadId))
-                    .catch(report);
-                }}
-                onQuote={(text) => {
-                  setQuote((q) => ({ text: quoteOf(text), key: (q?.key ?? 0) + 1 }));
-                }}
-              />
-              {incognito && (
-                <p
-                  role="note"
-                  className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
-                >
-                  <EyeOff className="size-3" />
-                  Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use or add
-                  memories. It&apos;s deleted when you leave it.
-                </p>
-              )}
-              <MemoryBar
-                count={proposals.length}
-                checking={checkingMemory}
-                skipped={skippedSecrets}
-                onReview={() => {
-                  setReviewOpen(true);
-                }}
-                onDismissSkipped={() => {
-                  setSkippedSecrets([]);
-                }}
-              />
-              <Composer
-                key={`composer-${selectedId ?? "new"}`}
-                model={modelOption(model)}
-                models={options}
-                streaming={streaming}
-                missingKey={missingKey}
-                pickerOpen={picker}
-                onPickerOpen={setPicker}
-                onSelectModel={(o) => {
-                  chooseMode({ kind: "model", provider: o.provider, id: o.id });
-                }}
-                insert={quote}
-                {...(messages.length > 0
-                  ? {
-                      context: {
-                        used: pathTokens(messages),
-                        window: model.contextWindow,
-                        summarizeAt: summaryThreshold(model),
-                      },
+              <div className="flex min-h-0 flex-1">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <Messages
+                    key={selectedId ?? "new"}
+                    messages={withEscalation}
+                    modelName={modeName}
+                    startedAt={messages[0]?.createdAt ?? null}
+                    onRetry={retry}
+                    onEscalate={escalate}
+                    onRegenerate={regenerateAnswer}
+                    onEdit={editAndSend}
+                    onBranch={switchBranch}
+                    busy={streaming}
+                    focusId={focusId}
+                    openArtifact={openArtifact}
+                    onOpenArtifact={setOpenArtifact}
+                    onFeedback={(id, value) => {
+                      const threadId = selectedId;
+                      if (!threadId) return;
+                      setFeedback(db, tenant, id, value)
+                        .then(() => reload(threadId))
+                        .catch(report);
+                    }}
+                    onQuote={(text) => {
+                      setQuote((q) => ({ text: quoteOf(text), key: (q?.key ?? 0) + 1 }));
+                    }}
+                  />
+                  {incognito && (
+                    <p
+                      role="note"
+                      className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
+                    >
+                      <EyeOff className="size-3" />
+                      Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use or
+                      add memories. It&apos;s deleted when you leave it.
+                    </p>
+                  )}
+                  <MemoryBar
+                    count={proposals.length}
+                    checking={checkingMemory}
+                    skipped={skippedSecrets}
+                    onReview={() => {
+                      setReviewOpen(true);
+                    }}
+                    onDismissSkipped={() => {
+                      setSkippedSecrets([]);
+                    }}
+                  />
+                  <Composer
+                    key={`composer-${selectedId ?? "new"}`}
+                    model={modelOption(model)}
+                    models={options}
+                    streaming={streaming}
+                    missingKey={missingKey}
+                    pickerOpen={picker}
+                    onPickerOpen={setPicker}
+                    onSelectModel={(o) => {
+                      chooseMode({ kind: "model", provider: o.provider, id: o.id });
+                    }}
+                    insert={quote}
+                    {...(messages.length > 0
+                      ? {
+                          context: {
+                            used: pathTokens(messages),
+                            window: model.contextWindow,
+                            summarizeAt: summaryThreshold(model),
+                          },
+                        }
+                      : {})}
+                    status={
+                      trouble
+                        ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
+                        : null
                     }
-                  : {})}
-                status={
-                  trouble
-                    ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
-                    : null
-                }
-                routing={{
-                  selected: mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
-                  descriptions: {
-                    auto: "Picks Balanced or Best for each message from what you ask",
-                    balanced: tierDescription("balanced"),
-                    best: tierDescription("best"),
-                  },
-                  preview: previewTier,
-                  onSelect: (choice) => {
-                    chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
-                  },
-                }}
-                onSend={(text, opts) => void send(text, opts?.thinkHarder)}
-                onStop={stop}
-                onSettings={() => {
-                  setView("settings");
-                }}
-                attachments={pendingViews}
-                blocked={blocked}
-                onAddFiles={attachments.add}
-                onRemoveAttachment={attachments.remove}
-                onAttachmentMode={attachments.setMode}
-                {...(web ? { onAddLink: attachments.addLink } : {})}
-                webSearch={model.capabilities.includes("web_search") ? searchOn : null}
-                onToggleWebSearch={toggleSearch}
-              />
+                    routing={{
+                      selected:
+                        mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
+                      descriptions: {
+                        auto: "Picks Balanced or Best for each message from what you ask",
+                        balanced: tierDescription("balanced"),
+                        best: tierDescription("best"),
+                      },
+                      preview: previewTier,
+                      onSelect: (choice) => {
+                        chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
+                      },
+                    }}
+                    onSend={(text, opts) => void send(text, opts?.thinkHarder)}
+                    onStop={stop}
+                    onSettings={() => {
+                      setView("settings");
+                    }}
+                    attachments={pendingViews}
+                    blocked={blocked}
+                    onAddFiles={attachments.add}
+                    onRemoveAttachment={attachments.remove}
+                    onAttachmentMode={attachments.setMode}
+                    {...(web ? { onAddLink: attachments.addLink } : {})}
+                    webSearch={model.capabilities.includes("web_search") ? searchOn : null}
+                    onToggleWebSearch={toggleSearch}
+                  />
+                </div>
+                {panelArtifact && (
+                  <ArtifactPanel
+                    artifact={panelArtifact}
+                    onClose={() => {
+                      setOpenArtifact(null);
+                    }}
+                  />
+                )}
+              </div>
             </main>
           )}
         </div>

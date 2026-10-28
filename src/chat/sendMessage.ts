@@ -23,6 +23,8 @@ import {
 } from "@/storage/messages";
 import { addCitations, addFileCitations } from "@/storage/citations";
 import { retrieveExcerpts } from "@/knowledge/retrieve";
+import { ARTIFACT_GUIDE, artifactsIn } from "@/artifacts/parse";
+import { saveArtifacts } from "@/storage/artifacts";
 import { listProjectFiles } from "@/storage/projectFiles";
 import { isRecallQuestion, memorySimilarity, recallPastChats } from "@/knowledge/recall";
 import { summarizedPath } from "./summary";
@@ -470,6 +472,7 @@ async function streamAnswer(
     ),
     injected.map((m) => m.text),
     earlier,
+    [ARTIFACT_GUIDE],
   );
 
   /** One provider call, streamed into the answer. */
@@ -644,6 +647,10 @@ async function streamAnswer(
   if (fileSources.length > 0) {
     await addFileCitations(db, tenant, assistantMessageId, fileSources);
   }
+  // AR-01: finished artifacts in the answer are saved (a new version when the id repeats).
+  const blocks = artifactsIn(answer);
+  if (blocks.length > 0)
+    await saveArtifacts(db, tenant, input.threadId, assistantMessageId, blocks);
 
   return {
     userMessageId,
