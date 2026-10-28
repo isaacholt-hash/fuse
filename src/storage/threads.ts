@@ -287,6 +287,7 @@ export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promis
     ws,
     id,
   ]);
+  await db.execute(`DELETE FROM imports WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
 }
 

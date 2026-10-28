@@ -1,6 +1,7 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { strToU8, zipSync } from "fflate";
 import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
@@ -998,6 +999,55 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
 }, 20_000);
+
+test("import from ChatGPT: preview first, then the chats appear in the sidebar", async () => {
+  const { user } = setup();
+  await composer();
+  const zip = zipSync({
+    "conversations.json": strToU8(
+      JSON.stringify([
+        {
+          conversation_id: "c1",
+          title: "Old garden chat",
+          create_time: 1_700_000_000,
+          current_node: "a",
+          mapping: {
+            q: {
+              id: "q",
+              parent: null,
+              message: {
+                author: { role: "user" },
+                create_time: 1_700_000_001,
+                content: { content_type: "text", parts: ["Tomatoes?"] },
+              },
+            },
+            a: {
+              id: "a",
+              parent: "q",
+              message: {
+                author: { role: "assistant" },
+                create_time: 1_700_000_002,
+                content: { content_type: "text", parts: ["Yes."] },
+              },
+            },
+          },
+        },
+      ]),
+    ),
+  });
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Import" }));
+  await user.click(section.getByRole("button", { name: "From ChatGPT…" }));
+  await user.upload(section.getByLabelText("Export file"), new File([zip], "export.zip"));
+  const preview = within(await section.findByLabelText("Import preview"));
+  expect(preview.getByText(/1 chats \(2 messages\) from ChatGPT\./)).toBeInTheDocument();
+  await user.click(preview.getByRole("button", { name: "Import 1 chats" }));
+  expect(await section.findByText("Imported 1 chats.")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /Back to conversation/ }));
+  await user.click(await sidebar().findByText("Old garden chat"));
+  expect(await screen.findByText("Tomatoes?")).toBeInTheDocument();
+  expect(screen.getByText("Yes.")).toBeInTheDocument();
+});
 
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });

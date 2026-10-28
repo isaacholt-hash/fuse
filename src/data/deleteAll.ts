@@ -26,6 +26,7 @@ const ORDER = [
   "golden_prompts",
   "user_instructions",
   "settings",
+  "imports",
   "messages",
   "request_log",
   "files",

@@ -139,6 +139,9 @@ import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
+import { ImportSection, type ImportSourceView } from "@/ui/ImportSection";
+import { previewImport, writeImport, type ImportedChat, type ImportSource } from "@/import/write";
+import { readChatGptExport } from "@/import/chatgpt";
 import { AppLockSection, LockScreen } from "@/ui/AppLock";
 import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/security/passcode";
 import { exportAll } from "@/data/exportAll";
@@ -258,6 +261,22 @@ function artifactEditRequest(
   return selection
     ? `Edit the artifact "${a.title}" (id ${a.key}). Change only this part:\n\n> ${selection.split("\n").join("\n> ")}\n\n${instruction}\n\nReply with the whole updated artifact, same id.`
     : `Edit the artifact "${a.title}" (id ${a.key}): ${instruction}\n\nReply with the whole updated artifact, same id.`;
+}
+
+/** PL-08: where chats can be imported from. */
+const IMPORT_SOURCES: ImportSourceView[] = [
+  {
+    id: "chatgpt",
+    label: "ChatGPT",
+    hint: "the zip ChatGPT emails you (Settings → Data controls → Export data)",
+    accept: ".zip,.json",
+  },
+];
+
+/** Reads an export file for a source; throws a plain-English error. */
+function readExport(source: string, bytes: Uint8Array, name: string): ImportedChat[] {
+  if (source === "chatgpt") return readChatGptExport(bytes, name);
+  throw new Error("That source isn't supported.");
 }
 
 /** SE-03: settings keys for the app lock, and the default idle time before it locks. */
@@ -421,6 +440,8 @@ export function ChatApp({
     waitUntil: 0,
   });
   const lastActive = useRef(Date.now());
+  // PL-08: chats read from an export, waiting for "Import".
+  const pendingImport = useRef<{ source: ImportSource; chats: ImportedChat[] } | null>(null);
   // Quick capture (CH-08): the active shortcut, and what the desktop said about it.
   const [shortcut, setShortcut] = useState<{
     shortcut: string | null;
@@ -1261,6 +1282,13 @@ export function ChatApp({
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
   };
   const editedProject = projects.find((p) => p.id === projectDialog);
+  /** An imported chat's project, by name: an existing one, or a new one (Claude projects). */
+  const projectIdFor = async (name: string) => {
+    const found = (await listProjects(db, tenant)).find(
+      (p) => p.name.toLowerCase() === name.toLowerCase(),
+    );
+    return found?.id ?? (await createProject(db, tenant, name)).id;
+  };
   useEffect(() => {
     if (!projectDialog || projectDialog === "new") return;
     const projectId = projectDialog;
@@ -2117,6 +2145,33 @@ export function ChatApp({
                   onIdle={(minutes) => {
                     setLock((l) => ({ ...l, idleMinutes: minutes }));
                     setSetting(db, tenant, LOCK_IDLE, String(minutes)).catch(report);
+                  }}
+                />
+              }
+              importer={
+                <ImportSection
+                  sources={IMPORT_SOURCES}
+                  onRead={async (source, file) => {
+                    const bytes = new Uint8Array(await file.arrayBuffer());
+                    const chats = readExport(source, bytes, file.name);
+                    pendingImport.current = { source: source as ImportSource, chats };
+                    return previewImport(db, tenant, source as ImportSource, chats);
+                  }}
+                  onImport={async (onProgress) => {
+                    const pending = pendingImport.current;
+                    if (!pending) return 0;
+                    const n = await writeImport(
+                      db,
+                      tenant,
+                      pending.source,
+                      pending.chats,
+                      projectIdFor,
+                      onProgress,
+                    );
+                    pendingImport.current = null;
+                    await refreshThreads();
+                    await refreshProjects();
+                    return n;
                   }}
                 />
               }

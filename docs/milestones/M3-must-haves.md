@@ -32,7 +32,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 - [x] **7. App lock (SE-03).**
   - An optional passcode at launch and after an idle time (default 15 minutes).
   - Only a salted PBKDF2 hash is stored, and repeated wrong tries slow down.
-- [ ] **8. Import chats from ChatGPT (PL-08).** The ChatGPT data-export zip becomes chats, keeping dates and branches. You see a preview count first, and running it again doesn't duplicate.
+- [x] **8. Import chats from ChatGPT (PL-08).** The ChatGPT data-export zip becomes chats, keeping dates and branches. You see a preview count first, and running it again doesn't duplicate.
 - [ ] **9. Import chats from Claude (PL-08).** Claude's data export becomes chats and projects (with their instructions), with the same preview and no duplicates.
 - [ ] **10. Import memories and custom instructions (PM-08).**
   - Paste ChatGPT's or Claude's memory list, and the Cheap model splits it into facts for the usual review, with duplicates merged.
