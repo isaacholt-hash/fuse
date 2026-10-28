@@ -40,6 +40,8 @@ export interface Message {
   route: MessageRoute | null;
   /** The same tokens priced on the cheapest Best model; null when unknown. */
   bestCostMicroUsd: number | null;
+  /** The answer this one re-ran one tier up (RT-04); null otherwise. */
+  escalatedFromId: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -63,6 +65,7 @@ interface MessageRow extends UsageRow {
   route_intent: string | null;
   route_complexity: string | null;
   best_cost_micro_usd: number | null;
+  escalated_from_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -91,6 +94,7 @@ const toMessage = (r: MessageRow): Message => ({
       }
     : null,
   bestCostMicroUsd: r.best_cost_micro_usd,
+  escalatedFromId: r.escalated_from_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -104,6 +108,7 @@ export interface NewMessage {
   provider?: string | null;
   model?: string | null;
   route?: MessageRoute | null;
+  escalatedFromId?: string | null;
 }
 
 export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Promise<string> {
@@ -112,8 +117,9 @@ export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Prom
   await db.execute(
     `INSERT INTO messages (id, workspace_id, user_id, thread_id, parent_id, role, content, status,
                            provider, model, pinned_mode, tier, route_rule_id, route_reason,
-                           route_intent, route_complexity, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                           route_intent, route_complexity, escalated_from_id, created_at,
+                           updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -131,6 +137,7 @@ export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Prom
       m.route?.reason ?? null,
       m.route?.intent ?? null,
       m.route?.complexity ?? null,
+      m.escalatedFromId ?? null,
       now,
       now,
     ],
@@ -209,7 +216,8 @@ export async function listMessages(
   const rows = await db.select<MessageRow>(
     `SELECT id, thread_id, parent_id, role, content, status, error_code, error_message, provider,
             model, ${USAGE_COLUMNS}, request_id, pinned_mode, tier, route_rule_id, route_reason,
-            route_intent, route_complexity, best_cost_micro_usd, created_at, updated_at
+            route_intent, route_complexity, best_cost_micro_usd, escalated_from_id, created_at,
+            updated_at
      FROM messages
      WHERE workspace_id = ? AND thread_id = ? AND deleted_at IS NULL
      ORDER BY created_at, id`,

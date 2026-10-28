@@ -20,7 +20,9 @@
 - [x] **9. Tiers and routing policy as data.** `data/routing.json`: tier → models (Cheap / Balanced / Best), quality floor per intent (RT-17), the default rules (RT-03). Built from the current catalog; **Isaac approves the tier mapping** in the PR.
 - [x] **9a. Golden prompt set.** Isaac picks 50 real prompts from his ChatGPT/Claude history with the tier he'd expect (RT-16). Claude builds the import helper; Isaac supplies the prompts.
 - [x] **10. Auto routing.** Composer mode Auto / pinned tier / pinned model (RT-01); local heuristic classifier (RT-02), checked against the golden set; every answer shows tier, rule and "would have cost $X on Best" (RT-09).
-- [ ] **11. Escalation.** "Try a stronger model" on any answer re-runs it one tier up (RT-04).
+- [x] **11. Escalation.** "Try a stronger model" on any answer re-runs it one tier up (RT-04).
+
+**All build steps done (2026-10-28).** What's left is the "done when": a full week on FUSE instead of ChatGPT and Claude.
 
 ## Carried from M0 (fit in where they're needed)
 

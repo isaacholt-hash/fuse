@@ -20,7 +20,7 @@ import {
   setThreadInstructions,
   setThreadProject,
 } from "@/storage/threads";
-import { historyFor, retryLast, sendMessage, type ChatDeps } from "./sendMessage";
+import { escalateLast, historyFor, retryLast, sendMessage, type ChatDeps } from "./sendMessage";
 
 const t = DEFAULT_TENANT;
 // Placeholder prices for arithmetic; real ones live in data/models.json.
@@ -278,6 +278,58 @@ test("retry replaces the failed answer, on any model", async () => {
     ["assistant", "hi", "complete"],
   ]);
   expect(fakes.openai.calls[0]).toEqual([{ role: "user", content: "question" }]);
+});
+
+test("escalation keeps the old answer; later turns send only the stronger one", async () => {
+  const { db, deps, fakes } = setup({
+    anthropic: () => answer("Quick answer"),
+    openai: () => answer("Careful answer"),
+  });
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "question" });
+  await escalateLast(deps, { threadId: thread.id, model: gpt });
+
+  const msgs = await listMessages(db, t, thread.id);
+  expect(msgs.map((m) => [m.role, m.content, m.model])).toEqual([
+    ["user", "question", null],
+    ["assistant", "Quick answer", "test-claude"],
+    ["assistant", "Careful answer", "test-gpt"],
+  ]);
+  expect(msgs[2]?.escalatedFromId).toBe(msgs[1]?.id);
+  // The stronger model gets the question, not the answer it replaces.
+  expect(fakes.openai.calls[0]).toEqual([{ role: "user", content: "question" }]);
+
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "follow-up" });
+  expect(fakes.anthropic.calls[1]).toEqual([
+    { role: "user", content: "question" },
+    { role: "assistant", content: "Careful answer" },
+    { role: "user", content: "follow-up" },
+  ]);
+});
+
+test("retrying a failed escalation keeps the original answer", async () => {
+  let fail = true;
+  const { db, deps } = setup({
+    anthropic: () => answer("Quick answer"),
+    openai: async function* () {
+      await Promise.resolve();
+      if (fail) throw new ProviderError("stream", "Overloaded", { code: "overloaded_error" });
+      yield* answer("Careful answer");
+    },
+  });
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "question" });
+  expect((await escalateLast(deps, { threadId: thread.id, model: gpt })).status).toBe("error");
+  fail = false;
+  await retryLast(deps, { threadId: thread.id, model: gpt });
+
+  const msgs = await listMessages(db, t, thread.id);
+  expect(msgs.map((m) => [m.content, m.status])).toEqual([
+    ["question", "complete"],
+    ["Quick answer", "complete"],
+    ["Careful answer", "complete"],
+  ]);
+  expect(msgs[2]?.escalatedFromId).toBe(msgs[1]?.id);
 });
 
 test("no usage from the provider: cost unknown, not a fake $0", async () => {

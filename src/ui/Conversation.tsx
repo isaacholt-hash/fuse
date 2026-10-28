@@ -188,6 +188,7 @@ export function Messages({
   modelName,
   startedAt,
   onRetry,
+  onEscalate,
 }: {
   messages: MessageView[];
   /** Selected model, for the empty state. */
@@ -195,6 +196,8 @@ export function Messages({
   /** When the conversation started (Unix ms). */
   startedAt: number | null;
   onRetry: () => void;
+  /** "Try a stronger model" on the latest answer (RT-04). */
+  onEscalate?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
@@ -399,6 +402,17 @@ export function Messages({
                         <CostBadge message={message} />
                         {message.memories && message.memories.length > 0 && (
                           <MemoryBadge memories={message.memories} />
+                        )}
+                        {message.escalateTo && onEscalate && (
+                          <Tip label="Ask the same question one tier up. This answer stays.">
+                            <button
+                              className="mt-4 flex items-center gap-1 rounded py-1 text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+                              onClick={onEscalate}
+                            >
+                              <ArrowUp className="size-3" />
+                              Try a stronger model ({message.escalateTo})
+                            </button>
+                          </Tip>
                         )}
                       </div>
                     )}

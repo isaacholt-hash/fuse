@@ -105,8 +105,11 @@ export function routeView(m: Message): RouteView | undefined {
   const r = m.route;
   if (!r) return undefined;
   const tier = r.tier ? (TIER_LABELS[r.tier] ?? r.tier) : null;
-  const label =
-    r.mode === "model" ? "Your pick" : `${r.mode === "auto" ? "Auto" : "Pinned"} · ${tier ?? "?"}`;
+  const label = m.escalatedFromId
+    ? `Stronger · ${tier ?? "?"}`
+    : r.mode === "model"
+      ? "Your pick"
+      : `${r.mode === "auto" ? "Auto" : "Pinned"} · ${tier ?? "?"}`;
   const labels: Partial<Record<string, string>> = INTENT_LABELS;
   const intent = r.intent ? (labels[r.intent] ?? r.intent) : null;
   return {
@@ -152,7 +155,9 @@ export function messageViews(
       providerName: provider ? PROVIDER_NAMES[provider] : (m.provider ?? ""),
       model: name,
     };
-    if (lastModel !== null && key !== lastModel) {
+    if (m.escalatedFromId) {
+      view.switchLabel = `Stronger model: ${name} · same question`;
+    } else if (lastModel !== null && key !== lastModel) {
       view.switchLabel = `Switched to ${name} · full history sent`;
     }
     lastModel = key;
@@ -199,6 +204,8 @@ export interface LiveAnswer {
   searching?: boolean;
   /** Sources cited so far. */
   sources?: SourceView[];
+  /** A stronger re-run of the last answer, which stays on screen above it. */
+  escalating?: boolean;
 }
 
 /**
@@ -209,9 +216,13 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
   if (!live) return base;
   const saved = base.findLastIndex((m) => m.role === "assistant" && m.status === "streaming");
   if (saved >= 0) return base.map((m, i) => (i === saved ? { ...m, content: live.text } : m));
-  // Retrying replaces everything after the last question.
-  const rows =
-    live.userText === null ? base.slice(0, base.findLastIndex((m) => m.role === "user") + 1) : base;
+  // Retrying replaces the last answer; a stronger re-run goes under it.
+  const lastAnswer = base.findLastIndex((m) => m.role === "assistant");
+  const replaced =
+    live.userText === null &&
+    !live.escalating &&
+    lastAnswer > base.findLastIndex((m) => m.role === "user");
+  const rows = replaced ? base.slice(0, lastAnswer) : base;
   const row = (id: string, fields: Partial<Message>): Message => ({
     id,
     threadId: live.threadId,
@@ -227,6 +238,7 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
     requestId: null,
     route: null,
     bestCostMicroUsd: null,
+    escalatedFromId: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...fields,
