@@ -861,6 +861,25 @@ test("pins: next message only, then back to the chat's mode; a project can defau
   expect(modeButton()).toHaveTextContent("Best");
 });
 
+test("command palette: Ctrl+Shift+P, type, Enter runs it; recent chats are there too", async () => {
+  const { user } = setup({ anthropic: [() => answer("Ok.")] });
+  await user.type(await composer(), "Plan the garden{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+  await user.keyboard("{Control>}n{/Control}");
+
+  await user.keyboard("{Control>}{Shift>}p{/Shift}{/Control}");
+  await user.type(await screen.findByLabelText("Type a command or a chat"), "garden");
+  expect(screen.getByRole("option", { name: /Plan the garden/ })).toBeInTheDocument();
+  await user.keyboard("{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+
+  await user.keyboard("{Control>}{Shift>}p{/Shift}{/Control}");
+  await user.type(await screen.findByLabelText("Type a command or a chat"), "settings");
+  expect(screen.getAllByRole("option")[0]).toHaveTextContent("Settings");
+  await user.keyboard("{Enter}");
+  expect(await screen.findByRole("region", { name: "Budgets" })).toBeInTheDocument();
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");
