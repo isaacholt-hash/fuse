@@ -22,7 +22,7 @@
 - [x] **10. Auto routing.** Composer mode Auto / pinned tier / pinned model (RT-01); local heuristic classifier (RT-02), checked against the golden set; every answer shows tier, rule and "would have cost $X on Best" (RT-09).
 - [x] **11. Escalation.** "Try a stronger model" on any answer re-runs it one tier up (RT-04).
 
-**All build steps done (2026-10-28).** What's left is the "done when": a full week on FUSE instead of ChatGPT and Claude.
+**All build steps done (2026-10-28).** Isaac skipped the trial week on 2026-10-28 to start M2 (`M2-full-p1.md`); its two-week P1 gate covers it.
 
 ## Carried from M0 (fit in where they're needed)
 
