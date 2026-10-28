@@ -19,6 +19,7 @@ import { providerFetch } from "@/transport/tauriFetch";
 import { defaultUpdateApi, type UpdateApi } from "@/update/api";
 import { tauriWebApi, type WebApi } from "@/web/api";
 import { tauriPreviewApi, type PreviewApi } from "@/artifacts/preview";
+import { tauriExportApi, type ExportApi } from "@/artifacts/export";
 
 // On desktop, every provider request goes through the Rust transport, which adds the key.
 const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
@@ -49,6 +50,7 @@ interface Props {
   /** Reads pasted links (FK-06). */
   web?: WebApi;
   preview?: PreviewApi;
+  exporter?: ExportApi;
 }
 
 export default function App({
@@ -64,6 +66,7 @@ export default function App({
   recoveryKey = tauriRecoveryKey,
   web = tauriWebApi,
   preview = tauriPreviewApi,
+  exporter = tauriExportApi,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
   // Bumped after a successful unlock, to open the database again.
@@ -120,6 +123,7 @@ export default function App({
       files={files}
       web={web}
       preview={preview}
+      exporter={exporter}
       prepareImage={prepareImage}
       updates={updates}
       recoveryKey={recoveryKey}

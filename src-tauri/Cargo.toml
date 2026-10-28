@@ -27,6 +27,8 @@ getrandom = "0.3"
 keyring = "4.2"
 reqwest = "0.13"
 tauri-plugin-opener = "2.7.2"
+# Native "Save as" for artifact exports (AR-04); pinned: released 2026-10-10.
+tauri-plugin-dialog = "=2.8.2"
 sha2 = "0.11.1"
 tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).

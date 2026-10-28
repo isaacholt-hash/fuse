@@ -185,6 +185,13 @@ import { classifyInput } from "./routing";
 import { useAttachments, useFileUrls } from "./useAttachments";
 import type { WebApi } from "@/web/api";
 import type { PreviewApi } from "@/artifacts/preview";
+import {
+  extensionFor,
+  fileName,
+  markdownToDocx,
+  markdownToPdf,
+  type ExportApi,
+} from "@/artifacts/export";
 import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
 import { useUpdate } from "./useUpdate";
@@ -214,6 +221,8 @@ export interface ChatAppProps {
   web?: WebApi;
   /** Live previews of HTML artifacts (AR-05). */
   preview?: PreviewApi;
+  /** "Save as…" for artifact exports (AR-04). */
+  exporter?: ExportApi;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -277,6 +286,7 @@ export function ChatApp({
   recoveryKey,
   web,
   preview,
+  exporter,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -2095,6 +2105,27 @@ export function ChatApp({
                     key={panelArtifact.key}
                     artifact={panelArtifact}
                     {...(preview ? { preview } : {})}
+                    {...(exporter
+                      ? {
+                          onExport: async (format: "file" | "docx" | "pdf") => {
+                            const a = panelArtifact;
+                            const name = (ext: string) => fileName(a.title, ext);
+                            if (format === "docx") {
+                              return exporter.save(name("docx"), markdownToDocx(a.content));
+                            }
+                            if (format === "pdf") {
+                              return exporter.save(
+                                name("pdf"),
+                                await markdownToPdf(a.content, a.title),
+                              );
+                            }
+                            return exporter.save(
+                              name(extensionFor(a.type, a.language)),
+                              new TextEncoder().encode(a.content),
+                            );
+                          },
+                        }
+                      : {})}
                     onClose={() => {
                       showArtifact(null);
                     }}
