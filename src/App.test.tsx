@@ -925,6 +925,19 @@ test("quick capture: the default shortcut is registered, pressing it opens a new
   });
 });
 
+test("Settings → Your data exports everything as one zip", async () => {
+  const { saves, user } = setup({ anthropic: [() => answer("Ok.")] });
+  await user.type(await composer(), "Hello{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+  await user.keyboard("{Control>},{/Control}");
+  const data = within(await screen.findByRole("region", { name: "Your data" }));
+  await user.click(data.getByRole("button", { name: /Export everything/ }));
+  expect(await data.findByRole("status")).toHaveTextContent(
+    /Saved fuse-export-\d{4}-\d{2}-\d{2}\.zip: 1 chats, 0 files\./,
+  );
+  expect(saves[0]?.bytes.slice(0, 2)).toEqual(new Uint8Array([0x50, 0x4b]));
+});
+
 test("stop keeps the partial answer, marked Stopped", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Tell me a long story{Enter}");

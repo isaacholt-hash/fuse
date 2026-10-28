@@ -138,6 +138,8 @@ import { addFile } from "@/storage/files";
 import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
+import { DataSection } from "@/ui/DataSection";
+import { exportAll } from "@/data/exportAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
@@ -2000,6 +2002,20 @@ export function ChatApp({
                     value={globalInstructions}
                     maxChars={MAX_INSTRUCTION_CHARS}
                     onSave={saveGlobalInstructions}
+                  />
+                )
+              }
+              data={
+                exporter && (
+                  <DataSection
+                    onExport={async () => {
+                      const out = await exportAll(db, tenant, filesApi);
+                      const day = new Date().toISOString().slice(0, 10);
+                      const saved = await exporter.save(`fuse-export-${day}.zip`, out.bytes);
+                      return saved
+                        ? `Saved ${saved}: ${String(out.chats)} chats, ${String(out.files)} files.`
+                        : null;
+                    }}
                   />
                 )
               }
