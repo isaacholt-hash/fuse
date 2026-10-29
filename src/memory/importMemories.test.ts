@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { guessCategory, memoriesFromText, splitFacts } from "./importMemories";
+import { guessKind, memoriesFromText, splitFacts } from "./importMemories";
 
 test("one fact per line; headings, bullets and bold go; long prose splits into sentences", () => {
   const text = [
@@ -17,11 +17,11 @@ test("one fact per line; headings, bullets and bold go; long prose splits into s
   expect(facts.at(-1)).toBe("It is growing.");
 });
 
-test("categories are guessed from the words", () => {
-  expect(guessCategory("Has a daughter, Maya, aged 7")).toBe("person");
-  expect(guessCategory("Prefers short answers")).toBe("preference");
-  expect(guessCategory("Working on an app called FUSE")).toBe("project");
-  expect(guessCategory("Lives in Leeds")).toBe("fact");
+test("kinds are guessed from the words", () => {
+  expect(guessKind("Has a daughter, Maya, aged 7")).toBe("person");
+  expect(guessKind("Prefers short answers")).toBe("preference");
+  expect(guessKind("Working on an app called FUSE")).toBe("fact");
+  expect(guessKind("Lives in Leeds")).toBe("fact");
 });
 
 test("known facts and secrets are left out; the rest become suggestions to review", () => {

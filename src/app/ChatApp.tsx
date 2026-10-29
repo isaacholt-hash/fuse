@@ -185,7 +185,7 @@ import {
   ThreadInstructionsDialog,
 } from "@/ui/Instructions";
 import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
-import { CATEGORY_LABELS } from "@/ui/memoryLabels";
+import { KIND_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog, type KnowledgeFileView } from "@/ui/Projects";
 import { ArtifactPanel, type ArtifactView } from "@/ui/Artifacts";
 import {
@@ -1743,7 +1743,7 @@ export function ChatApp({
   const memoryViews: MemoryView[] = memories.map((m) => ({
     id: m.id,
     text: m.text,
-    category: m.category,
+    kind: m.kind,
     projectId: m.projectId,
     projectName: projectName(m.projectId),
     source: m.sourceThreadTitle,
@@ -1752,13 +1752,13 @@ export function ChatApp({
   }));
   const proposalViews: ProposalView[] = proposals.map((p) => {
     // PM-11: a new fact about something already saved asks which stands.
-    const conflict = p.op === "add" ? conflictWith(memories, p.text, p.category) : null;
+    const conflict = p.op === "add" ? conflictWith(memories, p.text, p.kind) : null;
     return {
       id: p.id,
       op: p.op,
       text: p.text,
       currentText: p.currentText,
-      category: p.category,
+      kind: p.kind,
       projectName: projectName(p.projectId),
       source: p.sourceThreadTitle,
       confidence: p.confidence,
@@ -1766,12 +1766,10 @@ export function ChatApp({
     };
   });
   const copyMemories = () => {
-    const text = (Object.keys(CATEGORY_LABELS) as Memory["category"][])
+    const text = (Object.keys(KIND_LABELS) as Memory["kind"][])
       .map((c) => {
-        const list = memories.filter((m) => m.category === c);
-        return list.length
-          ? `${CATEGORY_LABELS[c]}\n${list.map((m) => `- ${m.text}`).join("\n")}`
-          : "";
+        const list = memories.filter((m) => m.kind === c);
+        return list.length ? `${KIND_LABELS[c]}\n${list.map((m) => `- ${m.text}`).join("\n")}` : "";
       })
       .filter(Boolean)
       .join("\n\n");

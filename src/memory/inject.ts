@@ -31,20 +31,35 @@ const SIMILARITY_WEIGHT = 6;
 /** Rough tokens one memory adds to the prompt (its text plus the list marker). */
 export const memoryTokens = (m: Pick<Memory, "text">) => textTokens(m.text) + 2;
 
+/** Where a message is being sent from: its project and chat. */
+export interface MemoryWhere {
+  projectId: string | null;
+  threadId: string | null;
+}
+
+/** PM-13: global records apply everywhere, project ones in that project, conversation ones in that chat. */
+export const inScope = (
+  m: Pick<Memory, "scope" | "projectId" | "threadId">,
+  where: MemoryWhere,
+): boolean =>
+  m.scope === "conversation"
+    ? m.threadId !== null && m.threadId === where.threadId
+    : m.projectId === null || m.projectId === where.projectId;
+
 /**
- * The memories to send with a message: global ones plus those of the chat's project. When they all
+ * The memories to send with a message: global ones plus those of the chat's project and the chat itself. When they all
  * fit the budget they all go (a stable set also caches well, RT-07); otherwise the ones sharing the
  * most (and rarest) words with the message win, until the budget is used.
  */
 export function selectMemories(
   memories: Memory[],
   query: string,
-  projectId: string | null,
+  where: MemoryWhere,
   budgetTokens: number,
   /** Cosine similarity of each memory to the question, by memory id (when embedded). */
   similarity: ReadonlyMap<string, number> = new Map(),
 ): Memory[] {
-  const pool = memories.filter((m) => m.projectId === null || m.projectId === projectId);
+  const pool = memories.filter((m) => inScope(m, where));
   if (budgetTokens <= 0 || pool.length === 0) return [];
   const total = pool.reduce((sum, m) => sum + memoryTokens(m), 0);
   if (total <= budgetTokens) return pool;

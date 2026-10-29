@@ -3,7 +3,7 @@
  * (headings dropped, long prose split into sentences), already-known ones and secrets left out.
  * The facts become suggestions for the usual review, so nothing is saved without a yes.
  */
-import type { MemoryCategory, NewProposal } from "@/storage/memories";
+import type { MemoryKind, NewProposal } from "@/storage/memories";
 import { findSecret } from "./secrets";
 
 const MAX_LINE = 300;
@@ -15,7 +15,7 @@ const norm = (s: string) =>
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 
-export function guessCategory(text: string): MemoryCategory {
+export function guessKind(text: string): MemoryKind {
   if (
     /\b(wife|husband|partner|son|daughter|kids?|children|mother|mum|mom|father|dad|brother|sister|friend|colleague|boss|manager)\b/i.test(
       text,
@@ -30,8 +30,6 @@ export function guessCategory(text: string): MemoryCategory {
   ) {
     return "preference";
   }
-  if (/\b(project|working on|building|launch(ing)?|startup|app called)\b/i.test(text))
-    return "project";
   return "fact";
 }
 
@@ -92,7 +90,7 @@ export function memoriesFromText(text: string, known: readonly string[]): Memory
       op: "add",
       memoryId: null,
       text: fact,
-      category: guessCategory(fact),
+      kind: guessKind(fact),
       projectId: null,
       confidence: 100,
       sourceThreadId: null,

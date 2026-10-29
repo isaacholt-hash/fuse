@@ -160,6 +160,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "prompts",
         sql: include_str!("../migrations/0025_prompts.sql"),
     },
+    MigrationFile {
+        version: 26,
+        description: "typed_memory",
+        sql: include_str!("../migrations/0026_typed_memory.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -301,11 +306,36 @@ pub async fn open(dir: &Path, store: &dyn SecretStore) -> Result<Opened, String>
         Err(e) if is_wrong_key(&e) => return Ok(Opened::NeedsRecoveryKey),
         Err(e) => return Err(format!("Couldn't open the database: {e}")),
     };
-    migrator()
-        .run(&pool)
-        .await
-        .map_err(|e| format!("Couldn't update the database: {e}"))?;
+    migrate(&path, &key, migrator()).await?;
     Ok(Opened::Ready(pool))
+}
+
+/// Runs the migrations on a connection of their own with foreign keys off, so a migration can
+/// rebuild a table other tables point at (SQLite's documented way; the pragma is ignored inside
+/// sqlx's per-migration transaction). Every foreign key is checked afterwards.
+async fn migrate(path: &Path, key: &str, migrator: Migrator) -> Result<(), String> {
+    let fail = |e: String| format!("Couldn't update the database: {e}");
+    let conn = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options(path, Some(key)).foreign_keys(false))
+        .await
+        .map_err(|e| fail(e.to_string()))?;
+    let ran = migrator.run(&conn).await.map_err(|e| fail(e.to_string()));
+    let broken = match ran {
+        Ok(()) => sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&conn)
+            .await
+            .map(|rows| rows.len())
+            .map_err(|e| fail(e.to_string())),
+        Err(e) => Err(e),
+    };
+    conn.close().await;
+    match broken? {
+        0 => Ok(()),
+        n => Err(fail(format!(
+            "{n} rows point at records that no longer exist; restore the backup made before the update"
+        ))),
+    }
 }
 
 /// Tries a recovery key; if it opens the database, it goes back in the keychain.
@@ -880,6 +910,43 @@ mod tests {
             .await
             .unwrap();
         assert!(broken.is_empty(), "foreign keys still hold");
+        // 0026: old memories carried over as typed records (PM-12 to PM-14).
+        let rows = select(
+            &pool,
+            "SELECT id, kind, scope, authority, extraction_method, status FROM memories ORDER BY id",
+            &[],
+        )
+        .await
+        .unwrap();
+        let got: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                [
+                    "id",
+                    "kind",
+                    "scope",
+                    "authority",
+                    "extraction_method",
+                    "status",
+                ]
+                .map(|k| r[k].as_str().unwrap_or("").to_string())
+                .join(" ")
+            })
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                "mem-del fact global you typed deleted",
+                "mem-new preference global extracted chat active",
+                "mem-old preference global you typed superseded",
+                "mem-proj fact project you typed active",
+            ]
+        );
+        let proposal = select(&pool, "SELECT kind, origin FROM memory_proposals", &[])
+            .await
+            .unwrap();
+        assert_eq!(proposal[0]["kind"], "preference");
+        assert_eq!(proposal[0]["origin"], "import");
         pool.close().await;
         if (MIGRATIONS.len() as i64) > SEEDED_FROM {
             assert!(

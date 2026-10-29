@@ -23,7 +23,7 @@ test("every data table ends up empty; the workspace stays", async () => {
     content: "hi",
   });
   await addMessage(db, t, { threadId: thread.id, parentId: q, role: "assistant", content: "yo" });
-  await addMemory(db, t, { text: "fact", category: "fact", confidence: 100 });
+  await addMemory(db, t, { text: "fact", kind: "fact", confidence: 100 });
   await files.put(new Uint8Array([1, 2]));
 
   const out = await deleteAllData(db, t, files);

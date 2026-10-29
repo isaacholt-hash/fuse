@@ -36,7 +36,7 @@ test("every table as JSON, a Markdown file per chat, and the attachment files; n
     sha256: stored.sha256,
   });
   await linkFiles(db, t, q, [file.id]);
-  await addMemory(db, t, { text: "Likes seafood.", category: "preference", confidence: 100 });
+  await addMemory(db, t, { text: "Likes seafood.", kind: "preference", confidence: 100 });
   const secret = await createThread(db, t, "Secret", null, true);
   await addMessage(db, t, { threadId: secret.id, parentId: null, role: "user", content: "hush" });
 

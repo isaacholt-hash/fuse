@@ -14,10 +14,14 @@ export function migrationFiles(): string[] {
 
 export function openTestDb(): SqlDb & { raw: DatabaseSync } {
   const raw = new DatabaseSync(":memory:");
-  raw.exec("PRAGMA foreign_keys = ON;"); // sqlx (the Tauri plugin) enables this by default too
+  // As in db.rs `migrate`: migrations run with foreign keys off, then every key is checked.
   for (const file of migrationFiles()) {
     raw.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }
+  if (raw.prepare("PRAGMA foreign_key_check").all().length > 0) {
+    throw new Error("A migration left rows pointing at missing records.");
+  }
+  raw.exec("PRAGMA foreign_keys = ON;"); // the app's connections enforce them too
   return {
     raw,
     execute(sql: string, params: SqlValue[] = []) {

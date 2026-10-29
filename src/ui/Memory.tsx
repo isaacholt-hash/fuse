@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { number } from "./format";
 import { Modal, Tip } from "./primitives";
-import { CATEGORY_LABELS } from "./memoryLabels";
-import type { MemoryCategoryView, MemoryForm, MemoryView, ProposalView } from "./types";
+import { ADDABLE_KINDS, KIND_LABELS } from "./memoryLabels";
+import type { MemoryKindView, MemoryForm, MemoryView, ProposalView } from "./types";
 
 const textareaClass =
   "block min-h-16 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
 const selectClass = "h-8 rounded-lg border border-input bg-background px-2 text-xs";
 
-const CATEGORIES = Object.keys(CATEGORY_LABELS) as MemoryCategoryView[];
+const KINDS = Object.keys(KIND_LABELS) as MemoryKindView[];
 
 interface ProjectOption {
   id: string;
@@ -45,18 +45,20 @@ function MemoryFields({
       />
       <div className="flex flex-wrap gap-2">
         <select
-          aria-label="Category"
+          aria-label="Kind"
           className={selectClass}
-          value={form.category}
+          value={form.kind}
           onChange={(e) => {
-            onChange({ ...form, category: e.target.value as MemoryCategoryView });
+            onChange({ ...form, kind: e.target.value as MemoryKindView });
           }}
         >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {CATEGORY_LABELS[c]}
-            </option>
-          ))}
+          {(ADDABLE_KINDS.includes(form.kind) ? ADDABLE_KINDS : [...ADDABLE_KINDS, form.kind]).map(
+            (c) => (
+              <option key={c} value={c}>
+                {KIND_LABELS[c]}
+              </option>
+            ),
+          )}
         </select>
         <select
           aria-label="Used in"
@@ -140,7 +142,7 @@ function MemoryRow({
           size="icon-xs"
           aria-label={`Edit memory: ${memory.text}`}
           onClick={() => {
-            setDraft({ text: memory.text, category: memory.category, projectId: memory.projectId });
+            setDraft({ text: memory.text, kind: memory.kind, projectId: memory.projectId });
           }}
         >
           <Pencil />
@@ -195,7 +197,7 @@ export function MemorySection({
   onReview: () => void;
   onCopyAll: () => void;
 }) {
-  const empty: MemoryForm = { text: "", category: "fact", projectId: null };
+  const empty: MemoryForm = { text: "", kind: "fact", projectId: null };
   const [draft, setDraft] = useState<MemoryForm>(empty);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -279,7 +281,7 @@ export function MemorySection({
             onClick={() => {
               const problem = onAdd(draft);
               setError(problem);
-              if (!problem) setDraft({ ...empty, category: draft.category });
+              if (!problem) setDraft({ ...empty, kind: draft.kind });
             }}
           >
             Add memory
@@ -303,15 +305,15 @@ export function MemorySection({
               }}
             />
           </div>
-          {CATEGORIES.map((c) => {
-            const list = shown.filter((m) => m.category === c);
+          {KINDS.map((c) => {
+            const list = shown.filter((m) => m.kind === c);
             if (list.length === 0) return null;
             return (
               <div key={c} className="mb-3">
                 <h3 className="mb-1 px-3 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                  {CATEGORY_LABELS[c]}
+                  {KIND_LABELS[c]}
                 </h3>
-                <ul aria-label={CATEGORY_LABELS[c]}>
+                <ul aria-label={KIND_LABELS[c]}>
                   {list.map((m) => (
                     <MemoryRow
                       key={m.id}
@@ -437,7 +439,7 @@ function ProposalRow({
 }) {
   const [text, setText] = useState(proposal.text);
   const meta = [
-    CATEGORY_LABELS[proposal.category],
+    KIND_LABELS[proposal.kind],
     proposal.projectName ? `only in ${proposal.projectName}` : null,
     proposal.source ? `from “${proposal.source}”` : null,
     `${String(proposal.confidence)}% sure`,

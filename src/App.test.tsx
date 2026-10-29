@@ -1297,7 +1297,7 @@ test("memory conflicts: a suggestion that contradicts a saved fact asks which st
   await composer();
   await addMemory(db, DEFAULT_TENANT, {
     text: "Lives in Leeds",
-    category: "fact",
+    kind: "fact",
     projectId: null,
     sourceThreadId: null,
     confidence: 100,
@@ -1307,7 +1307,7 @@ test("memory conflicts: a suggestion that contradicts a saved fact asks which st
       op: "add",
       memoryId: null,
       text: "Lives in York",
-      category: "fact",
+      kind: "fact",
       projectId: null,
       confidence: 90,
       sourceThreadId: null,
@@ -2287,8 +2287,8 @@ describe("memory", () => {
   test("leaving a chat suggests memories; kept ones are sent with later answers", async () => {
     const suggestion = JSON.stringify({
       suggestions: [
-        { op: "add", text: "Lives in York.", category: "fact", confidence: 90 },
-        { op: "add", text: "Bike lock PIN is 4821", category: "fact" },
+        { op: "add", text: "Lives in York.", kind: "fact", confidence: 90 },
+        { op: "add", text: "Bike lock PIN is 4821", kind: "fact" },
       ],
     });
     // The cheapest model with a key does the housekeeping: Test GPT here.
@@ -2317,7 +2317,7 @@ describe("memory", () => {
     expect(await screen.findByRole("button", { name: "1 memory used" })).toBeInTheDocument();
   });
 
-  test("Settings lists memories by category; secrets are refused; edit and delete", async () => {
+  test("Settings lists memories by kind; secrets are refused; edit and delete", async () => {
     const { user } = setup();
     await composer();
     await user.keyboard("{Control>},{/Control}");
@@ -2330,7 +2330,7 @@ describe("memory", () => {
 
     await user.clear(section.getByLabelText("New memory"));
     await user.type(section.getByLabelText("New memory"), "Prefers metric units.");
-    await user.selectOptions(section.getAllByLabelText("Category")[0] as HTMLElement, "preference");
+    await user.selectOptions(section.getAllByLabelText("Kind")[0] as HTMLElement, "preference");
     await user.click(section.getByRole("button", { name: "Add memory" }));
     const prefs = within(await section.findByRole("list", { name: "Preferences" }));
     expect(prefs.getByText("Prefers metric units.")).toBeInTheDocument();
