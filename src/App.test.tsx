@@ -1,5 +1,5 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { strToU8, zipSync } from "fflate";
 import { parseCatalog } from "@/catalog/catalog";
@@ -1106,6 +1106,29 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(document.documentElement).toHaveClass("reduce-motion");
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
+
+test("quote a selection: select part of an answer, Reply to this puts just that in the reply", async () => {
+  const { user } = setup({
+    anthropic: [
+      () => answer("The boiler needs a service in March. The warranty covers five years."),
+    ],
+  });
+  await user.type(await composer(), "Boiler?{Enter}");
+  const text = await screen.findByText(/The boiler needs a service/);
+  const node = text.firstChild;
+  if (!node?.textContent) throw new Error("no text node");
+  const start = node.textContent.indexOf("The warranty");
+  const range = document.createRange();
+  range.setStart(node, start);
+  range.setEnd(node, node.textContent.length);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  fireEvent.mouseUp(text);
+  await user.click(await screen.findByRole("button", { name: "Reply to this" }));
+  expect(await composer()).toHaveValue("> The warranty covers five years.\n\n");
+  expect(screen.queryByRole("button", { name: "Reply to this" })).not.toBeInTheDocument();
 });
 
 test("prompt library: saved in Settings, picked with / or the palette, variables filled first", async () => {

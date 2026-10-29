@@ -194,6 +194,32 @@ function MemoryBadge({ memories }: { memories: string[] }) {
   );
 }
 
+/**
+ * CH-13: text selected inside one answer, with where to show "Reply to this" (just under the
+ * selection, relative to the messages pane). Null when nothing in a single answer is selected.
+ */
+function selectedQuote(
+  pane: HTMLElement | null,
+): { text: string; top: number; left: number } | null {
+  const sel = window.getSelection();
+  const text = sel?.toString().trim() ?? "";
+  if (!sel || !pane || !text || sel.rangeCount === 0) return null;
+  const answerOf = (node: Node | null) =>
+    (node instanceof Element ? node : node?.parentElement)?.closest("[data-answer]") ?? null;
+  const answer = answerOf(sel.anchorNode);
+  if (!answer || answer !== answerOf(sel.focusNode) || !pane.contains(answer)) return null;
+  const range = sel.getRangeAt(0);
+  const box = pane.parentElement?.getBoundingClientRect();
+  // jsdom has no layout for ranges; the button then sits at the top left.
+  const rect =
+    typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null;
+  return {
+    text,
+    top: rect && box ? Math.max(0, rect.bottom - box.top + 6) : 0,
+    left: rect && box ? Math.max(0, rect.left - box.left) : 0,
+  };
+}
+
 /** ‹ 2/3 › between an edited question's or a regenerated answer's versions (CH-04). */
 function BranchPicker({
   branch,
@@ -340,6 +366,8 @@ export function Messages({
   const [copied, setCopied] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
+  // CH-13: text selected in an answer, offered as a quote for the reply.
+  const [picked, setPicked] = useState<{ text: string; top: number; left: number } | null>(null);
   const lastMessage = messages.at(-1);
   // Follow the answer while it streams, unless the user has scrolled up to read.
   useEffect(() => {
@@ -359,12 +387,39 @@ export function Messages({
   }, [focusId, messages.length]);
   return (
     <div className="relative min-h-0 flex-1">
+      {picked && onQuote && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="absolute z-20 h-7 gap-1.5 bg-background text-xs shadow-md"
+          style={{ top: picked.top, left: picked.left }}
+          onMouseDown={(e) => {
+            // Keep the selection while the click lands.
+            e.preventDefault();
+          }}
+          onClick={() => {
+            onQuote(picked.text);
+            window.getSelection()?.removeAllRanges();
+            setPicked(null);
+          }}
+        >
+          <Quote className="size-3" />
+          Reply to this
+        </Button>
+      )}
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto scroll-smooth"
         onScroll={(e) => {
           const el = e.currentTarget;
           setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 240);
+          setPicked(null);
+        }}
+        onMouseUp={() => {
+          setPicked(selectedQuote(scrollRef.current));
+        }}
+        onKeyUp={() => {
+          setPicked(selectedQuote(scrollRef.current));
         }}
       >
         {messages.length === 0 ? (
@@ -521,7 +576,10 @@ export function Messages({
                       <span className="text-[10px] text-muted-foreground">{message.model}</span>
                     </div>
                     {message.content && (
-                      <div className="text-[13px] leading-[1.85] text-foreground/85">
+                      <div
+                        data-answer={message.id}
+                        className="text-[13px] leading-[1.85] text-foreground/85"
+                      >
                         {message.parts ? (
                           message.parts.map((part, i) =>
                             part.kind === "text" ? (
