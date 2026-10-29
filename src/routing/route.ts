@@ -64,6 +64,10 @@ export interface RouteOptions {
   prefer?: ProviderId;
   /** RT-10: a budget is past 80%, so Auto goes one tier lower (never below the floor). */
   downshift?: boolean;
+  /** RT-06: median time to first token per `provider/model`, for price ties. */
+  latency?: Readonly<Record<string, number>>;
+  /** RT-06: the chat stays on this provider (if it has a key); failover can still leave it. */
+  stay?: ProviderId;
 }
 
 const TIER_LABEL = (policy: RoutingPolicy, tier: TierId) =>
@@ -84,13 +88,21 @@ function climb(
   task: Task,
   opts: RouteOptions,
 ): { model: CatalogModel; tier: TierId } | null {
+  // RT-06: the provider the chat stays on goes first; the other only if it has nothing here.
+  const tries =
+    opts.stay && opts.providers.includes(opts.stay)
+      ? [[opts.stay], opts.providers]
+      : [opts.providers];
   for (const tier of TIER_ORDER.slice(TIER_ORDER.indexOf(from))) {
-    const model = tierModels(policy, catalog, tier, {
-      providers: opts.providers,
-      needs: needsOf(task),
-      inputTokens: task.contextTokens,
-      ...(opts.prefer ? { prefer: opts.prefer } : {}),
-    })[0];
+    const pick = (providers: readonly ProviderId[]) =>
+      tierModels(policy, catalog, tier, {
+        providers,
+        needs: needsOf(task),
+        inputTokens: task.contextTokens,
+        ...(opts.prefer ? { prefer: opts.prefer } : {}),
+        ...(opts.latency ? { latency: opts.latency } : {}),
+      })[0];
+    const model = tries.map(pick).find((m) => m !== undefined);
     if (model) return { model, tier };
   }
   return null;

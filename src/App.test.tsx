@@ -1108,6 +1108,24 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
 
+test("stay on this provider: offered once a chat has an answer, saved on the chat", async () => {
+  const { user, db } = setup();
+  await user.type(await composer(), "Hello{Enter}");
+  await screen.findByRole("button", { name: "Cost breakdown for Test Claude" });
+  await user.click(screen.getByRole("button", { name: "Conversation actions" }));
+  await user.click(await screen.findByRole("menuitemcheckbox", { name: "Stay on Anthropic" }));
+  await waitFor(async () => {
+    const [row] = await db.select<{ stay_provider: string | null }>(
+      "SELECT stay_provider FROM threads",
+    );
+    expect(row?.stay_provider).toBe("anthropic");
+  });
+  await user.click(screen.getByRole("button", { name: "Conversation actions" }));
+  expect(
+    await screen.findByRole("menuitemcheckbox", { name: "Stay on Anthropic" }),
+  ).toHaveAttribute("aria-checked", "true");
+});
+
 test("an unsure question gets the Cheap tier's second opinion, which can move it to Best", async () => {
   const question =
     "Can you write up a plan comparing two options for our team offsite, and draft the email?";

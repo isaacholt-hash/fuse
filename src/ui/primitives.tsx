@@ -1,5 +1,6 @@
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
 import {
+  Anchor,
   Archive,
   ArchiveRestore,
   Brain,
@@ -109,7 +110,10 @@ export function ThreadMenu({
   onTogglePin,
   onToggleArchive,
   onEditTags,
+  stay,
 }: {
+  /** RT-06: keep Auto on one provider in this chat; `provider` is the one it would stay on. */
+  stay?: { provider: "anthropic" | "openai" | null; on: boolean; onToggle: () => void };
   /** CH-02 */
   pinned: boolean;
   archived: boolean;
@@ -175,6 +179,15 @@ export function ThreadMenu({
             <Sparkles className="size-3.5" />
             Suggest memories now
           </DropdownMenu.Item>
+          {stay?.provider && (
+            <DropdownMenu.CheckboxItem className={item} checked={stay.on} onSelect={stay.onToggle}>
+              <Anchor className="size-3.5" />
+              Stay on {stay.provider === "anthropic" ? "Anthropic" : "OpenAI"}
+              <DropdownMenu.ItemIndicator className="ml-auto">
+                <Check className="size-3.5" />
+              </DropdownMenu.ItemIndicator>
+            </DropdownMenu.CheckboxItem>
+          )}
           {targets.length > 0 && (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />

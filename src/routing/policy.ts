@@ -320,11 +320,14 @@ export interface TierModelOptions {
   inputTokens?: number;
   /** The chat's current provider, preferred on a tie after the policy's preference. */
   prefer?: ProviderId;
+  /** RT-06: measured median time to first token per `provider/model`, for price ties. */
+  latency?: Readonly<Record<string, number>>;
 }
 
 /**
  * The tier's usable models, cheapest first by input + output price at this input size.
- * Ties go to the policy's provider preference, then `prefer`, then the order in routing.json.
+ * Ties go to the faster model where both have been measured (RT-06), then the policy's provider
+ * preference, then `prefer`, then the order in routing.json.
  */
 export function tierModels(
   policy: RoutingPolicy,
@@ -341,6 +344,11 @@ export function tierModels(
     const p = priceFor(m, inputTokens);
     return p.input + p.output;
   };
+  const speed = (a: CatalogModel, b: CatalogModel) => {
+    const ta = opts.latency?.[`${a.provider}/${a.id}`];
+    const tb = opts.latency?.[`${b.provider}/${b.id}`];
+    return ta === undefined || tb === undefined ? 0 : ta - tb;
+  };
   return (policy.tiers.find((t) => t.id === tier)?.models ?? [])
     .map((ref) => findModel(catalog, ref.provider, ref.id))
     .filter((m): m is CatalogModel => m !== undefined)
@@ -353,6 +361,7 @@ export function tierModels(
     .sort(
       (a, b) =>
         price(a) - price(b) ||
+        speed(a, b) ||
         pref(a.provider) - pref(b.provider) ||
         Number(b.provider === opts.prefer) - Number(a.provider === opts.prefer),
     );

@@ -201,3 +201,40 @@ test("a budget past 80% lowers Auto one tier, never below the floor, and says wh
   });
   expect(pinned.ok && pinned.info.tier).toBe("best");
 });
+
+test("RT-06: staying on a provider beats price; failover can still leave it", () => {
+  const stay = route(policy, catalog, AUTO, task(), { ...both, stay: "anthropic" });
+  expect(stay.ok && [stay.model.id, stay.fallback?.id]).toEqual(["mid-a", "mid-o"]);
+  // An image needs vision and neither Balanced model reads images: it moves up, and Best's
+  // model comes from the stayed provider.
+  const image = route(policy, catalog, AUTO, task({ capabilities: ["vision"] }), {
+    ...both,
+    stay: "anthropic",
+  });
+  expect(image.ok && [image.info.tier, image.model.id]).toEqual(["best", "top-a"]);
+  // A stay on a provider without a key is ignored.
+  const noKey = route(policy, catalog, AUTO, task(), {
+    providers: ["openai"],
+    stay: "anthropic",
+  });
+  expect(picked(noKey)).toBe("mid-o");
+});
+
+test("RT-06: a price tie goes to the faster model, where both have been measured", () => {
+  const tied = parseCatalog({
+    price_version: "2026-10-28",
+    models: [
+      model("openai", "small", 0.1, []),
+      model("anthropic", "mid-a", 2, []),
+      model("openai", "mid-o", 2, []),
+      model("anthropic", "top-a", 15, []),
+      model("openai", "top-o", 10, []),
+    ],
+  });
+  const fast = { "anthropic/mid-a": 400, "openai/mid-o": 900 };
+  expect(picked(route(policy, tied, AUTO, task(), { ...both, latency: fast }))).toBe("mid-a");
+  // Only one measured: no speed tie-break, so the usual order holds.
+  expect(
+    picked(route(policy, tied, AUTO, task(), { ...both, latency: { "anthropic/mid-a": 400 } })),
+  ).toBe(picked(route(policy, tied, AUTO, task(), both)));
+});
