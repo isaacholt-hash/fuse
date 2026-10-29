@@ -357,3 +357,37 @@ export function tierModels(
         Number(b.provider === opts.prefer) - Number(a.provider === opts.prefer),
     );
 }
+
+/** The policy as raw JSON again (the shape of data/routing.json): parsePolicy's inverse. */
+export function serializePolicy(policy: RoutingPolicy): Record<string, unknown> {
+  const match = (m: RuleMatch | FloorOverride) => ({
+    ...(m.intents ? { intents: m.intents } : {}),
+    ...(m.complexities ? { complexities: m.complexities } : {}),
+    ...("capabilities" in m && m.capabilities ? { capabilities: m.capabilities } : {}),
+    ...("minContextTokens" in m && m.minContextTokens !== undefined
+      ? { min_context_tokens: m.minContextTokens }
+      : {}),
+  });
+  return {
+    policy_version: policy.policyVersion,
+    built_from_price_version: policy.builtFromPriceVersion,
+    tiers: policy.tiers.map((t) => ({
+      id: t.id,
+      label: t.label,
+      description: t.description,
+      models: t.models.map((m) => `${m.provider}/${m.id}`),
+    })),
+    housekeeping: policy.housekeeping,
+    quality_floor: {
+      default: policy.floor.default,
+      overrides: policy.floor.overrides.map((f) => ({ ...match(f), tier: f.tier })),
+    },
+    provider_preference: policy.providerPreference,
+    rules: policy.rules.map((r) => ({
+      id: r.id,
+      when: match(r.when),
+      tier: r.tier,
+      reason: r.reason,
+    })),
+  };
+}
