@@ -216,6 +216,22 @@ export function useAttachments(deps: {
     pending.forEach(release);
     setPending([]);
   };
+  /** AR-06: attaches text from the app (an artifact) like a file, ready to send. */
+  const addText = useCallback(
+    async (name: string, text: string) => {
+      const stored = await files.put(new TextEncoder().encode(text));
+      const file = await addFile(db, tenant, {
+        name,
+        mime: "text/plain",
+        sizeBytes: stored.size,
+        sha256: stored.sha256,
+        tokenEstimate: textTokens(text),
+      });
+      setPending((all) => [...all, { id: crypto.randomUUID(), name, status: "ready", file }]);
+    },
+    [files, db, tenant],
+  );
+
   /** FK-11: removes the lines that look like secrets (a new copy of the file), or keeps them. */
   const resolveSecrets = useCallback(
     async (id: string, action: "remove" | "keep") => {
@@ -240,7 +256,7 @@ export function useAttachments(deps: {
     [pending, files, db, tenant, update],
   );
 
-  return { pending, add, addLink, remove, take, clear, setMode, resolveSecrets };
+  return { pending, add, addLink, addText, remove, take, clear, setMode, resolveSecrets };
 }
 
 /** blob: URLs for stored images (thumbnails), loaded once per file and kept while the app runs. */

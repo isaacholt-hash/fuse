@@ -1,4 +1,5 @@
-import { MessageSquare, Search as SearchIcon } from "lucide-react";
+import { FileCode, MessageSquare, Paperclip, Search as SearchIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { Modal } from "./primitives";
 
@@ -12,6 +13,8 @@ export interface SearchHitView {
   /** Text with matches between \u0001 and \u0002. */
   snippet: string;
   date: string;
+  /** AR-06: an artifact rather than a message; opens in the side panel. */
+  artifactKey?: string;
 }
 
 const SEARCH_DELAY_MS = 150;
@@ -59,11 +62,14 @@ export function SearchDialog({
   onOpenChange,
   onSearch,
   onOpen,
+  onAttach,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSearch: (text: string) => Promise<SearchHitView[]>;
   onOpen: (hit: SearchHitView) => void;
+  /** AR-06: attaches an artifact to the chat on screen as context. */
+  onAttach?: (hit: SearchHitView) => void;
 }) {
   const [text, setText] = useState("");
   const [hits, setHits] = useState<SearchHitView[] | null>(null);
@@ -121,29 +127,57 @@ export function SearchDialog({
         {shown?.length === 0 && (
           <p className="p-6 text-center text-sm text-muted-foreground">Nothing found.</p>
         )}
-        {shown?.map((hit) => (
-          <button
-            key={hit.key}
-            role="listitem"
-            className="flex w-full gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent focus-visible:bg-accent"
-            onClick={() => {
-              onOpen(hit);
-            }}
-          >
-            <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="flex items-center gap-2 text-xs font-medium">
-                <span className="truncate">{hit.threadTitle}</span>
-                <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
-                  {hit.kind} · {hit.date}
+        {shown?.map((hit) => {
+          const row = (
+            <button
+              key={hit.key}
+              {...(hit.artifactKey ? {} : { role: "listitem" })}
+              className="flex w-full min-w-0 flex-1 gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent focus-visible:bg-accent"
+              onClick={() => {
+                onOpen(hit);
+              }}
+            >
+              {hit.artifactKey ? (
+                <FileCode className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <MessageSquare className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2 text-xs font-medium">
+                  <span className="truncate">{hit.threadTitle}</span>
+                  <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
+                    {hit.kind} · {hit.date}
+                  </span>
+                </span>
+                <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-muted-foreground">
+                  <Highlighted text={hit.snippet} />
                 </span>
               </span>
-              <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-muted-foreground">
-                <Highlighted text={hit.snippet} />
-              </span>
-            </span>
-          </button>
-        ))}
+            </button>
+          );
+          // An artifact also offers Attach, so it gets a row of its own around the button.
+          return hit.artifactKey ? (
+            <div key={hit.key} role="listitem" className="flex items-start gap-1">
+              {row}
+              {onAttach && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="mt-1.5 shrink-0 text-xs"
+                  aria-label={`Attach ${hit.threadTitle} to this chat`}
+                  onClick={() => {
+                    onAttach(hit);
+                  }}
+                >
+                  <Paperclip className="size-3" />
+                  Attach
+                </Button>
+              )}
+            </div>
+          ) : (
+            row
+          );
+        })}
       </div>
     </Modal>
   );

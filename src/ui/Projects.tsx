@@ -122,7 +122,12 @@ export function ProjectDialog({
   onSave,
   onDelete,
   knowledge,
+  artifacts,
+  onOpenArtifact,
 }: {
+  /** AR-06: artifacts made in this project's chats. */
+  artifacts?: { id: string; title: string; chat: string }[];
+  onOpenArtifact?: (id: string) => void;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** null when creating a new project. */
@@ -238,6 +243,23 @@ export function ProjectDialog({
           </p>
         </div>
         {knowledge && <KnowledgeSection {...knowledge} />}
+        {artifacts && artifacts.length > 0 && (
+          <section aria-label="Project artifacts">
+            <h3 className="mb-1 text-xs font-medium">Artifacts</h3>
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto text-xs">
+              {artifacts.map((a) => (
+                <li key={a.id}>
+                  <button
+                    className="w-full truncate rounded px-2 py-1 text-left hover:bg-accent"
+                    onClick={() => onOpenArtifact?.(a.id)}
+                  >
+                    {a.title} <span className="text-[10px] text-muted-foreground">in {a.chat}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         <div className="flex items-center gap-2 pt-2">
           {onDelete &&
             (confirmDelete ? (

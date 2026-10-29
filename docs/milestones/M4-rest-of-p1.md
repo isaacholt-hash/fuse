@@ -41,7 +41,9 @@
 - [x] **18. File secrets warning (FK-11).** Before a file is sent, offer to redact keys, passwords and card numbers.
 - [x] **19. Per-model defaults (MM-07).** Temperature, max output, reasoning effort and a prompt prefix, per model, tier and project.
 - [x] **20. Spend caps per key (MM-09).** Daily and monthly caps with a hard stop and a one-click raise for today.
-- [ ] **21. Artifacts in projects (AR-06).** Artifacts belong to a project, are searchable, and can be attached to any chat.
+- [x] **21. Artifacts in projects (AR-06).** Artifacts belong to a project, are searchable, and can be attached to any chat.
+
+**All build steps done (2026-10-29).** P1 is feature-complete. Next: Isaac tests M4, then the P1 gate (two weeks on FUSE).
 
 ## Notes
 

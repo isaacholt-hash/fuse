@@ -195,6 +195,9 @@ import {
   type Artifact,
   type ArtifactVersion,
   setArtifactCdn,
+  projectArtifacts,
+  searchArtifacts,
+  type ArtifactHit,
 } from "@/storage/artifacts";
 import { diffLines } from "@/artifacts/diff";
 import { artifactsIn, splitAnswer } from "@/artifacts/parse";
@@ -416,6 +419,15 @@ const BIG_REQUEST_TOKENS = 20_000;
 /** How long the composer mentions a provider's failure (MM-06). */
 const TROUBLE_SHOWN_MS = 10 * 60_000;
 
+/** AR-06: a few words of an artifact around the first search word, marked like chat hits. */
+const artifactSnippet = (content: string, query: string) => {
+  const word = query.match(/[\p{L}\p{N}_]+/u)?.[0] ?? "";
+  const at = word ? content.toLowerCase().indexOf(word.toLowerCase()) : -1;
+  if (at < 0) return content.slice(0, 120);
+  const start = Math.max(0, at - 50);
+  return `${start > 0 ? "…" : ""}${content.slice(start, at)}\u0001${content.slice(at, at + word.length)}\u0002${content.slice(at + word.length, at + word.length + 70)}…`;
+};
+
 /** An answer as a Markdown quote for the composer, trimmed to a readable length. */
 const QUOTE_CHARS = 1_500;
 const quoteOf = (text: string) => {
@@ -499,6 +511,8 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // AR-06: the artifacts of the project whose settings are open.
+  const [projectArts, setProjectArts] = useState<ArtifactHit[]>([]);
   // MM-09: spend caps per key, days they were raised for, and what each key spent.
   const [caps, setCaps] = useState<KeyCaps>({});
   const [raises, setRaises] = useState<CapRaises>({});
@@ -863,9 +877,27 @@ export function ChatApp({
     reload(id).catch(report);
   };
 
+  // AR-06: artifacts found by search, by key, for opening and attaching them.
+  const foundArtifacts = useRef(new Map<string, ArtifactHit>());
   const search = useCallback(
-    async (text: string): Promise<SearchHitView[]> =>
-      (await searchChats(db, tenant, text)).map((h) => ({
+    async (text: string): Promise<SearchHitView[]> => [
+      ...(await searchArtifacts(db, tenant, text)).map((a) => {
+        foundArtifacts.current.set(a.id, a);
+        return {
+          key: `artifact-${a.id}`,
+          threadId: a.threadId,
+          threadTitle: a.title,
+          messageId: null,
+          kind: `Artifact in ${a.threadTitle}`,
+          snippet: artifactSnippet(a.content, text),
+          date: new Date(a.updatedAt).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          }),
+          artifactKey: a.key,
+        };
+      }),
+      ...(await searchChats(db, tenant, text)).map((h) => ({
         key: h.messageId ?? `title-${h.threadId}`,
         threadId: h.threadId,
         threadTitle: h.threadTitle,
@@ -877,11 +909,26 @@ export function ChatApp({
           day: "numeric",
         }),
       })),
+    ],
     [db, tenant],
   );
+  /** AR-06: puts an artifact into the composer as an attachment, for any chat to use. */
+  const attachArtifact = (hit: SearchHitView) => {
+    const found = foundArtifacts.current.get(hit.key.replace(/^artifact-/, ""));
+    if (!found) return;
+    setSearchOpen(false);
+    setView("chat");
+    attachments.addText(found.title, found.content).catch(report);
+  };
   /** Opens a search result: its chat, on the branch that holds the message, scrolled to it. */
   const openHit = (hit: SearchHitView) => {
     setSearchOpen(false);
+    if (hit.artifactKey) {
+      const key = hit.artifactKey;
+      select(hit.threadId);
+      showArtifact(key);
+      return;
+    }
     void (async () => {
       if (hit.messageId) {
         const { all, path } = await listPath(db, tenant, hit.threadId);
@@ -1786,6 +1833,7 @@ export function ChatApp({
     listProjectFiles(db, tenant, projectId).then((files) => {
       setKnowledge({ projectId, files, busy: false, error: null });
     }, report);
+    projectArtifacts(db, tenant, projectId).then(setProjectArts, report);
   }, [projectDialog, db, tenant]);
   /** Indexes a project's files that aren't fully searchable yet (needs an OpenAI key). */
   const indexKnowledge = async (projectId: string) => {
@@ -3747,6 +3795,7 @@ export function ChatApp({
           onOpenChange={setSearchOpen}
           onSearch={search}
           onOpen={openHit}
+          onAttach={attachArtifact}
         />
         <ProjectDialog
           key={projectDialog ?? "closed"}
@@ -3768,6 +3817,22 @@ export function ChatApp({
           maxChars={MAX_INSTRUCTION_CHARS}
           onSave={saveProject}
           {...(editedProject ? { onDelete: removeProject } : {})}
+          {...(editedProject
+            ? {
+                artifacts: projectArts.map((a) => ({
+                  id: a.id,
+                  title: a.title,
+                  chat: a.threadTitle,
+                })),
+                onOpenArtifact: (id: string) => {
+                  const a = projectArts.find((x) => x.id === id);
+                  if (!a) return;
+                  setProjectDialog(null);
+                  select(a.threadId);
+                  showArtifact(a.key);
+                },
+              }
+            : {})}
           {...(editedProject && knowledge?.projectId === editedProject.id
             ? {
                 knowledge: {

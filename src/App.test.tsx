@@ -732,6 +732,45 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(await screen.findByRole("complementary", { name: "File: notes.txt" })).toBeInTheDocument();
 });
 
+test("artifacts across chats: found by search, attached to another chat as context, or opened", async () => {
+  const { calls, user } = setup({
+    anthropic: [
+      () =>
+        answer(
+          '<artifact id="plan" type="markdown" title="Orchard plan"># Orchard\nPlant apples in March.</artifact>',
+        ),
+      () => answer("Using your plan."),
+    ],
+  });
+  await user.type(await composer(), "Plan my orchard{Enter}");
+  await screen.findByRole("complementary", { name: "Artifact: Orchard plan" });
+  await user.click(screen.getByRole("button", { name: /^New chat/ }));
+
+  await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+  await user.type(await screen.findByRole("textbox", { name: "Search chats" }), "apples");
+  const results = within(await screen.findByRole("list", { name: "Search results" }));
+  expect(await results.findByText("Orchard plan")).toBeInTheDocument();
+  await user.click(results.getByRole("button", { name: "Attach Orchard plan to this chat" }));
+  expect(await screen.findByText("Orchard plan")).toBeInTheDocument();
+  await user.type(await composer(), "When do I plant?{Enter}");
+  await screen.findByText("Using your plan.");
+  const attached = calls.anthropic?.[1]
+    ?.at(-1)
+    ?.attachments?.find((x) => x.kind === "text" && x.name === "Orchard plan");
+  expect(attached && "text" in attached ? attached.text : "").toContain("Plant apples in March.");
+
+  await user.keyboard("{Control>}{Shift>}f{/Shift}{/Control}");
+  await user.type(await screen.findByRole("textbox", { name: "Search chats" }), "apples");
+  await user.click(
+    await within(await screen.findByRole("list", { name: "Search results" })).findByText(
+      "Orchard plan",
+    ),
+  );
+  expect(
+    await screen.findByRole("complementary", { name: "Artifact: Orchard plan" }),
+  ).toBeInTheDocument();
+});
+
 test("spend caps: past a key's daily cap FUSE stops calling it, until raised for today", async () => {
   const { user, calls } = setup({
     anthropic: [() => answer("First."), () => answer("After the raise.")],
