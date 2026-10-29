@@ -9,6 +9,8 @@ import {
   type PreparedDocument,
 } from "@/files/documents";
 import { isImageType, type PreparedImage } from "@/files/images";
+import { redactLines, scanForSecrets, type FileSecrets } from "@/files/fileSecrets";
+import { readPdfText, type PdfTextReader } from "@/files/pdfText";
 import type { Tenant } from "@/storage/defaults";
 import { addFile, type FileMode, type FileRecord } from "@/storage/files";
 import type { SqlDb } from "@/storage/sql";
@@ -28,6 +30,8 @@ export interface PendingFile {
   error?: string;
   /** Large text files: sent whole or searched (FK-03). Unset for everything else (whole). */
   mode?: FileMode;
+  /** FK-11: lines that look like secrets, until you remove them or choose to send anyway. */
+  secrets?: FileSecrets & { canRemove: boolean };
 }
 
 /**
@@ -40,10 +44,20 @@ export function useAttachments(deps: {
   files: FilesApi;
   prepareImage: (file: File) => Promise<PreparedImage>;
   prepareDocument?: (file: File) => Promise<PreparedDocument>;
+  /** Reads a PDF's text for the secrets check (FK-11). */
+  readPdf?: PdfTextReader;
   /** Reads pasted links (FK-06); without it links stay plain text. */
   web?: WebApi;
 }) {
-  const { db, tenant, files, prepareImage, prepareDocument = readDocument, web } = deps;
+  const {
+    db,
+    tenant,
+    files,
+    prepareImage,
+    prepareDocument = readDocument,
+    readPdf = readPdfText,
+    web,
+  } = deps;
   const [pending, setPending] = useState<PendingFile[]>([]);
   const update = useCallback((id: string, change: Partial<PendingFile>) => {
     setPending((all) => all.map((p) => (p.id === id ? { ...p, ...change } : p)));
@@ -86,11 +100,20 @@ export function useAttachments(deps: {
             // FK-03: big text files are searched by default; past the whole-file limit, always.
             const searched =
               doc.searchOnly === true || (doc.kind === "text" && doc.tokens > LARGE_TEXT_TOKENS);
+            // FK-11: text is checked line by line; a PDF sent as a PDF, through its text.
+            const text =
+              doc.kind === "text"
+                ? new TextDecoder().decode(doc.bytes)
+                : await readPdf(doc.bytes)
+                    .then((pages) => pages.join("\n"))
+                    .catch(() => "");
+            const found = scanForSecrets(text);
             update(id, {
               status: "ready",
               file,
               ...(doc.pages ? { pages: doc.pages } : {}),
               ...(searched ? { mode: "retrieval" as const } : {}),
+              ...(found ? { secrets: { ...found, canRemove: doc.kind === "text" } } : {}),
             });
           } catch (e) {
             update(id, { status: "error", error: e instanceof Error ? e.message : String(e) });
@@ -98,7 +121,7 @@ export function useAttachments(deps: {
         })();
       }
     },
-    [db, tenant, files, prepareImage, prepareDocument, update],
+    [db, tenant, files, prepareImage, prepareDocument, readPdf, update],
   );
 
   /**
@@ -193,7 +216,31 @@ export function useAttachments(deps: {
     pending.forEach(release);
     setPending([]);
   };
-  return { pending, add, addLink, remove, take, clear, setMode };
+  /** FK-11: removes the lines that look like secrets (a new copy of the file), or keeps them. */
+  const resolveSecrets = useCallback(
+    async (id: string, action: "remove" | "keep") => {
+      const p = pending.find((x) => x.id === id);
+      if (!p?.secrets || !p.file) return;
+      if (action === "keep" || !p.secrets.canRemove) {
+        update(id, { secrets: undefined });
+        return;
+      }
+      const text = new TextDecoder().decode(await files.get(p.file.sha256));
+      const clean = new TextEncoder().encode(redactLines(text, p.secrets));
+      const stored = await files.put(clean);
+      const file = await addFile(db, tenant, {
+        name: p.file.name,
+        mime: p.file.mime,
+        sizeBytes: stored.size,
+        sha256: stored.sha256,
+        tokenEstimate: p.file.tokenEstimate,
+      });
+      update(id, { file, secrets: undefined });
+    },
+    [pending, files, db, tenant, update],
+  );
+
+  return { pending, add, addLink, remove, take, clear, setMode, resolveSecrets };
 }
 
 /** blob: URLs for stored images (thumbnails), loaded once per file and kept while the app runs. */

@@ -893,6 +893,7 @@ export function Composer({
   onAddFiles,
   onRemoveAttachment,
   onAttachmentMode,
+  onAttachmentSecrets,
   onAddLink,
   webSearch = null,
   onToggleWebSearch,
@@ -923,6 +924,8 @@ export function Composer({
   onRemoveAttachment?: (id: string) => void;
   /** Whole or searched, for a large text file (FK-03). */
   onAttachmentMode?: (id: string, mode: "whole" | "retrieval") => void;
+  /** FK-11: remove the lines that look like secrets, or send the file as is. */
+  onAttachmentSecrets?: (id: string, action: "remove" | "keep") => void;
   /** A pasted link: read the page and attach its text (FK-06). */
   onAddLink?: (url: string) => void;
   /** On / off, or null when the selected model can't search. */
@@ -1081,6 +1084,34 @@ export function Composer({
                         {m === "retrieval" ? "Search" : "Whole"}
                       </button>
                     ))}
+                  </span>
+                )}
+                {a.secrets && onAttachmentSecrets && (
+                  <span
+                    role="alert"
+                    className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px]"
+                    title={`Looks like it holds ${a.secrets.summary}`}
+                  >
+                    <CircleAlert className="size-3 text-amber-600" />
+                    <span className="max-w-40 truncate">Secrets? {a.secrets.summary}</span>
+                    {a.secrets.canRemove && (
+                      <button
+                        className="rounded px-1 font-medium hover:bg-accent"
+                        onClick={() => {
+                          onAttachmentSecrets(a.id, "remove");
+                        }}
+                      >
+                        Remove those lines
+                      </button>
+                    )}
+                    <button
+                      className="rounded px-1 hover:bg-accent"
+                      onClick={() => {
+                        onAttachmentSecrets(a.id, "keep");
+                      }}
+                    >
+                      Send anyway
+                    </button>
                   </span>
                 )}
                 <Button

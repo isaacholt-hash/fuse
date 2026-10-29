@@ -89,6 +89,7 @@ import {
 import { getFile } from "@/storage/files";
 import { getChunk } from "@/storage/vectors";
 import { FileViewer, type FileViewerView } from "@/ui/FileViewer";
+import { describeSecrets } from "@/files/fileSecrets";
 import { filesForMessages, type FileRecord } from "@/storage/files";
 import {
   getGlobalInstructions,
@@ -2099,15 +2100,21 @@ export function ChatApp({
         : {}),
       ...(!isImage && !searched && tokens > LARGE_TEXT_TOKENS ? { large: true } : {}),
       ...(p.mode ? { mode: p.mode, canWhole: tokens <= MAX_TEXT_TOKENS } : {}),
+      ...(p.secrets
+        ? { secrets: { summary: describeSecrets(p.secrets), canRemove: p.secrets.canRemove } }
+        : {}),
     };
   });
   const sendingImages = attachments.pending.some(
     (p) => p.status !== "error" && (p.file?.mime.startsWith("image/") ?? p.url !== undefined),
   );
+  const withSecrets = attachments.pending.find((p) => p.secrets);
   const blocked =
     sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
       ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
-      : null;
+      : withSecrets
+        ? `${withSecrets.name} looks like it holds ${describeSecrets(withSecrets.secrets ?? { lines: [], kinds: [] })}. Remove those lines or send it anyway.`
+        : null;
 
   useEffect(() => {
     listBudgets(db, tenant).then(setBudgets, report);
@@ -3464,6 +3471,9 @@ export function ChatApp({
                     onAddFiles={attachments.add}
                     onRemoveAttachment={attachments.remove}
                     onAttachmentMode={attachments.setMode}
+                    onAttachmentSecrets={(id, action) => {
+                      attachments.resolveSecrets(id, action).catch(report);
+                    }}
                     {...(web ? { onAddLink: attachments.addLink } : {})}
                     webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                     onToggleWebSearch={toggleSearch}

@@ -63,6 +63,8 @@ export interface PendingAttachment {
   /** Large text files (FK-03): sent whole or searched; `canWhole` false past the whole limit. */
   mode?: "whole" | "retrieval";
   canWhole?: boolean;
+  /** FK-11: "Looks like it holds an API key (2 lines)"; `canRemove` for text files. */
+  secrets?: { summary: string; canRemove: boolean };
 }
 
 export interface MessageView {
