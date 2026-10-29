@@ -245,6 +245,15 @@ import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { TagsDialog } from "@/ui/Tags";
+import { FillPromptDialog, PromptsSection } from "@/ui/Prompts";
+import {
+  deletePrompt,
+  fillPrompt,
+  listPrompts,
+  promptVariables,
+  savePrompt,
+  type SavedPrompt,
+} from "@/storage/prompts";
 import { SideBySide } from "@/ui/SideBySide";
 import { searchChats } from "@/storage/search";
 import { UpdateBar } from "@/ui/UpdateBar";
@@ -451,6 +460,9 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // CH-12: the prompt library, and a prompt waiting for its {{variables}}.
+  const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
+  const [filling, setFilling] = useState<SavedPrompt | null>(null);
   // RT-12: models the next message goes to in compare mode; CH-17: answers shown side by side.
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
   const [sideBySide, setSideBySide] = useState<string | null>(null);
@@ -664,6 +676,7 @@ export function ChatApp({
       report,
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
+    listPrompts(db, tenant).then(setPrompts, report);
     Promise.all([
       getSetting(db, tenant, FETCHED_SETTING),
       getSetting(db, tenant, EDITS_SETTING),
@@ -1889,6 +1902,22 @@ export function ChatApp({
     setThreadArchived(db, tenant, t.id, !t.archived).then(refreshThreads).catch(report);
   };
   const taggingThread = threads.find((t) => t.id === tagging);
+  // CH-12: prompts for every chat, plus the ones for the project on screen.
+  const usablePrompts = prompts.filter(
+    (p) => p.projectId === null || p.projectId === activeProjectId,
+  );
+  /** Puts a saved prompt into the message box, asking for its {{variables}} first. */
+  const applyPrompt = (id: string) => {
+    const prompt = prompts.find((p) => p.id === id);
+    if (!prompt) return;
+    if (promptVariables(prompt.body).length > 0) {
+      setFilling(prompt);
+      return;
+    }
+    setView("chat");
+    setQuote((q) => ({ text: prompt.body, key: (q?.key ?? 0) + 1 }));
+  };
+  const refreshPrompts = () => listPrompts(db, tenant).then(setPrompts);
   // RT-12: the models compare mode can send to: Balanced and Best, from providers with a key.
   const compareOptions = policy.tiers
     .filter((t) => t.id !== "cheap")
@@ -2410,6 +2439,14 @@ export function ChatApp({
           { id: "rename", group: "Actions", label: "Rename this chat", run: showRename },
         ]
       : []),
+    ...usablePrompts.map((p) => ({
+      id: `prompt-${p.id}`,
+      group: "Prompts",
+      label: p.name,
+      run: () => {
+        applyPrompt(p.id);
+      },
+    })),
     ...threads
       .filter((t) => !t.incognito && t.id !== selectedId)
       .slice(0, 30)
@@ -2798,6 +2835,18 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              prompts={
+                <PromptsSection
+                  prompts={prompts}
+                  projects={projects}
+                  onSave={(prompt) => {
+                    savePrompt(db, tenant, prompt).then(refreshPrompts).catch(report);
+                  }}
+                  onDelete={(id) => {
+                    deletePrompt(db, tenant, id).then(refreshPrompts).catch(report);
+                  }}
+                />
               }
               models={
                 <ModelsSection
@@ -3255,6 +3304,8 @@ export function ChatApp({
                     key={`composer-${selectedId ?? "new"}`}
                     model={modelOption(model)}
                     models={options}
+                    prompts={usablePrompts}
+                    onPickPrompt={applyPrompt}
                     compare={{
                       options: compareOptions,
                       selected: compareKeys,
@@ -3474,6 +3525,21 @@ export function ChatApp({
             setView("settings");
           }}
         />
+        {filling && (
+          <FillPromptDialog
+            name={filling.name}
+            variables={promptVariables(filling.body)}
+            onCancel={() => {
+              setFilling(null);
+            }}
+            onFill={(values) => {
+              const text = fillPrompt(filling.body, values);
+              setFilling(null);
+              setView("chat");
+              setQuote((q) => ({ text, key: (q?.key ?? 0) + 1 }));
+            }}
+          />
+        )}
         {sideBySideAnswers && sideBySideAnswers.length >= 2 && (
           <SideBySide
             answers={sideBySideAnswers}

@@ -33,7 +33,7 @@
 - [x] **10. Stay on provider and latency tie-break (RT-06).**
 - [x] **11. Learn from overrides (RT-11).** Three stronger pins for the same intent suggest a rule change, shown with its test-set score. The policy never changes silently.
 - [x] **12. Compare mode and side by side (RT-12, CH-17).** One prompt to two or three tiers, with the combined cost before sending; any two answers side by side with a diff.
-- [ ] **13. Prompt library (CH-12).** Saved prompts with variables, global or per project, from `/` or the palette.
+- [x] **13. Prompt library (CH-12).** Saved prompts with variables, global or per project, from `/` or the palette.
 - [ ] **14. Quote a selection (CH-13).**
 - [ ] **15. Thread export (CH-11).** Markdown, PDF or JSON, or copy as Markdown.
 - [ ] **16. Memory conflicts (PM-11).** A contradicting fact shows both and asks which stands; the old one is kept as history.
