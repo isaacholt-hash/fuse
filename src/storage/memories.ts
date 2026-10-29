@@ -254,14 +254,58 @@ export async function proposalTexts(db: SqlDb, tenant: Tenant): Promise<string[]
 }
 
 /** Applies a suggestion, with your edits to its text if you made any. */
+/** Words that say little about what a fact is about. */
+const STOP_WORDS = new Set(
+  "a an the and or but of in on at to for with by from is are was were be been has have had do does did i my me you your he she they we it its this that their our as not no".split(
+    " ",
+  ),
+);
+const keyWords = (text: string) =>
+  new Set(
+    text
+      .toLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((w) => w && !STOP_WORDS.has(w)),
+  );
+
+/**
+ * PM-11: the saved fact a new one may contradict: the same kind of fact, about the same thing
+ * (at least half of the shorter one's key words shared), but not the same words.
+ */
+export function conflictWith(
+  memories: readonly Memory[],
+  text: string,
+  category: MemoryCategory,
+): Memory | null {
+  const words = keyWords(text);
+  let best: { m: Memory; share: number } | null = null;
+  for (const m of memories) {
+    if (m.category !== category) continue;
+    const other = keyWords(m.text);
+    const shared = [...words].filter((w) => other.has(w)).length;
+    const shorter = Math.min(words.size, other.size);
+    if (shorter === 0 || (shared === words.size && shared === other.size)) continue;
+    const share = shared / shorter;
+    if (share >= 0.5 && (!best || share > best.share)) best = { m, share };
+  }
+  return best?.m ?? null;
+}
+
+/**
+ * Accepts a suggestion. `replaceId` (PM-11) makes a new fact replace a saved one it
+ * contradicts: the old one is kept as history, not overwritten.
+ */
 export async function approveProposal(
   db: SqlDb,
   tenant: Tenant,
   id: string,
   editedText?: string,
+  replaceId?: string,
 ): Promise<void> {
-  const p = (await listPendingProposals(db, tenant)).find((x) => x.id === id);
-  if (!p) return;
+  const found = (await listPendingProposals(db, tenant)).find((x) => x.id === id);
+  if (!found) return;
+  const p: Proposal =
+    replaceId && found.op === "add" ? { ...found, op: "update", memoryId: replaceId } : found;
   const text = editedText?.trim() ? editedText : p.text;
   const target = p.memoryId
     ? (await listMemories(db, tenant)).find((m) => m.id === p.memoryId)
@@ -290,6 +334,46 @@ export async function approveProposal(
     await deleteMemory(db, tenant, target.id);
   }
   await setProposalStatus(db, tenant, id, "approved");
+}
+
+export interface ReplacedMemory {
+  id: string;
+  text: string;
+  /** The fact that replaced it. */
+  newer: string;
+  replacedAt: number;
+}
+
+/** PM-11: facts replaced by a newer version, newest change first (the last 50). */
+export async function listReplaced(db: SqlDb, tenant: Tenant): Promise<ReplacedMemory[]> {
+  const rows = await db.select<{ id: string; text: string; newer: string; updated_at: number }>(
+    `SELECT m.id, m.text, n.text AS newer, m.updated_at FROM memories m
+     JOIN memories n ON n.id = m.superseded_by_id
+     WHERE m.workspace_id = ? AND m.deleted_at IS NULL AND n.deleted_at IS NULL
+       AND n.superseded_by_id IS NULL
+     ORDER BY m.updated_at DESC LIMIT 50`,
+    [tenant.workspaceId],
+  );
+  return rows.map((r) => ({ id: r.id, text: r.text, newer: r.newer, replacedAt: r.updated_at }));
+}
+
+/** Brings a replaced fact back; the one that replaced it becomes the history instead. */
+export async function restoreMemory(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  const [row] = await db.select<{ superseded_by_id: string | null }>(
+    `SELECT superseded_by_id FROM memories WHERE workspace_id = ? AND id = ?`,
+    [tenant.workspaceId, id],
+  );
+  const newer = row?.superseded_by_id;
+  if (!newer) return;
+  const now = Date.now();
+  await db.execute(
+    `UPDATE memories SET superseded_by_id = NULL, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [now, tenant.workspaceId, id],
+  );
+  await db.execute(
+    `UPDATE memories SET superseded_by_id = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [id, now, tenant.workspaceId, newer],
+  );
 }
 
 export async function rejectProposal(db: SqlDb, tenant: Tenant, id: string): Promise<void> {

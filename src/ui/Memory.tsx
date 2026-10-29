@@ -173,7 +173,12 @@ export function MemorySection({
   onSettings,
   onReview,
   onCopyAll,
+  replaced = [],
+  onRestore,
 }: {
+  /** PM-11: facts replaced by newer ones, kept as history. */
+  replaced?: { id: string; text: string; newer: string }[];
+  onRestore?: (id: string) => void;
   memories: MemoryView[];
   projects: ProjectOption[];
   suggest: boolean;
@@ -354,6 +359,34 @@ export function MemorySection({
           </div>
         </>
       )}
+      {replaced.length > 0 && (
+        <details className="mt-4 text-xs">
+          <summary className="cursor-pointer text-muted-foreground">
+            Replaced facts ({replaced.length})
+          </summary>
+          <ul className="mt-2 space-y-1.5" aria-label="Replaced facts">
+            {replaced.map((r) => (
+              <li key={r.id} className="flex items-center gap-2">
+                <span className="flex-1">
+                  <span className="text-muted-foreground line-through">{r.text}</span>
+                  <span className="text-muted-foreground"> → {r.newer}</span>
+                </span>
+                {onRestore && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      onRestore(r.id);
+                    }}
+                  >
+                    Restore
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <Modal
         open={wiping}
         onOpenChange={setWiping}
@@ -394,10 +427,13 @@ function ProposalRow({
   proposal,
   onKeep,
   onSkip,
+  onReplace,
 }: {
   proposal: ProposalView;
   onKeep: (text: string) => void;
   onSkip: () => void;
+  /** PM-11: keep this and retire the fact it contradicts (kept as history). */
+  onReplace?: (text: string) => void;
 }) {
   const [text, setText] = useState(proposal.text);
   const meta = [
@@ -421,6 +457,12 @@ function ProposalRow({
           {proposal.op === "update" ? `Was: ${proposal.currentText}` : proposal.currentText}
         </p>
       )}
+      {proposal.conflict && (
+        <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs">
+          This may contradict what&apos;s saved:{" "}
+          <strong className="font-medium">{proposal.conflict.text}</strong>. Which stands?
+        </p>
+      )}
       {proposal.op !== "delete" && (
         <textarea
           aria-label="Suggested memory"
@@ -432,22 +474,54 @@ function ProposalRow({
           }}
         />
       )}
-      <div className="mt-2 flex justify-end gap-2">
-        <Button size="sm" variant="ghost" onClick={onSkip}>
-          <X />
-          Skip
-        </Button>
-        <Button
-          size="sm"
-          disabled={proposal.op !== "delete" && !text.trim()}
-          onClick={() => {
-            onKeep(text);
-          }}
-        >
-          <Check />
-          {proposal.op === "delete" ? "Forget it" : "Keep"}
-        </Button>
-      </div>
+      {proposal.conflict && onReplace ? (
+        <div className="mt-2 flex flex-wrap justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={onSkip}>
+            Keep the old one
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!text.trim()}
+            onClick={() => {
+              onKeep(text);
+            }}
+          >
+            Keep both
+          </Button>
+          <Button
+            size="sm"
+            disabled={!text.trim()}
+            onClick={() => {
+              onReplace(text);
+            }}
+          >
+            <Check />
+            Keep the new one
+          </Button>
+        </div>
+      ) : (
+        <div className="mt-2 flex justify-end gap-2">
+          <Button size="sm" variant="ghost" onClick={onSkip}>
+            <X />
+            {proposal.op === "update" ? "Keep the old one" : "Skip"}
+          </Button>
+          <Button
+            size="sm"
+            disabled={proposal.op !== "delete" && !text.trim()}
+            onClick={() => {
+              onKeep(text);
+            }}
+          >
+            <Check />
+            {proposal.op === "delete"
+              ? "Forget it"
+              : proposal.op === "update"
+                ? "Keep the new one"
+                : "Keep"}
+          </Button>
+        </div>
+      )}
     </li>
   );
 }
@@ -462,6 +536,7 @@ export function MemoryReviewDialog({
   onSkip,
   onKeepAll,
   onSkipAll,
+  onReplace,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -472,7 +547,10 @@ export function MemoryReviewDialog({
   onSkip: (id: string) => void;
   onKeepAll: () => void;
   onSkipAll: () => void;
+  /** PM-11: keep a new fact in place of the saved one it contradicts. */
+  onReplace?: (id: string, text: string, replaceId: string) => void;
 }) {
+  const conflicts = proposals.filter((p) => p.conflict).length;
   return (
     <Modal
       open={open}
@@ -503,9 +581,22 @@ export function MemoryReviewDialog({
                 onSkip={() => {
                   onSkip(p.id);
                 }}
+                {...(onReplace && p.conflict
+                  ? {
+                      onReplace: (text: string) => {
+                        if (p.conflict) onReplace(p.id, text, p.conflict.id);
+                      },
+                    }
+                  : {})}
               />
             ))}
           </ul>
+          {conflicts > 0 && (
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Keep all leaves {conflicts === 1 ? "the one" : `the ${String(conflicts)}`} that may
+              contradict a saved fact for you to decide.
+            </p>
+          )}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={onSkipAll}>
               Skip all
