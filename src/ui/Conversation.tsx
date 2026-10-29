@@ -24,6 +24,7 @@ import {
   Square,
   Sparkles,
   X,
+  Columns2,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useRef, useState } from "react";
@@ -304,7 +305,10 @@ export function Messages({
   focusId = null,
   openArtifact = null,
   onOpenArtifact,
+  onSideBySide,
 }: {
+  /** CH-17: an answer's versions side by side. */
+  onSideBySide?: (answerId: string) => void;
   messages: MessageView[];
   /** Selected model, for the empty state. */
   modelName: string;
@@ -703,6 +707,20 @@ export function Messages({
                                   : {})}
                               />
                             )}
+                            {message.branch && onSideBySide && !busy && (
+                              <Tip label="See this answer's versions side by side">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Side by side"
+                                  onClick={() => {
+                                    onSideBySide(message.id);
+                                  }}
+                                >
+                                  <Columns2 />
+                                </Button>
+                              </Tip>
+                            )}
                             {onFeedback &&
                               (["up", "down"] as const).map((value) => {
                                 const on = message.feedback === value;
@@ -767,6 +785,15 @@ export function Messages({
   );
 }
 
+/** RT-12's compare control: models that can answer, and the two or three chosen. */
+export interface CompareView {
+  options: { key: string; label: string }[];
+  selected: string[];
+  onChange: (keys: string[]) => void;
+  /** What the chosen models would cost for this draft, e.g. "about $0.03". */
+  estimate: (draft: string) => string | null;
+}
+
 export function Composer({
   model,
   models,
@@ -790,6 +817,7 @@ export function Composer({
   insert,
   status = null,
   context,
+  compare,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -824,6 +852,8 @@ export function Composer({
   /** How full the context is: tokens the next turn sends, the model's window, and where
    * summarizing starts (PM-06). */
   context?: { used: number; window: number; summarizeAt: number };
+  /** RT-12: send the next message to two or three models and compare the answers. */
+  compare?: CompareView;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -851,6 +881,8 @@ export function Composer({
     }
   }, [text]);
   const [thinkHarder, setThinkHarder] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const comparing = (compare?.selected.length ?? 0) >= 2;
   const send = () => {
     if (!canSend || streaming || missingKey) return;
     onSend(text.trim(), { thinkHarder });
@@ -1242,6 +1274,59 @@ export function Composer({
                 <span className="hidden min-[900px]:inline">Think</span>
               </Button>
             </Tip>
+            {compare && compare.options.length >= 2 && (
+              <span className="relative">
+                <Tip label="Send the next message to two or three models and compare the answers">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Compare models"
+                    aria-expanded={compareOpen}
+                    aria-pressed={comparing}
+                    className={`gap-1.5 text-xs ${comparing ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                    onClick={() => {
+                      setCompareOpen((o) => !o);
+                    }}
+                  >
+                    <Columns2 className="size-3.5" />
+                    <span className="hidden min-[900px]:inline">
+                      Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
+                    </span>
+                  </Button>
+                </Tip>
+                {compareOpen && (
+                  <span
+                    role="group"
+                    aria-label="Models to compare"
+                    className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
+                  >
+                    <span className="mb-1 text-[11px] text-muted-foreground">
+                      Pick two or three; the next message goes to each.
+                    </span>
+                    {compare.options.map((o) => {
+                      const on = compare.selected.includes(o.key);
+                      return (
+                        <label key={o.key} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={!on && compare.selected.length >= 3}
+                            onChange={() => {
+                              compare.onChange(
+                                on
+                                  ? compare.selected.filter((k) => k !== o.key)
+                                  : [...compare.selected, o.key],
+                              );
+                            }}
+                          />
+                          {o.label}
+                        </label>
+                      );
+                    })}
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           {streaming ? (
             <Button size="sm" variant="outline" onClick={onStop}>
@@ -1277,6 +1362,12 @@ export function Composer({
             >
               <CircleAlert className="size-2.5" />
               {status}
+            </span>
+          ) : compare && comparing ? (
+            <span aria-label="Compare cost" className="flex items-center gap-1.5">
+              <Columns2 className="size-2.5" />
+              Sends to {compare.selected.length} models
+              {compare.estimate(text) ? ` · ${compare.estimate(text) ?? ""} in all` : ""}
             </span>
           ) : (
             <>

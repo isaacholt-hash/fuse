@@ -95,7 +95,7 @@ export interface VersionsProps {
   onAskEdit?: (selection: string, instruction: string) => void;
 }
 
-function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
+export function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
   return (
     <pre
       className="overflow-x-auto rounded-lg border font-mono text-[12px] leading-6"
