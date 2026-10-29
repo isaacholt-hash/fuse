@@ -940,7 +940,11 @@ export function ChatApp({
       setProblem(routed.error);
       return null;
     }
-    return routed;
+    // Say so on the answer when the Cheap tier's reading was used (RT-09).
+    const second = checked?.signals.find((sig) => sig.startsWith("checked by "));
+    return second
+      ? { ...routed, info: { ...routed.info, reason: `${routed.info.reason} (${second})` } }
+      : routed;
   };
   /** The tier Auto would pick for the draft, shown on the mode button as you type. */
   const previewTier = (text: string) => {
