@@ -9,6 +9,7 @@ import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
 import { getSetting, setSetting } from "@/storage/settings";
+import { addMemory, addProposals } from "@/storage/memories";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
@@ -1106,6 +1107,57 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(document.documentElement).toHaveClass("reduce-motion");
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
+
+test("memory conflicts: a suggestion that contradicts a saved fact asks which stands; the old one stays as history", async () => {
+  const { db } = setup();
+  await composer();
+  await addMemory(db, DEFAULT_TENANT, {
+    text: "Lives in Leeds",
+    category: "fact",
+    projectId: null,
+    sourceThreadId: null,
+    confidence: 100,
+  });
+  await addProposals(db, DEFAULT_TENANT, [
+    {
+      op: "add",
+      memoryId: null,
+      text: "Lives in York",
+      category: "fact",
+      projectId: null,
+      confidence: 90,
+      sourceThreadId: null,
+    },
+  ]);
+  cleanup();
+  render(
+    <App
+      openDb={() => Promise.resolve(db)}
+      keysApi={fakeKeysApi().api}
+      catalog={catalog}
+      policy={policy}
+    />,
+  );
+  const user = userEvent.setup();
+  await screen.findByRole("button", { name: "Choose model (Ctrl+K)" });
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Memory" }));
+  await user.click(await section.findByRole("button", { name: /Review/ }));
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(dialog.getByText(/This may contradict what.s saved/)).toHaveTextContent("Lives in Leeds");
+  // Keep all leaves it for a choice.
+  await user.click(dialog.getByRole("button", { name: "Keep all" }));
+  await user.click(await dialog.findByRole("button", { name: "Keep the new one" }));
+  expect(await dialog.findByText("No suggestions waiting.")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await waitFor(() => {
+    expect(section.getByText("Lives in York")).toBeInTheDocument();
+  });
+  await user.click(section.getByText("Replaced facts (1)"));
+  expect(section.getByRole("list", { name: "Replaced facts" })).toHaveTextContent(
+    "Lives in Leeds → Lives in York",
+  );
 });
 
 test("thread export: copy as Markdown, or save the chat as Markdown or JSON (every branch)", async () => {

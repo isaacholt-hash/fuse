@@ -92,13 +92,17 @@ import {
   addMemory,
   addProposals,
   approveProposal,
+  conflictWith,
   deleteAllMemories,
   deleteMemory,
   editMemory,
   listMemories,
   listPendingProposals,
+  listReplaced,
   memoriesForMessages,
   rejectProposal,
+  restoreMemory,
+  type ReplacedMemory,
   type Memory,
   type Proposal,
 } from "@/storage/memories";
@@ -488,6 +492,7 @@ export function ChatApp({
   const checkedPrices = useRef<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [replaced, setReplaced] = useState<ReplacedMemory[]>([]);
   const [golden, setGolden] = useState<GoldenPrompt[] | null>(null);
   const [memorySettings, setMemorySettingsState] =
     useState<MemorySettings>(DEFAULT_MEMORY_SETTINGS);
@@ -668,6 +673,7 @@ export function ChatApp({
   const refreshMemory = useCallback(async () => {
     setMemories(await listMemories(db, tenant));
     setProposals(await listPendingProposals(db, tenant));
+    setReplaced(await listReplaced(db, tenant));
   }, [db, tenant]);
   useEffect(() => {
     Promise.all([listMemories(db, tenant), listPendingProposals(db, tenant)]).then(
@@ -1554,10 +1560,22 @@ export function ChatApp({
   };
   const keepAllProposals = () => {
     void (async () => {
-      for (const p of proposals) await approveProposal(db, tenant, p.id);
+      // PM-11: ones that may contradict a saved fact wait for a choice.
+      const open = proposalViews.filter((p) => p.conflict);
+      for (const p of proposals) {
+        if (!open.some((o) => o.id === p.id)) await approveProposal(db, tenant, p.id);
+      }
       await refreshMemory();
-      setReviewOpen(false);
+      if (open.length === 0) setReviewOpen(false);
     })().catch(report);
+  };
+  const replaceWithProposal = (id: string, text: string, replaceId: string) => {
+    const secret = findSecret(text);
+    if (secret) {
+      setProblem(`That looks like ${SECRET_LABELS[secret]}. Memory never stores those.`);
+      return;
+    }
+    approveProposal(db, tenant, id, text, replaceId).then(refreshMemory).catch(report);
   };
   const skipAllProposals = () => {
     void (async () => {
@@ -1586,16 +1604,21 @@ export function ChatApp({
     date: shortDate(m.createdAt),
     confidence: m.confidence,
   }));
-  const proposalViews: ProposalView[] = proposals.map((p) => ({
-    id: p.id,
-    op: p.op,
-    text: p.text,
-    currentText: p.currentText,
-    category: p.category,
-    projectName: projectName(p.projectId),
-    source: p.sourceThreadTitle,
-    confidence: p.confidence,
-  }));
+  const proposalViews: ProposalView[] = proposals.map((p) => {
+    // PM-11: a new fact about something already saved asks which stands.
+    const conflict = p.op === "add" ? conflictWith(memories, p.text, p.category) : null;
+    return {
+      id: p.id,
+      op: p.op,
+      text: p.text,
+      currentText: p.currentText,
+      category: p.category,
+      projectName: projectName(p.projectId),
+      source: p.sourceThreadTitle,
+      confidence: p.confidence,
+      ...(conflict ? { conflict: { id: conflict.id, text: conflict.text } } : {}),
+    };
+  });
   const copyMemories = () => {
     const text = (Object.keys(CATEGORY_LABELS) as Memory["category"][])
       .map((c) => {
@@ -3101,6 +3124,10 @@ export function ChatApp({
                     setReviewOpen(true);
                   }}
                   onCopyAll={copyMemories}
+                  replaced={replaced}
+                  onRestore={(id) => {
+                    restoreMemory(db, tenant, id).then(refreshMemory).catch(report);
+                  }}
                 />
               }
               theme={theme}
@@ -3529,6 +3556,7 @@ export function ChatApp({
           proposals={proposalViews}
           skipped={skippedSecrets}
           onKeep={keepProposal}
+          onReplace={replaceWithProposal}
           onSkip={(id) => {
             rejectProposal(db, tenant, id).then(refreshMemory).catch(report);
           }}

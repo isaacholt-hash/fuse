@@ -257,6 +257,8 @@ export interface ProposalView {
   projectName: string | null;
   source: string | null;
   confidence: number;
+  /** PM-11: a saved fact this new one may contradict (adds only). */
+  conflict?: { id: string; text: string };
 }
 
 /** PL-10: text size, and reduce motion (follow the OS, or on/off). */
