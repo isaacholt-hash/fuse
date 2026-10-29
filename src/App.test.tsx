@@ -2599,6 +2599,30 @@ describe("projects", () => {
     expect(calls.openai).toHaveLength(0);
   });
 
+  test("Settings → Privacy says what's sent where, and a provider blocked everywhere is blocked in projects too (SE-15)", async () => {
+    const { user } = setup();
+    await composer();
+    await user.keyboard("{Control>},{/Control}");
+    const privacy = within(await screen.findByRole("region", { name: "Privacy" }));
+    expect(privacy.getByText(/Stored locally doesn.t mean answered locally/)).toBeInTheDocument();
+    expect(privacy.getByText(/What a cloud answer sends/)).toBeInTheDocument();
+    await user.selectOptions(privacy.getByLabelText("OpenAI everywhere"), "block");
+    await waitFor(() => {
+      expect(privacy.getByLabelText("OpenAI everywhere")).toHaveValue("block");
+    });
+    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Garden");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    await user.click(await screen.findByRole("button", { name: "Project: Garden" }));
+    const project = within(
+      within(await screen.findByRole("dialog")).getByRole("region", { name: "Project privacy" }),
+    );
+    expect(project.getByRole("option", { name: "As everywhere (blocked)" })).toBeInTheDocument();
+  });
+
   test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
     const { calls, user } = setup({ anthropic: [() => answer("At dawn.")] });
     await composer();

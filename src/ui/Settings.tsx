@@ -234,6 +234,7 @@ export function SettingsView({
   data,
   appLock,
   importer,
+  privacy,
   theme,
   onTheme,
   textSize,
@@ -273,6 +274,8 @@ export function SettingsView({
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
   data?: ReactNode;
+  /** Settings → Privacy (SE-15): what's sent where, and providers allowed everywhere. */
+  privacy?: ReactNode;
   /** Settings → App lock (SE-03). */
   appLock?: ReactNode;
   /** Settings → Import (PL-08). */
@@ -339,6 +342,7 @@ export function SettingsView({
             provider.
           </p>
         </div>
+        {privacy}
         {instructions}
         {memory}
         {budgets}

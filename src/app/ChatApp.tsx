@@ -229,6 +229,7 @@ import { DataSection } from "@/ui/DataSection";
 import type { DecisionInputView, DecisionView } from "@/ui/Decisions";
 import type { TaskStatusView, TaskView } from "@/ui/Tasks";
 import type { PrivacyModeView } from "@/ui/ProjectPrivacy";
+import { PrivacySection } from "@/ui/PrivacySection";
 import type { BackupsApi } from "@/data/backups";
 import { allowedEmbedding, egressRefusal, policyFor, projectPolicy } from "@/context/egress";
 import { listEgressRules, setEgressRule, setFileMaySend, type EgressRule } from "@/storage/egress";
@@ -3178,6 +3179,23 @@ export function ChatApp({
                     }}
                   />
                 </ImportSection>
+              }
+              privacy={
+                <PrivacySection
+                  providers={(["anthropic", "openai"] as const).map((id) => ({
+                    id,
+                    name: providerName(id),
+                    allowed:
+                      egressRules.find((r) => r.projectId === null && r.provider === id)?.allow ??
+                      true,
+                  }))}
+                  onProvider={(provider, allow) => {
+                    // Allowed is the default: no rule at all.
+                    setEgressRule(db, tenant, null, provider, allow ? null : false)
+                      .then(refreshProjects)
+                      .catch(report);
+                  }}
+                />
               }
               data={
                 exporter && (
