@@ -5,6 +5,8 @@ import {
   ArchiveRestore,
   Brain,
   Check,
+  Copy,
+  Download,
   Folder,
   FolderMinus,
   MoreHorizontal,
@@ -111,7 +113,10 @@ export function ThreadMenu({
   onToggleArchive,
   onEditTags,
   stay,
+  onExport,
 }: {
+  /** CH-11: copy or save this chat. */
+  onExport?: (format: "copy" | "md" | "pdf" | "json") => void;
   /** RT-06: keep Auto on one provider in this chat; `provider` is the one it would stay on. */
   stay?: { provider: "anthropic" | "openai" | null; on: boolean; onToggle: () => void };
   /** CH-02 */
@@ -204,6 +209,41 @@ export function ThreadMenu({
                 >
                   {p.id ? <Folder className="size-3.5" /> : <FolderMinus className="size-3.5" />}
                   <span className="truncate">{p.name}</span>
+                </DropdownMenu.Item>
+              ))}
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+            </>
+          )}
+          {onExport && (
+            <>
+              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                Export
+              </DropdownMenu.Label>
+              <DropdownMenu.Item
+                className={item}
+                onSelect={() => {
+                  onExport("copy");
+                }}
+              >
+                <Copy className="size-3.5" />
+                Copy as Markdown
+              </DropdownMenu.Item>
+              {(
+                [
+                  ["md", "Save as Markdown…"],
+                  ["pdf", "Save as PDF…"],
+                  ["json", "Save as JSON…"],
+                ] as const
+              ).map(([format, label]) => (
+                <DropdownMenu.Item
+                  key={format}
+                  className={item}
+                  onSelect={() => {
+                    onExport(format);
+                  }}
+                >
+                  <Download className="size-3.5" />
+                  {label}
                 </DropdownMenu.Item>
               ))}
               <DropdownMenu.Separator className="my-1 h-px bg-border" />

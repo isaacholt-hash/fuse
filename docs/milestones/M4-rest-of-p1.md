@@ -35,7 +35,7 @@
 - [x] **12. Compare mode and side by side (RT-12, CH-17).** One prompt to two or three tiers, with the combined cost before sending; any two answers side by side with a diff.
 - [x] **13. Prompt library (CH-12).** Saved prompts with variables, global or per project, from `/` or the palette.
 - [x] **14. Quote a selection (CH-13).**
-- [ ] **15. Thread export (CH-11).** Markdown, PDF or JSON, or copy as Markdown.
+- [x] **15. Thread export (CH-11).** Markdown, PDF or JSON, or copy as Markdown.
 - [ ] **16. Memory conflicts (PM-11).** A contradicting fact shows both and asks which stands; the old one is kept as history.
 - [ ] **17. File viewer (FK-10).** Any attached file in the side panel, at the cited page or chunk.
 - [ ] **18. File secrets warning (FK-11).** Before a file is sent, offer to redact keys, passwords and card numbers.
