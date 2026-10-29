@@ -242,7 +242,7 @@ import { readChatGptExport } from "@/import/chatgpt";
 import { readClaudeExport, type ImportedProject } from "@/import/claude";
 import { AppLockSection, LockScreen } from "@/ui/AppLock";
 import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/security/passcode";
-import { exportAll } from "@/data/exportAll";
+import { exportAll, exportData, exportName } from "@/data/exportAll";
 import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { useAppearance, type ZoomApi } from "./appearance";
@@ -3972,6 +3972,22 @@ export function ChatApp({
           {...(editedProject ? { onDelete: removeProject } : {})}
           {...(editedProject
             ? {
+                ...(exporter
+                  ? {
+                      onExport: async () => {
+                        const out = await exportData(db, tenant, filesApi, {
+                          kind: "project",
+                          projectId: editedProject.id,
+                        });
+                        const day = new Date().toISOString().slice(0, 10);
+                        const name = `fuse-project-${exportName(editedProject.name)}-${day}.zip`;
+                        const saved = await exporter.save(name, out.bytes);
+                        return saved
+                          ? `Saved ${saved}: ${String(out.chats)} chats, ${String(out.files)} files.`
+                          : null;
+                      },
+                    }
+                  : {}),
                 privacy: {
                   mode: editedProject.privacyMode,
                   allowEmbeddings: editedProject.allowEmbeddings,

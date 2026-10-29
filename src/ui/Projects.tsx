@@ -146,7 +146,10 @@ export function ProjectDialog({
   decisions,
   tasks,
   privacy,
+  onExport,
 }: {
+  /** Only when editing: saves this project as a FUSE export (PL-12); returns a line to show. */
+  onExport?: () => Promise<string | null>;
   /** Only when editing: where the project's content may be sent (SE-13). */
   privacy?: ProjectPrivacyProps;
   /** Only when editing: the project's tasks (PM-16). */
@@ -171,6 +174,7 @@ export function ProjectDialog({
   const empty: ProjectForm = { name: "", instructions: "", defaultModel: null };
   const [form, setForm] = useState<ProjectForm>(initial ?? empty);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
   const ids = { name: useId(), instructions: useId(), model: useId(), form: useId() };
   const editing = initial !== null;
   return (
@@ -328,6 +332,21 @@ export function ProjectDialog({
               Delete…
             </Button>
           ))}
+        {onExport && !confirmDelete && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setExported(null);
+              onExport().then(setExported, (e: unknown) => {
+                setExported(e instanceof Error ? e.message : String(e));
+              });
+            }}
+          >
+            Export project…
+          </Button>
+        )}
         <Button
           type="submit"
           form={ids.form}
@@ -338,6 +357,11 @@ export function ProjectDialog({
           {editing ? "Save" : "Create project"}
         </Button>
       </div>
+      {exported && (
+        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+          {exported}
+        </p>
+      )}
     </Modal>
   );
 }
