@@ -26,6 +26,7 @@ export const ARTIFACT_GUIDE = [
   "<artifacts>",
   'When your answer includes a standalone piece the user will likely keep, copy, save or edit (a document, report, plan, letter or article over about 15 lines; a code file or script over about 20 lines; an HTML page; an SVG image; a Mermaid diagram), put it in an artifact instead of the chat text: <artifact id="short-kebab-id" type="markdown|code|html|svg|mermaid|react" title="Short title" language="ts">…the content…</artifact>.',
   "Use language only for type code. Keep explanations outside the tag; the content is shown in a side panel, so don't repeat it in the chat. Snippets, short examples and quick answers stay in the chat as usual.",
+  "A react artifact is one component file with a default export. It can import only react (no other packages, no network), so style it with inline styles or a <style> element.",
   "To change an artifact you made earlier in this conversation, send the whole new content with the same id; it becomes a new version.",
   "</artifacts>",
 ].join("\n");

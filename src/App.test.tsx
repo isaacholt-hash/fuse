@@ -199,6 +199,8 @@ function setup(
   const restarts: number[] = [];
   // The global shortcut (CH-08): what was registered, and a way to "press" it.
   const zooms: number[] = [];
+  // Whether each preview page was allowed the listed CDNs (AR-05).
+  const previewCdn: boolean[] = [];
   const quick = {
     registered: [] as (string | null)[],
     press: (): void => undefined,
@@ -253,8 +255,9 @@ function setup(
         },
       }}
       preview={{
-        url: (html: string) => {
+        url: (html: string, options?: { cdn?: boolean }) => {
           previews.push(html);
+          previewCdn.push(options?.cdn ?? false);
           return Promise.resolve(`preview://localhost/p${String(previews.length)}`);
         },
       }}
@@ -269,6 +272,7 @@ function setup(
     files,
     web,
     previews,
+    previewCdn,
     saves,
     quick,
     zooms,
@@ -835,6 +839,32 @@ test("HTML and SVG artifacts preview live: HTML in a no-network sandbox, SVG as 
     "src",
     expect.stringMatching(/^data:image\/svg\+xml/),
   );
+});
+
+test("React artifacts preview in the sandbox with React bundled; the CDN switch is per artifact", async () => {
+  const { previews, previewCdn, user } = setup({
+    anthropic: [
+      () =>
+        answer(
+          '<artifact id="counter" type="react" title="Counter">import { useState } from "react";\nexport default function Counter() { const [n, setN] = useState(0); return <button onClick={() => setN(n + 1)}>{n}</button>; }</artifact>',
+        ),
+    ],
+  });
+  await user.type(await composer(), "Make a React counter{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Counter" }));
+  const frame = await panel.findByTitle("Preview of Counter");
+  expect(frame).toHaveAttribute("sandbox", "allow-scripts");
+  const page = previews.at(-1) ?? "";
+  expect(page).toContain('<div id="root"></div>');
+  expect(page).toContain("fuse.mount(module.exports)");
+  // JSX is compiled before it reaches the frame.
+  expect(page).not.toContain("<button onClick");
+  expect(previewCdn.at(-1)).toBe(false);
+  await user.click(panel.getByRole("checkbox", { name: "CDNs" }));
+  await waitFor(() => {
+    expect(previewCdn.at(-1)).toBe(true);
+  });
+  expect(panel.getByRole("checkbox", { name: "CDNs" })).toBeChecked();
 });
 
 test("export: an artifact saves as its own file, and Markdown also as .docx and .pdf", async () => {

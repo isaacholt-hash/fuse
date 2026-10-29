@@ -16,6 +16,8 @@ export interface Artifact {
   /** Who made the latest version: an edit by you means the model hasn't seen it yet. */
   source: "model" | "user" | "restore";
   updatedAt: number;
+  /** AR-05: the preview may load the listed CDNs. */
+  allowCdn: boolean;
 }
 
 export interface ArtifactVersion {
@@ -43,8 +45,10 @@ export async function listArtifacts(
     content: string;
     source: Artifact["source"];
     updated_at: number;
+    allow_cdn: number;
   }>(
-    `SELECT a.id, a.key, a.title, a.type, a.language, v.version, v.content, v.source, a.updated_at
+    `SELECT a.id, a.key, a.title, a.type, a.language, v.version, v.content, v.source, a.updated_at,
+            a.allow_cdn
      FROM artifacts a
      JOIN artifact_versions v ON v.artifact_id = a.id
        AND v.version = (SELECT MAX(version) FROM artifact_versions WHERE artifact_id = a.id)
@@ -62,7 +66,22 @@ export async function listArtifacts(
     content: r.content,
     source: r.source,
     updatedAt: r.updated_at,
+    allowCdn: r.allow_cdn === 1,
   }));
+}
+
+/** Lets an artifact's preview load the listed CDNs, or not (AR-05). */
+export async function setArtifactCdn(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  allow: boolean,
+): Promise<void> {
+  await db.execute(`UPDATE artifacts SET allow_cdn = ? WHERE workspace_id = ? AND id = ?`, [
+    allow ? 1 : 0,
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 export async function listVersions(

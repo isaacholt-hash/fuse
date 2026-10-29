@@ -59,7 +59,7 @@ Voice, agents, image generation and the web version stay in P2/P3.
 
 ## Notes
 
-- Follow-ups from step 21: React previews (need a bundled React and a JSX transform inside the sandbox) and AR-05's per-artifact switch to allow listed CDNs.
+- Follow-ups from step 21: React previews (need a bundled React and a JSX transform inside the sandbox) and AR-05's per-artifact switch to allow listed CDNs. Done in M4 step 6.
 - Follow-up from step 14: search inside large PDFs (needs a local PDF text extractor; PDFs are still sent whole, up to 100 pages).
 
 - Each step keeps the M1 rules: one PR, tests, screenshot, secret scan, CI green, then merge.
