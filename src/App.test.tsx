@@ -1123,6 +1123,10 @@ test("an unsure question gets the Cheap tier's second opinion, which can move it
   ]);
   const logged = await listRecentRequests(db, DEFAULT_TENANT, 10);
   expect(logged.some((r) => r.purpose === "classify" && r.model === "test-gpt")).toBe(true);
+  const [answerRow] = await db.select<{ route_reason: string }>(
+    "SELECT route_reason FROM messages WHERE role = 'assistant'",
+  );
+  expect(answerRow?.route_reason).toMatch(/\(checked by Test GPT\)$/);
 });
 
 test("routing policy: a new rule is tested, saved, and Auto follows it", async () => {
