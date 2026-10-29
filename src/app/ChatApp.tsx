@@ -13,6 +13,17 @@ import {
   type ProviderId,
 } from "@/catalog/catalog";
 import {
+  compareModels,
+  CUSTOM_MODELS_SETTING,
+  MODEL_CHECK_DAYS,
+  MODEL_CHECK_SETTING,
+  parseCustomModels,
+  parseModelCheck,
+  PRICING_PAGE,
+  withCustomModels,
+  type ModelCheck,
+} from "@/catalog/discovery";
+import {
   applyEdits,
   baseCatalog,
   diffPrices,
@@ -165,6 +176,7 @@ import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
 import { ImportPaste } from "@/ui/ImportPaste";
+import { ModelsSection } from "@/ui/Models";
 import { PricesSection } from "@/ui/Prices";
 import { ImportSection, type ImportSourceView } from "@/ui/ImportSection";
 import { previewImport, writeImport, type ImportedChat, type ImportSource } from "@/import/write";
@@ -408,9 +420,17 @@ export function ChatApp({
   const [fetchedPrices, setFetchedPrices] = useState<string | null>(null);
   const [priceEdits, setPriceEdits] = useState<PriceEdits>({});
   const [pricesNoticeOff, setPricesNoticeOff] = useState(false);
+  // MM-03/MM-08: models you added, and the last read of the providers' model lists.
+  const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
+  const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
+  const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
   const catalog = useMemo(
-    () => applyEdits(baseCatalog(shippedCatalog, fetchedPrices), priceEdits),
-    [shippedCatalog, fetchedPrices, priceEdits],
+    () =>
+      applyEdits(
+        withCustomModels(baseCatalog(shippedCatalog, fetchedPrices), customModels),
+        priceEdits,
+      ),
+    [shippedCatalog, fetchedPrices, customModels, priceEdits],
   );
   const checkedPrices = useRef<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
@@ -603,9 +623,13 @@ export function ChatApp({
     Promise.all([
       getSetting(db, tenant, FETCHED_SETTING),
       getSetting(db, tenant, EDITS_SETTING),
-    ]).then(([fetched, edits]) => {
+      getSetting(db, tenant, CUSTOM_MODELS_SETTING),
+      getSetting(db, tenant, MODEL_CHECK_SETTING),
+    ]).then(([fetched, edits, custom, check]) => {
       setFetchedPrices(fetched);
       setPriceEdits(parseEdits(edits));
+      setCustomModels(parseCustomModels(custom));
+      setModelCheck(parseModelCheck(check));
     }, report);
     listGoldenPrompts(db, tenant).then((p) => {
       setGolden(p);
@@ -781,6 +805,32 @@ export function ChatApp({
   );
 
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  /** Reads the providers' model lists (free calls) and compares them with the catalog. */
+  const checkModels = async () => {
+    const lists = Object.fromEntries(
+      await Promise.all(
+        savedProviders.map(async (p) => [
+          p,
+          await adapterFor(p)
+            .listModels()
+            .catch(() => null),
+        ]),
+      ),
+    ) as Partial<Record<ProviderId, Awaited<ReturnType<ProviderAdapter["listModels"]>> | null>>;
+    const check = compareModels(catalog, policy, lists, Date.now());
+    setModelCheck(check);
+    await setSetting(db, tenant, MODEL_CHECK_SETTING, JSON.stringify(check));
+  };
+  const modelsDue =
+    modelCheck !== undefined &&
+    savedProviders.length > 0 &&
+    (modelCheck === null || Date.now() - modelCheck.checkedAt > MODEL_CHECK_DAYS * 86_400_000);
+  const autoChecked = useRef(false);
+  useEffect(() => {
+    if (!modelsDue || autoChecked.current) return;
+    autoChecked.current = true;
+    void checkModels().catch(report);
+  });
   const openThread = threads.find((t) => t.id === selectedId);
   /** Auto, a pinned tier, or a pinned model (RT-01): saved per chat. */
   const savedMode: RouteMode = openThread ? modeOf(openThread) : draftMode;
@@ -2149,6 +2199,42 @@ export function ChatApp({
             </Button>
           </div>
         )}
+        {!modelsNoticeOff && modelCheck?.missing.some((m) => m.tiers.length > 0) && (
+          <div
+            aria-label="Models notice"
+            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+          >
+            <CircleAlert className="size-3.5 text-amber-600" />
+            <span className="flex-1">
+              A model a tier uses is no longer listed by its provider:{" "}
+              {modelCheck.missing
+                .filter((m) => m.tiers.length > 0)
+                .map((m) => m.displayName)
+                .join(", ")}
+              .
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setModelsNoticeOff(true);
+                setView("settings");
+              }}
+            >
+              See models
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss models notice"
+              onClick={() => {
+                setModelsNoticeOff(true);
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        )}
         {!pricesNoticeOff && oldestPriceDays(catalog, at) > STALE_DAYS && (
           <div
             aria-label="Prices notice"
@@ -2373,6 +2459,71 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              models={
+                <ModelsSection
+                  canCheck={savedProviders.length > 0}
+                  check={
+                    modelCheck
+                      ? {
+                          checked: new Date(modelCheck.checkedAt).toLocaleDateString("en-US", {
+                            month: "short",
+                            day: "numeric",
+                          }),
+                          found: modelCheck.found,
+                          failed: modelCheck.failed,
+                          missing: modelCheck.missing.map((m) => ({
+                            ...m,
+                            tiers: m.tiers.map(
+                              (t) => policy.tiers.find((x) => x.id === t)?.label ?? t,
+                            ),
+                            replacement: m.replacement?.id ?? null,
+                          })),
+                        }
+                      : null
+                  }
+                  custom={customModels.map((m) => ({ key: modelKey(m), name: m.displayName }))}
+                  onCheck={checkModels}
+                  onAdd={(form) => {
+                    const model: CatalogModel = {
+                      provider: form.provider,
+                      id: form.id,
+                      displayName: form.displayName,
+                      contextWindow: form.contextWindow,
+                      maxOutput: form.maxOutput,
+                      price: { input: form.input, output: form.output },
+                      capabilities: form.vision ? ["vision", "streaming"] : ["streaming"],
+                      verifiedOn: new Date().toISOString().slice(0, 10),
+                      sourceUrl: PRICING_PAGE[form.provider],
+                      notes: "Added by hand in FUSE.",
+                    };
+                    const next = [
+                      ...customModels.filter((m) => modelKey(m) !== modelKey(model)),
+                      model,
+                    ];
+                    setCustomModels(next);
+                    setModelCheck((c) =>
+                      c
+                        ? {
+                            ...c,
+                            found: c.found.filter(
+                              (f) => `${f.provider}/${f.id}` !== modelKey(model),
+                            ),
+                          }
+                        : c,
+                    );
+                    setSetting(db, tenant, CUSTOM_MODELS_SETTING, JSON.stringify(next)).catch(
+                      report,
+                    );
+                  }}
+                  onRemove={(key) => {
+                    const next = customModels.filter((m) => modelKey(m) !== key);
+                    setCustomModels(next);
+                    setSetting(db, tenant, CUSTOM_MODELS_SETTING, JSON.stringify(next)).catch(
+                      report,
+                    );
+                  }}
+                />
               }
               prices={
                 <PricesSection
