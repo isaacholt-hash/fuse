@@ -43,6 +43,7 @@ One desktop app (web in P2) that replaces the Claude and ChatGPT apps, runs on *
 - If something in the milestone looks wrong or a decision is missing, **ask Isaac** rather than guessing. Write questions as a short list with your recommendation for each.
 - Isaac reviews in short sprints: keep PRs small, explanations short, and lead with what he needs to do.
 - Tick the step's box in the milestone file in the same PR.
+- **Files on HULK:** leave nothing loose in `~`. Throwaway files go in `~/scratch` (emptied of anything untouched for 14 days); the rest of the rules are in `~/hulkwatch/HOST_CONTRACT.md` §7. `src-tauri/target/debug` is deleted on the first Sunday of each month (`hulk-fuse-cargo-clean.timer`, skipped while a build runs), so the next build after that is a full one.
 
 ## Secrets — hard rules
 
