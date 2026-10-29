@@ -71,6 +71,24 @@ Global records (instructions, global memories, the routing test set) aren't incl
 - Search indexes.
 - Settings tied to this computer (`settings`: theme, passcode hash, device id).
 
+## Restoring
+
+Settings → Your data → **Restore from an export**. Code: `src/data/restore.ts`. Restore checks an export before writing anything:
+
+- **Size limits:** 1 GB zipped, 2 GB unpacked, 256 MB per entry, 200,000 entries.
+- **Known entries only:** only `manifest.json` (or version 1's `fuse-export.json`), `records/<known table>.json` and `files/<sha256>` are read; anything else is ignored.
+- **Plain values:** rows must be objects of text, numbers and nulls.
+- **Files match their names:** every file's bytes must hash to its name.
+
+A preview shows how many records are new and how many are already here. A whole export can be restored entirely, or one project from it.
+
+How records are written:
+
+- Parents are written before children, keeping their ids. A record whose id is already here is skipped, never overwritten.
+- Every row gets this workspace and user.
+- A link to a record that isn't here is cleared, and set again if the target arrives later in the same restore. A row whose required link is missing is skipped and counted.
+- Files are stored by hash, so a file already here isn't stored twice.
+
 ## Compatibility
 
 Readers should ignore unknown tables and columns. A new version number means the layout changed, not that columns were added; columns are added freely within a version.

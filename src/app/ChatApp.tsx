@@ -243,6 +243,14 @@ import { readClaudeExport, type ImportedProject } from "@/import/claude";
 import { AppLockSection, LockScreen } from "@/ui/AppLock";
 import { hashPasscode, lockoutSeconds, MIN_LENGTH, verifyPasscode } from "@/security/passcode";
 import { exportAll, exportData, exportName } from "@/data/exportAll";
+import {
+  applyRestore,
+  onlyProject,
+  planRestore,
+  readFuseExport,
+  restoreLines,
+  type ParsedExport,
+} from "@/data/restore";
 import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { useAppearance, type ZoomApi } from "./appearance";
@@ -746,6 +754,8 @@ export function ChatApp({
   }, [db, tenant]);
   // SE-13: provider rules, global and per project (privacy modes live on the project).
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
+  // PL-12: the export being restored, between its preview and the yes.
+  const restoring = useRef<ParsedExport | null>(null);
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects(db, tenant));
     setEgressRules(await listEgressRules(db, tenant));
@@ -3201,6 +3211,49 @@ export function ChatApp({
                 exporter && (
                   <DataSection
                     {...(backups ? { backups } : {})}
+                    restore={{
+                      read: async (file) => {
+                        const parsed = await readFuseExport(
+                          new Uint8Array(await file.arrayBuffer()),
+                        );
+                        restoring.current = parsed;
+                        const when = parsed.exportedAt
+                          ? new Date(parsed.exportedAt).toLocaleDateString(undefined, {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            })
+                          : "an unknown date";
+                        const what =
+                          parsed.scope.kind === "project"
+                            ? `the project ${parsed.scope.name}`
+                            : "everything";
+                        return {
+                          title: `An export of ${what} from ${when}, with ${String(parsed.files.size)} files.`,
+                          projects: parsed.scope.kind === "all" ? parsed.projects : [],
+                          counts: async (projectId) =>
+                            restoreLines(
+                              await planRestore(
+                                db,
+                                projectId ? onlyProject(parsed, projectId) : parsed,
+                              ),
+                            ),
+                        };
+                      },
+                      apply: async (projectId) => {
+                        const parsed = restoring.current;
+                        if (!parsed) throw new Error("Choose an export first.");
+                        const r = await applyRestore(
+                          db,
+                          tenant,
+                          projectId ? onlyProject(parsed, projectId) : parsed,
+                          filesApi,
+                        );
+                        restoring.current = null;
+                        await Promise.all([refreshThreads(), refreshProjects(), refreshMemory()]);
+                        return `Restored ${String(r.added)} records and ${String(r.files)} files${r.skipped ? `; ${String(r.skipped)} were already here or couldn't be linked` : ""}.`;
+                      },
+                    }}
                     onExport={async () => {
                       const out = await exportAll(db, tenant, filesApi);
                       const day = new Date().toISOString().slice(0, 10);

@@ -165,12 +165,160 @@ function Backups({ api }: { api: BackupsApi }) {
   );
 }
 
-/** Settings → Your data (SE-07, PL-11): export, back up and restore, or delete everything. */
+/** What an export holds, for the preview before a restore (PL-12). */
+export interface RestorePreview {
+  /** e.g. "An export of everything from 29 Oct 2026." */
+  title: string;
+  /** Projects in it, when it's a whole export: you can restore just one. */
+  projects: { id: string; name: string }[];
+  /** One line per kind of record, for a project or everything (null). */
+  counts: (
+    projectId: string | null,
+  ) => Promise<{ label: string; rows: number; existing: number }[]>;
+}
+
+export interface RestoreApi {
+  /** Reads and checks the file; nothing is written. */
+  read: (file: File) => Promise<RestorePreview>;
+  /** Writes it in (everything, or one project); returns a line to show. */
+  apply: (projectId: string | null) => Promise<string>;
+}
+
+/** Restore from a FUSE export (PL-12): a preview of what's new first, then a yes. */
+function Restore({ api }: { api: RestoreApi }) {
+  const [preview, setPreview] = useState<RestorePreview | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [counts, setCounts] = useState<{ label: string; rows: number; existing: number }[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!preview) return;
+    let alive = true;
+    preview.counts(projectId).then(
+      (c) => {
+        if (alive) setCounts(c);
+      },
+      (e: unknown) => {
+        if (alive) setStatus(message(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [preview, projectId]);
+  const adding = counts.reduce((sum, c) => sum + c.rows - c.existing, 0);
+  return (
+    <div className="mt-5" role="group" aria-label="Restore from an export">
+      <h3 className="mb-1 text-xs font-medium">Restore from an export</h3>
+      <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+        Bring back a FUSE export, everything or one project. Records already here are kept as they
+        are; only missing ones are added.
+      </p>
+      <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-2.5 py-1 text-xs hover:bg-accent">
+        <ArchiveRestore className="size-3.5" />
+        Choose an export…
+        <input
+          type="file"
+          accept=".zip,application/zip"
+          aria-label="Export file"
+          className="sr-only"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = "";
+            if (!file) return;
+            setStatus(null);
+            setProjectId(null);
+            setCounts([]);
+            api.read(file).then(setPreview, (err: unknown) => {
+              setStatus(message(err));
+            });
+          }}
+        />
+      </label>
+      {status && (
+        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+          {status}
+        </p>
+      )}
+      <Modal
+        open={preview !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setPreview(null);
+        }}
+        title="Restore this export?"
+        description={preview?.title ?? ""}
+      >
+        {preview && preview.projects.length > 0 && (
+          <select
+            aria-label="What to restore"
+            className="mb-3 h-8 w-full rounded-lg border border-input bg-background px-2 text-xs"
+            value={projectId ?? ""}
+            onChange={(e) => {
+              setProjectId(e.target.value || null);
+            }}
+          >
+            <option value="">Everything in it</option>
+            {preview.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                Only the project {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <ul className="mb-3 space-y-0.5 text-xs" aria-label="What it holds">
+          {counts.map((c) => (
+            <li key={c.label} className="flex justify-between">
+              <span>{c.label}</span>
+              <span className="font-mono text-muted-foreground">
+                {c.rows - c.existing} new{c.existing ? ` · ${String(c.existing)} already here` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => {
+              setPreview(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={busy || adding === 0}
+            onClick={() => {
+              setBusy(true);
+              api.apply(projectId).then(
+                (line) => {
+                  setBusy(false);
+                  setPreview(null);
+                  setStatus(line);
+                },
+                (e: unknown) => {
+                  setBusy(false);
+                  setPreview(null);
+                  setStatus(message(e));
+                },
+              );
+            }}
+          >
+            {busy ? "Restoring…" : adding === 0 ? "Nothing new" : "Restore"}
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+/** Settings → Your data (SE-07, PL-11, PL-12): export, back up and restore, or delete everything. */
 export function DataSection({
   onExport,
   onDeleteAll,
   backups,
+  restore,
 }: {
+  restore?: RestoreApi;
   /** Builds and saves the export; returns a line to show, or null if cancelled. */
   onExport: () => Promise<string | null>;
   /** Wipes all data (and the keys, when asked); the app then starts over empty. */
@@ -225,6 +373,7 @@ export function DataSection({
           {status}
         </p>
       )}
+      {restore && <Restore api={restore} />}
       {backups && <Backups api={backups} />}
       {onDeleteAll && (
         <>
