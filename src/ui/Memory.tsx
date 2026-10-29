@@ -1,5 +1,5 @@
 import { Brain, Check, Copy, Pencil, Search, Trash2, X } from "lucide-react";
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { number } from "./format";
@@ -18,18 +18,39 @@ interface ProjectOption {
   name: string;
 }
 
+/** A chat a memory can be kept for (PM-13). */
+interface ChatOption {
+  id: string;
+  title: string;
+}
+
+const day = (ms: number) =>
+  new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+/** yyyy-mm-dd in local time, for a date input. */
+const dateValue = (ms: number) => {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+};
+/** The end of that day, local time. */
+const endOfDay = (value: string) => new Date(`${value}T23:59:59`).getTime();
+
 function MemoryFields({
   form,
   projects,
+  chats,
   onChange,
   label,
 }: {
   form: MemoryForm;
   projects: ProjectOption[];
+  /** Chats it can be kept for: the open one, and the one it already belongs to. */
+  chats: ChatOption[];
   onChange: (form: MemoryForm) => void;
   label: string;
 }) {
   const id = useId();
+  const where = form.threadId ? `t:${form.threadId}` : form.projectId ? `p:${form.projectId}` : "";
   return (
     <div className="space-y-2">
       <textarea
@@ -43,7 +64,7 @@ function MemoryFields({
           onChange({ ...form, text: e.target.value });
         }}
       />
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <select
           aria-label="Kind"
           className={selectClass}
@@ -63,40 +84,163 @@ function MemoryFields({
         <select
           aria-label="Used in"
           className={selectClass}
-          value={form.projectId ?? ""}
+          value={where}
           onChange={(e) => {
-            onChange({ ...form, projectId: e.target.value || null });
+            const v = e.target.value;
+            onChange({
+              ...form,
+              projectId: v.startsWith("p:") ? v.slice(2) : null,
+              threadId: v.startsWith("t:") ? v.slice(2) : null,
+            });
           }}
         >
           <option value="">Every chat</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>
+            <option key={p.id} value={`p:${p.id}`}>
               Only in {p.name}
             </option>
           ))}
+          {chats.map((c) => (
+            <option key={c.id} value={`t:${c.id}`}>
+              Only in the chat “{c.title}”
+            </option>
+          ))}
         </select>
+        <label className="flex items-center gap-1.5 text-xs">
+          Expires
+          <input
+            type="date"
+            aria-label="Expires on"
+            className={selectClass}
+            value={form.expiresAt ? dateValue(form.expiresAt) : ""}
+            onChange={(e) => {
+              onChange({ ...form, expiresAt: e.target.value ? endOfDay(e.target.value) : null });
+            }}
+          />
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={form.sensitivity === "sensitive"}
+            onChange={(e) => {
+              onChange({ ...form, sensitivity: e.target.checked ? "sensitive" : "normal" });
+            }}
+          />
+          Sensitive
+        </label>
+        <label className="flex items-center gap-1.5">
+          <input
+            type="checkbox"
+            checked={form.maySend === false}
+            onChange={(e) => {
+              onChange({ ...form, maySend: !e.target.checked });
+            }}
+          />
+          Keep on this device (never sent to a model)
+        </label>
       </div>
     </div>
+  );
+}
+
+const AUTHORITY: Record<MemoryView["authority"], string> = {
+  you: "added by you",
+  imported: "imported",
+  extracted: "suggested after a chat",
+};
+
+/** The short line under a memory: where it applies, who added it, and its flags. */
+function metaLine(m: MemoryView): string {
+  return [
+    m.projectName ? `only in ${m.projectName}` : null,
+    m.threadName ? `only in “${m.threadName}”` : null,
+    AUTHORITY[m.authority],
+    m.source ? `from “${m.source}”` : null,
+    m.date,
+    m.confidence < 100 ? `${String(m.confidence)}% sure` : null,
+    m.sensitivity === "sensitive" ? "sensitive" : null,
+    m.maySend ? null : "kept on this device",
+    m.status === "expired"
+      ? "expired"
+      : m.expiresAt !== null
+        ? `expires ${day(m.expiresAt)}`
+        : null,
+    m.status === "excluded" ? "excluded" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** Provenance in full (PM-14). */
+function Provenance({ m }: { m: MemoryView }) {
+  const rows: [string, string][] = [
+    ["Kind", KIND_LABELS[m.kind]],
+    [
+      "Used in",
+      m.threadName
+        ? `the chat “${m.threadName}”`
+        : m.projectName
+          ? `the project ${m.projectName}`
+          : "every chat",
+    ],
+    [
+      "Added",
+      `${AUTHORITY[m.authority]}${m.extractionMethod === "import" ? " (pasted from another app)" : ""}`,
+    ],
+    ...(m.source ? [["From chat", m.source] as [string, string]] : []),
+    ...(m.extractionModel ? [["Found by", m.extractionModel] as [string, string]] : []),
+    ["Confidence", `${String(m.confidence)}%`],
+    ["Last checked", m.lastVerifiedAt ? day(m.lastVerifiedAt) : "never"],
+    ["Expires", m.expiresAt ? day(m.expiresAt) : "never"],
+    ["Sent to models", m.maySend ? "when relevant" : "never"],
+    ["Version", String(m.revision)],
+  ];
+  return (
+    <details className="mt-0.5 text-[10px] text-muted-foreground">
+      <summary className="cursor-pointer select-none">Details</summary>
+      <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+        {rows.map(([k, v]) => (
+          <Fragment key={k}>
+            <dt>{k}</dt>
+            <dd className="text-foreground/80">{v}</dd>
+          </Fragment>
+        ))}
+      </dl>
+    </details>
   );
 }
 
 function MemoryRow({
   memory,
   projects,
+  chats,
   onEdit,
   onDelete,
 }: {
   memory: MemoryView;
   projects: ProjectOption[];
+  chats: ChatOption[];
   onEdit: (form: MemoryForm) => string | null;
   onDelete: () => void;
 }) {
   const [draft, setDraft] = useState<MemoryForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   if (draft) {
+    const own =
+      memory.threadId && !chats.some((c) => c.id === memory.threadId)
+        ? [{ id: memory.threadId, title: memory.threadName ?? "a chat" }]
+        : [];
     return (
       <li className="rounded-lg border p-3">
-        <MemoryFields form={draft} projects={projects} onChange={setDraft} label="Memory text" />
+        <MemoryFields
+          form={draft}
+          projects={projects}
+          chats={[...chats, ...own]}
+          onChange={setDraft}
+          label="Memory text"
+        />
         {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
         <div className="mt-2 flex justify-end gap-2">
           <Button
@@ -124,17 +268,20 @@ function MemoryRow({
       </li>
     );
   }
-  const meta = [
-    memory.projectName ? `only in ${memory.projectName}` : null,
-    memory.source ? `from “${memory.source}”` : null,
-    memory.date,
-    memory.confidence < 100 ? `${String(memory.confidence)}% sure` : null,
-  ].filter(Boolean);
   return (
     <li className="group flex items-start gap-2 rounded-lg px-3 py-2 hover:bg-muted/50">
       <div className="min-w-0 flex-1">
-        <p className="text-sm leading-6">{memory.text}</p>
-        <p className="text-[10px] text-muted-foreground">{meta.join(" · ")}</p>
+        <p
+          className={
+            memory.status === "active"
+              ? "text-sm leading-6"
+              : "text-sm leading-6 text-muted-foreground"
+          }
+        >
+          {memory.text}
+        </p>
+        <p className="text-[10px] text-muted-foreground">{metaLine(memory)}</p>
+        <Provenance m={memory} />
       </div>
       <div className="flex shrink-0 gap-0.5 opacity-60 group-hover:opacity-100">
         <Button
@@ -142,7 +289,15 @@ function MemoryRow({
           size="icon-xs"
           aria-label={`Edit memory: ${memory.text}`}
           onClick={() => {
-            setDraft({ text: memory.text, kind: memory.kind, projectId: memory.projectId });
+            setDraft({
+              text: memory.text,
+              kind: memory.kind,
+              projectId: memory.projectId,
+              threadId: memory.threadId,
+              sensitivity: memory.sensitivity,
+              maySend: memory.maySend,
+              expiresAt: memory.expiresAt,
+            });
           }}
         >
           <Pencil />
@@ -159,6 +314,19 @@ function MemoryRow({
     </li>
   );
 }
+
+type WhereFilter = "any" | "global" | "project" | "chat";
+type StatusFilter = "in_use" | "not_in_use" | "all";
+
+const matchesWhere = (m: MemoryView, f: WhereFilter) =>
+  f === "any" ||
+  (f === "chat"
+    ? m.threadId !== null
+    : f === "project"
+      ? m.projectId !== null && !m.threadId
+      : !m.projectId && !m.threadId);
+const matchesStatus = (m: MemoryView, f: StatusFilter) =>
+  f === "all" || (f === "in_use") === (m.status === "active");
 
 /** Settings → Memory (PM-02, PM-07): everything FUSE remembers, editable. */
 export function MemorySection({
@@ -177,10 +345,14 @@ export function MemorySection({
   onCopyAll,
   replaced = [],
   onRestore,
+  currentChat = null,
 }: {
+  /** The chat open behind Settings, so a memory can be kept for it only (PM-13). */
+  currentChat?: ChatOption | null;
   /** PM-11: facts replaced by newer ones, kept as history. */
   replaced?: { id: string; text: string; newer: string }[];
   onRestore?: (id: string) => void;
+  /** In use, excluded and expired records (PM-12 to PM-14). */
   memories: MemoryView[];
   projects: ProjectOption[];
   suggest: boolean;
@@ -204,12 +376,19 @@ export function MemorySection({
   const [budget, setBudget] = useState(String(budgetTokens));
   const [wiping, setWiping] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [kindFilter, setKindFilter] = useState<MemoryKindView | "all">("all");
+  const [whereFilter, setWhereFilter] = useState<WhereFilter>("any");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("in_use");
+  const chats = currentChat ? [currentChat] : [];
+  const inUse = memories.filter((m) => m.status === "active");
   const q = query.trim().toLowerCase();
-  const shown = q
-    ? memories.filter(
-        (m) => m.text.toLowerCase().includes(q) || m.source?.toLowerCase().includes(q),
-      )
-    : memories;
+  const shown = memories.filter(
+    (m) =>
+      (!q || m.text.toLowerCase().includes(q) || m.source?.toLowerCase().includes(q)) &&
+      (kindFilter === "all" || m.kind === kindFilter) &&
+      matchesWhere(m, whereFilter) &&
+      matchesStatus(m, statusFilter),
+  );
   const saveBudget = () => {
     const n = Math.round(Number(budget));
     if (Number.isFinite(n) && n >= 0 && n !== budgetTokens) {
@@ -272,7 +451,13 @@ export function MemorySection({
       </div>
 
       <div className="mb-5">
-        <MemoryFields form={draft} projects={projects} onChange={setDraft} label="New memory" />
+        <MemoryFields
+          form={draft}
+          projects={projects}
+          chats={chats}
+          onChange={setDraft}
+          label="New memory"
+        />
         {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
         <div className="mt-2 flex justify-end">
           <Button
@@ -281,7 +466,7 @@ export function MemorySection({
             onClick={() => {
               const problem = onAdd(draft);
               setError(problem);
-              if (!problem) setDraft({ ...empty, kind: draft.kind });
+              if (!problem) setDraft({ ...empty, kind: draft.kind, projectId: draft.projectId });
             }}
           >
             Add memory
@@ -305,6 +490,48 @@ export function MemorySection({
               }}
             />
           </div>
+          <div className="mb-3 flex flex-wrap gap-2" role="group" aria-label="Filter memories">
+            <select
+              aria-label="Show kind"
+              className={selectClass}
+              value={kindFilter}
+              onChange={(e) => {
+                setKindFilter(e.target.value as MemoryKindView | "all");
+              }}
+            >
+              <option value="all">All kinds</option>
+              {KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {KIND_LABELS[k]}
+                </option>
+              ))}
+            </select>
+            <select
+              aria-label="Show where used"
+              className={selectClass}
+              value={whereFilter}
+              onChange={(e) => {
+                setWhereFilter(e.target.value as WhereFilter);
+              }}
+            >
+              <option value="any">Used anywhere</option>
+              <option value="global">Every chat</option>
+              <option value="project">One project</option>
+              <option value="chat">One chat</option>
+            </select>
+            <select
+              aria-label="Show status"
+              className={selectClass}
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value as StatusFilter);
+              }}
+            >
+              <option value="in_use">In use</option>
+              <option value="not_in_use">Excluded or expired</option>
+              <option value="all">All</option>
+            </select>
+          </div>
           {KINDS.map((c) => {
             const list = shown.filter((m) => m.kind === c);
             if (list.length === 0) return null;
@@ -319,6 +546,7 @@ export function MemorySection({
                       key={m.id}
                       memory={m}
                       projects={projects}
+                      chats={chats}
                       onEdit={(form) => onEdit(m.id, form)}
                       onDelete={() => {
                         onDelete(m.id);
@@ -334,7 +562,7 @@ export function MemorySection({
           )}
           <div className="mt-4 flex items-center gap-2">
             <span className="flex-1 font-mono text-[10px] text-muted-foreground">
-              {number(memories.length)} memor{memories.length === 1 ? "y" : "ies"} · ~
+              {number(inUse.length)} memor{inUse.length === 1 ? "y" : "ies"} in use · ~
               {number(tokens)} tokens
             </span>
             <Button

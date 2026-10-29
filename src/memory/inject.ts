@@ -59,7 +59,8 @@ export function selectMemories(
   /** Cosine similarity of each memory to the question, by memory id (when embedded). */
   similarity: ReadonlyMap<string, number> = new Map(),
 ): Memory[] {
-  const pool = memories.filter((m) => inScope(m, where));
+  // Records kept on this device never go to a provider (SE-13).
+  const pool = memories.filter((m) => m.maySend && inScope(m, where));
   if (budgetTokens <= 0 || pool.length === 0) return [];
   const total = pool.reduce((sum, m) => sum + memoryTokens(m), 0);
   if (total <= budgetTokens) return pool;

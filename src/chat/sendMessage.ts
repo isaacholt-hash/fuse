@@ -461,7 +461,7 @@ async function streamAnswer(
     const question = history.findLast((m) => m.role === "user")?.content ?? "";
     const query = `${thread?.title ?? ""}\n${question}`;
     const where = { projectId: thread?.projectId ?? null, threadId: input.threadId };
-    const pool = all.filter((m) => inScope(m, where));
+    const pool = all.filter((m) => m.maySend && inScope(m, where));
     const overBudget = pool.reduce((sum, m) => sum + memoryTokens(m), 0) > budget;
     const similarity =
       overBudget && input.embedding && budget > 0

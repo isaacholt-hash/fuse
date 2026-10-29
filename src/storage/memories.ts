@@ -127,6 +127,26 @@ export async function listMemories(db: SqlDb, tenant: Tenant): Promise<Memory[]>
   return rows.map(toMemory);
 }
 
+/**
+ * Settings → Memory: records in use plus excluded and expired ones (not deleted or replaced),
+ * oldest first. A record past its expiry reads as `expired`.
+ */
+export async function listMemoryRecords(db: SqlDb, tenant: Tenant): Promise<Memory[]> {
+  const rows = await db.select<MemoryRow>(
+    `${SELECT_MEMORY} WHERE m.workspace_id = ? AND m.status IN ('active', 'excluded', 'expired')
+     ORDER BY m.created_at, m.id`,
+    [tenant.workspaceId],
+  );
+  const now = Date.now();
+  return rows
+    .map(toMemory)
+    .map((m) =>
+      m.status === "active" && m.expiresAt !== null && m.expiresAt <= now
+        ? { ...m, status: "expired" as const }
+        : m,
+    );
+}
+
 export interface NewMemory {
   text: string;
   kind: MemoryKind;
@@ -139,6 +159,10 @@ export interface NewMemory {
   authority?: MemoryAuthority;
   extractionMethod?: "typed" | "chat" | "import";
   extractionModel?: string | null;
+  sensitivity?: "normal" | "sensitive";
+  /** False keeps it on this device: never sent to a provider (SE-13). */
+  maySend?: boolean;
+  expiresAt?: number | null;
 }
 
 const DEVICE_KEY = "device.id";
@@ -171,8 +195,8 @@ export async function addMemory(db: SqlDb, tenant: Tenant, m: NewMemory): Promis
   await db.execute(
     `INSERT INTO memories (id, workspace_id, user_id, text, kind, scope, project_id, thread_id,
        authority, source_thread_id, extraction_method, extraction_model, confidence, task_status,
-       device_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       sensitivity, may_send, expires_at, device_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -188,6 +212,9 @@ export async function addMemory(db: SqlDb, tenant: Tenant, m: NewMemory): Promis
       m.extractionModel ?? null,
       Math.round(Math.min(100, Math.max(0, m.confidence ?? 100))),
       m.kind === "task" ? "open" : null,
+      m.sensitivity ?? "normal",
+      m.maySend === false ? 0 : 1,
+      m.expiresAt ?? null,
       await deviceId(db, tenant),
       now,
       now,
@@ -196,27 +223,47 @@ export async function addMemory(db: SqlDb, tenant: Tenant, m: NewMemory): Promis
   return id;
 }
 
+/** What an edit can change; fields left out stay as they are. */
+export interface MemoryChange {
+  text: string;
+  kind: MemoryKind;
+  projectId: string | null;
+  /** Set: kept for that chat only. */
+  threadId?: string | null;
+  sensitivity?: "normal" | "sensitive";
+  maySend?: boolean;
+  /** null clears the expiry. */
+  expiresAt?: number | null;
+}
+
 /** Your own edit: changes the fact in place (an approved update keeps history instead). */
 export async function editMemory(
   db: SqlDb,
   tenant: Tenant,
   id: string,
-  change: { text: string; kind: MemoryKind; projectId: string | null },
+  change: MemoryChange,
 ): Promise<void> {
+  const threadId = change.threadId ?? null;
   // Your edit makes the record yours (PM-15's authority order).
   await db.execute(
-    `UPDATE memories SET text = ?, kind = ?,
-       scope = CASE WHEN scope = 'conversation' THEN scope WHEN ? IS NULL THEN 'global' ELSE 'project' END,
-       project_id = ?, confidence = 100, authority = 'you',
+    `UPDATE memories SET text = ?, kind = ?, scope = ?, project_id = ?, thread_id = ?,
+       confidence = 100, authority = 'you',
        task_status = CASE WHEN ? = 'task' THEN COALESCE(task_status, 'open') END,
+       sensitivity = COALESCE(?, sensitivity), may_send = COALESCE(?, may_send),
+       expires_at = CASE WHEN ? THEN ? ELSE expires_at END,
        revision = revision + 1, device_id = ?, updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [
       cleanText(change.text),
       change.kind,
+      scopeOf(change.projectId, threadId),
       change.projectId,
-      change.projectId,
+      threadId,
       change.kind,
+      change.sensitivity ?? null,
+      change.maySend === undefined ? null : change.maySend ? 1 : 0,
+      change.expiresAt === undefined ? 0 : 1,
+      change.expiresAt ?? null,
       await deviceId(db, tenant),
       Date.now(),
       tenant.workspaceId,

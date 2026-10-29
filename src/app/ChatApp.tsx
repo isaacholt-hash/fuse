@@ -106,6 +106,7 @@ import {
   deleteMemory,
   editMemory,
   listMemories,
+  listMemoryRecords,
   listPendingProposals,
   listReplaced,
   memoriesForMessages,
@@ -551,6 +552,8 @@ export function ChatApp({
   );
   const checkedPrices = useRef<string | null>(null);
   const [memories, setMemories] = useState<Memory[]>([]);
+  // Settings → Memory also lists excluded and expired records (PM-14).
+  const [memoryRecords, setMemoryRecords] = useState<Memory[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [replaced, setReplaced] = useState<ReplacedMemory[]>([]);
   const [golden, setGolden] = useState<GoldenPrompt[] | null>(null);
@@ -732,17 +735,20 @@ export function ChatApp({
   }, [db, tenant]);
   const refreshMemory = useCallback(async () => {
     setMemories(await listMemories(db, tenant));
+    setMemoryRecords(await listMemoryRecords(db, tenant));
     setProposals(await listPendingProposals(db, tenant));
     setReplaced(await listReplaced(db, tenant));
   }, [db, tenant]);
   useEffect(() => {
-    Promise.all([listMemories(db, tenant), listPendingProposals(db, tenant)]).then(
-      ([saved, waiting]) => {
-        setMemories(saved);
-        setProposals(waiting);
-      },
-      report,
-    );
+    Promise.all([
+      listMemories(db, tenant),
+      listMemoryRecords(db, tenant),
+      listPendingProposals(db, tenant),
+    ]).then(([saved, records, waiting]) => {
+      setMemories(saved);
+      setMemoryRecords(records);
+      setProposals(waiting);
+    }, report);
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
     listPrompts(db, tenant).then(setPrompts, report);
     Promise.all([
@@ -1740,15 +1746,31 @@ export function ChatApp({
     id ? (projects.find((p) => p.id === id)?.name ?? null) : null;
   const shortDate = (ms: number) =>
     new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const memoryViews: MemoryView[] = memories.map((m) => ({
+  const memoryViews: MemoryView[] = memoryRecords.map((m) => ({
     id: m.id,
     text: m.text,
     kind: m.kind,
-    projectId: m.projectId,
-    projectName: projectName(m.projectId),
+    projectId: m.scope === "conversation" ? null : m.projectId,
+    projectName: m.scope === "conversation" ? null : projectName(m.projectId),
+    threadId: m.threadId,
+    threadName: m.threadId ? (threads.find((t) => t.id === m.threadId)?.title ?? "a chat") : null,
     source: m.sourceThreadTitle,
     date: shortDate(m.createdAt),
     confidence: m.confidence,
+    authority: m.authority,
+    extractionMethod: m.extractionMethod,
+    extractionModel: m.extractionModel,
+    status:
+      m.status === "excluded" || m.status === "expired"
+        ? m.status
+        : m.expiresAt !== null && m.expiresAt <= Date.now()
+          ? "expired"
+          : "active",
+    sensitivity: m.sensitivity,
+    maySend: m.maySend,
+    expiresAt: m.expiresAt,
+    lastVerifiedAt: m.lastVerifiedAt,
+    revision: m.revision,
   }));
   const proposalViews: ProposalView[] = proposals.map((p) => {
     // PM-11: a new fact about something already saved asks which stands.
@@ -3400,6 +3422,7 @@ export function ChatApp({
                     setReviewOpen(true);
                   }}
                   onCopyAll={copyMemories}
+                  currentChat={thread ? { id: thread.id, title: thread.title } : null}
                   replaced={replaced}
                   onRestore={(id) => {
                     restoreMemory(db, tenant, id).then(refreshMemory).catch(report);

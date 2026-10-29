@@ -16,7 +16,7 @@
 - [x] **2. Typed memory schema (PM-12, PM-13, PM-14).**
   - Memory records gain a kind (fact, preference, person, constraint, decision, task, source), a scope (global, workspace, project, conversation), authority (you, imported, extracted), status, provenance, sensitivity, may-send, revision and device id.
   - Existing memories are carried over; the table rebuild is proven on the upgrade harness first.
-- [ ] **3. Memory screen for types, scope and provenance (PM-12 to PM-14).** Filters by kind, scope and status; provenance shown; sensitivity, may-send and expiry editable; "remember for this chat only". Extraction suggests a kind, never a decision.
+- [x] **3. Memory screen for types, scope and provenance (PM-12 to PM-14).** Filters by kind, scope and status; provenance shown; sensitivity, may-send and expiry editable; "remember for this chat only". Extraction suggests a kind, never a decision.
 - [ ] **4. Decisions (PM-15).** A project Decisions tab with rationale, alternatives, status and what it replaces. Never added automatically; a suggestion never overrides your own or imported records.
 - [ ] **5. Tasks (PM-16).** A project Tasks tab with status and dependencies; extracted tasks wait for review.
 - [ ] **6. Exclude and explain (PM-17).** Exclude a memory without deleting it; each answer records why each memory was used.
