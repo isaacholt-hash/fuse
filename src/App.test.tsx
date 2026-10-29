@@ -1108,6 +1108,36 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
 
+test("thread export: copy as Markdown, or save the chat as Markdown or JSON (every branch)", async () => {
+  const { user, saves } = setup({ anthropic: [() => answer("Tea, mostly.")] });
+  await user.type(await composer(), "Tea or coffee?{Enter}");
+  await screen.findByText("Tea, mostly.");
+  const menu = async (name: string) => {
+    await user.click(screen.getByRole("button", { name: "Conversation actions" }));
+    await user.click(await screen.findByRole("menuitem", { name }));
+  };
+  await menu("Copy as Markdown");
+  await waitFor(async () => {
+    expect(await navigator.clipboard.readText()).toMatch(
+      /^# .+\n\n_Started \d{4}-\d{2}-\d{2}_\n\n## You\n\nTea or coffee\?\n\n## test-claude\n\nTea, mostly\./,
+    );
+  });
+  await menu("Save as Markdown…");
+  await menu("Save as JSON…");
+  await waitFor(() => {
+    expect(saves.map((f) => f.name.split(".").at(-1))).toEqual(["md", "json"]);
+  });
+  const json = JSON.parse(new TextDecoder().decode(saves[1]?.bytes)) as {
+    format: string;
+    messages: { role: string; content: string; model: string | null }[];
+  };
+  expect(json.format).toBe("fuse-chat");
+  expect(json.messages.map((m) => [m.role, m.content])).toEqual([
+    ["user", "Tea or coffee?"],
+    ["assistant", "Tea, mostly."],
+  ]);
+});
+
 test("quote a selection: select part of an answer, Reply to this puts just that in the reply", async () => {
   const { user } = setup({
     anthropic: [

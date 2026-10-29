@@ -245,6 +245,8 @@ import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { TagsDialog } from "@/ui/Tags";
+import { chatMarkdown } from "@/data/exportAll";
+import { threadJson, type ThreadExportFormat } from "@/data/exportThread";
 import { FillPromptDialog, PromptsSection } from "@/ui/Prompts";
 import {
   deletePrompt,
@@ -1902,6 +1904,24 @@ export function ChatApp({
     setThreadArchived(db, tenant, t.id, !t.archived).then(refreshThreads).catch(report);
   };
   const taggingThread = threads.find((t) => t.id === tagging);
+  /** CH-11: the chat on screen, copied or saved. */
+  const exportThread = async (format: ThreadExportFormat) => {
+    const open = threads.find((t) => t.id === selectedId);
+    if (!open) return;
+    const markdown = chatMarkdown(open.title, open.createdAt, messages);
+    if (format === "copy") {
+      await navigator.clipboard.writeText(markdown);
+      return;
+    }
+    if (!exporter) return;
+    const bytes =
+      format === "md"
+        ? new TextEncoder().encode(markdown)
+        : format === "pdf"
+          ? await markdownToPdf(markdown, open.title)
+          : new TextEncoder().encode(threadJson(open, threadAll));
+    await exporter.save(fileName(open.title, format), bytes);
+  };
   // CH-12: prompts for every chat, plus the ones for the project on screen.
   const usablePrompts = prompts.filter(
     (p) => p.projectId === null || p.projectId === activeProjectId,
@@ -3231,6 +3251,9 @@ export function ChatApp({
                         }}
                         onEditTags={() => {
                           setTagging(thread.id);
+                        }}
+                        onExport={(format) => {
+                          exportThread(format).catch(report);
                         }}
                         stay={{
                           provider: thread.stayProvider ?? stayOn ?? null,
