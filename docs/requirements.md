@@ -57,6 +57,8 @@ P1 is the whole product in miniature; P2 and P3 only add reach, and each waits f
 
 Each phase ships only when its gate passes. P1's gate is the one that matters: if you are not using the app instead of Claude and ChatGPT for two straight weeks, fix P1 before adding anything.
 
+**P1.5 "Local and lean" (added 2026-10-29)** sits between P1 and P2: cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
+
 ## 4. Users and key use cases
 
 V1 has one user: you, a technical power user who pays for two AI subscriptions, works in short sprints, and needs fast capture and an easy way to pick up where you left off. The future user is the same profile at scale: people already paying for two or more AI apps who want one place and a lower bill.
@@ -92,7 +94,7 @@ Providers plug in through one adapter interface; the router targets user-defined
 | MM-07 | Per-model defaults: temperature, max output tokens, reasoning effort or thinking budget, system prompt prefix. Editable per tier and per project. | Should | P1 |
 | MM-08 | Deprecation handling: flag a mapped model when the provider marks it deprecated or it disappears from the list; suggest the replacement. | Should | P1 |
 | MM-09 | Spend caps per key: daily and monthly dollar limits with a hard stop and a one-click temporary raise. | Should | P1 |
-| MM-10 | Local models (Ollama, LM Studio, llama.cpp server) as a provider, used for zero-cost tasks such as titles, classification and memory extraction when present. | Nice | P2 |
+| MM-10 | Local models (Ollama, LM Studio, llama.cpp server) as a provider, used for zero-cost tasks such as titles, classification and memory extraction when present. Superseded in part by LL-02 and LL-04 (embedded runtime, P1.5); an optional localhost adapter stays here. | Nice | P2 |
 | MM-11 | Embedding model selection per provider, with a local option; changing it triggers a re-index prompt. | Should | P1 |
 | MM-12 | Usage reconciliation: compare the app's token counts to the provider's usage endpoint or dashboard and show drift. | Nice | P2 |
 
@@ -120,7 +122,7 @@ A pinned request skips classification but still gets the context fit and the bud
 | RT-12 | Compare mode: send one prompt to two or three tiers side by side on demand; the composer shows the combined cost before sending. | Should | P1 |
 | RT-13 | Response cache: identical prompt and context within a configurable window returns the stored answer, opt-in per project. | Nice | P2 |
 | RT-14 | Routing inside agent runs: planner on Best, steps on Balanced, summaries on Cheap, with a per-run cost cap (AG-07). | Should | P2 |
-| RT-15 | Local-model fallback for low-stakes intents when a local model is configured (MM-10). | Nice | P2 |
+| RT-15 | Local-model fallback for low-stakes intents when a local model is configured (MM-10). Superseded in part by LL-04 (local stays inside the Cheap tier; answering with it needs RT-17 changed). | Nice | P2 |
 | RT-16 | Evaluation set: a stored set of 50+ real prompts with the expected tier and a rating; a "test policy" action runs the classifier against it and reports accuracy before a policy change is saved. | Should | P1 |
 | RT-17 | Quality floor: the policy sets a minimum tier per intent and complexity (defaults: every user-facing answer starts at Balanced; hard reasoning, architecture and multi-step analysis start on Best; Cheap is housekeeping only, meaning titles, classification, memory extraction and rolling summaries, and never answers the user). Cost ordering applies only among models at or above the floor; the budget downshift in RT-10 stops at the floor and asks instead of going lower. The floor is editable per project. | Must | P1 |
 
@@ -299,6 +301,45 @@ The app must never lose a message, must add almost no latency of its own on top 
 | Data | Single local database (relational plus vector index) with versioned migrations and automatic backups before each migration | Restore from backup tested per release |
 | Maintainability | One codebase for desktop and web, typed end to end, semantic versioning, release notes | Single repository, CI on every change |
 
+## 16b. Local and lean (cost optimization)
+
+Folded in on 2026-10-29 from `docs/specs/local-ai-cost-optimization.md` (v1.0, the source of record). That spec is additive: it reuses FUSE's router, request log, budgets and storage, and builds no second ones. **Success metric: cost per successful task**, not token counts or the share of requests answered locally. Its P0 items are phase P1.5 here, its P1 items map to existing ids or P1.5, and its P2 items are P2.
+
+| ID | Requirement | Priority | Phase |
+| --- | --- | --- | --- |
+| LL-01 | Deterministic first: requests that allowlisted handlers can answer (arithmetic, unit, date and time conversion, counting, JSON or CSV checks) are answered without any model, shown as "answered without a model · $0", and logged as such. Handlers are permission-scoped, time-limited and audited; never model-generated shell commands. Off per project if you prefer. | Must | P1.5 |
+| LL-02 | Embedded local inference: a local runtime behind the provider adapter interface (GGUF, quantized, bounded context, cancel, timeouts, unload and reload, limited concurrency), with no separate service to run. First tasks: classification, structured extraction, query rewriting and short summaries, where evaluation shows they're good enough. Never approves sensitive actions or lowers the tier of high-stakes work. | Must | P1.5 |
+| LL-03 | Hardware detection and opt-in model install: RAM, CPU features and GPU where readable without privileges; disk size versus peak memory; compatibility, download size, version and licence shown before download; checksum verified; stored apart from the app and removable or updatable. FUSE works fully without it. | Must | P1.5 |
+| LL-04 | Routing outcomes inside the existing router: `deterministic` before routing, and `local` as the preferred provider inside the Cheap tier, falling back once to the cloud Cheap model (no retry loops). Uses intent, complexity, risk, privacy mode, hardware, preferences, budget and recent model performance. Privacy modes per project: Normal, Local only (refuse cloud with a clear message), Cloud only. Manual override stays. | Must | P1.5 |
+| LL-05 | Context minimization: lexical retrieval (SQLite FTS5) over files and knowledge first, with embeddings added when available, so search works without an OpenAI key; token ceilings per model and request type with explicit truncation and provenance; never whole histories, repositories, logs or tool outputs; retrieved content treated as untrusted. | Must | P1.5 |
+| LL-06 | Exact-match response cache (merges RT-13): keyed by normalised input, context version, model or operation version, project scope and output format; TTLs and invalidation; never for personal, dynamic or high-stakes requests without a validity check, nor in incognito or for answers that used web search. Semantic caching stays off. | Should | P1.5 |
+| LL-07 | Economics: cost per successful task (a message's attempts, retries, escalations and regenerates counted as one task; success when it isn't redone or marked bad), cloud calls avoided, context tokens avoided, local latency, fallback rate. API spend is kept apart from subscriptions and local energy. No prompt text in telemetry by default. | Must | P1.5 |
+| LL-08 | Local-path security: model files treated as third-party dependencies (origin, checksum, licence, update provenance); out-of-memory and crash isolation; no network request from the local path; tests for offline use, local-only mode, cross-project isolation, malformed model output and resource exhaustion. | Must | P1.5 |
+| LL-09 | Evaluation and rollout: a cloud-only baseline on the routing test set and on real usage (quality, cost per successful task, p50/p95 latency, peak memory); shadow mode, where the local decision is recorded beside the cloud one but not used; a false-downgrade rate; local turned on by default only when thresholds Isaac sets are met, with one-click rollback. | Must | P1.5 |
+| LL-10 | Later, only if measurements justify it: semantic response cache, local answers to simple chat (needs RT-17 changed), more local model profiles, batch APIs, offline-only modes. | Nice | P2 |
+
+**Where FUSE stands (traceability, 2026-10-29)**
+
+| Spec | Status | Builds on |
+| --- | --- | --- |
+| FR-01 Deterministic first | Missing | — (every message goes to a model) |
+| FR-02 Embedded local inference | Missing | `ProviderAdapter` (`src/providers/types.ts`); `ProviderId` is `openai`/`anthropic` only today |
+| FR-03 Hardware and install | Missing | Prices and models as data (`data/`), keychain and app data storage |
+| FR-04 Unified routing | Partly done | One router (`src/routing/route.ts`): tiers, quality floor (RT-17), escalation (RT-04), failover (MM-06), pins (RT-01), Cheap classifier fallback (RT-02), caps (MM-09), budgets (CO-03, RT-10). Missing: deterministic and local outcomes, privacy modes |
+| FR-05 Context minimization | Mostly done | Rolling summaries (PM-06), searched large files with citations (FK-02, FK-03), memory budget, context meter, cost preview over 20K tokens (CO-05), FTS5 over messages (CH-02). Missing: lexical file retrieval, token ceilings |
+| FR-06 Caching | Partly done | Provider prompt caching and hit rate (RT-07). Missing: response cache (RT-13, now LL-06) |
+| FR-07 Economics | Mostly done | `request_log` per call (purpose, attempt, tokens incl. cached and reasoning, cost, latency, TTFT, errors, tier, rule), usage dashboard (CO-02), budgets, savings report (CO-04). Missing: cost per successful task, calls and tokens avoided |
+| FR-08 Security | Partly done | SQLCipher and keychain, sandboxed previews (AR-05), secrets filters (PM-05, FK-11), project scoping, delete-all (SE-07). Missing: model provenance, runtime isolation, network-off tests |
+| §7 Evaluation | Partly done | Routing test set and scoring (RT-16), policy changes scored before saving. Missing: baseline, shadow mode, false-downgrade rate, latency and memory figures |
+
+**Conflicts with earlier decisions, and the proposed adaptation**
+
+- **RT-17 (Cheap never answers you):** kept. Local runs inside the Cheap tier and does housekeeping only; answering chat locally is LL-10 and needs RT-17 changed on the record.
+- **Routing contract** (`deterministic \| local \| balanced \| best` in the spec): FUSE keeps its tiers. `deterministic` is an outcome before routing and `local` a provider within Cheap, so there is still one router.
+- **Lexical before vector:** FUSE already searches files with OpenAI embeddings (FK-02). Lexical FTS5 is added beside it, as the default and the fallback, rather than replacing it.
+- **MM-10 (Ollama and similar as a provider):** the spec prefers an embedded runtime with no separate service, so LL-02 supersedes it for P1.5; an optional localhost adapter for Ollama or LM Studio users stays possible.
+- **Providers:** `ProviderId` is widened to include `local` (CLAUDE.md: "one adapter interface for the rest").
+
 ## 17. Risks and open questions
 
 The biggest risk is scope: a solo build of "everything" at a few hours a week does not ship. The second is routing trust: a few wrong-tier answers and you stop trusting Auto mode, which kills the savings.
@@ -312,6 +353,10 @@ The biggest risk is scope: a solo build of "everything" at a few hours a week do
 | Prompt caching differences | Each provider caches differently; a wrong prompt order loses the savings | Adapter owns prompt ordering (RT-07); cache hit rate is visible |
 | Local-first versus sync | Sync adds conflict handling and an encryption design | Local only in P1, encrypted sync in P2 (PL-04) |
 | Agent cost runaway | A looping run can spend fast | Per-run cost cap (AG-05), approvals (AG-04), budget stops (RT-10) |
+| Native local runtime | A C++ runtime adds build time, app size and crash risk on two OSes | Behind the adapter (LL-02), crash and memory isolation (LL-08), built in CI on Windows and Linux, opt-in |
+| Model licence and provenance | A downloaded model is third-party code with its own licence | Pinned source, checksum and licence in `data/`, checked before download (LL-03, LL-08) |
+| False downgrades | A small local model misjudges a hard request and the answer suffers | Local only for housekeeping (RT-17 kept), shadow mode and false-downgrade rate before enabling (LL-09), one fallback to the cloud |
+| Hardware variance | What runs well on one PC stalls another | Hardware profile and compatibility card (LL-03); benchmarks on Isaac's own PC; cloud path always works |
 
 **Decisions needed before build starts**
 
@@ -322,6 +367,14 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [x] Web search: provider-native search tools in P1
 - [ ] Default tier mapping: open, set in M1 from current model lists and prices. Budget for month one: decided (no app budget; provider-console hard limits + CO-07 alert)
 - [ ] Storage location for P2 sync: deferred to P2
+
+**Open decisions for P1.5 (Local and lean), with the recommendation**
+
+- [ ] Local runtime: embedded llama.cpp through Rust (`llama-cpp-2`), CPU build first, GPU (Vulkan) later; optional localhost adapter for Ollama or LM Studio
+- [ ] First model: Qwen3 1.7B, 4-bit GGUF, non-thinking mode; licence (expected Apache-2.0), source and checksum verified at implementation, downloaded only when you opt in
+- [ ] RT-17 kept: local does housekeeping only (titles, classification second opinion, memory suggestions, summaries, query rewriting)
+- [ ] Privacy modes per project: Normal, Local only, Cloud only
+- [ ] Benchmarks and shadow-mode results come from Isaac's PC; local stays opt-in until they're in
 - [x] The app's name: FUSE
 
 ## 18. Next steps
@@ -337,7 +390,9 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Add the second provider, tiers, Auto routing and escalation; then memory, projects and artifacts
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
+- [ ] P1.5 Local and lean (section 16b), alongside the P1 trial: decide the open items in section 17, then a milestone file; trial fixes go first
+
 **Can wait**
 
-- [ ] P2 agents, MCP, sandbox, sync, dictation
+- [ ] P2 agents, MCP, sandbox, sync, dictation (after P1.5)
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on
