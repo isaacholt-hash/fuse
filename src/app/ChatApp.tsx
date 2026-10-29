@@ -80,7 +80,15 @@ import { findSecret, SECRET_LABELS } from "@/memory/secrets";
 import type { KeysApi, KeyTestResult } from "@/keys/api";
 import type { ProviderAdapter } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
-import { citationsForMessages, fileCitationsForMessages, type Citation } from "@/storage/citations";
+import {
+  citationsForMessages,
+  fileCitationsForMessages,
+  type Citation,
+  type FileSource,
+} from "@/storage/citations";
+import { getFile } from "@/storage/files";
+import { getChunk } from "@/storage/vectors";
+import { FileViewer, type FileViewerView } from "@/ui/FileViewer";
 import { filesForMessages, type FileRecord } from "@/storage/files";
 import {
   getGlobalInstructions,
@@ -454,7 +462,9 @@ export function ChatApp({
   // Web sources cited by the answers on screen, by message id.
   const [threadSources, setThreadSources] = useState<Map<string, Citation[]>>(new Map());
   // Parts of large files the answers on screen were given, by message id (FK-02).
-  const [threadFileSources, setThreadFileSources] = useState<Map<string, string[]>>(new Map());
+  const [threadFileSources, setThreadFileSources] = useState<Map<string, FileSource[]>>(new Map());
+  // FK-10: a file open in the side panel, at the place an answer cited.
+  const [viewer, setViewer] = useState<FileViewerView | null>(null);
   // Memories sent with the answers on screen, by message id.
   const [threadMemories, setThreadMemories] = useState<Map<string, { text: string }[]>>(new Map());
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
@@ -1871,7 +1881,43 @@ export function ChatApp({
     listVersions(db, tenant, openSaved.id).then(setVersions, report);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
   }, [db, tenant, openSaved?.id, openSaved?.version]);
+  /** FK-10: shows an attached file in the side panel, optionally at a cited place. */
+  const openFile = async (fileId: string, focus?: FileViewerView["focus"]) => {
+    const file = await getFile(db, tenant, fileId);
+    if (!file) {
+      setProblem("That file isn't stored any more.");
+      return;
+    }
+    const bytes = await filesApi.get(file.sha256);
+    const base = { name: file.name, ...(focus ? { focus } : {}) };
+    setOpenArtifact(null);
+    setViewer(
+      file.mime.startsWith("image/")
+        ? {
+            ...base,
+            kind: "image",
+            url: URL.createObjectURL(new Blob([bytes.slice()], { type: file.mime })),
+          }
+        : file.mime === "application/pdf"
+          ? { ...base, kind: "pdf", bytes }
+          : { ...base, kind: "text", text: new TextDecoder().decode(bytes) },
+    );
+  };
+  /** FK-10: a cited excerpt opens its file there; excerpts from past chats have no file. */
+  const openSource = async (chunkId: string) => {
+    const chunk = await getChunk(db, tenant, chunkId);
+    if (chunk?.sourceKind !== "file") {
+      setProblem("That excerpt is from a past chat or a memory, not a file.");
+      return;
+    }
+    await openFile(chunk.sourceId, {
+      ...(chunk.page !== null ? { page: chunk.page } : {}),
+      ...(chunk.lineStart !== null ? { lineStart: chunk.lineStart } : {}),
+      ...(chunk.lineEnd !== null ? { lineEnd: chunk.lineEnd } : {}),
+    });
+  };
   const showArtifact = (key: string | null) => {
+    if (key) setViewer(null);
     setOpenArtifact(key);
     setShownVersion(null);
     setCompareWith(null);
@@ -3314,6 +3360,12 @@ export function ChatApp({
                     onEdit={editAndSend}
                     onBranch={switchBranch}
                     onSideBySide={setSideBySide}
+                    onOpenFile={(id) => {
+                      openFile(id).catch(report);
+                    }}
+                    onOpenSource={(chunkId) => {
+                      openSource(chunkId).catch(report);
+                    }}
                     busy={streaming}
                     focusId={focusId}
                     openArtifact={openArtifact}
@@ -3417,7 +3469,16 @@ export function ChatApp({
                     onToggleWebSearch={toggleSearch}
                   />
                 </div>
-                {panelArtifact && (
+                {viewer && (
+                  <FileViewer
+                    file={viewer}
+                    onClose={() => {
+                      if (viewer.url) URL.revokeObjectURL(viewer.url);
+                      setViewer(null);
+                    }}
+                  />
+                )}
+                {!viewer && panelArtifact && (
                   <ArtifactPanel
                     key={panelArtifact.key}
                     artifact={panelArtifact}

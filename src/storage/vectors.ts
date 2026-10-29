@@ -91,6 +91,17 @@ export async function replaceChunks(
   return ids;
 }
 
+/** One chunk by id (FK-10: a citation opens its file there). */
+export async function getChunk(db: SqlDb, tenant: Tenant, id: string): Promise<Chunk | null> {
+  const rows = await db.select<ChunkRow>(
+    `SELECT id, source_kind, source_id, ordinal, text, tokens, page, line_start, line_end
+     FROM chunks WHERE workspace_id = ? AND id = ?`,
+    [tenant.workspaceId, id],
+  );
+  const row = rows[0];
+  return row ? toChunk(row) : null;
+}
+
 export async function listChunks(
   db: SqlDb,
   tenant: Tenant,

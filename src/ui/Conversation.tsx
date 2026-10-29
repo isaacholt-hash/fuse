@@ -333,7 +333,13 @@ export function Messages({
   openArtifact = null,
   onOpenArtifact,
   onSideBySide,
+  onOpenFile,
+  onOpenSource,
 }: {
+  /** FK-10: opens an attached file in the side panel. */
+  onOpenFile?: (fileId: string) => void;
+  /** FK-10: opens a cited file at the cited place (a chunk). */
+  onOpenSource?: (chunkId: string) => void;
   /** CH-17: an answer's versions side by side. */
   onSideBySide?: (answerId: string) => void;
   messages: MessageView[];
@@ -487,14 +493,18 @@ export function Messages({
                       <div className="mb-2 flex flex-wrap justify-end gap-2">
                         {message.images.map((img) =>
                           img.kind === "document" ? (
-                            <span
+                            <button
                               key={img.id}
-                              className="flex max-w-64 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-[11px]"
+                              type="button"
+                              disabled={!onOpenFile}
+                              aria-label={`Open ${img.name}`}
+                              className="flex max-w-64 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left text-[11px] enabled:hover:bg-accent"
                               title={img.name}
+                              onClick={() => onOpenFile?.(img.id)}
                             >
                               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
                               <span className="truncate">{img.name}</span>
-                            </span>
+                            </button>
                           ) : img.url ? (
                             <img
                               key={img.id}
@@ -677,10 +687,24 @@ export function Messages({
                           From your files and chats
                         </p>
                         <ul className="space-y-0.5 text-[11px] text-muted-foreground">
-                          {message.fileSources.map((label, i) => (
-                            <li key={`${String(i)}-${label}`} className="flex items-center gap-1.5">
+                          {message.fileSources.map((source, i) => (
+                            <li
+                              key={`${String(i)}-${source.label}`}
+                              className="flex items-center gap-1.5"
+                            >
                               <FileText className="size-3 shrink-0" />
-                              {label}
+                              {onOpenSource && source.chunkId ? (
+                                <button
+                                  className="text-left underline-offset-2 hover:text-foreground hover:underline"
+                                  onClick={() => {
+                                    if (source.chunkId) onOpenSource(source.chunkId);
+                                  }}
+                                >
+                                  {source.label}
+                                </button>
+                              ) : (
+                                source.label
+                              )}
                             </li>
                           ))}
                         </ul>
