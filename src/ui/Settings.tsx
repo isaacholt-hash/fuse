@@ -229,6 +229,7 @@ export function SettingsView({
   models,
   prompts,
   modelDefaults,
+  keyCaps,
   quickCapture,
   data,
   appLock,
@@ -266,6 +267,8 @@ export function SettingsView({
   prompts?: ReactNode;
   /** Settings → Model defaults (MM-07). */
   modelDefaults?: ReactNode;
+  /** Settings → Spend caps per key (MM-09). */
+  keyCaps?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -341,6 +344,7 @@ export function SettingsView({
         {budgets}
         {prompts}
         {modelDefaults}
+        {keyCaps}
         {models}
         {prices}
         {appLock}

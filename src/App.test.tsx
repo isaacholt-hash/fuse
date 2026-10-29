@@ -732,6 +732,35 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(await screen.findByRole("complementary", { name: "File: notes.txt" })).toBeInTheDocument();
 });
 
+test("spend caps: past a key's daily cap FUSE stops calling it, until raised for today", async () => {
+  const { user, calls } = setup({
+    anthropic: [() => answer("First."), () => answer("After the raise.")],
+  });
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const caps = within(await screen.findByRole("region", { name: "Spend caps" }));
+  const anthropic = within(caps.getByLabelText("Anthropic cap"));
+  await user.type(anthropic.getByLabelText("Anthropic daily cap"), "0.001");
+  await user.click(anthropic.getByRole("button", { name: "Save" }));
+  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+
+  // $0.0064 goes past the $0.001 cap.
+  await user.type(await composer(), "Hello{Enter}");
+  await screen.findByText("First.");
+  const notice = await screen.findByLabelText("Spend cap notice");
+  expect(notice).toHaveTextContent("Anthropic has reached its daily cap ($0.0064 of $0.001)");
+  await user.type(await composer(), "Again{Enter}");
+  expect(await screen.findByText(/No model at Balanced or above/)).toBeInTheDocument();
+  expect(calls.anthropic).toHaveLength(1);
+
+  await user.click(within(notice).getByRole("button", { name: "Raise for today" }));
+  await waitFor(() => {
+    expect(screen.queryByLabelText("Spend cap notice")).not.toBeInTheDocument();
+  });
+  await user.type(await composer(), "Again{Enter}");
+  expect(await screen.findByText("After the raise.")).toBeInTheDocument();
+});
+
 test("model defaults: a tier's max output, effort and prompt prefix go with its requests", async () => {
   const { options, user } = setup();
   await composer();

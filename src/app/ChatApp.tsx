@@ -235,6 +235,7 @@ import {
   recordAlert,
   spentSince,
   type Budget,
+  spentByProvider,
 } from "@/storage/budgets";
 import {
   alertLevel,
@@ -258,6 +259,17 @@ import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { TagsDialog } from "@/ui/Tags";
+import { KeyCapsSection } from "@/ui/KeyCaps";
+import {
+  CAPS_SETTING,
+  capState,
+  localDay,
+  parseCaps,
+  parseRaises,
+  RAISED_SETTING,
+  type CapRaises,
+  type KeyCaps,
+} from "@/cost/keyCaps";
 import { ModelDefaultsSection } from "@/ui/ModelDefaults";
 import {
   DEFAULTS_SETTING,
@@ -487,6 +499,13 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // MM-09: spend caps per key, days they were raised for, and what each key spent.
+  const [caps, setCaps] = useState<KeyCaps>({});
+  const [raises, setRaises] = useState<CapRaises>({});
+  const [keySpend, setKeySpend] = useState<{
+    day: Record<string, number>;
+    month: Record<string, number>;
+  }>({ day: {}, month: {} });
   // MM-07: your defaults per tier, model and project.
   const [modelDefaults, setModelDefaults] = useState<DefaultsMap>({});
   // CH-12: the prompt library, and a prompt waiting for its {{variables}}.
@@ -708,6 +727,13 @@ export function ChatApp({
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
     listPrompts(db, tenant).then(setPrompts, report);
+    Promise.all([
+      getSetting(db, tenant, CAPS_SETTING),
+      getSetting(db, tenant, RAISED_SETTING),
+    ]).then(([rawCaps, rawRaised]) => {
+      setCaps(parseCaps(rawCaps));
+      setRaises(parseRaises(rawRaised));
+    }, report);
     getSetting(db, tenant, DEFAULTS_SETTING).then((raw) => {
       setModelDefaults(parseDefaults(raw));
     }, report);
@@ -927,7 +953,35 @@ export function ChatApp({
   useEffect(() => {
     medianFirstTokenMs(db, tenant, Date.now() - 7 * 86_400_000).then(setLatency, report);
   }, [db, tenant, at]);
-  const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  // MM-09: what each key spent today and this month (refreshed as answers come in).
+  useEffect(() => {
+    const now = Date.now();
+    Promise.all([
+      spentByProvider(db, tenant, periodStart("day", now)),
+      spentByProvider(db, tenant, periodStart("month", now)),
+    ]).then(([day, month]) => {
+      setKeySpend({ day, month });
+    }, report);
+  }, [db, tenant, at]);
+  const keyedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  const capStates = keyedProviders.map((p) =>
+    capState(
+      p,
+      caps[p] ?? {},
+      { today: keySpend.day[p] ?? 0, month: keySpend.month[p] ?? 0 },
+      raises[p],
+      at,
+    ),
+  );
+  /** Keys past their spend cap (and not raised for today): no calls on them (MM-09). */
+  const stoppedProviders = capStates.filter((s) => s.over && !s.raised).map((s) => s.provider);
+  const savedProviders = keyedProviders.filter((p) => !stoppedProviders.includes(p));
+  const raiseCap = (p: ProviderId) => {
+    const next = { ...raises, [p]: localDay(Date.now()) };
+    setRaises(next);
+    setSetting(db, tenant, RAISED_SETTING, JSON.stringify(next)).catch(report);
+  };
+  const providerName = (p: ProviderId) => (p === "anthropic" ? "Anthropic" : "OpenAI");
   /** RT-11: notes an answer moved up a tier (only stronger moves count). */
   const noteOverride = (o: Override) => {
     setOverrides((list) => {
@@ -1047,6 +1101,13 @@ export function ChatApp({
     });
     if (!routed.ok) {
       setProblem(routed.error);
+      return null;
+    }
+    // MM-09: a model you picked on a key past its cap isn't called.
+    if (stoppedProviders.includes(routed.model.provider)) {
+      setProblem(
+        `${providerName(routed.model.provider)} has reached its spend cap. Raise it for today, or pick another model (Ctrl+K).`,
+      );
       return null;
     }
     // Say so on the answer when the Cheap tier's reading was used (RT-09).
@@ -2654,6 +2715,33 @@ export function ChatApp({
             </Button>
           </div>
         )}
+        {capStates
+          .filter((s) => s.over && !s.raised)
+          .map((s) => (
+            <div
+              key={s.provider}
+              aria-label="Spend cap notice"
+              className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+            >
+              <CircleAlert className="size-3.5 text-amber-600" />
+              <span className="flex-1">
+                {providerName(s.provider)} has reached its{" "}
+                {s.over === "day"
+                  ? `daily cap (${money(s.spentToday)} of ${money(s.cap.dailyMicro ?? 0)})`
+                  : `monthly cap (${money(s.spentMonth)} of ${money(s.cap.monthlyMicro ?? 0)})`}
+                . FUSE makes no more calls on that key.
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  raiseCap(s.provider);
+                }}
+              >
+                Raise for today
+              </Button>
+            </div>
+          ))}
         {!suggestionNoticeOff && ruleSuggestions[0] && (
           <div
             aria-label="Routing suggestion"
@@ -2954,6 +3042,35 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              keyCaps={
+                <KeyCapsSection
+                  caps={capStates.map((s) => ({
+                    provider: s.provider,
+                    name: providerName(s.provider),
+                    daily: s.cap.dailyMicro === undefined ? null : s.cap.dailyMicro / 1_000_000,
+                    monthly:
+                      s.cap.monthlyMicro === undefined ? null : s.cap.monthlyMicro / 1_000_000,
+                    spentToday: s.spentToday,
+                    spentMonth: s.spentMonth,
+                    stopped: s.raised ? null : s.over,
+                    raised: s.raised,
+                  }))}
+                  onSave={(provider, daily, monthly) => {
+                    const next: KeyCaps = {
+                      ...caps,
+                      [provider]: {
+                        ...(daily === null ? {} : { dailyMicro: Math.round(daily * 1_000_000) }),
+                        ...(monthly === null
+                          ? {}
+                          : { monthlyMicro: Math.round(monthly * 1_000_000) }),
+                      },
+                    };
+                    setCaps(next);
+                    setSetting(db, tenant, CAPS_SETTING, JSON.stringify(next)).catch(report);
+                  }}
+                  onRaise={raiseCap}
+                />
               }
               modelDefaults={
                 <ModelDefaultsSection

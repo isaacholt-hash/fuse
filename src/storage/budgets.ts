@@ -92,6 +92,20 @@ export async function allowBudgetUntil(
 }
 
 /** What was spent since `since`, everywhere or in one project (via the call's thread). */
+/** MM-09: spend per provider since a time (every call on its key, any purpose), micro-dollars. */
+export async function spentByProvider(
+  db: SqlDb,
+  tenant: Tenant,
+  since: number,
+): Promise<Record<string, number>> {
+  const rows = await db.select<{ provider: string; total: number | null }>(
+    `SELECT provider, SUM(cost_micro_usd) AS total FROM request_log
+     WHERE workspace_id = ? AND created_at >= ? GROUP BY provider`,
+    [tenant.workspaceId, since],
+  );
+  return Object.fromEntries(rows.map((r) => [r.provider, r.total ?? 0]));
+}
+
 export async function spentSince(
   db: SqlDb,
   tenant: Tenant,
