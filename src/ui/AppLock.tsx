@@ -1,5 +1,5 @@
-import { Lock, LoaderCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Fingerprint, Lock, LoaderCircle } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Mark } from "./primitives";
@@ -8,13 +8,36 @@ import { Mark } from "./primitives";
 export function LockScreen({
   onUnlock,
   waitUntil,
+  onHello,
 }: {
   /** Checks a passcode; true unlocks. */
   onUnlock: (passcode: string) => Promise<boolean>;
   /** After too many wrong tries: no tries before this time (Unix ms). */
   waitUntil: number;
+  /** Windows Hello, when it's set up and turned on; true unlocks. */
+  onHello?: () => Promise<boolean>;
 }) {
   const [passcode, setPasscode] = useState("");
+  const [helloFailed, setHelloFailed] = useState(false);
+  const askHello = useCallback(() => {
+    if (!onHello) return;
+    setHelloFailed(false);
+    onHello().then(
+      (ok) => {
+        if (!ok) setHelloFailed(true);
+      },
+      () => {
+        setHelloFailed(true);
+      },
+    );
+  }, [onHello]);
+  // Windows Hello is asked once as the lock screen appears; the button asks again.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (asked.current) return;
+    asked.current = true;
+    askHello();
+  }, [askHello]);
   const [checking, setChecking] = useState(false);
   const [wrong, setWrong] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -77,6 +100,19 @@ export function LockScreen({
         <Button type="submit" className="mt-3 w-full" disabled={!passcode || wait > 0 || checking}>
           {checking ? <LoaderCircle className="size-4 animate-spin" /> : "Unlock"}
         </Button>
+        {onHello && (
+          <>
+            <Button type="button" variant="outline" className="mt-2 w-full" onClick={askHello}>
+              <Fingerprint className="size-4" />
+              Use Windows Hello
+            </Button>
+            {helloFailed && (
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                Windows Hello didn&apos;t confirm it&apos;s you. Try again or use your passcode.
+              </p>
+            )}
+          </>
+        )}
       </form>
     </main>
   );
@@ -98,7 +134,12 @@ export function AppLockSection({
   onSet,
   onRemove,
   onIdle,
+  hello,
+  onHello,
 }: {
+  /** Windows Hello is turned on; both unset when it isn't set up on this PC. */
+  hello?: boolean;
+  onHello?: (on: boolean) => void;
   enabled: boolean;
   idleMinutes: number;
   minLength: number;
@@ -209,6 +250,18 @@ export function AppLockSection({
             ))}
           </select>
           of no use
+        </label>
+      )}
+      {enabled && onHello && (
+        <label className="mt-2 flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={hello ?? false}
+            onChange={(e) => {
+              onHello(e.target.checked);
+            }}
+          />
+          Unlock with Windows Hello (face, fingerprint or PIN); the passcode still works
         </label>
       )}
       <p role="status" className="mt-2 text-[11px] text-muted-foreground">

@@ -36,6 +36,17 @@ tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).
 tauri-plugin-updater = "2"
 
+# Windows Hello for the app lock (SE-03, src/hello.rs): the windows crates Tauri already uses.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+  "Foundation",
+  "Security_Credentials_UI",
+  "Win32_Foundation",
+  "Win32_System_Com",
+  "Win32_System_WinRT",
+] }
+windows-future = "=0.3.2"
+
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]
 codegen-units = 1

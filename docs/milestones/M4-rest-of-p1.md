@@ -25,7 +25,7 @@
   - React artifacts render in the sandbox with a bundled React and JSX transform, and no network.
   - A per-artifact switch allows listed CDNs.
 - [x] **7. Search inside PDFs (FK-02).** Big PDFs are extracted locally, chunked and indexed, and citations give page numbers.
-- [ ] **8. Windows Hello unlock (SE-03).** On Windows the lock screen offers Windows Hello, with the passcode as fallback.
+- [x] **8. Windows Hello unlock (SE-03).** On Windows the lock screen offers Windows Hello, with the passcode as fallback.
 
 ### P1 Shoulds
 

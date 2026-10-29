@@ -200,6 +200,7 @@ import { exportAll } from "@/data/exportAll";
 import { deleteAllData } from "@/data/deleteAll";
 import { DEFAULT_SHORTCUT, SHORTCUT_SETTING, type QuickCaptureApi } from "./quickCapture";
 import { useAppearance, type ZoomApi } from "./appearance";
+import { HELLO_SETTING, type HelloApi } from "@/security/hello";
 import { BudgetsSection, type BudgetView } from "@/ui/Budgets";
 import {
   addBudget,
@@ -291,6 +292,7 @@ export interface ChatAppProps {
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   zoom?: ZoomApi;
+  hello?: HelloApi;
   /** Starts the app over (after delete-all); a page reload by default. */
   onRestart?: () => void;
 }
@@ -391,6 +393,7 @@ export function ChatApp({
   exporter,
   quickCapture,
   zoom,
+  hello,
   onRestart = () => {
     window.location.reload();
   },
@@ -519,7 +522,12 @@ export function ChatApp({
     locked: boolean;
     wrongTries: number;
     waitUntil: number;
+    /** SE-03: Windows Hello is set up on this PC, and you chose to use it. */
+    helloAvailable: boolean;
+    helloOn: boolean;
   }>({
+    helloAvailable: false,
+    helloOn: false,
     hash: undefined,
     idleMinutes: DEFAULT_IDLE_MINUTES,
     locked: false,
@@ -1947,11 +1955,18 @@ export function ChatApp({
 
   // SE-03: locked at start when a passcode is set.
   useEffect(() => {
-    Promise.all([getSetting(db, tenant, LOCK_HASH), getSetting(db, tenant, LOCK_IDLE)]).then(
-      ([hash, idle]) => {
+    Promise.all([
+      getSetting(db, tenant, LOCK_HASH),
+      getSetting(db, tenant, LOCK_IDLE),
+      getSetting(db, tenant, HELLO_SETTING),
+      hello ? hello.available().catch(() => false) : Promise.resolve(false),
+    ]).then(
+      ([hash, idle, helloSetting, helloAvailable]) => {
         const minutes = idle === null ? DEFAULT_IDLE_MINUTES : Number(idle);
         setLock((l) => ({
           ...l,
+          helloAvailable,
+          helloOn: helloSetting === "on",
           hash: hash || null,
           idleMinutes: Number.isFinite(minutes) ? minutes : DEFAULT_IDLE_MINUTES,
           locked: Boolean(hash),
@@ -1962,7 +1977,7 @@ export function ChatApp({
         report(e);
       },
     );
-  }, [db, tenant]);
+  }, [db, tenant, hello]);
   // ...and again after being left alone for the chosen time.
   useEffect(() => {
     if (!lock.hash || lock.idleMinutes <= 0) return;
@@ -1994,6 +2009,16 @@ export function ChatApp({
         waitUntil: ok ? 0 : Date.now() + lockoutSeconds(wrongTries) * 1000,
       };
     });
+    return ok;
+  };
+  /** SE-03: unlocks when Windows Hello confirms it's you. */
+  const unlockWithHello = async () => {
+    if (!hello) return false;
+    const ok = await hello.verify("Unlock FUSE");
+    if (ok) {
+      lastActive.current = Date.now();
+      setLock((l) => ({ ...l, locked: false, wrongTries: 0, waitUntil: 0 }));
+    }
     return ok;
   };
   /** Settings: set or change the passcode (the current one is checked first). */
@@ -2209,7 +2234,15 @@ export function ChatApp({
 
   // SE-03: nothing of the app shows until the lock is known, and nothing while locked.
   if (lock.hash === undefined) return null;
-  if (lock.locked) return <LockScreen onUnlock={unlock} waitUntil={lock.waitUntil} />;
+  if (lock.locked) {
+    return (
+      <LockScreen
+        onUnlock={unlock}
+        waitUntil={lock.waitUntil}
+        {...(lock.helloAvailable && lock.helloOn ? { onHello: unlockWithHello } : {})}
+      />
+    );
+  }
 
   return (
     <Tooltip.Provider>
@@ -2394,6 +2427,15 @@ export function ChatApp({
                 <AppLockSection
                   enabled={Boolean(lock.hash)}
                   idleMinutes={lock.idleMinutes}
+                  {...(lock.helloAvailable
+                    ? {
+                        hello: lock.helloOn,
+                        onHello: (on: boolean) => {
+                          setLock((l) => ({ ...l, helloOn: on }));
+                          setSetting(db, tenant, HELLO_SETTING, on ? "on" : "").catch(report);
+                        },
+                      }
+                    : {})}
                   minLength={MIN_LENGTH}
                   onSet={setPasscode}
                   onRemove={removePasscode}
