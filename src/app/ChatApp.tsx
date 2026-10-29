@@ -1,6 +1,6 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
-import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, X } from "lucide-react";
+import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -147,6 +147,14 @@ import { GoldenSetSection } from "@/ui/GoldenSet";
 import { PolicyEditor } from "@/ui/PolicyEditor";
 import { parseGoldenSet, summarize, type GoldenPrompt } from "@/routing/golden";
 import { compareOnGoldenSet, scoreGoldenSet } from "@/routing/evaluate";
+import {
+  DISMISSED_SETTING,
+  OVERRIDES_SETTING,
+  parseJsonList,
+  suggestRules,
+  withOverride,
+  type Override,
+} from "@/routing/learn";
 import {
   loadPolicy,
   loadProjectRules,
@@ -441,6 +449,10 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // RT-11: answers you moved up a tier, and suggestions you dismissed.
+  const [overrides, setOverrides] = useState<Override[]>([]);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
+  const [suggestionNoticeOff, setSuggestionNoticeOff] = useState(false);
   // RT-06: each model's median time to first token this week, for price ties.
   const [latency, setLatency] = useState<Record<string, number>>({});
   // RT-03: your saved policy and per-project rules (raw JSON from settings).
@@ -654,7 +666,11 @@ export function ChatApp({
       getSetting(db, tenant, MODEL_CHECK_SETTING),
       getSetting(db, tenant, POLICY_SETTING),
       getSetting(db, tenant, PROJECT_RULES_SETTING),
-    ]).then(([fetched, edits, custom, check, savedRouting, projectRouting]) => {
+      getSetting(db, tenant, OVERRIDES_SETTING),
+      getSetting(db, tenant, DISMISSED_SETTING),
+    ]).then(([fetched, edits, custom, check, savedRouting, projectRouting, moved, dismissed]) => {
+      setOverrides(parseJsonList<Override>(moved));
+      setDismissedSuggestions(parseJsonList<string>(dismissed));
       setSavedPolicy(savedRouting);
       setProjectRulesRaw(projectRouting);
       setFetchedPrices(fetched);
@@ -860,6 +876,22 @@ export function ChatApp({
     medianFirstTokenMs(db, tenant, Date.now() - 7 * 86_400_000).then(setLatency, report);
   }, [db, tenant, at]);
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
+  /** RT-11: notes an answer moved up a tier (only stronger moves count). */
+  const noteOverride = (o: Override) => {
+    setOverrides((list) => {
+      const next = withOverride(list, o);
+      if (next.length !== list.length || next.at(-1) !== list.at(-1)) {
+        setSetting(db, tenant, OVERRIDES_SETTING, JSON.stringify(next)).catch(report);
+      }
+      return next;
+    });
+  };
+  const ruleSuggestions = suggestRules(globalPolicy, overrides, dismissedSuggestions, at);
+  const dismissSuggestion = (key: string) => {
+    const next = [...dismissedSuggestions, key];
+    setDismissedSuggestions(next);
+    setSetting(db, tenant, DISMISSED_SETTING, JSON.stringify(next)).catch(report);
+  };
   /** Reads the providers' model lists (free calls) and compares them with the catalog. */
   const checkModels = async () => {
     const lists = Object.fromEntries(
@@ -1161,6 +1193,20 @@ export function ChatApp({
       : undefined;
     const found = routeFor(text, ready, messages, search, gate.downshift !== null, checked);
     if (!found) return;
+    // RT-11: a pinned tier above what Auto would have picked counts as an override.
+    if (mode.kind === "tier" && !incognito) {
+      const task = checked ?? local;
+      const auto = route(policy, catalog, AUTO, task, { providers: savedProviders });
+      if (auto.ok && auto.info.tier) {
+        noteOverride({
+          intent: task.intent,
+          complexity: task.complexity,
+          from: auto.info.tier,
+          to: mode.tier,
+          at: Date.now(),
+        });
+      }
+    }
     // CO-05: a message that adds a lot (a long paste, big files) shows its cost first. The
     // history alone doesn't count: it's resent every turn and mostly read from cache.
     const added = classifyInput(text, ready, [], false).contextTokens ?? 0;
@@ -1311,6 +1357,18 @@ export function ChatApp({
       ruleId: "escalation",
       reason: `One tier up from ${tierLabel(step.from)}, at your request`,
     };
+    // RT-11: moving an Auto answer up is an override of how it was routed.
+    const original = answer.route;
+    const thread = threads.find((t) => t.id === selectedId);
+    if (original?.mode === "auto" && !thread?.incognito) {
+      noteOverride({
+        intent: task.intent,
+        complexity: task.complexity,
+        from: step.from,
+        to: step.to,
+        at: Date.now(),
+      });
+    }
     void stream(
       selectedId,
       { ...routed, info },
@@ -2310,6 +2368,37 @@ export function ChatApp({
             </Button>
           </div>
         )}
+        {!suggestionNoticeOff && ruleSuggestions[0] && (
+          <div
+            aria-label="Routing suggestion"
+            className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
+          >
+            <Sparkles className="size-3.5 text-sky-600" />
+            <span className="flex-1">
+              From your overrides, a routing rule to consider: {ruleSuggestions[0].text}.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setSuggestionNoticeOff(true);
+                setView("settings");
+              }}
+            >
+              See it
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss routing suggestion"
+              onClick={() => {
+                setSuggestionNoticeOff(true);
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        )}
         {!modelsNoticeOff && modelCheck?.missing.some((m) => m.tiers.length > 0) && (
           <div
             aria-label="Models notice"
@@ -2732,6 +2821,8 @@ export function ChatApp({
                     isCustom={Boolean(savedPolicy)}
                     projects={projects}
                     projectRules={projectRules}
+                    suggestions={ruleSuggestions}
+                    onDismissSuggestion={dismissSuggestion}
                     models={catalog.models.map((m) => ({
                       key: modelKey(m),
                       name: m.displayName,
