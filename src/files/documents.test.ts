@@ -50,8 +50,28 @@ test("prepareDocument: PDFs stay PDFs, everything else becomes text with an esti
   expect(new TextDecoder().decode(w.bytes)).toBe("Hi there");
 });
 
+test("a PDF over 100 pages becomes its text with page markers, searched by default", async () => {
+  const pages = Array.from({ length: 101 }, (_, i) => `Text of page ${String(i + 1)}`);
+  const p = await prepareDocument(new File([pdf(101)], "manual.pdf"), {
+    readPdf: () => Promise.resolve(pages),
+  });
+  expect(p).toMatchObject({ kind: "text", mime: "text/plain", pages: 101, searchOnly: true });
+  expect(new TextDecoder().decode(p.bytes)).toMatch(
+    /^--- page 1 ---\nText of page 1\n\n--- page 2 ---\nText of page 2/,
+  );
+  // Project knowledge searches every PDF, small ones too.
+  const small = await prepareDocument(new File([pdf(2)], "a.pdf"), {
+    readPdf: () => Promise.resolve(["One", "Two"]),
+    searchPdf: true,
+  });
+  expect(small).toMatchObject({ kind: "text", pages: 2 });
+});
+
 test("refusals are plain English", async () => {
-  await expect(prepareDocument(new File([pdf(101)], "big.pdf"))).rejects.toThrow(/over 100 pages/);
+  // Past 100 pages a PDF is searched instead (FK-02); a PDF with no text can't be.
+  await expect(
+    prepareDocument(new File([pdf(101)], "scan.pdf"), { readPdf: () => Promise.resolve(["", ""]) }),
+  ).rejects.toThrow(/no text to search/);
   await expect(
     prepareDocument(new File([new Uint8Array([0xff, 0xfe, 0x00])], "x.txt")),
   ).rejects.toThrow(/isn't plain text/);
