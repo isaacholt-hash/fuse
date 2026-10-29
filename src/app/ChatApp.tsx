@@ -60,6 +60,7 @@ import { classify } from "@/routing/classify";
 import {
   checkPolicy,
   chooseTier,
+  serializePolicy,
   tierModels,
   tierOf,
   TIER_ORDER,
@@ -141,8 +142,18 @@ import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
+import { PolicyEditor } from "@/ui/PolicyEditor";
 import { parseGoldenSet, summarize, type GoldenPrompt } from "@/routing/golden";
-import { scoreGoldenSet } from "@/routing/evaluate";
+import { compareOnGoldenSet, scoreGoldenSet } from "@/routing/evaluate";
+import {
+  loadPolicy,
+  loadProjectRules,
+  POLICY_SETTING,
+  PROJECT_RULES_SETTING,
+  readPolicyFile,
+  rulesToRaw,
+  withProjectRules,
+} from "@/routing/policyStore";
 import { listGoldenPrompts, replaceGoldenPrompts } from "@/storage/goldenPrompts";
 import {
   GlobalInstructionsSection,
@@ -367,7 +378,7 @@ export function ChatApp({
   db,
   tenant,
   catalog: shippedCatalog,
-  policy,
+  policy: shippedPolicy,
   keysApi,
   adapterFor,
   files,
@@ -424,6 +435,9 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // RT-03: your saved policy and per-project rules (raw JSON from settings).
+  const [savedPolicy, setSavedPolicy] = useState<string | null>(null);
+  const [projectRulesRaw, setProjectRulesRaw] = useState<string | null>(null);
   const catalog = useMemo(
     () =>
       applyEdits(
@@ -625,7 +639,11 @@ export function ChatApp({
       getSetting(db, tenant, EDITS_SETTING),
       getSetting(db, tenant, CUSTOM_MODELS_SETTING),
       getSetting(db, tenant, MODEL_CHECK_SETTING),
-    ]).then(([fetched, edits, custom, check]) => {
+      getSetting(db, tenant, POLICY_SETTING),
+      getSetting(db, tenant, PROJECT_RULES_SETTING),
+    ]).then(([fetched, edits, custom, check, savedRouting, projectRouting]) => {
+      setSavedPolicy(savedRouting);
+      setProjectRulesRaw(projectRouting);
       setFetchedPrices(fetched);
       setPriceEdits(parseEdits(edits));
       setCustomModels(parseCustomModels(custom));
@@ -804,6 +822,26 @@ export function ChatApp({
     [clearAttachments, projects],
   );
 
+  const globalPolicy = useMemo(
+    () => loadPolicy(shippedPolicy, savedPolicy, catalog),
+    [shippedPolicy, savedPolicy, catalog],
+  );
+  const projectRules = useMemo(
+    () => loadProjectRules(globalPolicy, projectRulesRaw),
+    [globalPolicy, projectRulesRaw],
+  );
+  // The chat on screen's project adds its own rules first (RT-03).
+  const routingProject = selectedId
+    ? (threads.find((t) => t.id === selectedId)?.projectId ?? null)
+    : draftProject;
+  const policy = useMemo(
+    () =>
+      withProjectRules(
+        globalPolicy,
+        routingProject === null ? undefined : projectRules[routingProject],
+      ),
+    [globalPolicy, projectRules, routingProject],
+  );
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
   /** Reads the providers' model lists (free calls) and compares them with the catalog. */
   const checkModels = async () => {
@@ -2606,13 +2644,68 @@ export function ChatApp({
                 />
               }
               routing={
-                golden && (
-                  <GoldenSetSection
-                    summary={summarize(golden)}
-                    score={golden.length > 0 ? scoreGoldenSet(policy, golden) : null}
-                    onImport={importGolden}
+                <>
+                  <PolicyEditor
+                    policy={globalPolicy}
+                    isCustom={Boolean(savedPolicy)}
+                    projects={projects}
+                    projectRules={projectRules}
+                    models={catalog.models.map((m) => ({
+                      key: modelKey(m),
+                      name: m.displayName,
+                      provider: m.provider,
+                      id: m.id,
+                    }))}
+                    problems={(draft) => checkPolicy(draft, catalog)}
+                    score={(before, after) =>
+                      golden && golden.length > 0 ? compareOnGoldenSet(before, after, golden) : null
+                    }
+                    onSave={(draft) => {
+                      const raw = JSON.stringify(
+                        serializePolicy({
+                          ...draft,
+                          policyVersion: new Date().toISOString().slice(0, 10),
+                          builtFromPriceVersion: draft.builtFromPriceVersion,
+                        }),
+                      );
+                      setSavedPolicy(raw);
+                      setSetting(db, tenant, POLICY_SETTING, raw).catch(report);
+                    }}
+                    onSaveProject={(projectId, rules) => {
+                      const all = Object.fromEntries(
+                        Object.entries(projectRules).map(([id, rs]) => [
+                          id,
+                          rulesToRaw(globalPolicy, rs),
+                        ]),
+                      );
+                      all[projectId] = rulesToRaw(globalPolicy, rules);
+                      const raw = JSON.stringify(all);
+                      setProjectRulesRaw(raw);
+                      setSetting(db, tenant, PROJECT_RULES_SETTING, raw).catch(report);
+                    }}
+                    onReset={() => {
+                      setSavedPolicy(null);
+                      setSetting(db, tenant, POLICY_SETTING, "").catch(report);
+                    }}
+                    onImport={(text) => readPolicyFile(text, catalog)}
+                    onExport={
+                      exporter &&
+                      ((draft) => {
+                        const bytes = new TextEncoder().encode(
+                          `${JSON.stringify(serializePolicy(draft), null, 2)}\n`,
+                        );
+                        exporter.save("fuse-routing.json", bytes).catch(report);
+                      })
+                    }
                   />
-                )
+                  {golden && (
+                    <GoldenSetSection
+                      summary={summarize(golden)}
+                      score={golden.length > 0 ? scoreGoldenSet(globalPolicy, golden) : null}
+                      onImport={importGolden}
+                    />
+                  )}
+                </>
               }
               memory={
                 <MemorySection

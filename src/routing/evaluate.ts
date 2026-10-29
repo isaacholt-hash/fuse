@@ -52,3 +52,25 @@ export function scoreGoldenSet(policy: RoutingPolicy, prompts: readonly GoldenPr
   score.misses.sort((a, b) => Number(a.needsContext) - Number(b.needsContext));
   return score;
 }
+
+/** A policy change on the test set (RT-16): standalone accuracy before and after, and how many prompts move tier. */
+export function compareOnGoldenSet(
+  before: RoutingPolicy,
+  after: RoutingPolicy,
+  prompts: readonly GoldenPrompt[],
+): {
+  before: { correct: number; total: number };
+  after: { correct: number; total: number };
+  changed: number;
+} {
+  let changed = 0;
+  for (const p of prompts) {
+    const task = classify({ text: p.prompt });
+    if (chooseTier(before, task).tier !== chooseTier(after, task).tier) changed += 1;
+  }
+  return {
+    before: scoreGoldenSet(before, prompts).standalone,
+    after: scoreGoldenSet(after, prompts).standalone,
+    changed,
+  };
+}

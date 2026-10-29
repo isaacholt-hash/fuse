@@ -20,7 +20,7 @@
 - [x] **4. Model discovery and deprecations (MM-03, MM-08).**
   - The providers' model lists are read through the adapters, and models can be added by hand.
   - A tier's model that disappears or is deprecated is flagged, with a replacement suggested.
-- [ ] **5. Editable routing policy with test before save (RT-03, RT-16).** A rule editor, per-project overrides, and import/export as a file. Before a change is saved, it's scored against the routing test set, before vs after.
+- [x] **5. Editable routing policy with test before save (RT-03, RT-16).** A rule editor, per-project overrides, and import/export as a file. Before a change is saved, it's scored against the routing test set, before vs after.
 - [ ] **6. React previews and the CDN switch (AR-05).**
   - React artifacts render in the sandbox with a bundled React and JSX transform, and no network.
   - A per-artifact switch allows listed CDNs.

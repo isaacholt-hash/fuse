@@ -8,6 +8,7 @@ import { memoryFilesApi } from "@/files/api";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
+import { getSetting } from "@/storage/settings";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
@@ -1032,6 +1033,30 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(document.documentElement).toHaveClass("reduce-motion");
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
+
+test("routing policy: a new rule is tested, saved, and Auto follows it", async () => {
+  const { user, db } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Routing policy" }));
+  await user.click(section.getByRole("button", { name: "Add rule" }));
+  const rule = within(section.getByRole("listitem", { name: "New rule" }));
+  expect(rule.getByRole("button", { name: "Writing" })).toHaveAttribute("aria-pressed", "true");
+  expect(rule.getByLabelText("Start on")).toHaveValue("best");
+  const save = section.getByRole("button", { name: "Save" });
+  expect(save).toBeDisabled();
+  await user.click(section.getByRole("button", { name: "Test on the routing test set" }));
+  expect(section.getByText(/No routing test set to score against/)).toBeInTheDocument();
+  await user.click(save);
+  expect(await section.findByText("Saved.")).toBeInTheDocument();
+  expect(await getSetting(db, DEFAULT_TENANT, "routing.policy")).toContain('"New rule"');
+
+  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.type(await composer(), "Write an email to my landlord about the boiler{Enter}");
+  expect(
+    await screen.findByRole("button", { name: "Cost breakdown for Test Best" }),
+  ).toBeInTheDocument();
 });
 
 test("models: a tier model the provider stopped listing is flagged; a new one can be added with prices", async () => {
