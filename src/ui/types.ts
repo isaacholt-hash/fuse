@@ -235,17 +235,35 @@ export interface MemoryView {
   kind: MemoryKindView;
   projectId: string | null;
   projectName: string | null;
+  /** Kept for one chat only (PM-13): its id and title. */
+  threadId: string | null;
+  threadName: string | null;
   /** Title of the chat it came from; null if typed in or the chat is gone. */
   source: string | null;
   /** e.g. "Oct 27" */
   date: string;
   confidence: number;
+  /** Provenance (PM-14). */
+  authority: "you" | "imported" | "extracted";
+  extractionMethod: string;
+  extractionModel: string | null;
+  status: "active" | "excluded" | "expired";
+  sensitivity: "normal" | "sensitive";
+  maySend: boolean;
+  expiresAt: number | null;
+  lastVerifiedAt: number | null;
+  revision: number;
 }
 
 export interface MemoryForm {
   text: string;
   kind: MemoryKindView;
   projectId: string | null;
+  /** Kept for this chat only. */
+  threadId?: string | null;
+  sensitivity?: "normal" | "sensitive";
+  maySend?: boolean;
+  expiresAt?: number | null;
 }
 
 /** A change the Cheap model suggested, waiting for review (PM-03). */

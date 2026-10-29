@@ -2346,6 +2346,55 @@ describe("memory", () => {
     );
     expect(await section.findByText("No memories yet.")).toBeInTheDocument();
   });
+
+  test("a memory kept for one chat, sensitive and on this device: shown with its provenance, never sent (PM-12 to PM-14)", async () => {
+    const { options, user } = setup();
+    await user.type(await composer(), "Plan the garden{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    await user.keyboard("{Control>},{/Control}");
+    const section = within(await screen.findByRole("region", { name: "Memory" }));
+    await user.type(section.getByLabelText("New memory"), "Shed code is under the pot.");
+    await user.selectOptions(
+      section.getByLabelText("Used in"),
+      section.getByRole("option", { name: /Only in the chat/ }),
+    );
+    await user.click(section.getByLabelText("Sensitive"));
+    await user.click(section.getByLabelText(/Keep on this device/));
+    await user.click(section.getByRole("button", { name: "Add memory" }));
+    const facts = within(await section.findByRole("list", { name: "About you" }));
+    expect(
+      facts.getByText(/only in “.*” · added by you · .*sensitive · kept on this device/),
+    ).toBeInTheDocument();
+    expect(facts.getByText("Sent to models").nextSibling).toHaveTextContent("never");
+
+    await user.type(section.getByLabelText("New memory"), "Lives in Leeds.");
+    fireEvent.change(section.getByLabelText("Expires on"), { target: { value: "2020-01-01" } });
+    await user.click(section.getByRole("button", { name: "Add memory" }));
+    // Already expired, so not listed as in use.
+    await waitFor(() => {
+      expect(section.getByLabelText("New memory")).toHaveValue("");
+    });
+    expect(section.queryByText("Lives in Leeds.")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+    await user.type(await composer(), "Where is the shed code?{Enter}");
+    await waitFor(() => {
+      expect(options).toHaveLength(2);
+    });
+    const system = (options.at(-1) as { system?: string }).system ?? "";
+    expect(system).not.toContain("Shed code");
+    expect(system).not.toContain("Leeds");
+
+    await user.keyboard("{Control>},{/Control}");
+    const again = within(await screen.findByRole("region", { name: "Memory" }));
+    await user.selectOptions(again.getByLabelText("Show status"), "not_in_use");
+    expect(await again.findByText("Lives in Leeds.")).toBeInTheDocument();
+    expect(again.queryByText("Shed code is under the pot.")).not.toBeInTheDocument();
+    expect(again.getByText(/added by you · .* · expired/)).toBeInTheDocument();
+    await user.selectOptions(again.getByLabelText("Show status"), "all");
+    await user.selectOptions(again.getByLabelText("Show where used"), "chat");
+    expect(again.getByText("Shed code is under the pot.")).toBeInTheDocument();
+    expect(again.queryByText("Lives in Leeds.")).not.toBeInTheDocument();
+  });
 });
 
 describe("projects", () => {

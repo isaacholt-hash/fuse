@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { fakeMemory } from "@/storage/testing/memory";
 import { selectMemories } from "@/memory/inject";
 import type { Memory } from "@/storage/memories";
 import { DEFAULT_TENANT } from "@/storage/defaults";
@@ -67,8 +68,7 @@ test("past chats on the topic come back with their titles and dates, not this ch
 });
 
 test("memories past the budget: meaning lifts a memory that shares no words", () => {
-  const mem = (id: string, text: string): Memory =>
-    ({ id, text, kind: "fact", projectId: null, createdAt: 0 }) as Memory;
+  const mem = (id: string, text: string): Memory => fakeMemory({ id, text });
   const pool = [mem("kid", "Has a girl, Maya, aged 7."), mem("car", "Drives a 2026 VW Atlas.")];
   const budget = 12; // room for one
   expect(
