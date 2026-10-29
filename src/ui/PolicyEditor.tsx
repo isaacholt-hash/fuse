@@ -61,7 +61,12 @@ export function PolicyEditor({
   onReset,
   onImport,
   onExport,
+  suggestions = [],
+  onDismissSuggestion,
 }: {
+  /** RT-11: rules your overrides suggest; adding one puts it in the draft, to test and save. */
+  suggestions?: { key: string; text: string; count: number; rule: Rule }[];
+  onDismissSuggestion?: (key: string) => void;
   policy: RoutingPolicy;
   /** You saved your own (not the shipped one). */
   isCustom: boolean;
@@ -348,6 +353,51 @@ export function PolicyEditor({
         </div>
       )}
 
+      {!isProject && suggestions.length > 0 && (
+        <div className="mb-3 space-y-1.5" aria-label="Suggested rules">
+          {suggestions.map((s) => (
+            <div
+              key={s.key}
+              className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
+            >
+              <span className="flex-1">
+                Suggested from your overrides: <strong className="font-medium">{s.text}</strong>{" "}
+                <span className="text-muted-foreground">
+                  (you moved {String(s.count)} answers up)
+                </span>
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  changed(() => {
+                    setRules((rs) => {
+                      const ids = new Set(rs.map((r) => r.id));
+                      let id = s.rule.id;
+                      for (let n = 2; ids.has(id); n++) id = `${s.rule.id}-${String(n)}`;
+                      return [{ ...s.rule, id }, ...rs];
+                    });
+                  });
+                  onDismissSuggestion?.(s.key);
+                }}
+              >
+                Add to rules
+              </Button>
+              {onDismissSuggestion && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    onDismissSuggestion(s.key);
+                  }}
+                >
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
       <ol className="space-y-2" aria-label="Rules">
         {rules.map((rule, i) => {
           const last = fixedLast && i === rules.length - 1;

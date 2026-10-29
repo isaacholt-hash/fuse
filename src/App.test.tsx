@@ -8,7 +8,7 @@ import { memoryFilesApi } from "@/files/api";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
-import { getSetting } from "@/storage/settings";
+import { getSetting, setSetting } from "@/storage/settings";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
@@ -1107,6 +1107,48 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
+
+test("learning from overrides: three moves up for one kind of question suggest a rule to test and save", async () => {
+  const { db, user } = setup({ anthropic: [() => answer("Everyday answer.")] });
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  await user.click(await screen.findByRole("button", { name: "Try a stronger model (Best)" }));
+  await screen.findByRole("button", { name: "Routing: Stronger · Best" });
+  const noted = await getSetting(db, DEFAULT_TENANT, "routing.overrides");
+  expect(JSON.parse(noted ?? "[]")).toMatchObject([
+    { intent: "chat", complexity: "low", from: "balanced", to: "best" },
+  ]);
+  // Two more like it, then a fresh start.
+  const more = JSON.parse(noted ?? "[]") as unknown[];
+  await setSetting(
+    db,
+    DEFAULT_TENANT,
+    "routing.overrides",
+    JSON.stringify([...more, ...more, ...more]),
+  );
+  cleanup();
+  render(
+    <App
+      openDb={() => Promise.resolve(db)}
+      keysApi={fakeKeysApi().api}
+      catalog={catalog}
+      policy={policy}
+    />,
+  );
+  const notice = await screen.findByLabelText("Routing suggestion");
+  expect(notice).toHaveTextContent("Chat questions (low) start on Best");
+  await user.click(within(notice).getByRole("button", { name: "See it" }));
+  const editor = within(await screen.findByRole("region", { name: "Routing policy" }));
+  await user.click(
+    within(editor.getByLabelText("Suggested rules")).getByRole("button", { name: "Add to rules" }),
+  );
+  expect(
+    editor.getByRole("listitem", { name: "You often moved chat questions up to Best" }),
+  ).toBeInTheDocument();
+  await user.click(editor.getByRole("button", { name: "Test on the routing test set" }));
+  await user.click(editor.getByRole("button", { name: "Save" }));
+  expect(await getSetting(db, DEFAULT_TENANT, "routing.policy")).toContain("learned-chat-best");
+  expect(screen.queryByLabelText("Routing suggestion")).not.toBeInTheDocument();
+}, 20_000);
 
 test("stay on this provider: offered once a chat has an answer, saved on the chat", async () => {
   const { user, db } = setup();
