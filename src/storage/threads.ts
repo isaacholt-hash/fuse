@@ -35,6 +35,8 @@ export interface Thread {
   archivedAt: number | null;
   /** CH-02 tags, sorted. */
   tags: string[];
+  /** RT-06: Auto stays on this provider in this chat; null lets it pick either. */
+  stayProvider: ProviderId | null;
 }
 
 interface ThreadRow {
@@ -58,6 +60,7 @@ interface ThreadRow {
   pinned_at: number | null;
   archived_at: number | null;
   tags: string | null;
+  stay_provider: string | null;
 }
 
 const TAG_SEP = "\u001f";
@@ -84,13 +87,15 @@ const toThread = (r: ThreadRow): Thread => ({
   pinnedAt: r.pinned_at,
   archivedAt: r.archived_at,
   tags: r.tags ? r.tags.split(TAG_SEP).sort() : [],
+  stayProvider:
+    r.stay_provider === "openai" || r.stay_provider === "anthropic" ? r.stay_provider : null,
 });
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
-         t.pinned_at, t.archived_at,
+         t.pinned_at, t.archived_at, t.stay_provider,
          (SELECT GROUP_CONCAT(g.tag, char(31)) FROM thread_tags g WHERE g.thread_id = t.id) AS tags,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
                    WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
@@ -316,6 +321,20 @@ export function normaliseTag(raw: string): string {
     .replace(/\s+/g, "-")
     .replace(/[^\p{L}\p{N}_-]/gu, "")
     .slice(0, 32);
+}
+
+/** RT-06: keeps Auto on one provider in this chat, or lets it pick either again (null). */
+export async function setThreadStay(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  provider: ProviderId | null,
+): Promise<void> {
+  await db.execute(`UPDATE threads SET stay_provider = ? WHERE workspace_id = ? AND id = ?`, [
+    provider,
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 /** Pins a chat to the top of the sidebar, or unpins it (CH-02). */

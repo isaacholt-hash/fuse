@@ -110,7 +110,7 @@ import {
   updateProject,
   type Project,
 } from "@/storage/projects";
-import { listRecentRequests, logRequest } from "@/storage/requestLog";
+import { listRecentRequests, logRequest, medianFirstTokenMs } from "@/storage/requestLog";
 import {
   DEFAULT_MEMORY_SETTINGS,
   getMemorySettings,
@@ -127,6 +127,7 @@ import {
   setThreadArchived,
   setThreadInstructions,
   setThreadPinned,
+  setThreadStay,
   setThreadTags,
   purgeIncognito,
   purgeThread,
@@ -440,6 +441,8 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // RT-06: each model's median time to first token this week, for price ties.
+  const [latency, setLatency] = useState<Record<string, number>>({});
   // RT-03: your saved policy and per-project rules (raw JSON from settings).
   const [savedPolicy, setSavedPolicy] = useState<string | null>(null);
   const [projectRulesRaw, setProjectRulesRaw] = useState<string | null>(null);
@@ -852,6 +855,10 @@ export function ChatApp({
       ),
     [globalPolicy, projectRules, routingProject],
   );
+  // RT-06: speeds refresh as answers come in (the thread list's time moves with each one).
+  useEffect(() => {
+    medianFirstTokenMs(db, tenant, Date.now() - 7 * 86_400_000).then(setLatency, report);
+  }, [db, tenant, at]);
   const savedProviders = keys.keys.filter((k) => k.saved).map((k) => k.provider);
   /** Reads the providers' model lists (free calls) and compares them with the catalog. */
   const checkModels = async () => {
@@ -886,6 +893,11 @@ export function ChatApp({
   const mode: RouteMode = oneShot ?? savedMode;
   /** The chat keeps to its provider on a price tie (RT-06). */
   const stayOn = lastModelOf(messages, catalog)?.provider;
+  /** RT-06: "stay on this provider" for this chat, when that provider has a key. */
+  const stayProvider =
+    openThread?.stayProvider && savedProviders.includes(openThread.stayProvider)
+      ? openThread.stayProvider
+      : undefined;
   /**
    * The model the composer shows and estimates with: the pinned one, or the cheapest at the
    * pinned tier (Auto: the quality floor). With no usable key, the tier's first model, so the
@@ -898,10 +910,19 @@ export function ChatApp({
     }
     const tier = mode.kind === "tier" ? mode.tier : policy.floor.default;
     const pick = (providers: readonly ProviderId[]) =>
-      tierModels(policy, catalog, tier, { providers, ...(stayOn ? { prefer: stayOn } : {}) })[0];
+      tierModels(policy, catalog, tier, {
+        providers,
+        latency,
+        ...(stayOn ? { prefer: stayOn } : {}),
+      })[0];
     const fallback = catalog.models[0];
     if (!fallback) throw new Error("The model catalog is empty");
-    return pick(savedProviders) ?? pick(["anthropic", "openai"]) ?? fallback;
+    return (
+      (stayProvider ? pick([stayProvider]) : undefined) ??
+      pick(savedProviders) ??
+      pick(["anthropic", "openai"]) ??
+      fallback
+    );
   })();
   const chooseMode = (next: RouteMode) => {
     if (onceArmed) {
@@ -934,6 +955,8 @@ export function ChatApp({
     const routed = route(policy, catalog, mode, task, {
       providers: savedProviders,
       ...(stayOn ? { prefer: stayOn } : {}),
+      ...(stayProvider ? { stay: stayProvider } : {}),
+      latency,
       downshift,
     });
     if (!routed.ok) {
@@ -2938,6 +2961,20 @@ export function ChatApp({
                         }}
                         onEditTags={() => {
                           setTagging(thread.id);
+                        }}
+                        stay={{
+                          provider: thread.stayProvider ?? stayOn ?? null,
+                          on: thread.stayProvider !== null,
+                          onToggle: () => {
+                            setThreadStay(
+                              db,
+                              tenant,
+                              thread.id,
+                              thread.stayProvider ? null : (stayOn ?? null),
+                            )
+                              .then(refreshThreads)
+                              .catch(report);
+                          },
                         }}
                       />
                     )}

@@ -85,6 +85,40 @@ export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry):
   return id;
 }
 
+/** Fewer answers than this from a model and its speed isn't known yet. */
+const MIN_SPEED_SAMPLES = 3;
+
+/**
+ * RT-06: each model's median time to first token over answers since `since`, keyed
+ * `provider/model`. Only successful chat answers count; models with too few are left out.
+ */
+export async function medianFirstTokenMs(
+  db: SqlDb,
+  tenant: Tenant,
+  since: number,
+): Promise<Record<string, number>> {
+  const rows = await db.select<{ provider: string; model: string; ttft_ms: number }>(
+    `SELECT provider, model, ttft_ms FROM request_log
+     WHERE workspace_id = ? AND purpose = 'chat' AND error_code IS NULL AND ttft_ms IS NOT NULL
+       AND created_at >= ?`,
+    [tenant.workspaceId, since],
+  );
+  const byModel = new Map<string, number[]>();
+  for (const r of rows) {
+    const key = `${r.provider}/${r.model}`;
+    byModel.set(key, [...(byModel.get(key) ?? []), r.ttft_ms]);
+  }
+  const out: Record<string, number> = {};
+  for (const [key, times] of byModel) {
+    if (times.length < MIN_SPEED_SAMPLES) continue;
+    const sorted = [...times].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    out[key] =
+      sorted.length % 2 ? (sorted[mid] ?? 0) : ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2;
+  }
+  return out;
+}
+
 export async function listRecentRequests(
   db: SqlDb,
   tenant: Tenant,
