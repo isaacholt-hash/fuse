@@ -104,9 +104,13 @@ async function richChat() {
 }
 
 test("a chat without decisions, constraints or tasks sends what it did before the assembler", async () => {
-  const { send, sent } = await richChat();
+  const { send, sent, thread } = await richChat();
   await send("What next?");
-  expect(sent.at(-1)).toMatchSnapshot();
+  const last = sent.at(-1);
+  // The scope for the Rust egress check (SE-13, added after the snapshot) isn't prompt content.
+  expect(last?.options.scope).toEqual({ kind: "thread", id: thread.id });
+  delete last?.options.scope;
+  expect(last).toMatchSnapshot();
 });
 
 test("decisions and constraints, then tasks, then memories, each part with its source (PM-18)", async () => {

@@ -5,6 +5,9 @@ import { ProviderError, parseRetryAfter, transportError, type ProviderErrorKind 
 import { withRetry, type RetryOptions } from "../retry";
 import { readSse } from "../sse";
 import {
+  SCOPE_HEADER,
+  scopeValue,
+  type SendScope,
   DEFAULT_MAX_OUTPUT_TOKENS,
   type Attachment,
   type ChatMessage,
@@ -165,11 +168,15 @@ export function createOpenAIAdapter(deps: {
 }): ProviderAdapter {
   const send = async (
     path: string,
-    init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal },
+    init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal; scope?: SendScope },
   ): Promise<Response> => {
     let res: Response;
+    const { scope, ...rest } = init;
     try {
-      res = await deps.fetch(`${OPENAI_API}${path}`, { ...init, headers });
+      res = await deps.fetch(`${OPENAI_API}${path}`, {
+        ...rest,
+        headers: scope ? { ...headers, [SCOPE_HEADER]: scopeValue(scope) } : headers,
+      });
     } catch (e) {
       if (init.signal?.aborted) throw new ProviderError("aborted", "Aborted");
       throw new ProviderError("network", e instanceof Error ? e.message : String(e));
@@ -190,10 +197,16 @@ export function createOpenAIAdapter(deps: {
       return (json.data ?? []).map((m): RemoteModel => ({ id: m.id, displayName: null }));
     },
 
-    async embed(texts, model, signal) {
+    async embed(texts, model, signal, scope) {
       const body = JSON.stringify({ model, input: texts, encoding_format: "float" });
       const { value: res, attempts } = await withRetry(
-        () => send("/v1/embeddings", { method: "POST", body, ...(signal ? { signal } : {}) }),
+        () =>
+          send("/v1/embeddings", {
+            method: "POST",
+            body,
+            ...(signal ? { signal } : {}),
+            ...(scope ? { scope } : {}),
+          }),
         { ...deps.retry, ...(signal ? { signal } : {}) },
       );
       const json = (await res.json()) as {
@@ -218,7 +231,13 @@ export function createOpenAIAdapter(deps: {
     async *streamChat(messages, model, options, signal): AsyncGenerator<StreamEvent> {
       const body = JSON.stringify(buildRequestBody(messages, model, options));
       const { value: res, attempts } = await withRetry(
-        () => send("/v1/responses", { method: "POST", body, ...(signal ? { signal } : {}) }),
+        () =>
+          send("/v1/responses", {
+            method: "POST",
+            body,
+            ...(signal ? { signal } : {}),
+            ...(options.scope ? { scope: options.scope } : {}),
+          }),
         { ...deps.retry, ...(signal ? { signal } : {}) },
       );
       const requestId = res.headers.get("x-request-id");

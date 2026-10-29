@@ -2,6 +2,7 @@
  * Retrieval over large files (FK-02, FK-03): a file too big to resend every turn is chunked and
  * embedded once, and each question gets the excerpts that match it best, with citations.
  */
+import { threadScope, type SendScope } from "@/providers/types";
 import type { EmbeddingModel } from "@/catalog/catalog";
 import type { FilesApi } from "@/files/api";
 import type { FileRecord } from "@/storage/files";
@@ -24,12 +25,14 @@ export async function ensureIndexed(
   deps: EmbedDeps & { files: FilesApi },
   model: EmbeddingModel,
   file: FileRecord,
+  /** Where the file's text may be sent (SE-13): its chat's or its project's scope. */
+  scope: SendScope = { kind: "global" },
 ): Promise<void> {
   if ((await listChunks(deps.db, deps.tenant, "file", file.id)).length === 0) {
     const text = new TextDecoder().decode(await deps.files.get(file.sha256));
     await replaceChunks(deps.db, deps.tenant, "file", file.id, chunkText(text));
   }
-  await indexChunks(deps, model, "file", [file.id]);
+  await indexChunks(deps, model, "file", [file.id], undefined, scope);
 }
 
 const lines = (a: number | null, b: number | null) =>
@@ -46,7 +49,7 @@ export async function retrieveExcerpts(
   question: string,
   threadId: string | null,
 ): Promise<Excerpts> {
-  for (const f of files) await ensureIndexed(deps, model, f);
+  for (const f of files) await ensureIndexed(deps, model, f, threadScope(threadId));
   const [query] = await embedTexts(
     deps,
     model,

@@ -324,6 +324,8 @@ async function streamAnswer(
           : mine.prefix
         : system;
       const options = {
+        // SE-13: the Rust transport checks this chat's project policy again.
+        scope: { kind: "thread" as const, id: input.threadId },
         ...(prefixed ? { system: prefixed } : {}),
         ...(webSearch ? { webSearch } : {}),
         // High effort thinks at length, and thinking counts against the output limit: give it

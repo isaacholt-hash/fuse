@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import { housekeepingCall } from "@/chat/housekeeping";
+import { embedTexts } from "@/knowledge/embed";
 import { sendMessage } from "@/chat/sendMessage";
 import type { ProviderAdapter, StreamEvent } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
@@ -113,4 +114,54 @@ test("a blocked provider never gets the chat or the housekeeping call, and the a
   const local = await sendMessage(deps, { threadId: thread.id, text: "Again", model: claude });
   expect(local.error).toMatch(/Local only/);
   expect(calls).toBe(0);
+});
+
+test("every path tells the transport its scope: chat, housekeeping, embeddings (SE-13)", async () => {
+  const db = openTestDb();
+  const scopes: unknown[] = [];
+  const adapter: ProviderAdapter = {
+    provider: "anthropic",
+    listModels: () => Promise.resolve([]),
+    streamChat(_h, _m, options) {
+      scopes.push(options.scope);
+      return answer();
+    },
+    embed(texts, _model, _signal, scope) {
+      scopes.push(scope);
+      return Promise.resolve({
+        vectors: texts.map(() => Float32Array.from([1, 0, 0])),
+        tokens: 1,
+        providerRequestId: null,
+        attempts: 1,
+      });
+    },
+  };
+  const deps = { db, tenant: t, catalog, adapterFor: () => adapter, priceVersion: "x" };
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, text: "Hi", model: claude });
+  await housekeepingCall(deps, catalog, {
+    purpose: "title",
+    threadId: null,
+    model: claude,
+    system: "x",
+    input: "y",
+    maxOutputTokens: 10,
+  });
+  const model = {
+    provider: "anthropic" as const,
+    id: "emb",
+    dimensions: 3,
+    maxInputTokens: 8000,
+    inputPrice: 0.02,
+    verifiedOn: "2026-10-26",
+    sourceUrl: "https://example.com",
+  };
+  await embedTexts(deps, model, ["a"], thread.id);
+  await embedTexts(deps, model, ["b"], null, undefined, { kind: "project", id: "p9" });
+  expect(scopes).toEqual([
+    { kind: "thread", id: thread.id },
+    { kind: "global" },
+    { kind: "thread", id: thread.id },
+    { kind: "project", id: "p9" },
+  ]);
 });

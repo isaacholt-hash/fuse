@@ -1973,6 +1973,7 @@ export function ChatApp({
           { db, tenant, adapterFor, files: filesApi, priceVersion: catalog.priceVersion },
           model,
           f,
+          { kind: "project", id: projectId },
         );
       }
     }

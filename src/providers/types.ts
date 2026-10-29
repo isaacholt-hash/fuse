@@ -43,7 +43,27 @@ export interface ChatMessage {
   attachments?: Attachment[];
 }
 
+/**
+ * Where a request's content comes from (SE-13): a chat, a project (its knowledge files) or
+ * nothing project-bound. The Rust transport looks up that project's egress policy itself and
+ * refuses a request that breaks it, or any content-carrying request without a scope.
+ */
+export type SendScope =
+  { kind: "thread"; id: string } | { kind: "project"; id: string } | { kind: "global" };
+
+/** Internal header carrying the scope from an adapter to FUSE's transport; never sent on. */
+export const SCOPE_HEADER = "x-fuse-scope";
+
+export const scopeValue = (s: SendScope): string =>
+  s.kind === "global" ? "global" : `${s.kind}:${s.id}`;
+
+/** A chat's scope, or the global one when there's no chat. */
+export const threadScope = (threadId: string | null): SendScope =>
+  threadId ? { kind: "thread", id: threadId } : { kind: "global" };
+
 export interface ChatOptions {
+  /** Where the content comes from, for the egress check (SE-13). */
+  scope?: SendScope;
   /** System prompt / instructions. */
   system?: string;
   maxOutputTokens?: number;
@@ -96,7 +116,12 @@ export interface ProviderAdapter {
     signal?: AbortSignal,
   ): AsyncGenerator<StreamEvent>;
   /** Text embeddings (MM-11), one vector per input, in order. Only providers that offer them. */
-  embed?(texts: string[], model: string, signal?: AbortSignal): Promise<EmbedResult>;
+  embed?(
+    texts: string[],
+    model: string,
+    signal?: AbortSignal,
+    scope?: SendScope,
+  ): Promise<EmbedResult>;
 }
 
 export interface EmbedResult {

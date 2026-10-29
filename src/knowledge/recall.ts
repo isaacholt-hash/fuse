@@ -2,6 +2,7 @@
  * Recall (PM-04, PM-10): memories found by meaning, and "what did we decide about X" answered from
  * past chats, with the chats cited.
  */
+import { threadScope } from "@/providers/types";
 import type { EmbeddingModel } from "@/catalog/catalog";
 import { keywords } from "@/memory/inject";
 import type { Memory } from "@/storage/memories";
@@ -30,7 +31,7 @@ export async function memorySimilarity(
     }
   }
   const ids = memories.map((m) => m.id);
-  await indexChunks(deps, model, "memory", ids);
+  await indexChunks(deps, model, "memory", ids, undefined, threadScope(threadId));
   const [query] = await embedTexts(deps, model, [question], threadId);
   if (!query) return new Map();
   const hits = await nearest(

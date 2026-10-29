@@ -2,7 +2,8 @@
  * Embeddings (MM-11): the embedding model, and indexing chunks with it. Every call is logged as
  * `purpose: embed` with its cost, like any other provider call.
  */
-import { egressRefusal, threadPolicy } from "@/context/egress";
+import { threadScope, type SendScope } from "@/providers/types";
+import { egressRefusal, scopePolicy } from "@/context/egress";
 import type { Catalog, EmbeddingModel, ProviderId } from "@/catalog/catalog";
 import { priceToMicro } from "@/cost/cost";
 import { ProviderError, userMessage } from "@/providers/errors";
@@ -48,10 +49,12 @@ export async function embedTexts(
   texts: string[],
   threadId: string | null = null,
   signal?: AbortSignal,
+  /** Where the texts come from (SE-13); the chat's by default. */
+  scope: SendScope = threadScope(threadId),
 ): Promise<Float32Array[]> {
-  // SE-13: a chat's project may forbid sending its content to be embedded.
+  // SE-13: a project may forbid sending its content to be embedded.
   const refused = egressRefusal(
-    await threadPolicy(deps.db, deps.tenant, threadId),
+    await scopePolicy(deps.db, deps.tenant, scope),
     model.provider,
     "embeddings",
   );
@@ -61,7 +64,7 @@ export async function embedTexts(
   const now = deps.now ?? Date.now;
   const started = now();
   try {
-    const r = await adapter.embed(texts, model.id, signal);
+    const r = await adapter.embed(texts, model.id, signal, scope);
     await logRequest(deps.db, deps.tenant, {
       threadId,
       messageId: null,
@@ -110,6 +113,7 @@ export async function indexChunks(
   kind: ChunkSource,
   sourceIds: readonly string[],
   signal?: AbortSignal,
+  scope: SendScope = { kind: "global" },
 ): Promise<number> {
   const todo = await unembedded(deps.db, deps.tenant, modelKey(model), kind, sourceIds);
   let done = 0;
@@ -129,6 +133,7 @@ export async function indexChunks(
       batch.map((c) => c.text),
       null,
       signal,
+      scope,
     );
     await saveVectors(
       deps.db,
