@@ -20,6 +20,7 @@ import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
 import { CLASSIFY_SYSTEM } from "@/routing/classifyFallback";
 import App from "./App";
+import { deleteAllData } from "@/data/deleteAll";
 import type { BackupInfo } from "@/data/backups";
 import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 
@@ -1187,6 +1188,35 @@ test("Settings → Your data backs up now, checks files and restores a backup af
   const dialog = within(await screen.findByRole("dialog"));
   await user.click(dialog.getByRole("button", { name: "Restore and restart" }));
   expect(backups.restored).toEqual(["fuse-1700000000000.db"]);
+});
+
+test("restore from an export: preview what's new, then bring it back (PL-12)", async () => {
+  const { db, files, saves, user } = setup({ anthropic: [() => answer("Ok.")] });
+  await user.type(await composer(), "Remember the boat{Enter}");
+  expect(await screen.findByText("Ok.")).toBeInTheDocument();
+  await user.keyboard("{Control>},{/Control}");
+  const data = within(await screen.findByRole("region", { name: "Your data" }));
+  await user.click(data.getByRole("button", { name: /Export everything/ }));
+  await data.findByText(/Saved fuse-export/);
+  await deleteAllData(db, DEFAULT_TENANT, files);
+
+  const group = within(data.getByRole("group", { name: "Restore from an export" }));
+  const bytes = saves[0]?.bytes ?? new Uint8Array();
+  await user.upload(
+    group.getByLabelText("Export file"),
+    new File([new Uint8Array(bytes)], "fuse-export.zip", { type: "application/zip" }),
+  );
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(dialog.getByText(/An export of everything from/)).toBeInTheDocument();
+  const holds = within(dialog.getByRole("list", { name: "What it holds" }));
+  expect(await holds.findByText("Chats")).toBeInTheDocument();
+  expect(holds.getByText("Chats").nextSibling).toHaveTextContent("1 new");
+  await user.click(dialog.getByRole("button", { name: "Restore" }));
+  expect(await group.findByRole("status")).toHaveTextContent(
+    /^Restored \d+ records and 0 files\.$/,
+  );
+  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  expect(await sidebar().findByRole("button", { name: /^Remember the boat/ })).toBeInTheDocument();
 });
 
 test("delete everything: typed confirmation, all data gone, keys only when ticked, then a restart", async () => {

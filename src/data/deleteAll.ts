@@ -8,7 +8,7 @@ import type { Tenant } from "@/storage/defaults";
 import type { SqlDb } from "@/storage/sql";
 
 /** Children before parents. */
-const ORDER = [
+export const DELETE_ORDER = [
   "chunk_vectors",
   "chunks",
   "message_citations",
@@ -46,7 +46,7 @@ export async function deleteAllData(
   // Threads point at messages (their active leaf); unhook that first.
   await db.execute(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ?`, [ws]);
   let rows = 0;
-  for (const table of ORDER) {
+  for (const table of DELETE_ORDER) {
     rows += (await db.execute(`DELETE FROM ${table} WHERE workspace_id = ?`, [ws])).rowsAffected;
   }
   return { rows, files: files.wipe ? await files.wipe() : 0 };
