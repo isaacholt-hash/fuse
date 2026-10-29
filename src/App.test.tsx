@@ -1,7 +1,7 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { strToU8, zipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
@@ -2621,6 +2621,28 @@ describe("projects", () => {
       within(await screen.findByRole("dialog")).getByRole("region", { name: "Project privacy" }),
     );
     expect(project.getByRole("option", { name: "As everywhere (blocked)" })).toBeInTheDocument();
+  });
+
+  test("a project exports on its own as a FUSE export (PL-12)", async () => {
+    const { saves, user } = setup();
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Kitchen / 2026");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    await user.type(await composer(), "Oak or laminate?{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Project: Kitchen / 2026" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await user.click(dialog.getByRole("button", { name: "Export project…" }));
+    expect(await dialog.findByRole("status")).toHaveTextContent(
+      /Saved fuse-project-Kitchen - 2026-\d{4}-\d{2}-\d{2}\.zip: 1 chats, 0 files\./,
+    );
+    const zip = unzipSync(saves[0]?.bytes ?? new Uint8Array());
+    expect(JSON.parse(strFromU8(zip["manifest.json"] ?? new Uint8Array()))).toMatchObject({
+      version: 2,
+      scope: { kind: "project", name: "Kitchen / 2026" },
+    });
   });
 
   test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
