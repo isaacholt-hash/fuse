@@ -732,6 +732,35 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(await screen.findByRole("complementary", { name: "File: notes.txt" })).toBeInTheDocument();
 });
 
+test("a file with secrets: flagged on the chip, sending waits, and the lines can be removed", async () => {
+  const { calls, user } = setup({ anthropic: [() => answer("Noted.")] });
+  await composer();
+  const file = new File(
+    ["server: example.com\npassword: hunter2hunter2\nport: 22\n"],
+    "setup.txt",
+    {
+      type: "text/plain",
+    },
+  );
+  await user.upload(screen.getByLabelText("Attach files"), file);
+  const flag = (await screen.findByText(/Secrets\?/)).closest("[role=alert]") as HTMLElement;
+  expect(flag).toHaveTextContent("Secrets? a password or PIN (1 line)");
+  await user.type(await composer(), "Check this");
+  expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeDisabled();
+  await user.click(within(flag).getByRole("button", { name: "Remove those lines" }));
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeEnabled();
+  });
+  await user.click(screen.getByRole("button", { name: "Send message (Enter)" }));
+  await screen.findByText("Noted.");
+  const sent = calls.anthropic?.[0]?.[0]?.attachments?.find(
+    (a) => a.kind === "text" && a.name === "setup.txt",
+  );
+  const text = sent && "text" in sent ? sent.text : "";
+  expect(text).toContain("[line removed by FUSE: it looked like a secret]");
+  expect(text).not.toContain("hunter2");
+});
+
 test("a pasted link is read as text, attached with its size, and not read again within a day", async () => {
   const { calls, web, user } = setup({
     anthropic: [() => answer("Every 10,000 miles."), () => answer("Yes.")],

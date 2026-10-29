@@ -68,6 +68,19 @@ function looksLikeToken(text: string): boolean {
   return false;
 }
 
+/**
+ * FK-11's stricter check for files: the same patterns without the "any long mixed token" rule,
+ * which code, data and lockfiles would trip on every line.
+ */
+export function findSecretInFile(text: string): SecretKind | null {
+  if (API_KEYS.some((r) => r.test(text))) return "api_key";
+  if (PASSWORD.test(text)) return "password";
+  if (hasCardNumber(text)) return "card_number";
+  if (GOVERNMENT.some((r) => r.test(text))) return "government_id";
+  if (ACCOUNT.some((r) => r.test(text))) return "account_number";
+  return null;
+}
+
 /** What kind of secret the text holds, or null when it looks safe to remember. */
 export function findSecret(text: string): SecretKind | null {
   if (API_KEYS.some((r) => r.test(text)) || looksLikeToken(text)) return "api_key";
