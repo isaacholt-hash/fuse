@@ -13,7 +13,7 @@
   - "Back up now" and a list of backups with Restore in Settings → Data; a restore is applied at the next start, before the database opens, and the current database is kept aside.
   - Backups stay encrypted; an integrity check re-hashes attachment files against the database.
   - A test harness upgrades a seeded database from migration 25 and checks nothing is lost.
-- [ ] **2. Typed memory schema (PM-12, PM-13, PM-14).**
+- [x] **2. Typed memory schema (PM-12, PM-13, PM-14).**
   - Memory records gain a kind (fact, preference, person, constraint, decision, task, source), a scope (global, workspace, project, conversation), authority (you, imported, extracted), status, provenance, sensitivity, may-send, revision and device id.
   - Existing memories are carried over; the table rebuild is proven on the upgrade harness first.
 - [ ] **3. Memory screen for types, scope and provenance (PM-12 to PM-14).** Filters by kind, scope and status; provenance shown; sensitivity, may-send and expiry editable; "remember for this chat only". Extraction suggests a kind, never a decision.

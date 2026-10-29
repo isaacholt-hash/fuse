@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { fakeMemory } from "@/storage/testing/memory";
 import { parseCatalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
 import { sendMessage } from "@/chat/sendMessage";
@@ -138,22 +139,8 @@ async function chatWith(db: ReturnType<typeof openTestDb>, user: string, reply: 
   return thread;
 }
 
-const memory = (
-  id: string,
-  text: string,
-  projectId: string | null = null,
-  createdAt = 1,
-): Memory => ({
-  id,
-  text,
-  category: "fact",
-  projectId,
-  sourceThreadId: null,
-  sourceThreadTitle: null,
-  confidence: 100,
-  createdAt,
-  updatedAt: createdAt,
-});
+const memory = (id: string, text: string, projectId: string | null = null, createdAt = 1): Memory =>
+  fakeMemory({ id, text, projectId, createdAt, updatedAt: createdAt });
 
 describe("secrets filter (PM-05)", () => {
   // Built at runtime so the repo's secret scan never sees a key-shaped literal.
@@ -192,26 +179,27 @@ describe("injection (PM-04)", () => {
     memory("p", "The FUSE project uses Tauri.", "proj1", 4),
   ];
   test("sends every memory when they all fit, plus the chat's project ones only", () => {
-    expect(selectMemories(pool, "hello", null, 1500).map((m) => m.id)).toEqual(["a", "b", "c"]);
-    expect(selectMemories(pool, "hello", "proj1", 1500).map((m) => m.id)).toEqual([
-      "a",
-      "b",
-      "c",
-      "p",
-    ]);
+    expect(
+      selectMemories(pool, "hello", { projectId: null, threadId: null }, 1500).map((m) => m.id),
+    ).toEqual(["a", "b", "c"]);
+    expect(
+      selectMemories(pool, "hello", { projectId: "proj1", threadId: null }, 1500).map((m) => m.id),
+    ).toEqual(["a", "b", "c", "p"]);
   });
   test("over budget: keyword matches win, in saved order", () => {
     const chosen = selectMemories(
       pool,
       "What should I feed my dog Biscuit? Metric please",
-      null,
+      { projectId: null, threadId: null },
       20,
     );
     expect(chosen.map((m) => m.id)).toEqual(["a", "b"]);
-    expect(selectMemories(pool, "unrelated question", null, 10)).toEqual([]);
+    expect(
+      selectMemories(pool, "unrelated question", { projectId: null, threadId: null }, 10),
+    ).toEqual([]);
   });
   test("a zero budget turns injection off", () => {
-    expect(selectMemories(pool, "dog", null, 0)).toEqual([]);
+    expect(selectMemories(pool, "dog", { projectId: null, threadId: null }, 0)).toEqual([]);
   });
   test("keywords drop stopwords and plurals", () => {
     expect([...keywords("What are the dogs doing in Leeds?")]).toEqual(["dog", "leed"]);
@@ -256,18 +244,18 @@ describe("extraction (PM-03)", () => {
 
   test("parses fenced JSON and drops malformed items", () => {
     const reply =
-      'Sure:\n```json\n{"suggestions": [{"op": "add", "text": " Likes  tea. ", "category": "preference", "confidence": 140},' +
+      'Sure:\n```json\n{"suggestions": [{"op": "add", "text": " Likes  tea. ", "kind": "preference", "confidence": 140},' +
       ' {"op": "update", "text": "no id"}, {"op": "delete", "id": "m2"}, {"op": "explode"}, "x"]}\n```';
     expect(parseSuggestions(reply)).toEqual([
       {
         op: "add",
         ref: null,
         text: "Likes tea.",
-        category: "preference",
+        kind: "preference",
         confidence: 100,
         projectOnly: false,
       },
-      { op: "delete", ref: "M2", text: "", category: "fact", confidence: 70, projectOnly: false },
+      { op: "delete", ref: "M2", text: "", kind: "fact", confidence: 70, projectOnly: false },
     ]);
     expect(parseSuggestions("nothing here")).toEqual([]);
     expect(parseSuggestions("{not json}")).toEqual([]);
@@ -275,17 +263,17 @@ describe("extraction (PM-03)", () => {
 
   test("suggests adds, updates and deletes; skips secrets and repeats; logs the cost", async () => {
     const db = openTestDb();
-    const keep = await addMemory(db, t, { text: "Lives in Leeds.", category: "fact" });
-    const old = await addMemory(db, t, { text: "Has one cat.", category: "fact" });
+    const keep = await addMemory(db, t, { text: "Lives in Leeds.", kind: "fact" });
+    const old = await addMemory(db, t, { text: "Has one cat.", kind: "fact" });
     const thread = await chatWith(db, "We moved to York and got a second cat.", "Congrats!");
     const reply = JSON.stringify({
       suggestions: [
-        { op: "update", id: "M1", text: "Lives in York.", category: "fact", confidence: 90 },
+        { op: "update", id: "M1", text: "Lives in York.", kind: "fact", confidence: 90 },
         { op: "delete", id: "M2" },
-        { op: "add", text: "Has two cats.", category: "fact", confidence: 85 },
-        { op: "add", text: "has two cats", category: "fact" },
-        { op: "add", text: "Lives in Leeds.", category: "fact" },
-        { op: "add", text: "Door code PIN is 1234", category: "fact" },
+        { op: "add", text: "Has two cats.", kind: "fact", confidence: 85 },
+        { op: "add", text: "has two cats", kind: "fact" },
+        { op: "add", text: "Lives in Leeds.", kind: "fact" },
+        { op: "add", text: "Door code PIN is 1234", kind: "fact" },
         { op: "update", id: "M9", text: "Unknown target" },
       ],
     });
@@ -333,8 +321,8 @@ describe("extraction (PM-03)", () => {
     const db = openTestDb();
     const thread = await chatWith(db, "I like jazz.", "Nice.");
     const { adapter, calls } = fakeAdapter([
-      '{"suggestions": [{"op": "add", "text": "Likes jazz.", "category": "preference"}]}',
-      '{"suggestions": [{"op": "add", "text": "Likes jazz!", "category": "preference"}]}',
+      '{"suggestions": [{"op": "add", "text": "Likes jazz.", "kind": "preference"}]}',
+      '{"suggestions": [{"op": "add", "text": "Likes jazz!", "kind": "preference"}]}',
     ]);
     const deps = { db, tenant: t, adapterFor: () => adapter };
     await suggestMemories(deps, catalog, thread.id, small);
@@ -351,14 +339,22 @@ describe("extraction (PM-03)", () => {
     const thread = await chatWith(db, "The raised beds are 2 m long.", "Got it.");
     await setThreadProject(db, t, thread.id, project.id);
     const { adapter, calls } = fakeAdapter([
-      '{"suggestions": [{"op": "add", "text": "Raised beds are 2 m long.", "category": "project", "project_only": true}]}',
+      '{"suggestions": [{"op": "add", "text": "Raised beds are 2 m long.", "kind": "constraint", "project_only": true}]}',
     ]);
     await suggestMemories({ db, tenant: t, adapterFor: () => adapter }, catalog, thread.id, small);
     expect(calls[0]?.options.system).toContain('project "Garden"');
     const [p] = await listPendingProposals(db, t);
     await approveProposal(db, t, must(p).id, "Raised beds are 2 metres long.");
     expect(await listMemories(db, t)).toMatchObject([
-      { text: "Raised beds are 2 metres long.", projectId: project.id, sourceThreadId: thread.id },
+      {
+        text: "Raised beds are 2 metres long.",
+        kind: "constraint",
+        scope: "project",
+        projectId: project.id,
+        sourceThreadId: thread.id,
+        authority: "extracted",
+        extractionMethod: "chat",
+      },
     ]);
   });
 
@@ -416,7 +412,7 @@ describe("memories in chat", () => {
 
   test("saved memories go in the system prompt and are recorded per answer; off per chat", async () => {
     const db = openTestDb();
-    await addMemory(db, t, { text: "Prefers metric units.", category: "preference" });
+    await addMemory(db, t, { text: "Prefers metric units.", kind: "preference" });
     const { adapter, calls } = fakeAdapter(["One", "Two"]);
     const deps = { db, tenant: t, catalog, adapterFor: () => adapter };
     const thread = await createThread(db, t);
@@ -441,10 +437,10 @@ describe("memories in chat", () => {
 
   test("edit, delete all, and settings round-trip", async () => {
     const db = openTestDb();
-    const id = await addMemory(db, t, { text: "Old", category: "fact", confidence: 40 });
-    await editMemory(db, t, id, { text: "  New   text ", category: "person", projectId: null });
+    const id = await addMemory(db, t, { text: "Old", kind: "fact", confidence: 40 });
+    await editMemory(db, t, id, { text: "  New   text ", kind: "person", projectId: null });
     expect(await listMemories(db, t)).toMatchObject([
-      { text: "New text", category: "person", confidence: 100 },
+      { text: "New text", kind: "person", confidence: 100 },
     ]);
     await deleteAllMemories(db, t);
     expect(await listMemories(db, t)).toEqual([]);
@@ -455,4 +451,15 @@ describe("memories in chat", () => {
     await setMemorySettings(db, t, { suggest: true, budgetTokens: 99_999 });
     expect((await getMemorySettings(db, t)).budgetTokens).toBe(8000);
   });
+});
+
+test("a memory for one chat is only sent in that chat (PM-13)", () => {
+  const pool = [
+    fakeMemory({ id: "g", text: "Global" }),
+    fakeMemory({ id: "c", text: "Only here", scope: "conversation", threadId: "t1" }),
+  ];
+  const ids = (threadId: string) =>
+    selectMemories(pool, "x", { projectId: null, threadId }, 1500).map((m) => m.id);
+  expect(ids("t1")).toEqual(["g", "c"]);
+  expect(ids("t2")).toEqual(["g"]);
 });

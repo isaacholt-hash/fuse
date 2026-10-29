@@ -32,7 +32,7 @@ import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
-import { memoryTokens, selectMemories } from "@/memory/inject";
+import { inScope, memoryTokens, selectMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -460,8 +460,8 @@ async function streamAnswer(
     const budget = (await getMemorySettings(db, tenant)).budgetTokens;
     const question = history.findLast((m) => m.role === "user")?.content ?? "";
     const query = `${thread?.title ?? ""}\n${question}`;
-    const projectId = thread?.projectId ?? null;
-    const pool = all.filter((m) => m.projectId === null || m.projectId === projectId);
+    const where = { projectId: thread?.projectId ?? null, threadId: input.threadId };
+    const pool = all.filter((m) => inScope(m, where));
     const overBudget = pool.reduce((sum, m) => sum + memoryTokens(m), 0) > budget;
     const similarity =
       overBudget && input.embedding && budget > 0
@@ -473,7 +473,7 @@ async function streamAnswer(
             input.threadId,
           ).catch(() => new Map<string, number>()) // keywords alone still work
         : new Map<string, number>();
-    return selectMemories(all, query, projectId, budget, similarity);
+    return selectMemories(all, query, where, budget, similarity);
   };
   // Read at send time, so an edit applies from the next message on (and on retry).
   const thread = await getThread(db, tenant, input.threadId);

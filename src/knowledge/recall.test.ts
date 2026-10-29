@@ -68,15 +68,22 @@ test("past chats on the topic come back with their titles and dates, not this ch
 
 test("memories past the budget: meaning lifts a memory that shares no words", () => {
   const mem = (id: string, text: string): Memory =>
-    ({ id, text, category: "fact", projectId: null, createdAt: 0 }) as Memory;
+    ({ id, text, kind: "fact", projectId: null, createdAt: 0 }) as Memory;
   const pool = [mem("kid", "Has a girl, Maya, aged 7."), mem("car", "Drives a 2026 VW Atlas.")];
   const budget = 12; // room for one
-  expect(selectMemories(pool, "what should my daughter read", null, budget)).toEqual([]);
   expect(
     selectMemories(
       pool,
       "what should my daughter read",
-      null,
+      { projectId: null, threadId: null },
+      budget,
+    ),
+  ).toEqual([]);
+  expect(
+    selectMemories(
+      pool,
+      "what should my daughter read",
+      { projectId: null, threadId: null },
       budget,
       new Map([
         ["kid", 0.7],

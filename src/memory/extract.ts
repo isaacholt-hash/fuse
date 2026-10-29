@@ -1,14 +1,15 @@
 // Memory extraction v1 (PM-03): after a chat, a cheap model suggests facts to remember, updates and
 // deletions. Nothing is saved until you approve it. Secrets are filtered out before storing (PM-05).
+import { inScope } from "./inject";
 import type { Catalog, CatalogModel } from "@/catalog/catalog";
 import { housekeepingCall, type HousekeepingDeps } from "@/chat/housekeeping";
 import {
   addProposals,
   listMemories,
-  MEMORY_CATEGORIES,
+  SUGGESTED_KINDS,
   proposalTexts,
   type Memory,
-  type MemoryCategory,
+  type MemoryKind,
   type NewProposal,
 } from "@/storage/memories";
 import { listMessages, type Message } from "@/storage/messages";
@@ -59,7 +60,7 @@ export function extractionSystem(projectName: string | null): string {
     "If the conversation changes or contradicts a saved fact, suggest an update with its id. If it shows a saved fact is no longer true, suggest deleting it. Don't repeat saved or already-suggested facts.",
     "Most conversations have nothing worth remembering. An empty list is the usual answer.",
     "",
-    "Categories: fact (about the user themselves), preference (how they like things done), person (someone in their life or work), project (something they're working on).",
+    'Kinds: fact (about the user or what they\'re working on), preference (how they like things done), person (someone in their life or work), constraint (a rule or limit their work must keep to, e.g. "The trip budget is £2,000.").',
     ...(projectName
       ? [
           `This chat is in the user's project "${projectName}". Add "project_only": true to facts that only matter inside that project.`,
@@ -67,7 +68,7 @@ export function extractionSystem(projectName: string | null): string {
       : []),
     "",
     "Reply with JSON only, no other text, in this shape:",
-    '{"suggestions": [{"op": "add", "text": "...", "category": "fact", "confidence": 90}, {"op": "update", "id": "M2", "text": "...", "category": "preference", "confidence": 80}, {"op": "delete", "id": "M3"}]}',
+    '{"suggestions": [{"op": "add", "text": "...", "kind": "fact", "confidence": 90}, {"op": "update", "id": "M2", "text": "...", "kind": "preference", "confidence": 80}, {"op": "delete", "id": "M3"}]}',
     "confidence is 0-100: how sure you are the user would want this remembered.",
   ].join("\n");
 }
@@ -77,7 +78,7 @@ export function extractionInput(
   saved: { ref: string; memory: Memory }[],
   previous: string[],
 ): string {
-  const facts = saved.map((s) => `${s.ref} [${s.memory.category}] ${s.memory.text}`);
+  const facts = saved.map((s) => `${s.ref} [${s.memory.kind}] ${s.memory.text}`);
   return [
     "<saved_facts>",
     ...(facts.length ? facts : ["(none yet)"]),
@@ -96,7 +97,7 @@ export interface RawSuggestion {
   /** The saved fact's short reference (M1, M2…) for update and delete. */
   ref: string | null;
   text: string;
-  category: MemoryCategory;
+  kind: MemoryKind;
   confidence: number;
   projectOnly: boolean;
 }
@@ -124,9 +125,8 @@ export function parseSuggestions(reply: string): RawSuggestion[] {
     if (op !== "add" && !ref) continue;
     const text = typeof o.text === "string" ? o.text.trim().replace(/\s+/g, " ") : "";
     if (op !== "delete" && !text) continue;
-    const category = MEMORY_CATEGORIES.includes(o.category as MemoryCategory)
-      ? (o.category as MemoryCategory)
-      : "fact";
+    // Never a decision: those are only ever added by you (PM-15).
+    const kind = SUGGESTED_KINDS.includes(o.kind as MemoryKind) ? (o.kind as MemoryKind) : "fact";
     const confidence =
       typeof o.confidence === "number" && Number.isFinite(o.confidence)
         ? Math.round(Math.min(100, Math.max(0, o.confidence)))
@@ -135,7 +135,7 @@ export function parseSuggestions(reply: string): RawSuggestion[] {
       op,
       ref: op === "add" ? null : ref,
       text,
-      category,
+      kind,
       confidence,
       projectOnly: o.project_only === true,
     });
@@ -182,7 +182,7 @@ export async function suggestMemories(
 
   const project = thread.projectId ? await getProject(db, tenant, thread.projectId) : null;
   const saved = (await listMemories(db, tenant))
-    .filter((m) => m.projectId === null || m.projectId === thread.projectId)
+    .filter((m) => inScope(m, { projectId: thread.projectId, threadId }))
     .map((memory, i) => ({ ref: `M${String(i + 1)}`, memory }));
   const previous = await proposalTexts(db, tenant);
   const system = extractionSystem(project?.name ?? null);
@@ -221,7 +221,7 @@ export async function suggestMemories(
       op: s.op,
       memoryId: target?.id ?? null,
       text: s.op === "delete" ? "" : s.text,
-      category: s.op === "delete" && target ? target.category : s.category,
+      kind: s.op === "delete" && target ? target.kind : s.kind,
       projectId: s.op === "add" && s.projectOnly && thread.projectId ? thread.projectId : null,
       confidence: s.confidence,
       sourceThreadId: threadId,

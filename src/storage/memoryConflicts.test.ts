@@ -11,20 +11,12 @@ import {
   restoreMemory,
   type Memory,
 } from "./memories";
+import { fakeMemory } from "./testing/memory";
 import { openTestDb } from "./testing/nodeDb";
 
 const t = DEFAULT_TENANT;
-const mem = (text: string, category: Memory["category"] = "fact"): Memory => ({
-  id: text,
-  text,
-  category,
-  projectId: null,
-  sourceThreadId: null,
-  sourceThreadTitle: null,
-  confidence: 100,
-  createdAt: 0,
-  updatedAt: 0,
-});
+const mem = (text: string, kind: Memory["kind"] = "fact"): Memory =>
+  fakeMemory({ id: text, text, kind });
 
 test("a new fact about the same thing is a possible conflict; other facts aren't", () => {
   const saved = [mem("Lives in Leeds"), mem("Prefers short answers", "preference")];
@@ -38,7 +30,7 @@ test("keeping the new one keeps the old as history, and it can be restored", asy
   const db = openTestDb();
   const old = await addMemory(db, t, {
     text: "Lives in Leeds",
-    category: "fact",
+    kind: "fact",
     projectId: null,
     sourceThreadId: null,
     confidence: 100,
@@ -48,7 +40,7 @@ test("keeping the new one keeps the old as history, and it can be restored", asy
       op: "add",
       memoryId: null,
       text: "Lives in York",
-      category: "fact",
+      kind: "fact",
       projectId: null,
       confidence: 90,
       sourceThreadId: null,

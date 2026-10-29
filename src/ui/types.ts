@@ -226,12 +226,13 @@ export interface ProjectForm {
 }
 
 /** Settings → Memory: one saved fact (PM-02, PM-07). */
-export type MemoryCategoryView = "fact" | "preference" | "person" | "project";
+export type MemoryKindView =
+  "fact" | "preference" | "person" | "constraint" | "decision" | "task" | "source";
 
 export interface MemoryView {
   id: string;
   text: string;
-  category: MemoryCategoryView;
+  kind: MemoryKindView;
   projectId: string | null;
   projectName: string | null;
   /** Title of the chat it came from; null if typed in or the chat is gone. */
@@ -243,7 +244,7 @@ export interface MemoryView {
 
 export interface MemoryForm {
   text: string;
-  category: MemoryCategoryView;
+  kind: MemoryKindView;
   projectId: string | null;
 }
 
@@ -255,7 +256,7 @@ export interface ProposalView {
   text: string;
   /** The saved fact it changes (update, delete). */
   currentText: string | null;
-  category: MemoryCategoryView;
+  kind: MemoryKindView;
   projectName: string | null;
   source: string | null;
   confidence: number;
