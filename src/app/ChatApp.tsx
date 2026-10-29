@@ -170,6 +170,7 @@ import {
   listVersions,
   type Artifact,
   type ArtifactVersion,
+  setArtifactCdn,
 } from "@/storage/artifacts";
 import { diffLines } from "@/artifacts/diff";
 import { artifactsIn, splitAnswer } from "@/artifacts/parse";
@@ -1677,6 +1678,7 @@ export function ChatApp({
           language: saved.language,
           content: shown?.content ?? saved.content,
           version: saved.version,
+          allowCdn: saved.allowCdn,
         }
       : null;
   })();
@@ -2997,6 +2999,20 @@ export function ChatApp({
                     key={panelArtifact.key}
                     artifact={panelArtifact}
                     {...(preview ? { preview } : {})}
+                    {...(openSaved
+                      ? {
+                          onAllowCdn: (allow: boolean) => {
+                            const id = openSaved.id;
+                            setArtifactCdn(db, tenant, id, allow)
+                              .then(() => {
+                                setThreadArtifacts((all) =>
+                                  all.map((a) => (a.id === id ? { ...a, allowCdn: allow } : a)),
+                                );
+                              })
+                              .catch(report);
+                          },
+                        }
+                      : {})}
                     {...(exporter
                       ? {
                           onExport: async (format: "file" | "docx" | "pdf") => {

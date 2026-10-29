@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { asPage, mermaidSvg, svgDataUrl, type PreviewApi } from "@/artifacts/preview";
+import { asPage, mermaidSvg, reactPage, svgDataUrl, type PreviewApi } from "@/artifacts/preview";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
 
@@ -23,6 +23,8 @@ export interface ArtifactView {
   content: string;
   /** Saved version number; null while it's still being written. */
   version: number | null;
+  /** AR-05: the preview may load the listed CDNs. */
+  allowCdn?: boolean;
 }
 
 const KIND: Record<ArtifactView["type"], string> = {
@@ -117,22 +119,27 @@ function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> }) {
   );
 }
 
-/** Types that have a live preview (AR-05); React's comes later. */
-const PREVIEWABLE: ReadonlySet<ArtifactView["type"]> = new Set(["html", "svg", "mermaid"]);
+/** Types that have a live preview (AR-05). */
+const PREVIEWABLE: ReadonlySet<ArtifactView["type"]> = new Set(["html", "svg", "mermaid", "react"]);
+/** Types whose preview runs as a page, where the CDN switch applies. */
+const PAGE_TYPES: ReadonlySet<ArtifactView["type"]> = new Set(["html", "react"]);
 
-/** The rendered artifact: HTML in a no-network sandbox, SVG and Mermaid as images. */
+/** The rendered artifact: HTML and React in a no-network sandbox, SVG and Mermaid as images. */
 function Preview({ artifact, api }: { artifact: ArtifactView; api: PreviewApi }) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     let current = true;
     const dark = document.documentElement.classList.contains("dark");
+    const cdn = { cdn: artifact.allowCdn ?? false };
     const job =
       artifact.type === "html"
-        ? api.url(asPage(artifact.content))
-        : artifact.type === "svg"
-          ? Promise.resolve(svgDataUrl(artifact.content))
-          : mermaidSvg(artifact.content, dark).then(svgDataUrl);
+        ? api.url(asPage(artifact.content), cdn)
+        : artifact.type === "react"
+          ? reactPage(artifact.content).then((page) => api.url(page, cdn))
+          : artifact.type === "svg"
+            ? Promise.resolve(svgDataUrl(artifact.content))
+            : mermaidSvg(artifact.content, dark).then(svgDataUrl);
     job.then(
       (url) => {
         if (current) setSrc(url);
@@ -144,7 +151,7 @@ function Preview({ artifact, api }: { artifact: ArtifactView; api: PreviewApi })
     return () => {
       current = false;
     };
-  }, [artifact.type, artifact.content, api]);
+  }, [artifact.type, artifact.content, artifact.allowCdn, api]);
   if (error) {
     return (
       <p role="alert" className="text-[12px] text-destructive">
@@ -153,7 +160,7 @@ function Preview({ artifact, api }: { artifact: ArtifactView; api: PreviewApi })
     );
   }
   if (!src) return <p className="text-[12px] text-muted-foreground">Rendering…</p>;
-  return artifact.type === "html" ? (
+  return PAGE_TYPES.has(artifact.type) ? (
     <iframe
       title={`Preview of ${artifact.title}`}
       src={src}
@@ -174,6 +181,7 @@ export function ArtifactPanel({
   versions,
   preview,
   onExport,
+  onAllowCdn,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
@@ -182,6 +190,8 @@ export function ArtifactPanel({
   preview?: PreviewApi;
   /** AR-04: saves the artifact (natural file, or .docx/.pdf for Markdown); the saved name or null. */
   onExport?: (format: "file" | "docx" | "pdf") => Promise<string | null>;
+  /** AR-05: lets this artifact's preview load the listed CDNs. */
+  onAllowCdn?: (allow: boolean) => void;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -342,6 +352,21 @@ export function ArtifactPanel({
               </button>
             ))}
           </span>
+        )}
+        {canPreview && tab === "preview" && onAllowCdn && PAGE_TYPES.has(artifact.type) && (
+          <label
+            className="flex items-center gap-1 text-[11px] text-muted-foreground"
+            title="Let this preview load scripts and styles from cdnjs, jsDelivr and unpkg. Off: nothing leaves the preview."
+          >
+            <input
+              type="checkbox"
+              checked={artifact.allowCdn ?? false}
+              onChange={(e) => {
+                onAllowCdn(e.target.checked);
+              }}
+            />
+            CDNs
+          </label>
         )}
         {onExport && artifact.version !== null && (
           <span className="relative">
