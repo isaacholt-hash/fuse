@@ -2347,6 +2347,45 @@ describe("memory", () => {
     expect(await section.findByText("No memories yet.")).toBeInTheDocument();
   });
 
+  test("exclude a memory without deleting it; each answer records why each memory went (PM-17)", async () => {
+    const { db, options, user } = setup();
+    await composer();
+    await user.keyboard("{Control>},{/Control}");
+    const section = within(await screen.findByRole("region", { name: "Memory" }));
+    for (const text of ["Lives in Leeds.", "Prefers short answers."]) {
+      await user.type(section.getByLabelText("New memory"), text);
+      await user.click(section.getByRole("button", { name: "Add memory" }));
+      expect(await section.findByText(text)).toBeInTheDocument();
+    }
+    await user.click(
+      section.getByRole("button", { name: "Exclude memory: Prefers short answers." }),
+    );
+    await waitFor(() => {
+      expect(section.queryByText("Prefers short answers.")).not.toBeInTheDocument();
+    });
+    await user.selectOptions(section.getByLabelText("Show status"), "not_in_use");
+    expect(await section.findByText(/added by you · .* · excluded/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+
+    await user.type(await composer(), "Hi{Enter}");
+    expect(await screen.findByRole("button", { name: "1 memory used" })).toBeInTheDocument();
+    const system = (options.at(-1) as { system?: string }).system ?? "";
+    expect(system).toContain("- Lives in Leeds.");
+    expect(system).not.toContain("short answers");
+    const rows = await db.select<{ reason: string }>("SELECT reason FROM message_memories");
+    expect(rows).toEqual([{ reason: "all_fit" }]);
+
+    // Still there, and back in use when included again.
+    await user.keyboard("{Control>},{/Control}");
+    const again = within(await screen.findByRole("region", { name: "Memory" }));
+    await user.selectOptions(again.getByLabelText("Show status"), "not_in_use");
+    await user.click(
+      await again.findByRole("button", { name: "Include memory again: Prefers short answers." }),
+    );
+    await user.selectOptions(again.getByLabelText("Show status"), "in_use");
+    expect(await again.findByText("Prefers short answers.")).toBeInTheDocument();
+  });
+
   test("a memory kept for one chat, sensitive and on this device: shown with its provenance, never sent (PM-12 to PM-14)", async () => {
     const { options, user } = setup();
     await user.type(await composer(), "Plan the garden{Enter}");

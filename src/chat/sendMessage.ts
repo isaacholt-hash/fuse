@@ -32,7 +32,7 @@ import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
-import { inScope, memoryLine, memoryTokens, selectMemories } from "@/memory/inject";
+import { inScope, memoryLine, memoryTokens, pickMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -455,7 +455,7 @@ async function streamAnswer(
    * PM-04: the memories for this question. When they don't all fit the budget they're ranked by
    * shared words and, with an embedding model, by meaning.
    */
-  const pickMemories = async () => {
+  const chooseMemories = async () => {
     const all = await listMemories(db, tenant);
     const budget = (await getMemorySettings(db, tenant)).budgetTokens;
     const question = history.findLast((m) => m.role === "user")?.content ?? "";
@@ -473,18 +473,19 @@ async function streamAnswer(
             input.threadId,
           ).catch(() => new Map<string, number>()) // keywords alone still work
         : new Map<string, number>();
-    return selectMemories(all, query, where, budget, similarity);
+    return pickMemories(all, query, where, budget, similarity);
   };
   // Read at send time, so an edit applies from the next message on (and on retry).
   const thread = await getThread(db, tenant, input.threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
   // Memories matched to the question being answered (PM-04), unless this chat turned them off.
-  const injected = thread && !thread.memoryOn ? [] : await pickMemories();
+  const picked = thread && !thread.memoryOn ? [] : await chooseMemories();
+  const injected = picked.map((p) => p.memory);
   await recordInjected(
     db,
     tenant,
     assistantMessageId,
-    injected.map((m) => m.id),
+    picked.map((p) => ({ id: p.memory.id, reason: p.reason, score: p.score })),
   );
   const system = systemPrompt(
     effectiveInstructions(

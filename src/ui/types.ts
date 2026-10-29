@@ -88,8 +88,8 @@ export interface MessageView {
   sources?: SourceView[];
   /** The provider is searching the web right now. */
   searching?: boolean;
-  /** Saved memories that were sent with this answer (PM-04). */
-  memories?: string[];
+  /** Saved memories that were sent with this answer (PM-04), and why each went (PM-17). */
+  memories?: { text: string; why: string }[];
   /** How the model was picked (RT-09); absent on answers from before routing. */
   route?: RouteView;
   /** The tier "Try a stronger model" would use (e.g. "Best"); only on the latest answer. */
