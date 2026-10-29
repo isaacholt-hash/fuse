@@ -2424,6 +2424,56 @@ describe("projects", () => {
     expect(projects.getByRole("button", { name: /^Where to eat\?/ })).toBeInTheDocument();
   });
 
+  test("decisions: added and replaced in project settings, sent first in the project's chats (PM-15)", async () => {
+    const { options, user } = setup();
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Kitchen");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    await user.click(await screen.findByRole("button", { name: "Project: Kitchen" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const section = within(dialog.getByRole("region", { name: "Decisions" }));
+    expect(section.getByText("No decisions yet.")).toBeInTheDocument();
+
+    await user.click(section.getByRole("button", { name: "Add decision" }));
+    await user.type(section.getByLabelText("Decision"), "Laminate worktops.");
+    // Enter in a decision doesn't save and close the project.
+    await user.type(section.getByLabelText("Decision"), "{Enter}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.type(section.getByLabelText("Why"), "Cheapest.");
+    await user.click(section.getByRole("button", { name: "Add decision" }));
+    expect(await section.findByText("Laminate worktops.")).toBeInTheDocument();
+
+    await user.click(section.getByRole("button", { name: "Replace decision: Laminate worktops." }));
+    expect(
+      section.getByText("Laminate worktops.", { selector: ".line-through" }),
+    ).toBeInTheDocument();
+    await user.type(section.getByLabelText("Decision"), "Oak worktops.");
+    await user.type(section.getByLabelText("Why"), "They last longer.");
+    await user.type(section.getByLabelText("Ruled out"), "Laminate{Enter}Granite");
+    await user.click(section.getByRole("button", { name: "Add decision" }));
+    const inForce = within(await section.findByRole("list", { name: "Decisions in force" }));
+    expect(inForce.getByText("Oak worktops.")).toBeInTheDocument();
+    expect(inForce.getByText("Ruled out: Laminate; Granite")).toBeInTheDocument();
+    expect(inForce.queryByText("Laminate worktops.")).not.toBeInTheDocument();
+    expect(
+      within(section.getByRole("list", { name: "Replaced decisions" })).getByText(
+        "→ Oak worktops.",
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.type(await composer(), "Which worktop?{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    const system = (options.at(-1) as { system?: string }).system ?? "";
+    expect(system).toContain(
+      "- Decision: Oak worktops. Reason: They last longer. Ruled out: Laminate; Granite",
+    );
+    expect(system).not.toContain("Laminate worktops.");
+  });
+
   test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
     const { calls, user } = setup({ anthropic: [() => answer("At dawn.")] });
     await composer();

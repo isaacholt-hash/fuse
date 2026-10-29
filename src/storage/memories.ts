@@ -57,9 +57,30 @@ export interface Memory {
   expiresAt: number | null;
   lastVerifiedAt: number | null;
   revision: number;
+  /** Decisions (PM-15): why, and what else was considered. */
+  rationale: string | null;
+  alternatives: string[];
+  /** Tasks (PM-16). */
+  taskStatus: TaskStatus | null;
+  dependsOn: string[];
+  /** The record that replaced this one, if any. */
+  supersededById: string | null;
   createdAt: number;
   updatedAt: number;
 }
+
+export type TaskStatus = "open" | "doing" | "done" | "dropped";
+
+/** A JSON array of strings from the database; anything else reads as empty. */
+const stringList = (raw: string | null): string[] => {
+  if (!raw) return [];
+  try {
+    const v: unknown = JSON.parse(raw);
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+};
 
 interface MemoryRow {
   id: string;
@@ -80,6 +101,11 @@ interface MemoryRow {
   expires_at: number | null;
   last_verified_at: number | null;
   revision: number;
+  rationale: string | null;
+  alternatives: string | null;
+  task_status: TaskStatus | null;
+  depends_on: string | null;
+  superseded_by_id: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -103,6 +129,11 @@ const toMemory = (r: MemoryRow): Memory => ({
   expiresAt: r.expires_at,
   lastVerifiedAt: r.last_verified_at,
   revision: r.revision,
+  rationale: r.rationale,
+  alternatives: stringList(r.alternatives),
+  taskStatus: r.task_status,
+  dependsOn: stringList(r.depends_on),
+  supersededById: r.superseded_by_id,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -110,7 +141,8 @@ const toMemory = (r: MemoryRow): Memory => ({
 const SELECT_MEMORY = `
   SELECT m.id, m.text, m.kind, m.scope, m.project_id, m.thread_id, m.authority, m.status,
          m.source_thread_id, m.extraction_method, m.extraction_model, m.confidence,
-         m.sensitivity, m.may_send, m.expires_at, m.last_verified_at, m.revision, m.created_at,
+         m.sensitivity, m.may_send, m.expires_at, m.last_verified_at, m.revision, m.rationale,
+         m.alternatives, m.task_status, m.depends_on, m.superseded_by_id, m.created_at,
          m.updated_at, t.title AS thread_title
   FROM memories m
   LEFT JOIN threads t ON t.id = m.source_thread_id AND t.deleted_at IS NULL`;
@@ -293,6 +325,85 @@ export async function deleteAllMemories(db: SqlDb, tenant: Tenant): Promise<void
     `UPDATE memory_proposals SET status = 'rejected', updated_at = ?
      WHERE workspace_id = ? AND status = 'pending'`,
     [now, tenant.workspaceId],
+  );
+}
+
+// ---- Decisions (PM-15) ----
+
+export interface DecisionInput {
+  text: string;
+  rationale: string;
+  /** Options considered and not chosen. */
+  alternatives: string[];
+}
+
+const cleanList = (items: string[]) =>
+  items
+    .map((a) => a.trim().replace(/\s+/g, " "))
+    .filter(Boolean)
+    .slice(0, 10);
+
+/** A project's decisions, in force and replaced, oldest first. */
+export async function listDecisions(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+): Promise<Memory[]> {
+  const rows = await db.select<MemoryRow>(
+    `${SELECT_MEMORY} WHERE m.workspace_id = ? AND m.kind = 'decision' AND m.project_id = ?
+       AND m.status IN ('active', 'superseded', 'excluded')
+     ORDER BY m.created_at, m.id`,
+    [tenant.workspaceId, projectId],
+  );
+  return rows.map(toMemory);
+}
+
+/**
+ * Records a decision you made (decisions are never added automatically). With `replacesId`,
+ * the old decision stays as history, marked as replaced by this one.
+ */
+export async function addDecision(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+  d: DecisionInput,
+  replacesId?: string,
+): Promise<string> {
+  const id = await addMemory(db, tenant, { text: d.text, kind: "decision", projectId });
+  await db.execute(
+    `UPDATE memories SET rationale = ?, alternatives = ? WHERE workspace_id = ? AND id = ?`,
+    [d.rationale.trim() || null, JSON.stringify(cleanList(d.alternatives)), tenant.workspaceId, id],
+  );
+  if (replacesId) {
+    await db.execute(
+      `UPDATE memories SET superseded_by_id = ?, status = 'superseded', revision = revision + 1,
+         updated_at = ?
+       WHERE workspace_id = ? AND id = ? AND kind = 'decision'`,
+      [id, Date.now(), tenant.workspaceId, replacesId],
+    );
+  }
+  return id;
+}
+
+export async function editDecision(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  d: DecisionInput,
+): Promise<void> {
+  await db.execute(
+    `UPDATE memories SET text = ?, rationale = ?, alternatives = ?, revision = revision + 1,
+       device_id = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ? AND kind = 'decision'`,
+    [
+      cleanText(d.text),
+      d.rationale.trim() || null,
+      JSON.stringify(cleanList(d.alternatives)),
+      await deviceId(db, tenant),
+      Date.now(),
+      tenant.workspaceId,
+      id,
+    ],
   );
 }
 

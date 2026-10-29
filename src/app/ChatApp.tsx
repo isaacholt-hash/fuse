@@ -98,13 +98,16 @@ import {
   type GlobalInstructions,
 } from "@/storage/instructions";
 import {
+  addDecision,
   addMemory,
   addProposals,
   approveProposal,
   conflictWith,
   deleteAllMemories,
   deleteMemory,
+  editDecision,
   editMemory,
+  listDecisions,
   listMemories,
   listMemoryRecords,
   listPendingProposals,
@@ -215,6 +218,7 @@ import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
+import type { DecisionInputView, DecisionView } from "@/ui/Decisions";
 import type { BackupsApi } from "@/data/backups";
 import { ImportPaste } from "@/ui/ImportPaste";
 import { ModelsSection } from "@/ui/Models";
@@ -518,6 +522,8 @@ export function ChatApp({
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
   // AR-06: the artifacts of the project whose settings are open.
   const [projectArts, setProjectArts] = useState<ArtifactHit[]>([]);
+  // PM-15: the open project's decisions, in force and replaced.
+  const [projectDecisions, setProjectDecisions] = useState<Memory[]>([]);
   // MM-09: spend caps per key, days they were raised for, and what each key spent.
   const [caps, setCaps] = useState<KeyCaps>({});
   const [raises, setRaises] = useState<CapRaises>({});
@@ -1858,7 +1864,29 @@ export function ChatApp({
       setKnowledge({ projectId, files, busy: false, error: null });
     }, report);
     projectArtifacts(db, tenant, projectId).then(setProjectArts, report);
+    listDecisions(db, tenant, projectId).then(setProjectDecisions, report);
   }, [projectDialog, db, tenant]);
+  /** Runs a change to the open project's decisions, then reloads them and memory. */
+  const changeDecisions = (change: (projectId: string) => Promise<unknown>) => {
+    const projectId = projectDialog;
+    if (!projectId || projectId === "new") return;
+    change(projectId)
+      .then(() => listDecisions(db, tenant, projectId))
+      .then(setProjectDecisions)
+      .then(refreshMemory)
+      .catch(report);
+  };
+  const decisionViews: DecisionView[] = projectDecisions.map((d) => ({
+    id: d.id,
+    text: d.text,
+    rationale: d.rationale,
+    alternatives: d.alternatives,
+    status: d.status === "superseded" ? "superseded" : "active",
+    replacedBy: d.supersededById
+      ? (projectDecisions.find((n) => n.id === d.supersededById)?.text ?? null)
+      : null,
+    date: new Date(d.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
+  }));
   /** Indexes a project's files that aren't fully searchable yet (needs an OpenAI key). */
   const indexKnowledge = async (projectId: string) => {
     const model = embeddingModel(catalog, savedProviders);
@@ -3845,6 +3873,34 @@ export function ChatApp({
           {...(editedProject ? { onDelete: removeProject } : {})}
           {...(editedProject
             ? {
+                decisions: {
+                  decisions: decisionViews,
+                  onAdd: (d: DecisionInputView, replacesId?: string) => {
+                    const secret = findSecret(`${d.text}\n${d.rationale}`);
+                    if (secret) {
+                      setProblem(
+                        `That looks like ${SECRET_LABELS[secret]}. Memory never stores those.`,
+                      );
+                      return;
+                    }
+                    changeDecisions((projectId) =>
+                      addDecision(db, tenant, projectId, d, replacesId),
+                    );
+                  },
+                  onEdit: (id: string, d: DecisionInputView) => {
+                    const secret = findSecret(`${d.text}\n${d.rationale}`);
+                    if (secret) {
+                      setProblem(
+                        `That looks like ${SECRET_LABELS[secret]}. Memory never stores those.`,
+                      );
+                      return;
+                    }
+                    changeDecisions(() => editDecision(db, tenant, id, d));
+                  },
+                  onDelete: (id: string) => {
+                    changeDecisions(() => deleteMemory(db, tenant, id));
+                  },
+                },
                 artifacts: projectArts.map((a) => ({
                   id: a.id,
                   title: a.title,
