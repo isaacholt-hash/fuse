@@ -34,6 +34,7 @@ export const EXPORTED_TABLES = [
   "imports",
   "thread_tags",
   "prompts",
+  "egress_rules",
   "request_log",
 ] as const;
 

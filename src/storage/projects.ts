@@ -12,9 +12,15 @@ export interface Project {
   defaultModel: { provider: ProviderId; id: string } | null;
   /** Or a tier new chats start pinned to (RT-01); ignored when there's a default model. */
   defaultTier: "balanced" | "best" | null;
+  /** SE-13: Normal, Local only (nothing is sent) or Cloud only (never a local model). */
+  privacyMode: PrivacyMode;
+  /** SE-13: whether its content may go to a provider to be embedded for search. */
+  allowEmbeddings: boolean;
   createdAt: number;
   updatedAt: number;
 }
+
+export type PrivacyMode = "normal" | "local_only" | "cloud_only";
 
 interface ProjectRow {
   id: string;
@@ -23,6 +29,8 @@ interface ProjectRow {
   default_provider: string | null;
   default_model: string | null;
   default_tier: "balanced" | "best" | null;
+  privacy_mode: PrivacyMode;
+  allow_embeddings: number;
   created_at: number;
   updated_at: number;
 }
@@ -36,12 +44,28 @@ const toProject = (r: ProjectRow): Project => ({
       ? { provider: r.default_provider, id: r.default_model }
       : null,
   defaultTier: r.default_tier,
+  privacyMode: r.privacy_mode,
+  allowEmbeddings: r.allow_embeddings === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
 const COLUMNS =
-  "id, name, instructions, default_provider, default_model, default_tier, created_at, updated_at";
+  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, created_at, updated_at";
+
+/** SE-13: a project's privacy mode and whether it may be embedded. */
+export async function setProjectPrivacy(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  privacy: { mode: PrivacyMode; allowEmbeddings: boolean },
+): Promise<void> {
+  await db.execute(
+    `UPDATE projects SET privacy_mode = ?, allow_embeddings = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [privacy.mode, privacy.allowEmbeddings ? 1 : 0, Date.now(), tenant.workspaceId, id],
+  );
+}
 
 export async function createProject(db: SqlDb, tenant: Tenant, name: string): Promise<Project> {
   const now = Date.now();

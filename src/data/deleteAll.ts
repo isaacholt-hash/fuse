@@ -29,6 +29,7 @@ const ORDER = [
   "imports",
   "thread_tags",
   "prompts",
+  "egress_rules",
   "messages",
   "request_log",
   "files",
