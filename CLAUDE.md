@@ -27,7 +27,8 @@ One desktop app (web in P2) that replaces the Claude and ChatGPT apps, runs on *
 | Web search | Provider-native search tools; no separate search key in P1 |
 | Routing rule | Quality floor first (RT-17), cost second. Cheap tier never answers the user |
 | Budget | No app budget in month one; provider-console hard limits + anomaly alert (CO-07) |
-| Sync storage | Deferred to P2 |
+| Sync storage | Deferred to P2 (logical records, never the database file; PL-04) |
+| Continuity (2026-10-29) | Next is P1.5 part 1, Continuity core (M5), then Local and lean (M6), then P2. Memory is provider-neutral typed records (decisions and tasks are types) with scope, provenance and authority; one context assembler; egress policy checked in the Rust transport; backup before every migration, migrations stay forward-only. Details: `docs/requirements.md` §3, §8, §15, §17 |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 
