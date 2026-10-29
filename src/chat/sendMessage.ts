@@ -7,6 +7,7 @@ import {
   type ProviderId,
 } from "@/catalog/catalog";
 import { cost } from "@/cost/cost";
+import type { ModelDefaults } from "@/routing/modelDefaults";
 import { effectiveInstructions, systemPrompt } from "./instructions";
 import { ProviderError, userMessage } from "@/providers/errors";
 import { toBase64, type FilesApi } from "@/files/api";
@@ -83,6 +84,8 @@ export interface SendInput {
    * retryable error (after its own retries) before any text arrived.
    */
   fallback?: CatalogModel | null;
+  /** MM-07: your defaults for the model that answers (max output, effort, a prompt prefix). */
+  defaults?: (model: CatalogModel) => ModelDefaults;
 }
 
 export interface Source {
@@ -507,14 +510,26 @@ async function streamAnswer(
     const webSearch = Boolean(input.webSearch) && m.capabilities.includes("web_search");
     try {
       const adapter = deps.adapterFor(m.provider);
-      const effort = input.route?.effort ?? null;
+      const mine = input.defaults?.(m) ?? {};
+      // "Think harder" (max) beats everything; then your default; then the router's (RT-08).
+      const routed = input.route?.effort ?? null;
+      const effort = routed === "max" ? routed : (mine.effort ?? routed);
+      const prefixed = mine.prefix
+        ? system
+          ? `${mine.prefix}\n\n${system}`
+          : mine.prefix
+        : system;
       const options = {
-        ...(system ? { system } : {}),
+        ...(prefixed ? { system: prefixed } : {}),
         ...(webSearch ? { webSearch } : {}),
         // High effort thinks at length, and thinking counts against the output limit: give it
-        // the model's whole output budget (docs/providers.md, M2).
+        // the model's whole output budget (docs/providers.md, M2), unless you set a limit.
         ...(effort ? { effort } : {}),
-        ...(effort && effort !== "low" ? { maxOutputTokens: m.maxOutput } : {}),
+        ...(mine.maxOutputTokens
+          ? { maxOutputTokens: Math.min(mine.maxOutputTokens, m.maxOutput) }
+          : effort && effort !== "low"
+            ? { maxOutputTokens: m.maxOutput }
+            : {}),
       };
       for await (const ev of adapter.streamChat(history, m.id, options, input.signal)) {
         if (ev.type === "status") {

@@ -39,7 +39,7 @@
 - [x] **16. Memory conflicts (PM-11).** A contradicting fact shows both and asks which stands; the old one is kept as history.
 - [x] **17. File viewer (FK-10).** Any attached file in the side panel, at the cited page or chunk.
 - [x] **18. File secrets warning (FK-11).** Before a file is sent, offer to redact keys, passwords and card numbers.
-- [ ] **19. Per-model defaults (MM-07).** Temperature, max output, reasoning effort and a prompt prefix, per model, tier and project.
+- [x] **19. Per-model defaults (MM-07).** Temperature, max output, reasoning effort and a prompt prefix, per model, tier and project.
 - [ ] **20. Spend caps per key (MM-09).** Daily and monthly caps with a hard stop and a one-click raise for today.
 - [ ] **21. Artifacts in projects (AR-06).** Artifacts belong to a project, are searchable, and can be attached to any chat.
 
