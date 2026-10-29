@@ -181,8 +181,9 @@ export async function suggestMemories(
   }
 
   const project = thread.projectId ? await getProject(db, tenant, thread.projectId) : null;
+  // Decisions are yours alone (PM-15): the model never sees them to change.
   const saved = (await listMemories(db, tenant))
-    .filter((m) => inScope(m, { projectId: thread.projectId, threadId }))
+    .filter((m) => m.kind !== "decision" && inScope(m, { projectId: thread.projectId, threadId }))
     .map((memory, i) => ({ ref: `M${String(i + 1)}`, memory }));
   const previous = await proposalTexts(db, tenant);
   const system = extractionSystem(project?.name ?? null);
@@ -207,6 +208,11 @@ export async function suggestMemories(
   for (const s of parseSuggestions(reply)) {
     const target = s.ref ? byRef.get(s.ref) : undefined;
     if (s.op !== "add" && !target) continue;
+    // Authority order (PM-15): a suggestion never changes or removes what you entered or
+    // imported. A change becomes a new fact, which the review shows against yours (PM-11).
+    const guarded = target !== undefined && target.authority !== "extracted";
+    if (guarded && s.op === "delete") continue;
+    const op = guarded ? "add" : s.op;
     if (s.op !== "delete") {
       const secret = findSecret(s.text);
       if (secret) {
@@ -218,13 +224,16 @@ export async function suggestMemories(
       seen.add(key);
     }
     proposals.push({
-      op: s.op,
-      memoryId: target?.id ?? null,
-      text: s.op === "delete" ? "" : s.text,
-      kind: s.op === "delete" && target ? target.kind : s.kind,
-      projectId: s.op === "add" && s.projectOnly && thread.projectId ? thread.projectId : null,
+      op,
+      memoryId: op === "add" ? null : (target?.id ?? null),
+      text: op === "delete" ? "" : s.text,
+      kind: op === "delete" && target ? target.kind : s.kind,
+      // A guarded change keeps the original's project; a new fact is the project's when asked.
+      projectId:
+        op !== "add" ? null : guarded ? target.projectId : s.projectOnly ? thread.projectId : null,
       confidence: s.confidence,
       sourceThreadId: threadId,
+      extractionModel: model.id,
     });
   }
   await addProposals(db, tenant, proposals);

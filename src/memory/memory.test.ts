@@ -7,6 +7,7 @@ import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import {
+  addDecision,
   addMemory,
   approveProposal,
   deleteAllMemories,
@@ -26,7 +27,7 @@ import { createThread, getThread, setThreadMemory, setThreadProject } from "@/st
 import { EMPTY_USAGE } from "@/storage/usage";
 import { housekeepingModel } from "@/chat/housekeeping";
 import { needsMemoryCheck, parseSuggestions, suggestMemories, transcript } from "./extract";
-import { keywords, selectMemories } from "./inject";
+import { keywords, memoryLine, selectMemories } from "./inject";
 import { findSecret } from "./secrets";
 
 const t = DEFAULT_TENANT;
@@ -263,8 +264,10 @@ describe("extraction (PM-03)", () => {
 
   test("suggests adds, updates and deletes; skips secrets and repeats; logs the cost", async () => {
     const db = openTestDb();
-    const keep = await addMemory(db, t, { text: "Lives in Leeds.", kind: "fact" });
-    const old = await addMemory(db, t, { text: "Has one cat.", kind: "fact" });
+    // Found in earlier chats, so a suggestion may change them (PM-15's authority order).
+    const found = { kind: "fact", authority: "extracted" } as const;
+    const keep = await addMemory(db, t, { text: "Lives in Leeds.", ...found });
+    const old = await addMemory(db, t, { text: "Has one cat.", ...found });
     const thread = await chatWith(db, "We moved to York and got a second cat.", "Congrats!");
     const reply = JSON.stringify({
       suggestions: [
@@ -315,6 +318,35 @@ describe("extraction (PM-03)", () => {
       deleted_at: null,
     });
     expect(await listPendingProposals(db, t)).toEqual([]);
+  });
+
+  test("a suggestion never changes or removes what you entered, and never sees a decision (PM-15)", async () => {
+    const db = openTestDb();
+    const project = await createProject(db, t, "Boat");
+    await addMemory(db, t, { text: "Lives in Leeds.", kind: "fact" });
+    await addMemory(db, t, { text: "Has one cat.", kind: "fact" });
+    await addDecision(db, t, project.id, {
+      text: "Moor at the north harbour.",
+      rationale: "Cheaper",
+      alternatives: [],
+    });
+    const thread = await chatWith(db, "We moved to York.", "Congrats!");
+    await setThreadProject(db, t, thread.id, project.id);
+    const reply = JSON.stringify({
+      suggestions: [
+        { op: "update", id: "M1", text: "Lives in York.", kind: "fact", confidence: 90 },
+        { op: "delete", id: "M2" },
+      ],
+    });
+    const { adapter, calls } = fakeAdapter([reply]);
+    await suggestMemories({ db, tenant: t, adapterFor: () => adapter }, catalog, thread.id, small);
+    expect(calls[0]?.history[0]?.content).not.toContain("north harbour");
+    const pending = await listPendingProposals(db, t);
+    expect(pending.map((p) => [p.op, p.text, p.memoryId, p.extractionModel])).toEqual([
+      ["add", "Lives in York.", null, "small-a"],
+    ]);
+    // Your fact is still in use; the review shows the new one against it (PM-11).
+    expect((await listMemories(db, t)).map((m) => m.text)).toContain("Lives in Leeds.");
   });
 
   test("rejected suggestions are passed back so they aren't made again", async () => {
@@ -462,4 +494,24 @@ test("a memory for one chat is only sent in that chat (PM-13)", () => {
     selectMemories(pool, "x", { projectId: null, threadId }, 1500).map((m) => m.id);
   expect(ids("t1")).toEqual(["g", "c"]);
   expect(ids("t2")).toEqual(["g"]);
+});
+
+test("decisions and constraints always go first, whatever the budget (PM-15)", () => {
+  const pool = [
+    fakeMemory({ id: "f", text: "Likes long walks along the coast at dawn." }),
+    fakeMemory({ id: "c", text: "Budget is £500.", kind: "constraint" }),
+    fakeMemory({
+      id: "d",
+      text: "Moor at the north harbour.",
+      kind: "decision",
+      rationale: "Cheaper fees",
+      alternatives: ["South quay"],
+    }),
+  ];
+  const chosen = selectMemories(pool, "unrelated", { projectId: null, threadId: null }, 5);
+  expect(chosen.map((m) => m.id)).toEqual(["c", "d"]);
+  expect(chosen.map(memoryLine)).toEqual([
+    "Constraint: Budget is £500.",
+    "Decision: Moor at the north harbour. Reason: Cheaper fees Ruled out: South quay",
+  ]);
 });

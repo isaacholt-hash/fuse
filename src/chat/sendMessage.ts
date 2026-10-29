@@ -32,7 +32,7 @@ import { summarizedPath } from "./summary";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories, recordInjected } from "@/storage/memories";
 import { getMemorySettings } from "@/storage/settings";
-import { inScope, memoryTokens, selectMemories } from "@/memory/inject";
+import { inScope, memoryLine, memoryTokens, selectMemories } from "@/memory/inject";
 import { getProject } from "@/storage/projects";
 import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -492,7 +492,7 @@ async function streamAnswer(
       project?.instructions ?? "",
       thread?.instructions ?? "",
     ),
-    injected.map((m) => m.text),
+    injected.map(memoryLine),
     earlier,
     [ARTIFACT_GUIDE],
     await editedArtifacts(),

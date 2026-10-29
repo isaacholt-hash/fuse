@@ -1,4 +1,5 @@
 import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
+import { DecisionsSection, type DecisionsProps } from "./Decisions";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -124,7 +125,10 @@ export function ProjectDialog({
   knowledge,
   artifacts,
   onOpenArtifact,
+  decisions,
 }: {
+  /** Only when editing: the project's decisions (PM-15). */
+  decisions?: DecisionsProps;
   /** AR-06: artifacts made in this project's chats. */
   artifacts?: { id: string; title: string; chat: string }[];
   onOpenArtifact?: (id: string) => void;
@@ -143,7 +147,7 @@ export function ProjectDialog({
   const empty: ProjectForm = { name: "", instructions: "", defaultModel: null };
   const [form, setForm] = useState<ProjectForm>(initial ?? empty);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const ids = { name: useId(), instructions: useId(), model: useId() };
+  const ids = { name: useId(), instructions: useId(), model: useId(), form: useId() };
   const editing = initial !== null;
   return (
     <Modal
@@ -160,6 +164,7 @@ export function ProjectDialog({
       wide
     >
       <form
+        id={ids.form}
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
@@ -260,35 +265,45 @@ export function ProjectDialog({
             </ul>
           </section>
         )}
-        <div className="flex items-center gap-2 pt-2">
-          {onDelete &&
-            (confirmDelete ? (
-              <>
-                <span className="text-[11px] text-muted-foreground">
-                  Delete? Its chats are kept.
-                </span>
-                <Button type="button" variant="destructive" size="sm" onClick={onDelete}>
-                  Delete project
-                </Button>
-              </>
-            ) : (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-destructive"
-                onClick={() => {
-                  setConfirmDelete(true);
-                }}
-              >
-                Delete…
-              </Button>
-            ))}
-          <Button type="submit" size="sm" className="ml-auto" disabled={!form.name.trim()}>
-            {editing ? "Save" : "Create project"}
-          </Button>
-        </div>
       </form>
+      {/* Outside the form, so Enter in a decision doesn't save and close the project. */}
+      {decisions && (
+        <div className="mt-4">
+          <DecisionsSection {...decisions} />
+        </div>
+      )}
+      <div className="flex items-center gap-2 pt-4">
+        {onDelete &&
+          (confirmDelete ? (
+            <>
+              <span className="text-[11px] text-muted-foreground">Delete? Its chats are kept.</span>
+              <Button type="button" variant="destructive" size="sm" onClick={onDelete}>
+                Delete project
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              onClick={() => {
+                setConfirmDelete(true);
+              }}
+            >
+              Delete…
+            </Button>
+          ))}
+        <Button
+          type="submit"
+          form={ids.form}
+          size="sm"
+          className="ml-auto"
+          disabled={!form.name.trim()}
+        >
+          {editing ? "Save" : "Create project"}
+        </Button>
+      </div>
     </Modal>
   );
 }

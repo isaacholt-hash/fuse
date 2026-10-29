@@ -28,8 +28,30 @@ export function keywords(text: string): Set<string> {
 const SIMILARITY_FLOOR = 0.3;
 const SIMILARITY_WEIGHT = 6;
 
-/** Rough tokens one memory adds to the prompt (its text plus the list marker). */
-export const memoryTokens = (m: Pick<Memory, "text">) => textTokens(m.text) + 2;
+type Line = Pick<Memory, "text"> & Partial<Pick<Memory, "kind" | "rationale" | "alternatives">>;
+
+/** How a memory reads in the prompt: decisions with their reason and what was ruled out. */
+export function memoryLine(m: Line): string {
+  if (m.kind === "decision") {
+    const alts = m.alternatives ?? [];
+    return [
+      `Decision: ${m.text}`,
+      m.rationale ? `Reason: ${m.rationale}` : null,
+      alts.length ? `Ruled out: ${alts.join("; ")}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+  if (m.kind === "constraint") return `Constraint: ${m.text}`;
+  return m.text;
+}
+
+/** Rough tokens one memory adds to the prompt (its line plus the list marker). */
+export const memoryTokens = (m: Line) => textTokens(memoryLine(m)) + 2;
+
+/** PM-15: decisions and constraints always go, ahead of other memories, never cut for budget. */
+export const isPinned = (m: Pick<Memory, "kind">) =>
+  m.kind === "decision" || m.kind === "constraint";
 
 /** Where a message is being sent from: its project and chat. */
 export interface MemoryWhere {
@@ -62,8 +84,22 @@ export function selectMemories(
   // Records kept on this device never go to a provider (SE-13).
   const pool = memories.filter((m) => m.maySend && inScope(m, where));
   if (budgetTokens <= 0 || pool.length === 0) return [];
-  const total = pool.reduce((sum, m) => sum + memoryTokens(m), 0);
-  if (total <= budgetTokens) return pool;
+  const pinned = pool.filter(isPinned);
+  const others = pool.filter((m) => !isPinned(m));
+  const room = budgetTokens - pinned.reduce((sum, m) => sum + memoryTokens(m), 0);
+  const total = others.reduce((sum, m) => sum + memoryTokens(m), 0);
+  if (total <= room) return [...pinned, ...others];
+  return [...pinned, ...rankWithin(others, query, room, similarity)];
+}
+
+/** The memories sharing the most (and rarest) words or meaning with the question, within `budgetTokens`. */
+function rankWithin(
+  pool: Memory[],
+  query: string,
+  budgetTokens: number,
+  similarity: ReadonlyMap<string, number>,
+): Memory[] {
+  if (budgetTokens <= 0) return [];
 
   const words = pool.map((m) => keywords(m.text));
   const docFreq = new Map<string, number>();
