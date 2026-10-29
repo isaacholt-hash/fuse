@@ -1,0 +1,55 @@
+{
+  "id": "trip-planning",
+  "description": "A week in Lisbon: travel and area chosen, diet and walking limits set.",
+  "project": {
+    "name": "Lisbon trip",
+    "instructions": "Prices in euros."
+  },
+  "decisions": [
+    {
+      "id": "travel",
+      "text": "Travel to Lisbon by train, not by plane.",
+      "rationale": "Lower carbon, and the journey is part of the trip.",
+      "alternatives": ["Fly from London"]
+    },
+    {
+      "id": "area",
+      "text": "Stay in the Alfama district.",
+      "rationale": "Close to the sights and full of character.",
+      "alternatives": ["Baixa", "Belém"]
+    }
+  ],
+  "constraints": [
+    { "id": "diet", "text": "All meals must be vegetarian." },
+    { "id": "walking", "text": "No more than 10,000 steps a day." }
+  ],
+  "tasks": ["Book the night train from Paris"],
+  "memories": [{ "text": "Travelling with a partner who dislikes crowds.", "kind": "person" }],
+  "history": [
+    { "role": "user", "content": "Planning a week in Lisbon. Fly or train?" },
+    {
+      "role": "assistant",
+      "content": "Flying is quicker; the train via Paris and Hendaye takes about two days but is lower carbon and scenic."
+    },
+    { "role": "user", "content": "Train. Where should we stay?" },
+    {
+      "role": "assistant",
+      "content": "Alfama is atmospheric and central; Baixa is flatter; Belém is quieter but further out."
+    }
+  ],
+  "summary": "Planning a week in Lisbon by train, staying in Alfama.",
+  "questions": [
+    { "ask": "How are we getting to Lisbon again?", "expect": ["train"], "critical": "travel" },
+    { "ask": "Which neighbourhood are we staying in?", "expect": ["alfama"], "critical": "area" },
+    {
+      "ask": "Suggest a dinner place near our hotel.",
+      "expect": ["vegetarian|vegan|veggie|plant"],
+      "critical": "diet"
+    },
+    {
+      "ask": "Plan a day of walking around the city.",
+      "expect": ["10,000|10000|steps"],
+      "critical": "walking"
+    }
+  ]
+}

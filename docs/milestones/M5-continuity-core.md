@@ -26,10 +26,14 @@
 - [x] **10. Privacy wording and threat model (SE-15, SE-14).** Settings → Privacy explains what stays local and what goes to a provider; `docs/threat-model.md`.
 - [x] **11. Export format v1 (PL-12, part 1).** `docs/export-format.md`: a manifest, records as JSON, files named by hash; export everything or one project.
 - [x] **12. Restore from an export (PL-12, part 2).** Everything or one project, a preview first, ids kept, duplicates skipped; a round-trip test.
-- [ ] **13. Two-provider continuity test (PM-19).** Recorded project histories whose decisions and constraints must reach both providers' requests (automated, no API calls), plus `pnpm continuity:live` for Isaac.
+- [x] **13. Two-provider continuity test (PM-19).** Recorded project histories whose decisions and constraints must reach both providers' requests (automated, no API calls), plus `pnpm continuity:live` for Isaac.
+
+**All build steps done (2026-10-29).** The automated gate passes: every critical decision and constraint in the three recorded scenarios reaches both providers' requests, with the history summarized and the memory budget crowded, and the egress tests show nothing reaches a blocked provider. Next: Isaac runs `pnpm continuity:live` with his own keys for the live 90% number, then tests M5.
 
 ## Notes
 
 - Each step keeps the usual rules: one PR, tests, screenshot for UI changes, secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.
 - Rust changes are cross-checked for Windows, and the Windows release build is confirmed after merge.
 - Migrations stay forward-only; the backup before every migration is the rollback path.
+- The live benchmark (`src/context/continuity.live.test.ts`, `pnpm continuity:live`) is skipped in `pnpm test` and never run by Claude: it needs Isaac's keys from his own shell.
+- Scenarios live in `data/continuity/*.json` and are synthetic, so they hold no personal data. Add your own the same way. In `expect`, `a|b` accepts either term.

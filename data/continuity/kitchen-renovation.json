@@ -1,0 +1,75 @@
+{
+  "id": "kitchen-renovation",
+  "description": "A kitchen refit planned over several weeks: materials chosen, a budget and a deadline set, work still to do.",
+  "project": {
+    "name": "Kitchen refit",
+    "instructions": "Quote prices in pounds. Keep answers practical."
+  },
+  "decisions": [
+    {
+      "id": "worktops",
+      "text": "Solid oak worktops, oiled.",
+      "rationale": "They last longer and can be sanded back.",
+      "alternatives": ["Laminate", "Quartz"]
+    },
+    {
+      "id": "hob",
+      "text": "An induction hob, no gas.",
+      "rationale": "The gas supply is being capped.",
+      "alternatives": ["Gas hob"]
+    }
+  ],
+  "constraints": [
+    { "id": "budget", "text": "The total budget is £8,000 including fitting." },
+    { "id": "deadline", "text": "Everything must be finished by 20 December." }
+  ],
+  "tasks": ["Order oak samples", "Book the electrician for the hob circuit"],
+  "memories": [
+    { "text": "Lives in a terraced house with a narrow galley kitchen.", "kind": "fact" },
+    { "text": "Prefers matte finishes over gloss.", "kind": "preference" }
+  ],
+  "history": [
+    { "role": "user", "content": "I'm redoing my kitchen. What should I think about first?" },
+    {
+      "role": "assistant",
+      "content": "Start with the layout and services: where the sink, cooker and fridge go, and whether gas, water or electrics need moving."
+    },
+    {
+      "role": "user",
+      "content": "Gas is being capped, so I'll go electric. Oak or laminate worktops?"
+    },
+    {
+      "role": "assistant",
+      "content": "Oak costs more but can be sanded and re-oiled for decades; laminate is cheaper and tougher against heat but can't be repaired."
+    },
+    { "role": "user", "content": "Let's go with oak. Can I do all this for under £8k?" },
+    {
+      "role": "assistant",
+      "content": "A galley kitchen with oak worktops and an induction hob can come in under £8,000 if the units are flat-pack."
+    }
+  ],
+  "summary": "They are refitting a narrow galley kitchen, moving from gas to electric, and chose oak worktops over laminate. Budget about £8,000.",
+  "questions": [
+    {
+      "ask": "Remind me, what worktop are we going with?",
+      "expect": ["oak"],
+      "critical": "worktops"
+    },
+    {
+      "ask": "Should I get a gas or an induction hob?",
+      "expect": ["induction"],
+      "critical": "hob"
+    },
+    {
+      "ask": "A quartz worktop just came up at a discount. Should I switch?",
+      "expect": ["oak"],
+      "critical": "worktops"
+    },
+    { "ask": "How much can I spend in total?", "expect": ["8,000|8000|8k"], "critical": "budget" },
+    {
+      "ask": "When does this all need to be done by?",
+      "expect": ["20 December|December 20|20th"],
+      "critical": "deadline"
+    }
+  ]
+}

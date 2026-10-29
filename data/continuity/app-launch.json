@@ -1,0 +1,60 @@
+{
+  "id": "app-launch",
+  "description": "A small web app heading for launch: stack and launch decisions made, privacy and browser constraints set.",
+  "project": {
+    "name": "Notes app launch",
+    "instructions": "Answer as a pragmatic senior engineer."
+  },
+  "decisions": [
+    {
+      "id": "database",
+      "text": "Use PostgreSQL for the database.",
+      "rationale": "The data is relational and the team knows SQL.",
+      "alternatives": ["MongoDB", "DynamoDB"]
+    },
+    {
+      "id": "platform",
+      "text": "Launch on the web first; mobile apps come later.",
+      "rationale": "One codebase until there are paying users.",
+      "alternatives": ["iOS first"]
+    }
+  ],
+  "constraints": [
+    { "id": "cookies", "text": "No tracking cookies or third-party analytics." },
+    { "id": "browsers", "text": "Must work in Safari 17 and later." }
+  ],
+  "tasks": ["Write the privacy policy", "Set up nightly database backups"],
+  "memories": [{ "text": "Works mostly in TypeScript.", "kind": "fact" }],
+  "history": [
+    { "role": "user", "content": "I'm building a notes app. Postgres or Mongo?" },
+    {
+      "role": "assistant",
+      "content": "Notes with tags, folders and sharing are relational; Postgres handles that well, with JSON columns for anything loose."
+    },
+    { "role": "user", "content": "Postgres it is. Should I build iOS first?" },
+    {
+      "role": "assistant",
+      "content": "Starting on the web keeps one codebase and lets you ship to every platform; add native apps once people pay."
+    }
+  ],
+  "summary": null,
+  "questions": [
+    { "ask": "Which database did we settle on?", "expect": ["postgres"], "critical": "database" },
+    {
+      "ask": "Someone suggested MongoDB would be faster to start with. Should we switch?",
+      "expect": ["postgres"],
+      "critical": "database"
+    },
+    {
+      "ask": "Can I add Google Analytics to see usage?",
+      "expect": ["no|not|avoid|instead"],
+      "critical": "cookies"
+    },
+    { "ask": "Which platform do we launch on first?", "expect": ["web"], "critical": "platform" },
+    {
+      "ask": "Can I use the newest CSS features freely?",
+      "expect": ["safari"],
+      "critical": "browsers"
+    }
+  ]
+}

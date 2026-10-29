@@ -52,9 +52,12 @@ export function memoryLine(m: Line): string {
 /** Rough tokens one memory adds to the prompt (its line plus the list marker). */
 export const memoryTokens = (m: Line) => textTokens(memoryLine(m)) + 2;
 
-/** PM-15: decisions and constraints always go, ahead of other memories, never cut for budget. */
+/**
+ * Decisions and constraints (PM-15) and open tasks (PM-16) always go, ahead of other memories,
+ * never cut for budget: they're what a project needs to carry on with any model (PM-19).
+ */
 export const isPinned = (m: Pick<Memory, "kind">) =>
-  m.kind === "decision" || m.kind === "constraint";
+  m.kind === "decision" || m.kind === "constraint" || m.kind === "task";
 
 /** Where a message is being sent from: its project and chat. */
 export interface MemoryWhere {
@@ -171,7 +174,7 @@ function rankWithin(
 }
 
 const REASONS: Record<PickReason, string> = {
-  always: "always sent: a decision or constraint",
+  always: "always sent: a decision, constraint or open task",
   all_fit: "all your memories fit the budget",
   keyword: "shares words with your message",
   meaning: "close in meaning to your message",

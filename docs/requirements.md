@@ -174,7 +174,7 @@ Memory lives in the app's database, is written as plain facts you can read and d
 | PM-13 | Memory scope: global, workspace, project or conversation. Context selection respects scope. | Must | P1.5 |
 | PM-14 | Memory provenance and status: authority (you, imported, extracted), source chat, message or artifact, extraction method and model, confidence, last verified, expiry, status (active, excluded, superseded, expired, deleted), sensitivity and whether it may be sent to providers. Raw history is kept apart from promoted memory. Each record carries `revision` and `device_id` so sync (PL-04) needs no second schema change. | Must | P1.5 |
 | PM-15 | Decisions: a project's explicit choices with rationale, alternatives considered, status and what they replace. Never added automatically; always sent ahead of other memory. A model summary or extracted fact never overrides a decision or anything you entered (authority order: you > imported > extracted). | Must | P1.5 |
-| PM-16 | Tasks: a project's open work with status and dependencies, listed in the project and available to context. | Should | P1.5 |
+| PM-16 | Tasks: a project's open work with status and dependencies, listed in the project and available to context; open tasks are sent with decisions and constraints, never cut for budget (found by the PM-19 test). | Should | P1.5 |
 | PM-17 | Exclude and explain: a memory can be excluded from future context without deleting it, and each answer records why each memory was used (keyword or meaning score and reason). | Must | P1.5 |
 | PM-18 | Context assembler: one module builds a bounded package for every request, in this order: instructions, constraints and decisions, tasks, memories (ranked by authority, recency and relevance), summaries, file excerpts, history. Each part carries its source; the egress policy (SE-13) is applied before anything is sent. Merges LL-05. | Must | P1.5 |
 | PM-19 | Two-provider continuity test: a recorded project history whose decisions and constraints must all reach both providers' requests (automated, no API calls), plus a live benchmark run with your keys. Gate: critical decisions and constraints kept in at least 90% of benchmark scenarios. | Must | P1.5 |
@@ -420,7 +420,7 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Add the second provider, tiers, Auto routing and escalation; then memory, projects and artifacts
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
-- [ ] P1.5 part 1, Continuity core (M5): backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
+- [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); the live continuity number waits on `pnpm continuity:live` with your keys. Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
 - [ ] P1.5 part 2, Local and lean (M6, section 16b): decide its open items in section 17 first; trial fixes go first
 
 **Can wait**
