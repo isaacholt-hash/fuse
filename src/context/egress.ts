@@ -2,6 +2,7 @@
 // The app checks it on every path that sends (router, chat, compare, failover, housekeeping,
 // embeddings); the Rust transport checks it again (M5 step 9).
 import type { EmbeddingModel, ProviderId } from "@/catalog/catalog";
+import type { SendScope } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
 import { listEgressRules, type EgressRule } from "@/storage/egress";
 import { getProject, type PrivacyMode, type Project } from "@/storage/projects";
@@ -82,6 +83,17 @@ export async function projectPolicy(
 ): Promise<EgressPolicy> {
   const project = projectId ? await getProject(db, tenant, projectId) : null;
   return policyFor(project, await listEgressRules(db, tenant));
+}
+
+/** The policy for a request's scope (SE-13), read fresh. */
+export async function scopePolicy(
+  db: SqlDb,
+  tenant: Tenant,
+  scope: SendScope,
+): Promise<EgressPolicy> {
+  return scope.kind === "thread"
+    ? threadPolicy(db, tenant, scope.id)
+    : projectPolicy(db, tenant, scope.kind === "project" ? scope.id : null);
 }
 
 /** The policy for the project a chat is in (or the global rules), read fresh. */

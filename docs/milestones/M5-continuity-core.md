@@ -22,7 +22,7 @@
 - [x] **6. Exclude and explain (PM-17).** Exclude a memory without deleting it; each answer records why each memory was used.
 - [x] **7. Context assembler (PM-18).** One module builds every request in order: instructions, constraints and decisions, tasks, memories, summaries, file excerpts, history, each part with its source. Requests without decisions stay as they were.
 - [x] **8. Egress policy in the app (SE-13, part 1).** Per project: privacy mode (Normal, Local only, Cloud only), providers allowed or blocked, embeddings on or off; per record: may-send. Blocked content is never sent, and you see why.
-- [ ] **9. Egress in the Rust transport (SE-13, part 2).** Every send carries its scope; the Rust transport looks up the project and refuses blocked providers. One test per send path.
+- [x] **9. Egress in the Rust transport (SE-13, part 2).** Every send carries its scope; the Rust transport looks up the project and refuses blocked providers. One test per send path.
 - [ ] **10. Privacy wording and threat model (SE-15, SE-14).** Settings → Privacy explains what stays local and what goes to a provider; `docs/threat-model.md`.
 - [ ] **11. Export format v1 (PL-12, part 1).** `docs/export-format.md`: a manifest, records as JSON, files named by hash; export everything or one project.
 - [ ] **12. Restore from an export (PL-12, part 2).** Everything or one project, a preview first, ids kept, duplicates skipped; a round-trip test.

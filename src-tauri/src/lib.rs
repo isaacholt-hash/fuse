@@ -1,5 +1,6 @@
 mod backup;
 mod db;
+mod egress;
 mod export;
 mod files;
 mod hello;

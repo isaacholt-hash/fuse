@@ -609,7 +609,11 @@ test("web search: fee added to the cost, sources saved, status reported, only if
   });
   // 1,000 × $2 + 100 × $10 per MTok = $0.003, plus 2 searches × $0.01 = $0.023
   expect(result.costMicroUsd).toBe(3000 + 20000);
-  expect(seenOptions[0]).toEqual({ webSearch: true, system: ARTIFACT_GUIDE });
+  expect(seenOptions[0]).toEqual({
+    scope: { kind: "thread", id: expect.any(String) as string },
+    webSearch: true,
+    system: ARTIFACT_GUIDE,
+  });
   expect(statuses).toEqual(["searching", null]);
   const saved = await citationsForMessages(db, t, [result.assistantMessageId]);
   expect(saved.get(result.assistantMessageId)).toEqual([
@@ -630,7 +634,10 @@ test("custom instructions go to every model as the system prompt, read fresh on 
   const thread = await createThread(db, t);
   await sendMessage(deps, { threadId: thread.id, model: claude, text: "a" });
   // With no instructions the system prompt is just the app guide (artifacts, AR-01).
-  expect(fakes.anthropic.options[0]).toEqual({ system: ARTIFACT_GUIDE });
+  expect(fakes.anthropic.options[0]).toEqual({
+    scope: { kind: "thread", id: expect.any(String) as string },
+    system: ARTIFACT_GUIDE,
+  });
 
   await setGlobalInstructions(db, t, { aboutYou: "I live in Leeds.", howToAnswer: "Be brief." });
   await setThreadInstructions(db, t, thread.id, "  Answer in French.  ");

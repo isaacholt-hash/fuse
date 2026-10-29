@@ -1,5 +1,6 @@
 // Housekeeping calls: small jobs FUSE runs for itself (memory suggestions, chat titles) on a cheap
 // model. Never shown to the user as an answer (RT-17); every call is logged like any other.
+import { threadScope } from "@/providers/types";
 import { egressRefusal, threadPolicy } from "@/context/egress";
 import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { cost } from "@/cost/cost";
@@ -70,14 +71,16 @@ export async function housekeepingCall(
   let done: StreamDone | null = null;
   let failure: ProviderError | null = null;
   try {
-    const stream = deps
-      .adapterFor(model.provider)
-      .streamChat(
-        [{ role: "user", content: req.input }],
-        model.id,
-        { system: req.system, maxOutputTokens: req.maxOutputTokens },
-        req.signal,
-      );
+    const stream = deps.adapterFor(model.provider).streamChat(
+      [{ role: "user", content: req.input }],
+      model.id,
+      {
+        system: req.system,
+        maxOutputTokens: req.maxOutputTokens,
+        scope: threadScope(req.threadId),
+      },
+      req.signal,
+    );
     for await (const ev of stream) {
       if (ev.type === "text") text += ev.text;
       else if (ev.type === "done") done = ev;

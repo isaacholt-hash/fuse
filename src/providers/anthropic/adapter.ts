@@ -3,6 +3,9 @@ import { ProviderError, parseRetryAfter, transportError, type ProviderErrorKind 
 import { withRetry, type RetryOptions } from "../retry";
 import { readSse } from "../sse";
 import {
+  SCOPE_HEADER,
+  scopeValue,
+  type SendScope,
   DEFAULT_MAX_OUTPUT_TOKENS,
   type Attachment,
   type ChatMessage,
@@ -159,11 +162,15 @@ export function createAnthropicAdapter(deps: {
 }): ProviderAdapter {
   const send = async (
     path: string,
-    init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal },
+    init: { method: "GET" | "POST"; body?: string; signal?: AbortSignal; scope?: SendScope },
   ): Promise<Response> => {
     let res: Response;
+    const { scope, ...rest } = init;
     try {
-      res = await deps.fetch(`${ANTHROPIC_API}${path}`, { ...init, headers: baseHeaders });
+      res = await deps.fetch(`${ANTHROPIC_API}${path}`, {
+        ...rest,
+        headers: scope ? { ...baseHeaders, [SCOPE_HEADER]: scopeValue(scope) } : baseHeaders,
+      });
     } catch (e) {
       if (init.signal?.aborted) throw new ProviderError("aborted", "Aborted");
       throw new ProviderError("network", e instanceof Error ? e.message : String(e));
@@ -190,7 +197,13 @@ export function createAnthropicAdapter(deps: {
     async *streamChat(messages, model, options, signal): AsyncGenerator<StreamEvent> {
       const body = JSON.stringify(buildRequestBody(messages, model, options));
       const { value: res, attempts } = await withRetry(
-        () => send("/v1/messages", { method: "POST", body, ...(signal ? { signal } : {}) }),
+        () =>
+          send("/v1/messages", {
+            method: "POST",
+            body,
+            ...(signal ? { signal } : {}),
+            ...(options.scope ? { scope: options.scope } : {}),
+          }),
         { ...deps.retry, ...(signal ? { signal } : {}) },
       );
       const requestId = res.headers.get("request-id");

@@ -2147,7 +2147,11 @@ test("web search: on by default, toggle per thread, live status, cited sources a
   expect(await screen.findByText("Searching the web…")).toBeInTheDocument();
   release();
   expect(await screen.findByText("It was 1916.")).toBeInTheDocument();
-  expect(options[0]).toEqual({ webSearch: true, system: ARTIFACT_GUIDE });
+  expect(options[0]).toEqual({
+    scope: { kind: "thread", id: expect.any(String) as string },
+    webSearch: true,
+    system: ARTIFACT_GUIDE,
+  });
 
   const sources = within(await screen.findByRole("navigation", { name: "Sources" }));
   expect(sources.getByRole("link", { name: "Claude Shannon" })).toHaveAttribute(
@@ -2254,7 +2258,11 @@ describe("custom instructions", () => {
     const { options, user } = setup();
     await user.type(await composer(), "Hi{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();
-    expect(options[0]).toEqual({ webSearch: true, system: ARTIFACT_GUIDE }); // just the app guide
+    expect(options[0]).toEqual({
+      scope: { kind: "thread", id: expect.any(String) as string },
+      webSearch: true,
+      system: ARTIFACT_GUIDE,
+    }); // just the app guide
     await user.click(screen.getByRole("button", { name: "Instructions (none)" }));
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText("None set.")).toBeInTheDocument();

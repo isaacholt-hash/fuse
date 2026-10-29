@@ -1,6 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ProviderId } from "@/catalog/catalog";
-import type { FetchLike } from "@/providers/types";
+import { SCOPE_HEADER, type FetchLike } from "@/providers/types";
 
 /** Mirrors `StreamMsg` in src-tauri/src/transport.rs. */
 export type StreamMsg =
@@ -26,15 +26,22 @@ const tauriBridge: Bridge = {
 /** Header on synthetic responses for errors raised before any request was sent. */
 export const FUSE_ERROR_HEADER = "x-fuse-error";
 
+/** The reason for an egress refusal, URI-encoded (headers can't carry every character). */
+export const FUSE_MESSAGE_HEADER = "x-fuse-message";
+
 /** Turns a refusal from the Rust side into an HTTP-like response the adapters already handle. */
 function setupFailure(raw: string): Response | null {
-  const m = /^(no_key|keychain|forbidden): (.*)$/s.exec(raw);
+  const m = /^(no_key|keychain|forbidden|egress): (.*)$/s.exec(raw);
   if (!m) return null;
   const [, code = "", message = ""] = m;
-  const status = code === "forbidden" ? 400 : 401;
+  const status = code === "egress" ? 403 : code === "forbidden" ? 400 : 401;
   return new Response(JSON.stringify({ error: { message } }), {
     status,
-    headers: { "content-type": "application/json", [FUSE_ERROR_HEADER]: code },
+    headers: {
+      "content-type": "application/json",
+      [FUSE_ERROR_HEADER]: code,
+      [FUSE_MESSAGE_HEADER]: encodeURIComponent(message),
+    },
   });
 }
 
@@ -94,14 +101,17 @@ export function providerFetch(provider: ProviderId, bridge: Bridge = tauriBridge
         },
         { once: true },
       );
+      // SE-13: the scope travels as its own field for the Rust egress check, never as a header.
+      const { [SCOPE_HEADER]: scope, ...headers } = init.headers;
       bridge
         .start(
           {
             provider,
             method: init.method,
             path: `${u.pathname}${u.search}`,
-            headers: Object.entries(init.headers),
+            headers: Object.entries(headers),
             body: init.body ?? null,
+            scope: scope ?? null,
           },
           onEvent,
         )

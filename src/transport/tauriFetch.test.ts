@@ -1,3 +1,6 @@
+import { ProviderError } from "@/providers/errors";
+import { createOpenAIAdapter } from "@/providers/openai/adapter";
+import { SCOPE_HEADER } from "@/providers/types";
 import { providerFetch, type StreamMsg } from "./tauriFetch";
 
 /** Fake bridge: records the request and lets the test drive the event stream. */
@@ -35,6 +38,7 @@ test("sends only path and headers (never a key) and streams the body", async () 
     path: "/v1/messages?x=1",
     headers: [["content-type", "application/json"]],
     body: "{}",
+    scope: null,
   });
   state.emit?.({ kind: "head", status: 200, headers: [["request-id", "req_1"]] });
   const res = await pending;
@@ -85,4 +89,40 @@ test("a missing key becomes a non-retryable 401 the adapters understand", async 
   });
   expect(res.status).toBe(401);
   expect(res.headers.get("x-fuse-error")).toBe("no_key");
+});
+
+test("the scope goes to Rust as its own field, never as a header to the provider (SE-13)", async () => {
+  const { state, bridge } = fakeBridge();
+  void providerFetch("openai", bridge)("https://api.openai.com/v1/embeddings", {
+    method: "POST",
+    headers: { "content-type": "application/json", [SCOPE_HEADER]: "project:p1" },
+    body: "{}",
+  });
+  await Promise.resolve();
+  expect(state.request).toMatchObject({
+    headers: [["content-type", "application/json"]],
+    scope: "project:p1",
+  });
+});
+
+test("an egress refusal from Rust reaches the chat as a blocked error with its reason", async () => {
+  const seen: unknown[] = [];
+  const bridge = {
+    start: (request: unknown) => {
+      seen.push(request);
+      return Promise.reject(new Error("egress: The project “Health” blocks OpenAI."));
+    },
+    abort: () => Promise.resolve(),
+  };
+  const adapter = createOpenAIAdapter({ fetch: providerFetch("openai", bridge) });
+  const stream = adapter.streamChat([{ role: "user", content: "Hi" }], "gpt", {
+    scope: { kind: "thread", id: "t1" },
+  });
+  const error = await stream.next().then(
+    () => null,
+    (e: unknown) => e,
+  );
+  expect(error).toBeInstanceOf(ProviderError);
+  expect(error).toMatchObject({ kind: "blocked", message: "The project “Health” blocks OpenAI." });
+  expect(seen[0]).toMatchObject({ scope: "thread:t1", path: "/v1/responses" });
 });

@@ -85,6 +85,14 @@ export function userMessage(e: ProviderError, providerName: string): string {
 export function transportError(res: Response): ProviderError | null {
   const code = res.headers.get("x-fuse-error");
   if (!code) return null;
+  if (code === "egress") {
+    // SE-13: the Rust transport refused it under the egress policy; nothing was sent.
+    const reason = decodeURIComponent(res.headers.get("x-fuse-message") ?? "");
+    return new ProviderError("blocked", reason || "Blocked by your privacy settings.", {
+      status: res.status,
+      code,
+    });
+  }
   const kind: ProviderErrorKind = code === "forbidden" ? "invalid_request" : "auth";
   return new ProviderError(kind, `FUSE: ${code}`, { status: res.status, code });
 }

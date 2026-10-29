@@ -48,6 +48,9 @@ pub struct HttpRequest {
     pub path: String,
     pub headers: Vec<(String, String)>,
     pub body: Option<String>,
+    /// Where the content comes from (SE-13): `thread:<id>`, `project:<id>` or `global`.
+    #[serde(default)]
+    pub scope: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -175,18 +178,31 @@ pub async fn run_request(
 
 pub mod commands {
     use super::*;
+    use crate::db::Database;
 
     /// Starts a provider request; returns an id for `provider_abort`. Results arrive on `on_event`.
     #[tauri::command]
-    pub fn provider_fetch(
+    pub async fn provider_fetch(
         keys: State<'_, Keys>,
         transport: State<'_, Transport>,
+        db: State<'_, Database>,
         request: HttpRequest,
         on_event: Channel<StreamMsg>,
     ) -> Result<u32, String> {
-        // Error prefixes (`forbidden:`, `no_key:`, `keychain:`) let the frontend classify them.
+        // Error prefixes (`forbidden:`, `egress:`, `no_key:`, `keychain:`) let the frontend
+        // classify them.
         let url = validate(&request, request.provider.api_base())
             .map_err(|e| format!("forbidden: {e}"))?;
+        // SE-13: the project's egress policy, looked up here, before any key is touched.
+        crate::egress::check(
+            &db.pool()?,
+            request.provider,
+            &request.method,
+            &request.path,
+            request.scope.as_deref(),
+        )
+        .await
+        .map_err(|e| format!("egress: {e}"))?;
         let key = keys
             .store
             .get(request.provider.account())
@@ -231,6 +247,7 @@ mod tests {
                 .map(|(n, v)| ((*n).to_string(), (*v).to_string()))
                 .collect(),
             body: None,
+            scope: None,
         }
     }
 
