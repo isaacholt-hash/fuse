@@ -39,20 +39,38 @@ export function effectiveInstructions(
   });
 }
 
+/** Everything besides the instructions that goes in the system prompt (PM-18 decides what). */
+export interface PromptSections {
+  /** Decisions and constraints in force: kept to unless the user changes them (PM-15). */
+  pinned?: string[];
+  /** Open tasks (PM-16). */
+  tasks?: string[];
+  memories?: string[];
+  /** A summary of turns no longer sent in full (PM-06). */
+  earlier?: string | null;
+  /** App guides (e.g. artifacts): never change, so they head the cached prefix. */
+  guides?: string[];
+  /** Sections that change often, after everything else so the rest stays cached. */
+  tail?: string[];
+}
+
 /**
- * The system prompt sent with every message. Global parts come first, then the project, then the
- * thread, so the stable prefix is shared across threads (better prompt caching, RT-07). Saved
- * memories (step 7) come last: they're the part most likely to change between messages.
+ * The system prompt sent with every message, in the context assembler's order (PM-18): app
+ * guides, instructions (global, then project, then chat, so the stable prefix is shared across
+ * threads for prompt caching, RT-07), decisions and constraints, open tasks, memories, the
+ * summary of earlier turns, then whatever changes most often.
  */
 export function systemPrompt(
   parts: InstructionPart[],
-  memories: string[] = [],
-  earlier: string | null = null,
-  guides: string[] = [],
-  /** Sections that change often, after everything else so the rest stays cached. */
-  tail: string[] = [],
+  {
+    pinned = [],
+    tasks = [],
+    memories = [],
+    earlier = null,
+    guides = [],
+    tail = [],
+  }: PromptSections = {},
 ): string | undefined {
-  // App guides (e.g. artifacts) first: they never change, so they head the cached prefix.
   const sections: string[] = [...guides];
   if (parts.length > 0) {
     const blocks = parts.map((p) => {
@@ -62,6 +80,26 @@ export function systemPrompt(
     sections.push(
       "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
       ...blocks,
+    );
+  }
+  if (pinned.length > 0) {
+    sections.push(
+      [
+        "<decisions_and_constraints>",
+        "Decisions the user made and constraints they set for this work. Keep to them unless the user changes one in this conversation; if a request would break one, say so.",
+        ...pinned.map((m) => `- ${m}`),
+        "</decisions_and_constraints>",
+      ].join("\n"),
+    );
+  }
+  if (tasks.length > 0) {
+    sections.push(
+      [
+        "<open_tasks>",
+        "Work still to do here. Use it for context; don't list it back unless asked.",
+        ...tasks.map((m) => `- ${m}`),
+        "</open_tasks>",
+      ].join("\n"),
     );
   }
   if (memories.length > 0) {
@@ -75,7 +113,7 @@ export function systemPrompt(
     );
   }
   if (earlier) {
-    // Last: the summary changes as the thread grows, so everything above stays cacheable.
+    // Late: the summary changes as the thread grows, so everything above stays cacheable.
     sections.push(
       [
         "<earlier_conversation>",
