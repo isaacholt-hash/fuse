@@ -732,6 +732,24 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(await screen.findByRole("complementary", { name: "File: notes.txt" })).toBeInTheDocument();
 });
 
+test("model defaults: a tier's max output, effort and prompt prefix go with its requests", async () => {
+  const { options, user } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Model defaults" }));
+  expect(section.getByLabelText("Defaults for")).toHaveValue("tier:balanced");
+  await user.type(section.getByLabelText("Max output tokens"), "512");
+  await user.selectOptions(section.getByLabelText("Reasoning effort"), "low");
+  await user.type(section.getByLabelText("Prompt prefix"), "Use British spelling.");
+  await user.click(section.getByRole("button", { name: "Save" }));
+  expect(await section.findByText("Set for: Balanced tier")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.type(await composer(), "Hello{Enter}");
+  await screen.findByText("Hello there.");
+  expect(options.at(-1)).toMatchObject({ maxOutputTokens: 512, effort: "low" });
+  expect((options.at(-1) as { system?: string }).system).toMatch(/^Use British spelling\.\n\n/);
+});
+
 test("a file with secrets: flagged on the chip, sending waits, and the lines can be removed", async () => {
   const { calls, user } = setup({ anthropic: [() => answer("Noted.")] });
   await composer();

@@ -258,6 +258,16 @@ import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { TagsDialog } from "@/ui/Tags";
+import { ModelDefaultsSection } from "@/ui/ModelDefaults";
+import {
+  DEFAULTS_SETTING,
+  modelDefaultsKey,
+  parseDefaults,
+  projectKey,
+  resolveDefaults,
+  tierKey,
+  type DefaultsMap,
+} from "@/routing/modelDefaults";
 import { chatMarkdown } from "@/data/exportAll";
 import { threadJson, type ThreadExportFormat } from "@/data/exportThread";
 import { FillPromptDialog, PromptsSection } from "@/ui/Prompts";
@@ -477,6 +487,8 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // MM-07: your defaults per tier, model and project.
+  const [modelDefaults, setModelDefaults] = useState<DefaultsMap>({});
   // CH-12: the prompt library, and a prompt waiting for its {{variables}}.
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [filling, setFilling] = useState<SavedPrompt | null>(null);
@@ -696,6 +708,9 @@ export function ChatApp({
     );
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
     listPrompts(db, tenant).then(setPrompts, report);
+    getSetting(db, tenant, DEFAULTS_SETTING).then((raw) => {
+      setModelDefaults(parseDefaults(raw));
+    }, report);
     Promise.all([
       getSetting(db, tenant, FETCHED_SETTING),
       getSetting(db, tenant, EDITS_SETTING),
@@ -1134,11 +1149,19 @@ export function ChatApp({
         return current ? { ...all, [threadId]: { ...current, ...change } } : all;
       });
     };
+    const chatProject = threads.find((t) => t.id === threadId)?.projectId ?? draftProject;
     const input = {
       threadId,
       model: routed.model,
       route: routed.info,
       fallback: routed.fallback,
+      defaults: (m: CatalogModel) =>
+        resolveDefaults(modelDefaults, {
+          provider: m.provider,
+          id: m.id,
+          tier: tierOf(policy, m) ?? null,
+          projectId: chatProject,
+        }),
       embedding: embeddingModel(catalog, savedProviders),
       signal: controller.signal,
       onText,
@@ -2931,6 +2954,38 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              modelDefaults={
+                <ModelDefaultsSection
+                  scopes={[
+                    ...policy.tiers
+                      .filter((t) => t.id !== "cheap")
+                      .map((t) => ({
+                        key: tierKey(t.id),
+                        label: `${t.label} tier`,
+                        group: "Tiers",
+                      })),
+                    ...catalog.models.map((m) => ({
+                      key: modelDefaultsKey(m.provider, m.id),
+                      label: m.displayName,
+                      group: "Models",
+                    })),
+                    ...projects.map((p) => ({
+                      key: projectKey(p.id),
+                      label: `Project: ${p.name}`,
+                      group: "Projects",
+                    })),
+                  ]}
+                  values={modelDefaults}
+                  onSave={(key, value) => {
+                    const next = Object.fromEntries(
+                      Object.entries(modelDefaults).filter(([k]) => k !== key),
+                    );
+                    if (value) next[key] = value;
+                    setModelDefaults(next);
+                    setSetting(db, tenant, DEFAULTS_SETTING, JSON.stringify(next)).catch(report);
+                  }}
+                />
               }
               prompts={
                 <PromptsSection

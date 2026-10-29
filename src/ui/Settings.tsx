@@ -228,6 +228,7 @@ export function SettingsView({
   prices,
   models,
   prompts,
+  modelDefaults,
   quickCapture,
   data,
   appLock,
@@ -263,6 +264,8 @@ export function SettingsView({
   models?: ReactNode;
   /** Settings → Prompt library (CH-12). */
   prompts?: ReactNode;
+  /** Settings → Model defaults (MM-07). */
+  modelDefaults?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -337,6 +340,7 @@ export function SettingsView({
         {memory}
         {budgets}
         {prompts}
+        {modelDefaults}
         {models}
         {prices}
         {appLock}
