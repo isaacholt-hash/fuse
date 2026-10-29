@@ -112,6 +112,11 @@ export async function deleteProject(db: SqlDb, tenant: Tenant, id: string): Prom
     `UPDATE threads SET project_id = NULL, updated_at = ? WHERE workspace_id = ? AND project_id = ?`,
     [now, tenant.workspaceId, id],
   );
+  // The project's saved prompts (CH-12) aren't lost: they move to every chat.
+  await db.execute(
+    `UPDATE prompts SET project_id = NULL, updated_at = ? WHERE workspace_id = ? AND project_id = ?`,
+    [now, tenant.workspaceId, id],
+  );
   await db.execute(
     `UPDATE projects SET deleted_at = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [now, now, tenant.workspaceId, id],

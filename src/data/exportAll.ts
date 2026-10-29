@@ -33,6 +33,7 @@ export const EXPORTED_TABLES = [
   "web_pages",
   "imports",
   "thread_tags",
+  "prompts",
   "request_log",
 ] as const;
 

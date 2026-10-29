@@ -29,6 +29,7 @@ import {
 import { Popover } from "radix-ui";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { fuzzyScore } from "./fuzzy";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
 import { ArtifactCard } from "./Artifacts";
@@ -818,6 +819,8 @@ export function Composer({
   status = null,
   context,
   compare,
+  prompts = [],
+  onPickPrompt,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -854,6 +857,9 @@ export function Composer({
   context?: { used: number; window: number; summarizeAt: number };
   /** RT-12: send the next message to two or three models and compare the answers. */
   compare?: CompareView;
+  /** CH-12: saved prompts, offered when the message starts with "/". */
+  prompts?: { id: string; name: string }[];
+  onPickPrompt?: (id: string) => void;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -882,6 +888,21 @@ export function Composer({
   }, [text]);
   const [thinkHarder, setThinkHarder] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  // CH-12: "/" at the start of an empty message lists saved prompts, filtered by what follows.
+  const slash = /^\/(\S*)$/.exec(text);
+  const slashMatches =
+    slash && onPickPrompt
+      ? prompts
+          .map((p) => ({ p, score: fuzzyScore(slash[1] ?? "", p.name) }))
+          .filter((x) => x.score !== null)
+          .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+          .slice(0, 8)
+          .map((x) => x.p)
+      : [];
+  const pickPrompt = (id: string) => {
+    setText("");
+    onPickPrompt?.(id);
+  };
   const comparing = (compare?.selected.length ?? 0) >= 2;
   const send = () => {
     if (!canSend || streaming || missingKey) return;
@@ -1023,11 +1044,35 @@ export function Composer({
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                 e.preventDefault();
-                send();
+                const first = slashMatches[0];
+                if (first) pickPrompt(first.id);
+                else send();
               }
             }}
             className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/75"
           />
+        )}
+        {slashMatches.length > 0 && (
+          <ul
+            role="listbox"
+            aria-label="Saved prompts"
+            className="mb-1 max-h-48 overflow-y-auto rounded-lg border bg-popover p-1 text-xs"
+          >
+            {slashMatches.map((p, i) => (
+              <li
+                key={p.id}
+                role="option"
+                aria-selected={i === 0}
+                className={`cursor-pointer rounded px-2 py-1.5 ${i === 0 ? "bg-accent" : "hover:bg-accent/60"}`}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pickPrompt(p.id);
+                }}
+              >
+                {p.name}
+              </li>
+            ))}
+          </ul>
         )}
         {blocked && (
           <p role="status" className="px-1 pb-1 text-[11px] text-destructive">

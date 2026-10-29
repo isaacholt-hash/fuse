@@ -1108,6 +1108,42 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
 
+test("prompt library: saved in Settings, picked with / or the palette, variables filled first", async () => {
+  const { user } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Prompt library" }));
+  await user.type(section.getByLabelText("Prompt name"), "Summarize for someone");
+  await user.click(section.getByLabelText("Prompt text"));
+  await user.paste("Summarize this for {{audience}} in three bullets.");
+  await user.click(section.getByRole("button", { name: "Add prompt" }));
+  expect(
+    await within(section.getByRole("list", { name: "Saved prompts" })).findByText(
+      "Summarize for someone",
+    ),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+
+  await user.type(await composer(), "/summ");
+  expect(
+    within(screen.getByRole("listbox", { name: "Saved prompts" })).getByRole("option", {
+      name: "Summarize for someone",
+    }),
+  ).toBeInTheDocument();
+  await user.keyboard("{Enter}");
+  const dialog = within(await screen.findByRole("dialog", { name: "Summarize for someone" }));
+  await user.type(dialog.getByLabelText("audience"), "my boss");
+  await user.click(dialog.getByRole("button", { name: "Use prompt" }));
+  await waitFor(async () => {
+    expect(await composer()).toHaveValue("Summarize this for my boss in three bullets.");
+  });
+
+  // The palette lists it too.
+  await user.clear(await composer());
+  await user.keyboard("{Control>}{Shift>}p{/Shift}{/Control}");
+  expect(await screen.findByRole("option", { name: /Summarize for someone/ })).toBeInTheDocument();
+});
+
 test("compare mode: one question to two models, shown side by side; keep either one", async () => {
   const { user, calls } = setup({
     anthropic: [() => answer("Answer from Balanced."), () => answer("Answer from Best.")],

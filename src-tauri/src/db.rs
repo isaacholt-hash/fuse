@@ -155,6 +155,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "thread_stay",
         sql: include_str!("../migrations/0024_thread_stay.sql"),
     },
+    MigrationFile {
+        version: 25,
+        description: "prompts",
+        sql: include_str!("../migrations/0025_prompts.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the

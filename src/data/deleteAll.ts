@@ -28,6 +28,7 @@ const ORDER = [
   "settings",
   "imports",
   "thread_tags",
+  "prompts",
   "messages",
   "request_log",
   "files",
