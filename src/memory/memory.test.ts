@@ -8,6 +8,7 @@ import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/p
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import {
   addDecision,
+  blockedBy,
   addMemory,
   approveProposal,
   deleteAllMemories,
@@ -513,5 +514,24 @@ test("decisions and constraints always go first, whatever the budget (PM-15)", (
   expect(chosen.map(memoryLine)).toEqual([
     "Constraint: Budget is £500.",
     "Decision: Moor at the north harbour. Reason: Cheaper fees Ruled out: South quay",
+  ]);
+});
+
+test("tasks: what blocks one, and only unfinished ones go as context (PM-16)", () => {
+  const a = fakeMemory({ id: "a", text: "Order samples", kind: "task", taskStatus: "doing" });
+  const b = fakeMemory({
+    id: "b",
+    text: "Fit it",
+    kind: "task",
+    taskStatus: "open",
+    dependsOn: ["a", "gone"],
+  });
+  const c = fakeMemory({ id: "c", text: "Old plan", kind: "task", taskStatus: "dropped" });
+  expect(blockedBy(b, [a, b, c]).map((t) => t.id)).toEqual(["a"]);
+  expect(blockedBy(b, [{ ...a, taskStatus: "done" }, b])).toEqual([]);
+  const sent = selectMemories([a, b, c], "x", { projectId: null, threadId: null }, 1500);
+  expect(sent.map(memoryLine)).toEqual([
+    "Task (in progress): Order samples",
+    "Task (to do): Fit it",
   ]);
 });

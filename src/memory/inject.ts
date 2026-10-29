@@ -28,7 +28,8 @@ export function keywords(text: string): Set<string> {
 const SIMILARITY_FLOOR = 0.3;
 const SIMILARITY_WEIGHT = 6;
 
-type Line = Pick<Memory, "text"> & Partial<Pick<Memory, "kind" | "rationale" | "alternatives">>;
+type Line = Pick<Memory, "text"> &
+  Partial<Pick<Memory, "kind" | "rationale" | "alternatives" | "taskStatus">>;
 
 /** How a memory reads in the prompt: decisions with their reason and what was ruled out. */
 export function memoryLine(m: Line): string {
@@ -43,6 +44,8 @@ export function memoryLine(m: Line): string {
       .join(" ");
   }
   if (m.kind === "constraint") return `Constraint: ${m.text}`;
+  if (m.kind === "task")
+    return `Task (${m.taskStatus === "doing" ? "in progress" : "to do"}): ${m.text}`;
   return m.text;
 }
 
@@ -82,7 +85,13 @@ export function selectMemories(
   similarity: ReadonlyMap<string, number> = new Map(),
 ): Memory[] {
   // Records kept on this device never go to a provider (SE-13).
-  const pool = memories.filter((m) => m.maySend && inScope(m, where));
+  // Finished and dropped tasks are history, not context (PM-16).
+  const pool = memories.filter(
+    (m) =>
+      m.maySend &&
+      inScope(m, where) &&
+      !(m.kind === "task" && (m.taskStatus === "done" || m.taskStatus === "dropped")),
+  );
   if (budgetTokens <= 0 || pool.length === 0) return [];
   const pinned = pool.filter(isPinned);
   const others = pool.filter((m) => !isPinned(m));

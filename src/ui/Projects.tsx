@@ -1,5 +1,6 @@
 import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
 import { DecisionsSection, type DecisionsProps } from "./Decisions";
+import { TasksSection, type TasksProps } from "./Tasks";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -126,7 +127,10 @@ export function ProjectDialog({
   artifacts,
   onOpenArtifact,
   decisions,
+  tasks,
 }: {
+  /** Only when editing: the project's tasks (PM-16). */
+  tasks?: TasksProps;
   /** Only when editing: the project's decisions (PM-15). */
   decisions?: DecisionsProps;
   /** AR-06: artifacts made in this project's chats. */
@@ -270,6 +274,11 @@ export function ProjectDialog({
       {decisions && (
         <div className="mt-4">
           <DecisionsSection {...decisions} />
+        </div>
+      )}
+      {tasks && (
+        <div className="mt-4">
+          <TasksSection {...tasks} />
         </div>
       )}
       <div className="flex items-center gap-2 pt-4">

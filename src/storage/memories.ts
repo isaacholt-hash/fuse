@@ -1,7 +1,7 @@
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import { getSetting, setSetting } from "./settings";
-import type { SqlDb } from "./sql";
+import type { SqlDb, SqlValue } from "./sql";
 
 /**
  * What sort of record a memory is (PM-12). Provider-neutral: adapters translate these into
@@ -24,6 +24,7 @@ export const SUGGESTED_KINDS: readonly MemoryKind[] = [
   "preference",
   "person",
   "constraint",
+  "task",
 ];
 
 /** Where a memory applies (PM-13). */
@@ -405,6 +406,68 @@ export async function editDecision(
       id,
     ],
   );
+}
+
+// ---- Tasks (PM-16) ----
+
+export const TASK_STATUSES: readonly TaskStatus[] = ["open", "doing", "done", "dropped"];
+
+/** A project's tasks in use, oldest first. */
+export async function listTasks(db: SqlDb, tenant: Tenant, projectId: string): Promise<Memory[]> {
+  const rows = await db.select<MemoryRow>(
+    `${SELECT_MEMORY} WHERE m.workspace_id = ? AND m.kind = 'task' AND m.project_id = ?
+       AND ${ACTIVE}
+     ORDER BY m.created_at, m.id`,
+    [tenant.workspaceId, projectId],
+  );
+  return rows.map(toMemory);
+}
+
+export async function addTask(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+  text: string,
+  dependsOn: string[] = [],
+): Promise<string> {
+  const id = await addMemory(db, tenant, { text, kind: "task", projectId });
+  if (dependsOn.length) await setTaskDependsOn(db, tenant, id, dependsOn);
+  return id;
+}
+
+async function changeTask(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  set: string,
+  params: SqlValue[],
+): Promise<void> {
+  await db.execute(
+    `UPDATE memories SET ${set}, revision = revision + 1, device_id = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ? AND kind = 'task'`,
+    [...params, await deviceId(db, tenant), Date.now(), tenant.workspaceId, id],
+  );
+}
+
+export const setTaskStatus = (db: SqlDb, tenant: Tenant, id: string, status: TaskStatus) =>
+  changeTask(db, tenant, id, "task_status = ?", [status]);
+
+export const renameTask = (db: SqlDb, tenant: Tenant, id: string, text: string) =>
+  changeTask(db, tenant, id, "text = ?, authority = 'you'", [cleanText(text)]);
+
+/** The tasks this one waits on (never itself). */
+export const setTaskDependsOn = (db: SqlDb, tenant: Tenant, id: string, dependsOn: string[]) =>
+  changeTask(db, tenant, id, "depends_on = ?", [
+    JSON.stringify([...new Set(dependsOn)].filter((d) => d !== id)),
+  ]);
+
+/** The tasks this one still waits on: ones not done or dropped. */
+export function blockedBy(task: Memory, tasks: readonly Memory[]): Memory[] {
+  return task.dependsOn
+    .map((id) => tasks.find((t) => t.id === id))
+    .filter(
+      (t): t is Memory => t !== undefined && t.taskStatus !== "done" && t.taskStatus !== "dropped",
+    );
 }
 
 // ---- Suggestions (PM-03) ----

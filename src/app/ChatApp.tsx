@@ -109,6 +109,12 @@ import {
   editMemory,
   listDecisions,
   listMemories,
+  listTasks,
+  addTask,
+  blockedBy,
+  renameTask,
+  setTaskDependsOn,
+  setTaskStatus,
   listMemoryRecords,
   listPendingProposals,
   listReplaced,
@@ -219,6 +225,7 @@ import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
 import type { DecisionInputView, DecisionView } from "@/ui/Decisions";
+import type { TaskStatusView, TaskView } from "@/ui/Tasks";
 import type { BackupsApi } from "@/data/backups";
 import { ImportPaste } from "@/ui/ImportPaste";
 import { ModelsSection } from "@/ui/Models";
@@ -524,6 +531,8 @@ export function ChatApp({
   const [projectArts, setProjectArts] = useState<ArtifactHit[]>([]);
   // PM-15: the open project's decisions, in force and replaced.
   const [projectDecisions, setProjectDecisions] = useState<Memory[]>([]);
+  // PM-16: the open project's tasks.
+  const [projectTasks, setProjectTasks] = useState<Memory[]>([]);
   // MM-09: spend caps per key, days they were raised for, and what each key spent.
   const [caps, setCaps] = useState<KeyCaps>({});
   const [raises, setRaises] = useState<CapRaises>({});
@@ -1865,7 +1874,30 @@ export function ChatApp({
     }, report);
     projectArtifacts(db, tenant, projectId).then(setProjectArts, report);
     listDecisions(db, tenant, projectId).then(setProjectDecisions, report);
+    listTasks(db, tenant, projectId).then(setProjectTasks, report);
   }, [projectDialog, db, tenant]);
+  /** Runs a change to the open project's tasks, then reloads them and memory. */
+  const changeTasks = (change: (projectId: string) => Promise<unknown>) => {
+    const projectId = projectDialog;
+    if (!projectId || projectId === "new") return;
+    change(projectId)
+      .then(() => listTasks(db, tenant, projectId))
+      .then(setProjectTasks)
+      .then(refreshMemory)
+      .catch(report);
+  };
+  const taskViews: TaskView[] = projectTasks.map((t) => ({
+    id: t.id,
+    text: t.text,
+    status: t.taskStatus ?? "open",
+    dependsOn: t.dependsOn,
+    blockedBy: blockedBy(t, projectTasks).map((b) => b.text),
+  }));
+  const taskProblem = (text: string) => {
+    const secret = findSecret(text);
+    if (secret) setProblem(`That looks like ${SECRET_LABELS[secret]}. Memory never stores those.`);
+    return secret !== null;
+  };
   /** Runs a change to the open project's decisions, then reloads them and memory. */
   const changeDecisions = (change: (projectId: string) => Promise<unknown>) => {
     const projectId = projectDialog;
@@ -3873,6 +3905,27 @@ export function ChatApp({
           {...(editedProject ? { onDelete: removeProject } : {})}
           {...(editedProject
             ? {
+                tasks: {
+                  tasks: taskViews,
+                  onAdd: (text: string) => {
+                    if (!taskProblem(text)) {
+                      changeTasks((projectId) => addTask(db, tenant, projectId, text));
+                    }
+                  },
+                  onStatus: (id: string, status: TaskStatusView) => {
+                    changeTasks(() => setTaskStatus(db, tenant, id, status));
+                  },
+                  onEdit: (id: string, text: string, dependsOn: string[]) => {
+                    if (taskProblem(text)) return;
+                    changeTasks(async () => {
+                      await renameTask(db, tenant, id, text);
+                      await setTaskDependsOn(db, tenant, id, dependsOn);
+                    });
+                  },
+                  onDelete: (id: string) => {
+                    changeTasks(() => deleteMemory(db, tenant, id));
+                  },
+                },
                 decisions: {
                   decisions: decisionViews,
                   onAdd: (d: DecisionInputView, replacesId?: string) => {
