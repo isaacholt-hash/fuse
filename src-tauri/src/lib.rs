@@ -1,3 +1,4 @@
+mod backup;
 mod db;
 mod export;
 mod files;
@@ -45,6 +46,10 @@ pub fn run() {
             files::commands::file_put,
             files::commands::file_get,
             files::commands::file_wipe,
+            backup::commands::backup_list,
+            backup::commands::backup_now,
+            backup::commands::backup_restore,
+            backup::commands::files_check,
             db::commands::db_open,
             db::commands::db_recover,
             db::commands::db_recovery_key,

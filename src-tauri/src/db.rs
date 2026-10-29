@@ -20,7 +20,7 @@ use sqlx::{Column, Row, TypeInfo, ValueRef};
 
 use crate::keys::SecretStore;
 
-const DB_FILE: &str = "fuse.db";
+pub(crate) const DB_FILE: &str = "fuse.db";
 const MIGRATION_MARKER: &str = "fuse.db.migrations";
 const BACKUPS_KEPT: usize = 10;
 /// Keychain account holding the database key (hex), beside the provider keys.
@@ -165,8 +165,14 @@ const MIGRATIONS: &[MigrationFile] = &[
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
 /// checksums recorded by earlier versions of FUSE still match.
 fn migrator() -> Migrator {
+    migrator_until(i64::MAX)
+}
+
+/// The migrations up to and including `last` (tests upgrade old databases with it).
+fn migrator_until(last: i64) -> Migrator {
     let migrations = MIGRATIONS
         .iter()
+        .filter(|m| m.version <= last)
         .map(|m| {
             SqlxMigration::new(
                 m.version,
@@ -254,7 +260,7 @@ fn is_wrong_key(e: &sqlx::Error) -> bool {
     matches!(e, sqlx::Error::Database(d) if d.code().as_deref() == Some("26"))
 }
 
-fn is_plaintext(path: &Path) -> bool {
+pub(crate) fn is_plaintext(path: &Path) -> bool {
     fs::read(path)
         .map(|bytes| bytes.starts_with(PLAINTEXT_HEADER))
         .unwrap_or(false)
@@ -263,6 +269,10 @@ fn is_plaintext(path: &Path) -> bool {
 /// Opens (creating or encrypting first if needed) and migrates the database in `dir`.
 pub async fn open(dir: &Path, store: &dyn SecretStore) -> Result<Opened, String> {
     fs::create_dir_all(dir).map_err(|e| format!("Couldn't create the data folder: {e}"))?;
+    // A restore asked for in Settings (PL-11) is applied before anything opens the file.
+    if let Err(e) = crate::backup::apply_pending_restore(dir) {
+        eprintln!("{e}");
+    }
     let path = dir.join(DB_FILE);
     let stored = store.get(KEY_ACCOUNT)?;
 
@@ -476,7 +486,7 @@ pub struct Database {
 }
 
 impl Database {
-    fn pool(&self) -> Result<SqlitePool, String> {
+    pub(crate) fn pool(&self) -> Result<SqlitePool, String> {
         self.pool
             .lock()
             .map_err(|e| e.to_string())?
@@ -500,7 +510,7 @@ pub mod commands {
     use crate::keys::OsKeychain;
     use tauri::{AppHandle, Manager, State};
 
-    fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
         // Same folder the SQL plugin used, so existing databases are found.
         app.path().app_config_dir().map_err(|e| e.to_string())
     }
@@ -597,7 +607,7 @@ fn backup_before_migrations(
     Ok(backup)
 }
 
-fn prune_backups(backups: &Path) -> std::io::Result<()> {
+pub(crate) fn prune_backups(backups: &Path) -> std::io::Result<()> {
     let mut dbs: Vec<PathBuf> = fs::read_dir(backups)?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().is_some_and(|x| x == "db"))
@@ -794,6 +804,91 @@ mod tests {
         assert!(PathBuf::from(format!("{}-wal", backup.display())).exists());
         // Second start with the same build: nothing new to back up.
         assert_eq!(backup_before_migrations(&dir, 2).unwrap(), None);
+    }
+
+    /// The last migration shipped before M5. Upgrades from it are checked on seeded data.
+    const SEEDED_FROM: i64 = 25;
+
+    /// Rows in the tables later migrations rebuild or extend (memories and what points at it).
+    const SEED: &str = "
+        INSERT INTO threads (id, workspace_id, user_id, title, created_at, updated_at)
+          SELECT 't1', workspace_id, id, 'Seeded chat', 1, 1 FROM users LIMIT 1;
+        INSERT INTO messages (id, workspace_id, user_id, thread_id, role, content, created_at, updated_at)
+          SELECT 'm1', workspace_id, user_id, 't1', 'user', 'hello', 2, 2 FROM threads WHERE id = 't1';
+        INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
+          SELECT 'p1', workspace_id, user_id, 'Seeded project', 3, 3 FROM threads WHERE id = 't1';
+        INSERT INTO memories (id, workspace_id, user_id, text, category, scope, project_id,
+                              source_thread_id, confidence, created_at, updated_at)
+          SELECT 'mem-new', workspace_id, user_id, 'Prefers metric units', 'preference', 'global',
+                 NULL, 't1', 80, 4, 4 FROM threads WHERE id = 't1';
+        INSERT INTO memories (id, workspace_id, user_id, text, category, scope, project_id,
+                              source_thread_id, confidence, superseded_by_id, created_at, updated_at)
+          SELECT 'mem-old', workspace_id, user_id, 'Prefers imperial units', 'preference', 'global',
+                 NULL, NULL, 100, 'mem-new', 1, 4 FROM threads WHERE id = 't1';
+        INSERT INTO memories (id, workspace_id, user_id, text, category, scope, project_id,
+                              confidence, created_at, updated_at, deleted_at)
+          SELECT 'mem-proj', workspace_id, user_id, 'Ships on Fridays', 'project', 'project',
+                 'p1', 100, 5, 5, NULL FROM threads WHERE id = 't1';
+        INSERT INTO memories (id, workspace_id, user_id, text, category, scope, confidence,
+                              created_at, updated_at, deleted_at)
+          SELECT 'mem-del', workspace_id, user_id, 'Old address', 'fact', 'global', 100, 5, 6, 6
+          FROM threads WHERE id = 't1';
+        INSERT INTO memory_proposals (id, workspace_id, user_id, op, memory_id, text, category,
+                                      status, created_at, updated_at)
+          SELECT 'prop1', workspace_id, user_id, 'update', 'mem-new', 'Prefers SI units',
+                 'preference', 'pending', 7, 7 FROM threads WHERE id = 't1';
+        INSERT INTO message_memories (message_id, memory_id, workspace_id, user_id, created_at)
+          SELECT 'm1', 'mem-new', workspace_id, user_id, 8 FROM threads WHERE id = 't1';
+        INSERT INTO chunks (id, workspace_id, user_id, source_kind, source_id, ordinal, text,
+                            tokens, created_at, updated_at)
+          SELECT 'c1', workspace_id, user_id, 'memory', 'mem-new', 0, 'Prefers metric units', 4,
+                 9, 9 FROM threads WHERE id = 't1';
+    ";
+
+    /// An encrypted database left at `SEEDED_FROM` with `SEED` in it, as an older FUSE made it.
+    async fn seeded_old_db(dir: &Path, store: &MemoryStore) {
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(SEEDED_FROM).run(&pool).await.unwrap();
+        sqlx::raw_sql(SEED).execute(&pool).await.unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), SEEDED_FROM.to_string()).unwrap();
+    }
+
+    #[tokio::test]
+    async fn upgrading_a_seeded_database_keeps_every_row() {
+        let dir = temp_dir("seeded");
+        let store = MemoryStore::default();
+        seeded_old_db(&dir, &store).await;
+        let key = store.get(KEY_ACCOUNT).unwrap().unwrap();
+        let old = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        let before = table_counts(&old).await.unwrap();
+        old.close().await;
+
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let after: std::collections::HashMap<_, _> =
+            table_counts(&pool).await.unwrap().into_iter().collect();
+        for (table, n) in &before {
+            if table == "_sqlx_migrations" {
+                continue;
+            }
+            assert_eq!(after.get(table), Some(n), "rows in {table}");
+        }
+        let broken: Vec<SqliteRow> = sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(broken.is_empty(), "foreign keys still hold");
+        pool.close().await;
+        if (MIGRATIONS.len() as i64) > SEEDED_FROM {
+            assert!(
+                crate::backup::list(&dir)
+                    .iter()
+                    .any(|b| b.reason == "update"),
+                "backed up before migrating"
+            );
+        }
     }
 
     #[test]

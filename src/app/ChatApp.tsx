@@ -214,6 +214,7 @@ import { SearchDialog, type SearchHitView } from "@/ui/Search";
 import { CommandPalette, type PaletteItem } from "@/ui/Palette";
 import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
+import type { BackupsApi } from "@/data/backups";
 import { ImportPaste } from "@/ui/ImportPaste";
 import { ModelsSection } from "@/ui/Models";
 import { PricesSection } from "@/ui/Prices";
@@ -350,6 +351,8 @@ export interface ChatAppProps {
   preview?: PreviewApi;
   /** "Save as…" for artifact exports (AR-04). */
   exporter?: ExportApi;
+  /** Backup and restore of the database (PL-11). */
+  backups?: BackupsApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   zoom?: ZoomApi;
@@ -461,6 +464,7 @@ export function ChatApp({
   web,
   preview,
   exporter,
+  backups,
   quickCapture,
   zoom,
   hello,
@@ -3052,6 +3056,7 @@ export function ChatApp({
               data={
                 exporter && (
                   <DataSection
+                    {...(backups ? { backups } : {})}
                     onExport={async () => {
                       const out = await exportAll(db, tenant, filesApi);
                       const day = new Date().toISOString().slice(0, 10);
