@@ -2474,6 +2474,44 @@ describe("projects", () => {
     expect(system).not.toContain("Laminate worktops.");
   });
 
+  test("tasks: added, chained and finished in project settings; open ones reach the model (PM-16)", async () => {
+    const { options, user } = setup();
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Kitchen");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    await user.click(await screen.findByRole("button", { name: "Project: Kitchen" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const section = within(dialog.getByRole("region", { name: "Tasks" }));
+    await user.type(section.getByLabelText("New task"), "Order oak samples{Enter}");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await user.type(section.getByLabelText("New task"), "Fit the worktop");
+    await user.click(section.getByRole("button", { name: "Add task" }));
+    const open = within(await section.findByRole("list", { name: "Open tasks" }));
+    expect(await open.findByText("Fit the worktop")).toBeInTheDocument();
+
+    await user.click(open.getByRole("button", { name: "Edit task: Fit the worktop" }));
+    await user.click(section.getByRole("checkbox", { name: "Order oak samples" }));
+    await user.click(section.getByRole("button", { name: "Save task" }));
+    expect(await open.findByText("Blocked by Order oak samples")).toBeInTheDocument();
+
+    await user.selectOptions(open.getByLabelText("Status of Order oak samples"), "done");
+    await waitFor(() => {
+      expect(open.queryByText("Blocked by Order oak samples")).not.toBeInTheDocument();
+    });
+    expect(
+      within(section.getByRole("list", { name: "Finished tasks" })).getByText("Order oak samples"),
+    ).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+
+    await user.type(await composer(), "What's next?{Enter}");
+    expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+    const system = (options.at(-1) as { system?: string }).system ?? "";
+    expect(system).toContain("- Task (to do): Fit the worktop");
+    expect(system).not.toContain("Order oak samples");
+  });
+
   test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
     const { calls, user } = setup({ anthropic: [() => answer("At dawn.")] });
     await composer();

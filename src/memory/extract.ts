@@ -60,7 +60,7 @@ export function extractionSystem(projectName: string | null): string {
     "If the conversation changes or contradicts a saved fact, suggest an update with its id. If it shows a saved fact is no longer true, suggest deleting it. Don't repeat saved or already-suggested facts.",
     "Most conversations have nothing worth remembering. An empty list is the usual answer.",
     "",
-    'Kinds: fact (about the user or what they\'re working on), preference (how they like things done), person (someone in their life or work), constraint (a rule or limit their work must keep to, e.g. "The trip budget is £2,000.").',
+    'Kinds: fact (about the user or what they\'re working on), preference (how they like things done), person (someone in their life or work), constraint (a rule or limit their work must keep to, e.g. "The trip budget is £2,000."), task (something they still have to do, e.g. "Order the oak samples.").',
     ...(projectName
       ? [
           `This chat is in the user's project "${projectName}". Add "project_only": true to facts that only matter inside that project.`,
@@ -230,7 +230,13 @@ export async function suggestMemories(
       kind: op === "delete" && target ? target.kind : s.kind,
       // A guarded change keeps the original's project; a new fact is the project's when asked.
       projectId:
-        op !== "add" ? null : guarded ? target.projectId : s.projectOnly ? thread.projectId : null,
+        op !== "add"
+          ? null
+          : guarded
+            ? target.projectId
+            : s.projectOnly || s.kind === "task"
+              ? thread.projectId
+              : null,
       confidence: s.confidence,
       sourceThreadId: threadId,
       extractionModel: model.id,
