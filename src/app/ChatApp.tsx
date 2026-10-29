@@ -56,7 +56,8 @@ import {
   type ChatDeps,
 } from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
-import { classify } from "@/routing/classify";
+import { classify, type Classification } from "@/routing/classify";
+import { checkClassification } from "@/routing/classifyFallback";
 import {
   checkPolicy,
   chooseTier,
@@ -926,8 +927,10 @@ export function ChatApp({
     history: Message[],
     webSearch: boolean,
     downshift = false,
+    /** RT-02: the classification after the Cheap tier's second opinion, when it was asked. */
+    checked?: Classification,
   ) => {
-    const task = classify(classifyInput(text, files, history, webSearch));
+    const task = checked ?? classify(classifyInput(text, files, history, webSearch));
     const routed = route(policy, catalog, mode, task, {
       providers: savedProviders,
       ...(stayOn ? { prefer: stayOn } : {}),
@@ -1120,7 +1123,16 @@ export function ChatApp({
       setOverAsk({ state: gate.over, text, thinkHarder });
       return;
     }
-    const found = routeFor(text, ready, messages, search, gate.downshift !== null);
+    // RT-02: when the heuristics are unsure, Auto asks the Cheap tier too (never in incognito).
+    const local = classify(classifyInput(text, ready, messages, search));
+    const checker =
+      mode.kind === "auto" && local.unsure && !incognito
+        ? housekeepingModel(policy, catalog, "classify", savedProviders, model.provider)
+        : null;
+    const checked = checker
+      ? await checkClassification(deps, catalog, checker, local, text, selectedId)
+      : undefined;
+    const found = routeFor(text, ready, messages, search, gate.downshift !== null, checked);
     if (!found) return;
     // CO-05: a message that adds a lot (a long paste, big files) shows its cost first. The
     // history alone doesn't count: it's resent every turn and mostly read from cache.

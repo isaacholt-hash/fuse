@@ -1,7 +1,7 @@
 /**
  * The local task classifier (RT-02): intent, complexity and needed capabilities from the question
  * itself, before anything is sent. Plain heuristics (length, code, attachments, keywords), so it is
- * free and instant. A Cheap-tier fallback for unsure cases can come later.
+ * free and instant. When they're unsure, the Cheap tier is asked as well (classifyFallback.ts).
  */
 import type { Capability } from "@/catalog/catalog";
 import type { Complexity, Intent, Task } from "./policy";
@@ -21,6 +21,11 @@ export interface ClassifyInput {
 export interface Classification extends Task {
   /** Why, in a few words each, e.g. "code", "long question". Shown with the answer. */
   signals: string[];
+  /**
+   * The heuristics are unsure (RT-02): words of several kinds compete, or the difficulty sits on
+   * the line between two tiers. Auto then asks the Cheap tier too.
+   */
+  unsure?: boolean;
 }
 
 /** Above this the request counts as a long document (about 30 pages of text). */
@@ -29,6 +34,8 @@ export const LONG_DOCUMENT_TOKENS = 20_000;
 const LONG_QUESTION_CHARS = 600;
 const MEDIUM_QUESTION_CHARS = 150;
 const SHORT_QUESTION_CHARS = 80;
+/** Shorter questions are never worth a second opinion. */
+const UNSURE_MIN_CHARS = 60;
 
 const CODE_FENCE = /```|^( {4}|\t)\S/m;
 const CODE_WORDS =
@@ -119,7 +126,27 @@ export function classify(input: ClassifyInput): Classification {
   const complexity: Complexity =
     score >= 3 ? "high" : score >= 1 || text.length >= SHORT_QUESTION_CHARS ? "medium" : "low";
 
-  return { intent, complexity, capabilities, contextTokens, signals };
+  // Unsure: a real question (not a quick one, no image or long context deciding it) where
+  // different kinds of words compete, or the difficulty is one point either side of "high".
+  const kinds = [
+    codeWords > 0,
+    REASONING_WORDS.test(text),
+    ANALYSIS_WORDS.test(text),
+    CREATIVE_WORDS.test(text),
+    WRITING_WORDS.test(text),
+  ].filter(Boolean).length;
+  const decided = images > 0 || code || contextTokens >= LONG_DOCUMENT_TOKENS;
+  const unsure =
+    !decided && text.length >= UNSURE_MIN_CHARS && (kinds >= 3 || score === 2 || score === 3);
+
+  return {
+    intent,
+    complexity,
+    capabilities,
+    contextTokens,
+    signals,
+    ...(unsure ? { unsure } : {}),
+  };
 }
 
 export const INTENT_LABELS: Record<Intent, string> = {

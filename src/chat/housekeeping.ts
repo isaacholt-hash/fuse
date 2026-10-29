@@ -36,7 +36,8 @@ export interface HousekeepingDeps {
 
 export interface HousekeepingRequest {
   purpose: RequestPurpose;
-  threadId: string;
+  /** Null before the chat is saved (the classifier runs before the first message is). */
+  threadId: string | null;
   model: CatalogModel;
   system: string;
   input: string;
