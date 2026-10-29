@@ -86,22 +86,32 @@ export async function addFileCitations(
 }
 
 /** File excerpts per answer, as labels, in order. */
+/** A file or past chat an answer drew on; `chunkId` opens it at that place (FK-10). */
+export interface FileSource {
+  label: string;
+  chunkId: string | null;
+}
+
 export async function fileCitationsForMessages(
   db: SqlDb,
   tenant: Tenant,
   messageIds: string[],
-): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
+): Promise<Map<string, FileSource[]>> {
+  const out = new Map<string, FileSource[]>();
   if (messageIds.length === 0) return out;
-  const rows = await db.select<{ message_id: string; title: string | null }>(
-    `SELECT message_id, title FROM message_citations
+  const rows = await db.select<{
+    message_id: string;
+    title: string | null;
+    chunk_id: string | null;
+  }>(
+    `SELECT message_id, title, chunk_id FROM message_citations
      WHERE workspace_id = ? AND kind = 'chunk' AND message_id IN (${messageIds.map(() => "?").join(", ")})
      ORDER BY message_id, ordinal`,
     [tenant.workspaceId, ...messageIds],
   );
   for (const r of rows) {
     const list = out.get(r.message_id) ?? [];
-    list.push(r.title ?? "A file");
+    list.push({ label: r.title ?? "A file", chunkId: r.chunk_id });
     out.set(r.message_id, list);
   }
   return out;

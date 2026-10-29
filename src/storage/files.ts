@@ -125,6 +125,17 @@ export async function linkFiles(
 }
 
 /** Files per message, in attachment order. */
+/** One file by id (FK-10: opening it in the viewer). */
+export async function getFile(db: SqlDb, tenant: Tenant, id: string): Promise<FileRecord | null> {
+  const rows = await db.select<FileRow>(
+    `SELECT id, name, mime, size_bytes, sha256, width, height, token_estimate, created_at
+     FROM files WHERE workspace_id = ? AND id = ? AND deleted_at IS NULL`,
+    [tenant.workspaceId, id],
+  );
+  const row = rows[0];
+  return row ? toFile(row) : null;
+}
+
 export async function filesForMessages(
   db: SqlDb,
   tenant: Tenant,

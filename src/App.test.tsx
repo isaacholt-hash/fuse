@@ -718,6 +718,18 @@ test("a large text file is searched: the question gets the matching excerpts, an
   expect(note && "text" in note ? note.text : "").toMatch(/isn't sent whole/);
   const cited = within(await screen.findByLabelText("From your files and chats"));
   expect(cited.getAllByText(/notes\.txt, lines \d+–\d+/).length).toBeGreaterThan(0);
+
+  // FK-10: a citation opens the file at the cited lines, highlighted.
+  const [source] = cited.getAllByRole("button", { name: /notes\.txt, lines/ });
+  if (!source) throw new Error("no citation to open");
+  await user.click(source);
+  const panel = within(await screen.findByRole("complementary", { name: "File: notes.txt" }));
+  const marked = panel.getByLabelText("File text").querySelectorAll("[data-cited]");
+  expect(marked.length).toBeGreaterThan(0);
+  await user.click(panel.getByRole("button", { name: "Close file" }));
+  // The attachment chip on the question opens it too.
+  await user.click(screen.getByRole("button", { name: "Open notes.txt" }));
+  expect(await screen.findByRole("complementary", { name: "File: notes.txt" })).toBeInTheDocument();
 });
 
 test("a pasted link is read as text, attached with its size, and not read again within a day", async () => {

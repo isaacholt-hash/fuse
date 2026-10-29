@@ -99,7 +99,7 @@ export interface MessageView {
   /** The messages above go to the model as a summary (PM-06). */
   summaryAbove?: boolean;
   /** Parts of attached files this answer was given, e.g. "book.txt, lines 120–140" (FK-02). */
-  fileSources?: string[];
+  fileSources?: { label: string; chunkId: string | null }[];
   /** The answer split around its artifacts (AR-01); absent when it has none. */
   parts?: (
     | { kind: "text"; text: string }
