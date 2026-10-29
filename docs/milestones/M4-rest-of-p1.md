@@ -29,7 +29,7 @@
 
 ### P1 Shoulds
 
-- [ ] **9. Cheap classifier fallback (RT-02).** When the local heuristics are unsure, the Cheap tier classifies, logged with its cost.
+- [x] **9. Cheap classifier fallback (RT-02).** When the local heuristics are unsure, the Cheap tier classifies, logged with its cost.
 - [ ] **10. Stay on provider and latency tie-break (RT-06).**
 - [ ] **11. Learn from overrides (RT-11).** Three stronger pins for the same intent suggest a rule change, shown with its test-set score. The policy never changes silently.
 - [ ] **12. Compare mode and side by side (RT-12, CH-17).** One prompt to two or three tiers, with the combined cost before sending; any two answers side by side with a diff.

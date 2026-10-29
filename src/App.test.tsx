@@ -17,6 +17,7 @@ import { listThreads } from "@/storage/threads";
 import { searchChats } from "@/storage/search";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
+import { CLASSIFY_SYSTEM } from "@/routing/classifyFallback";
 import App from "./App";
 import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 
@@ -139,6 +140,8 @@ async function* untilStopped(_h: ChatMessage[], signal?: AbortSignal): AsyncGene
 interface Chores {
   title?: string[];
   memory?: string[];
+  /** RT-02's second opinion from the Cheap tier. */
+  classify?: string[];
 }
 
 function setup(
@@ -181,9 +184,11 @@ function setup(
       const kind: keyof Chores | null =
         options.system === TITLE_SYSTEM
           ? "title"
-          : options.system?.startsWith("You keep a short list of lasting facts")
-            ? "memory"
-            : null;
+          : options.system === CLASSIFY_SYSTEM
+            ? "classify"
+            : options.system?.startsWith("You keep a short list of lasting facts")
+              ? "memory"
+              : null;
       if (kind) {
         choreCalls.push({ kind, model, input: history[0]?.content ?? "" });
         // No scripted reply: an empty answer (no title change, nothing to remember).
@@ -1101,6 +1106,23 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(document.documentElement).toHaveClass("reduce-motion");
   expect(localStorage.getItem("fuse.text_size")).toBe("large");
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
+});
+
+test("an unsure question gets the Cheap tier's second opinion, which can move it to Best", async () => {
+  const question =
+    "Can you write up a plan comparing two options for our team offsite, and draft the email?";
+  const { user, choreCalls, db } = setup({}, undefined, {
+    classify: ['{"intent": "reasoning", "complexity": "high"}'],
+  });
+  await user.type(await composer(), `${question}{Enter}`);
+  expect(
+    await screen.findByRole("button", { name: "Cost breakdown for Test Best" }),
+  ).toBeInTheDocument();
+  expect(choreCalls.filter((c) => c.kind === "classify")).toEqual([
+    { kind: "classify", model: "test-gpt", input: question },
+  ]);
+  const logged = await listRecentRequests(db, DEFAULT_TENANT, 10);
+  expect(logged.some((r) => r.purpose === "classify" && r.model === "test-gpt")).toBe(true);
 });
 
 test("routing policy: a new rule is tested, saved, and Auto follows it", async () => {
