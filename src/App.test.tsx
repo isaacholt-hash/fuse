@@ -145,6 +145,7 @@ function setup(
   scripts: Partial<Record<"anthropic" | "openai", Script[]>> = {},
   savedKeys: ("anthropic" | "openai")[] = ["anthropic", "openai"],
   chores: Chores = {},
+  { helloAvailable = false }: { helloAvailable?: boolean } = {},
 ) {
   const db = openTestDb();
   const keys = fakeKeysApi();
@@ -199,6 +200,15 @@ function setup(
   const restarts: number[] = [];
   // The global shortcut (CH-08): what was registered, and a way to "press" it.
   const zooms: number[] = [];
+  // Windows Hello (SE-03): set up or not, and the prompts it was asked to show.
+  const hello = {
+    asks: [] as string[],
+    available: () => Promise.resolve(helloAvailable),
+    verify: (message: string) => {
+      hello.asks.push(message);
+      return Promise.resolve(true);
+    },
+  };
   // Whether each preview page was allowed the listed CDNs (AR-05).
   const previewCdn: boolean[] = [];
   const quick = {
@@ -241,6 +251,7 @@ function setup(
       prepareImage={fakePrepare}
       web={web}
       quickCapture={quick}
+      hello={hello}
       zoom={(scale) => {
         zooms.push(scale);
         return Promise.resolve();
@@ -276,6 +287,7 @@ function setup(
     saves,
     quick,
     zooms,
+    hello,
     remote,
     restarts,
     user: userEvent.setup(),
@@ -1041,6 +1053,32 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   expect(await lockScreen.findByText("That passcode isn't right.")).toBeInTheDocument();
   await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
+}, 20_000);
+
+test("app lock with Windows Hello: turned on in Settings, asked as soon as the lock screen shows", async () => {
+  const { db, user, hello } = setup({}, undefined, {}, { helloAvailable: true });
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "App lock" }));
+  expect(section.queryByRole("checkbox", { name: /Windows Hello/ })).not.toBeInTheDocument();
+  await user.type(section.getByLabelText("New passcode"), "4321");
+  await user.type(section.getByLabelText("New passcode again"), "4321");
+  await user.click(section.getByRole("button", { name: "Turn on app lock" }));
+  await user.click(await section.findByRole("checkbox", { name: /Unlock with Windows Hello/ }));
+
+  cleanup();
+  render(
+    <App
+      openDb={() => Promise.resolve(db)}
+      keysApi={fakeKeysApi().api}
+      catalog={catalog}
+      policy={policy}
+      hello={hello}
+    />,
+  );
+  // Hello confirms it's you: the app opens without the passcode.
+  expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
+  expect(hello.asks).toEqual(["Unlock FUSE"]);
 }, 20_000);
 
 test("text size zooms the window and reduced motion stops animations; both are remembered", async () => {

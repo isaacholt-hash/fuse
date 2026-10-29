@@ -1,6 +1,7 @@
 mod db;
 mod export;
 mod files;
+mod hello;
 mod keys;
 mod preview;
 mod quick;
@@ -39,6 +40,8 @@ pub fn run() {
             preview::commands::preview_put,
             export::commands::save_as,
             quick::commands::quick_capture_set,
+            hello::commands::hello_available,
+            hello::commands::hello_verify,
             files::commands::file_put,
             files::commands::file_get,
             files::commands::file_wipe,
