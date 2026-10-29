@@ -20,7 +20,7 @@
 - [x] **4. Decisions (PM-15).** A project Decisions tab with rationale, alternatives, status and what it replaces. Never added automatically; a suggestion never overrides your own or imported records.
 - [x] **5. Tasks (PM-16).** A project Tasks tab with status and dependencies; extracted tasks wait for review.
 - [x] **6. Exclude and explain (PM-17).** Exclude a memory without deleting it; each answer records why each memory was used.
-- [ ] **7. Context assembler (PM-18).** One module builds every request in order: instructions, constraints and decisions, tasks, memories, summaries, file excerpts, history, each part with its source. Requests without decisions stay as they were.
+- [x] **7. Context assembler (PM-18).** One module builds every request in order: instructions, constraints and decisions, tasks, memories, summaries, file excerpts, history, each part with its source. Requests without decisions stay as they were.
 - [ ] **8. Egress policy in the app (SE-13, part 1).** Per project: privacy mode (Normal, Local only, Cloud only), providers allowed or blocked, embeddings on or off; per record: may-send. Blocked content is never sent, and you see why.
 - [ ] **9. Egress in the Rust transport (SE-13, part 2).** Every send carries its scope; the Rust transport looks up the project and refuses blocked providers. One test per send path.
 - [ ] **10. Privacy wording and threat model (SE-15, SE-14).** Settings → Privacy explains what stays local and what goes to a provider; `docs/threat-model.md`.
