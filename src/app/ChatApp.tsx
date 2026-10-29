@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   findModel,
   parseCatalog,
+  priceFor,
   type Catalog,
   type CatalogModel,
   type ProviderId,
@@ -244,6 +245,7 @@ import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
 import { TagsDialog } from "@/ui/Tags";
+import { SideBySide } from "@/ui/SideBySide";
 import { searchChats } from "@/storage/search";
 import { UpdateBar } from "@/ui/UpdateBar";
 import type {
@@ -449,6 +451,9 @@ export function ChatApp({
   const [customModels, setCustomModels] = useState<CatalogModel[]>([]);
   const [modelCheck, setModelCheck] = useState<ModelCheck | null | undefined>(undefined);
   const [modelsNoticeOff, setModelsNoticeOff] = useState(false);
+  // RT-12: models the next message goes to in compare mode; CH-17: answers shown side by side.
+  const [compareKeys, setCompareKeys] = useState<string[]>([]);
+  const [sideBySide, setSideBySide] = useState<string | null>(null);
   // RT-11: answers you moved up a tier, and suggestions you dismissed.
   const [overrides, setOverrides] = useState<Override[]>([]);
   const [dismissedSuggestions, setDismissedSuggestions] = useState<string[]>([]);
@@ -982,9 +987,11 @@ export function ChatApp({
     downshift = false,
     /** RT-02: the classification after the Cheap tier's second opinion, when it was asked. */
     checked?: Classification,
+    /** RT-12: compare mode sends to chosen models whatever the chat's mode. */
+    modeOverride?: RouteMode,
   ) => {
     const task = checked ?? classify(classifyInput(text, files, history, webSearch));
-    const routed = route(policy, catalog, mode, task, {
+    const routed = route(policy, catalog, modeOverride ?? mode, task, {
       providers: savedProviders,
       ...(stayOn ? { prefer: stayOn } : {}),
       ...(stayProvider ? { stay: stayProvider } : {}),
@@ -1182,19 +1189,46 @@ export function ChatApp({
       setOverAsk({ state: gate.over, text, thinkHarder });
       return;
     }
+    // RT-12: compare mode answers with each chosen model; the first goes like a normal send.
+    const comparing = compareKeys.flatMap((k) => {
+      const m = catalog.models.find((c) => modelKey(c) === k);
+      return m ? [m] : [];
+    });
+    const compareFirst = comparing.length >= 2 ? comparing[0] : undefined;
+    const compareMode: RouteMode | undefined = compareFirst
+      ? { kind: "model", provider: compareFirst.provider, id: compareFirst.id }
+      : undefined;
     // RT-02: when the heuristics are unsure, Auto asks the Cheap tier too (never in incognito).
     const local = classify(classifyInput(text, ready, messages, search));
     const checker =
-      mode.kind === "auto" && local.unsure && !incognito
+      mode.kind === "auto" && !compareMode && local.unsure && !incognito
         ? housekeepingModel(policy, catalog, "classify", savedProviders, model.provider)
         : null;
     const checked = checker
       ? await checkClassification(deps, catalog, checker, local, text, selectedId)
       : undefined;
-    const found = routeFor(text, ready, messages, search, gate.downshift !== null, checked);
-    if (!found) return;
+    const routedFirst = routeFor(
+      text,
+      ready,
+      messages,
+      search,
+      gate.downshift !== null,
+      checked,
+      compareMode,
+    );
+    if (!routedFirst) return;
+    const found = compareMode
+      ? {
+          ...routedFirst,
+          fallback: null,
+          info: {
+            ...routedFirst.info,
+            reason: `Compare: 1 of ${String(comparing.length)} (${routedFirst.model.displayName})`,
+          },
+        }
+      : routedFirst;
     // RT-11: a pinned tier above what Auto would have picked counts as an override.
-    if (mode.kind === "tier" && !incognito) {
+    if (mode.kind === "tier" && !compareMode && !incognito) {
       const task = checked ?? local;
       const auto = route(policy, catalog, AUTO, task, { providers: savedProviders });
       if (auto.ok && auto.info.tier) {
@@ -1262,9 +1296,50 @@ export function ChatApp({
         await refreshThreads();
       }
       await stream(threadId, routed, { kind: "send", text, files: sent }, search);
+      if (compareMode) {
+        setCompareKeys([]);
+        await compareRest(threadId, comparing.slice(1), local, search);
+      }
     } catch (e) {
       report(e);
     }
+  };
+  /** RT-12: the other compared models answer the same question as sibling branches. */
+  const compareRest = async (
+    threadId: string,
+    others: CatalogModel[],
+    task: Classification,
+    search: boolean,
+  ) => {
+    const { rows } = await loadThread(threadId);
+    const first = rows.findLast((m) => m.role === "assistant");
+    const question = first && rows.find((m) => m.id === first.parentId);
+    if (!first || !question) return;
+    const total = others.length + 1;
+    for (const [i, other] of others.entries()) {
+      const routed = route(
+        policy,
+        catalog,
+        { kind: "model", provider: other.provider, id: other.id },
+        task,
+        { providers: savedProviders },
+      );
+      if (!routed.ok) {
+        setProblem(routed.error);
+        continue;
+      }
+      const info = {
+        ...routed.info,
+        reason: `Compare: ${String(i + 2)} of ${String(total)} (${other.displayName})`,
+      };
+      await stream(
+        threadId,
+        { ...routed, info },
+        { kind: "regenerate", answerId: first.id, questionId: question.id },
+        search,
+      );
+    }
+    if (selectedRef.current === threadId) setSideBySide(first.id);
   };
   /** Routes the question at `index` on the path, with what came before it as history. */
   const routeQuestion = (question: Message, text = question.content) =>
@@ -1814,6 +1889,61 @@ export function ChatApp({
     setThreadArchived(db, tenant, t.id, !t.archived).then(refreshThreads).catch(report);
   };
   const taggingThread = threads.find((t) => t.id === tagging);
+  // RT-12: the models compare mode can send to: Balanced and Best, from providers with a key.
+  const compareOptions = policy.tiers
+    .filter((t) => t.id !== "cheap")
+    .flatMap((t) =>
+      t.models.flatMap((ref) => {
+        const m = findModel(catalog, ref.provider, ref.id);
+        return m && savedProviders.includes(m.provider)
+          ? [{ key: modelKey(m), label: `${m.displayName} · ${t.label}` }]
+          : [];
+      }),
+    );
+  /** What the chosen models would cost for a draft: its input plus a typical 800-token answer. */
+  const compareEstimate = (draft: string) => {
+    if (compareKeys.length < 2) return null;
+    const ready = attachments.pending.flatMap((p) => (p.file ? [p.file] : []));
+    const tokens = classifyInput(draft, ready, messages, false).contextTokens ?? 0;
+    const micro = compareKeys.reduce((sum, k) => {
+      const m = catalog.models.find((c) => modelKey(c) === k);
+      if (!m) return sum;
+      const price = priceFor(m, tokens);
+      return (
+        sum + (tokens * priceToMicro(price.input) + 800 * priceToMicro(price.output)) / 1_000_000
+      );
+    }, 0);
+    return `about ${money(Math.round(micro))}`;
+  };
+  // CH-17: the answer picked for side by side, with its sibling versions.
+  const sideBySideAnswers = (() => {
+    const picked = sideBySide ? threadAll.find((x) => x.id === sideBySide) : undefined;
+    if (!picked) return null;
+    // Every answer to the same question (not the stronger re-runs), oldest first.
+    const siblings = threadAll
+      .filter(
+        (x) =>
+          x.role === "assistant" && x.parentId === picked.parentId && x.escalatedFromId === null,
+      )
+      .sort((x, y) => x.createdAt - y.createdAt);
+    return siblings.flatMap((m) => {
+      const id = m.id;
+      const provider = m.provider;
+      const used =
+        m.model && (provider === "openai" || provider === "anthropic")
+          ? findModel(catalog, provider, m.model)
+          : undefined;
+      return [
+        {
+          id,
+          model: used?.displayName ?? m.model ?? "Unknown model",
+          cost: money(m.usage.costMicroUsd),
+          content: m.content,
+          current: messages.some((x) => x.id === id),
+        },
+      ];
+    });
+  })();
   const incognito = thread ? thread.incognito : draftIncognito;
   const projectViews: ProjectView[] = projects.map((p) => {
     const inside = threadViews.filter((t) => t.projectId === p.id);
@@ -3084,6 +3214,7 @@ export function ChatApp({
                     onRegenerate={regenerateAnswer}
                     onEdit={editAndSend}
                     onBranch={switchBranch}
+                    onSideBySide={setSideBySide}
                     busy={streaming}
                     focusId={focusId}
                     openArtifact={openArtifact}
@@ -3124,6 +3255,12 @@ export function ChatApp({
                     key={`composer-${selectedId ?? "new"}`}
                     model={modelOption(model)}
                     models={options}
+                    compare={{
+                      options: compareOptions,
+                      selected: compareKeys,
+                      onChange: setCompareKeys,
+                      estimate: compareEstimate,
+                    }}
                     streaming={streaming}
                     missingKey={missingKey}
                     pickerOpen={picker}
@@ -3337,6 +3474,22 @@ export function ChatApp({
             setView("settings");
           }}
         />
+        {sideBySideAnswers && sideBySideAnswers.length >= 2 && (
+          <SideBySide
+            answers={sideBySideAnswers}
+            onClose={() => {
+              setSideBySide(null);
+            }}
+            onKeep={(id) => {
+              const threadId = selectedId;
+              setSideBySide(null);
+              if (!threadId) return;
+              setActiveLeaf(db, tenant, threadId, leafUnder(threadAll, id))
+                .then(() => reload(threadId))
+                .catch(report);
+            }}
+          />
+        )}
         {taggingThread && (
           <TagsDialog
             open

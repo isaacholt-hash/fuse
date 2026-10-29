@@ -1108,6 +1108,52 @@ test("text size zooms the window and reduced motion stops animations; both are r
   expect(localStorage.getItem("fuse.motion")).toBe("reduce");
 });
 
+test("compare mode: one question to two models, shown side by side; keep either one", async () => {
+  const { user, calls } = setup({
+    anthropic: [() => answer("Answer from Balanced."), () => answer("Answer from Best.")],
+  });
+  await composer();
+  await user.click(screen.getByRole("button", { name: "Compare models" }));
+  const pick = within(screen.getByRole("group", { name: "Models to compare" }));
+  await user.click(pick.getByRole("checkbox", { name: "Test Claude · Balanced" }));
+  await user.click(pick.getByRole("checkbox", { name: "Test Best · Best" }));
+  await user.type(await composer(), "Which is better, tea or coffee?");
+  expect(screen.getByLabelText("Compare cost")).toHaveTextContent(/Sends to 2 models · about \$/);
+  await user.keyboard("{Enter}");
+
+  const dialog = within(await screen.findByRole("dialog", { name: "Answers side by side" }));
+  expect(dialog.getByRole("region", { name: "Answer from Test Claude" })).toHaveTextContent(
+    "Answer from Balanced.",
+  );
+  expect(dialog.getByRole("region", { name: "Answer from Test Best" })).toHaveTextContent(
+    "Answer from Best.",
+  );
+  // Both models got the same question.
+  expect(calls.anthropic?.map((h) => h.at(-1)?.content)).toEqual([
+    "Which is better, tea or coffee?",
+    "Which is better, tea or coffee?",
+  ]);
+  await user.click(dialog.getByRole("checkbox", { name: "Show differences" }));
+  expect(dialog.getByLabelText("Changes")).toHaveTextContent("Answer from Balanced.");
+  await user.click(dialog.getByRole("checkbox", { name: "Show differences" }));
+  // The newest answer is current; going on with the first switches the branch.
+  await user.click(
+    within(dialog.getByRole("region", { name: "Answer from Test Claude" })).getByRole("button", {
+      name: "Go on with this one",
+    }),
+  );
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  expect(await screen.findByText("Answer from Balanced.")).toBeInTheDocument();
+  expect(screen.queryByText("Answer from Best.")).not.toBeInTheDocument();
+  // Compare mode is used up by the send.
+  expect(screen.getByRole("button", { name: "Compare models" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+});
+
 test("learning from overrides: three moves up for one kind of question suggest a rule to test and save", async () => {
   const { db, user } = setup({ anthropic: [() => answer("Everyday answer.")] });
   await user.type(await composer(), "What is FUSE?{Enter}");
