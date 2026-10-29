@@ -169,7 +169,7 @@ function CostBadge({ message }: { message: MessageView }) {
   );
 }
 
-function MemoryBadge({ memories }: { memories: string[] }) {
+function MemoryBadge({ memories }: { memories: { text: string; why: string }[] }) {
   return (
     <Tip
       label={
@@ -177,7 +177,10 @@ function MemoryBadge({ memories }: { memories: string[] }) {
           <p className="mb-2 font-medium">Memories sent with this answer</p>
           <ul className="space-y-1 text-[11px] leading-4">
             {memories.map((m, i) => (
-              <li key={i}>· {m}</li>
+              <li key={i}>
+                · {m.text}
+                {m.why && <span className="block pl-2 text-[10px] opacity-70">{m.why}</span>}
+              </li>
             ))}
           </ul>
         </div>

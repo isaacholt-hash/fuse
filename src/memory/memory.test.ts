@@ -28,7 +28,7 @@ import { createThread, getThread, setThreadMemory, setThreadProject } from "@/st
 import { EMPTY_USAGE } from "@/storage/usage";
 import { housekeepingModel } from "@/chat/housekeeping";
 import { needsMemoryCheck, parseSuggestions, suggestMemories, transcript } from "./extract";
-import { keywords, memoryLine, selectMemories } from "./inject";
+import { explainPick, keywords, memoryLine, pickMemories, selectMemories } from "./inject";
 import { findSecret } from "./secrets";
 
 const t = DEFAULT_TENANT;
@@ -534,4 +534,29 @@ test("tasks: what blocks one, and only unfinished ones go as context (PM-16)", (
     "Task (in progress): Order samples",
     "Task (to do): Fit it",
   ]);
+});
+
+test("each pick says why: always, all fit, shared words or meaning (PM-17)", () => {
+  const pool = [
+    fakeMemory({ id: "d", text: "Moor at the north harbour.", kind: "decision" }),
+    fakeMemory({ id: "w", text: "Owns a sailing dinghy called Puffin." }),
+    fakeMemory({ id: "k", text: "Has a girl, Maya, aged 7." }),
+    fakeMemory({ id: "x", text: "Drives an old Volvo estate car every single day." }),
+  ];
+  const where = { projectId: null, threadId: null };
+  expect(pickMemories(pool, "x", where, 1500).map((p) => p.reason)).toEqual([
+    "always",
+    "all_fit",
+    "all_fit",
+    "all_fit",
+  ]);
+  const ranked = pickMemories(pool, "Is the dinghy ready?", where, 40, new Map([["k", 0.8]]));
+  expect(ranked.map((p) => [p.memory.id, p.reason])).toEqual([
+    ["d", "always"],
+    ["w", "keyword"],
+    ["k", "meaning"],
+  ]);
+  expect(explainPick("keyword", ranked[1]?.score ?? null)).toMatch(
+    /^shares words with your message \(score \d\.\d\)$/,
+  );
 });

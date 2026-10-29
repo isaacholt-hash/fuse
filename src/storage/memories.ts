@@ -736,33 +736,68 @@ async function setProposalStatus(
 
 // ---- What was sent with each answer (PM-04) ----
 
+/** Why a memory went with a message (PM-17): see `src/memory/inject.ts`. */
+export type UseReason = "always" | "all_fit" | "keyword" | "meaning";
+
+export interface UsedMemory {
+  id: string;
+  reason: UseReason | null;
+  score: number | null;
+}
+
 export async function recordInjected(
   db: SqlDb,
   tenant: Tenant,
   messageId: string,
-  memoryIds: string[],
+  used: UsedMemory[],
 ): Promise<void> {
   const now = Date.now();
-  for (const memoryId of memoryIds) {
+  for (const u of used) {
     await db.execute(
       `INSERT OR IGNORE INTO message_memories (message_id, memory_id, workspace_id, user_id,
-         created_at)
-       VALUES (?, ?, ?, ?, ?)`,
-      [messageId, memoryId, tenant.workspaceId, tenant.userId, now],
+         reason, score, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [messageId, u.id, tenant.workspaceId, tenant.userId, u.reason, u.score, now],
     );
   }
 }
 
-/** The memories sent with each of these answers, by message id. */
+/** PM-17: leaves a memory out of future context without deleting it, or brings it back. */
+export async function setMemoryExcluded(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  excluded: boolean,
+): Promise<void> {
+  await db.execute(
+    `UPDATE memories SET status = ?, revision = revision + 1, device_id = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ? AND status IN ('active', 'excluded')`,
+    [
+      excluded ? "excluded" : "active",
+      await deviceId(db, tenant),
+      Date.now(),
+      tenant.workspaceId,
+      id,
+    ],
+  );
+}
+
+/** The memories sent with each of these answers, and why, by message id. */
 export async function memoriesForMessages(
   db: SqlDb,
   tenant: Tenant,
   messageIds: string[],
-): Promise<Map<string, { id: string; text: string }[]>> {
-  const out = new Map<string, { id: string; text: string }[]>();
+): Promise<Map<string, (UsedMemory & { text: string })[]>> {
+  const out = new Map<string, (UsedMemory & { text: string })[]>();
   if (messageIds.length === 0) return out;
-  const rows = await db.select<{ message_id: string; id: string; text: string }>(
-    `SELECT mm.message_id, m.id, m.text FROM message_memories mm
+  const rows = await db.select<{
+    message_id: string;
+    id: string;
+    text: string;
+    reason: UseReason | null;
+    score: number | null;
+  }>(
+    `SELECT mm.message_id, m.id, m.text, mm.reason, mm.score FROM message_memories mm
      JOIN memories m ON m.id = mm.memory_id
      WHERE mm.workspace_id = ? AND mm.message_id IN (${messageIds.map(() => "?").join(", ")})
      ORDER BY m.created_at, m.id`,
@@ -770,7 +805,7 @@ export async function memoriesForMessages(
   );
   for (const r of rows) {
     const list = out.get(r.message_id) ?? [];
-    list.push({ id: r.id, text: r.text });
+    list.push({ id: r.id, text: r.text, reason: r.reason, score: r.score });
     out.set(r.message_id, list);
   }
   return out;

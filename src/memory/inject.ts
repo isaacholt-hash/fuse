@@ -1,7 +1,7 @@
 // Memory injection (PM-04): which saved facts go with a message. Keyword match within a token
 // budget, plus meaning (embeddings) when an OpenAI key is there (M2 step 16).
 import { textTokens } from "@/files/documents";
-import type { Memory } from "@/storage/memories";
+import type { Memory, UseReason } from "@/storage/memories";
 
 const STOPWORDS = new Set(
   (
@@ -71,10 +71,21 @@ export const inScope = (
     ? m.threadId !== null && m.threadId === where.threadId
     : m.projectId === null || m.projectId === where.projectId;
 
+/** Why a memory went with a message (PM-17). */
+export type PickReason = UseReason;
+
+export interface PickedMemory {
+  memory: Memory;
+  reason: PickReason;
+  /** Keyword plus meaning score when it was ranked; null when it went without ranking. */
+  score: number | null;
+}
+
 /**
- * The memories to send with a message: global ones plus those of the chat's project and the chat itself. When they all
- * fit the budget they all go (a stable set also caches well, RT-07); otherwise the ones sharing the
- * most (and rarest) words with the message win, until the budget is used.
+ * The memories to send with a message: global ones plus those of the chat's project and the
+ * chat itself. Decisions and constraints always go first. When the rest all fit the budget they
+ * all go (a stable set also caches well, RT-07); otherwise the ones sharing the most (and
+ * rarest) words or meaning with the message win, until the budget is used.
  */
 export function selectMemories(
   memories: Memory[],
@@ -84,6 +95,17 @@ export function selectMemories(
   /** Cosine similarity of each memory to the question, by memory id (when embedded). */
   similarity: ReadonlyMap<string, number> = new Map(),
 ): Memory[] {
+  return pickMemories(memories, query, where, budgetTokens, similarity).map((p) => p.memory);
+}
+
+/** `selectMemories`, with why each one was chosen (PM-17). */
+export function pickMemories(
+  memories: Memory[],
+  query: string,
+  where: MemoryWhere,
+  budgetTokens: number,
+  similarity: ReadonlyMap<string, number> = new Map(),
+): PickedMemory[] {
   // Records kept on this device never go to a provider (SE-13).
   // Finished and dropped tasks are history, not context (PM-16).
   const pool = memories.filter(
@@ -93,11 +115,18 @@ export function selectMemories(
       !(m.kind === "task" && (m.taskStatus === "done" || m.taskStatus === "dropped")),
   );
   if (budgetTokens <= 0 || pool.length === 0) return [];
-  const pinned = pool.filter(isPinned);
+  const pinned = pool
+    .filter(isPinned)
+    .map((memory): PickedMemory => ({ memory, reason: "always", score: null }));
   const others = pool.filter((m) => !isPinned(m));
-  const room = budgetTokens - pinned.reduce((sum, m) => sum + memoryTokens(m), 0);
+  const room = budgetTokens - pinned.reduce((sum, p) => sum + memoryTokens(p.memory), 0);
   const total = others.reduce((sum, m) => sum + memoryTokens(m), 0);
-  if (total <= room) return [...pinned, ...others];
+  if (total <= room) {
+    return [
+      ...pinned,
+      ...others.map((memory): PickedMemory => ({ memory, reason: "all_fit", score: null })),
+    ];
+  }
   return [...pinned, ...rankWithin(others, query, room, similarity)];
 }
 
@@ -107,7 +136,7 @@ function rankWithin(
   query: string,
   budgetTokens: number,
   similarity: ReadonlyMap<string, number>,
-): Memory[] {
+): PickedMemory[] {
   if (budgetTokens <= 0) return [];
 
   const words = pool.map((m) => keywords(m.text));
@@ -116,25 +145,38 @@ function rankWithin(
   const asked = keywords(query);
   const scored = pool
     .map((m, i) => {
-      let score = 0;
+      let byWords = 0;
       for (const w of words[i] ?? []) {
-        if (asked.has(w)) score += Math.log(1 + pool.length / (docFreq.get(w) ?? 1));
+        if (asked.has(w)) byWords += Math.log(1 + pool.length / (docFreq.get(w) ?? 1));
       }
       // Meaning counts too: "my daughter" finds "Has a girl, Maya, aged 7".
-      score += Math.max(0, (similarity.get(m.id) ?? 0) - SIMILARITY_FLOOR) * SIMILARITY_WEIGHT;
-      return { m, score };
+      const byMeaning =
+        Math.max(0, (similarity.get(m.id) ?? 0) - SIMILARITY_FLOOR) * SIMILARITY_WEIGHT;
+      const reason: PickReason = byMeaning > byWords ? "meaning" : "keyword";
+      return { m, score: byWords + byMeaning, reason };
     })
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score || b.m.createdAt - a.m.createdAt);
 
-  const chosen = new Set<string>();
+  const chosen = new Map<string, PickedMemory>();
   let used = 0;
-  for (const { m } of scored) {
+  for (const { m, score, reason } of scored) {
     const cost = memoryTokens(m);
     if (used + cost > budgetTokens) continue;
     used += cost;
-    chosen.add(m.id);
+    chosen.set(m.id, { memory: m, reason, score: Math.round(score * 100) / 100 });
   }
   // Keep the saved order so the prompt reads the same way each time.
-  return pool.filter((m) => chosen.has(m.id));
+  return pool.flatMap((m) => chosen.get(m.id) ?? []);
 }
+
+const REASONS: Record<PickReason, string> = {
+  always: "always sent: a decision or constraint",
+  all_fit: "all your memories fit the budget",
+  keyword: "shares words with your message",
+  meaning: "close in meaning to your message",
+};
+
+/** "shares words with your message (score 2.4)" */
+export const explainPick = (reason: PickReason | null, score: number | null): string =>
+  reason ? `${REASONS[reason]}${score !== null ? ` (score ${score.toFixed(1)})` : ""}` : "";

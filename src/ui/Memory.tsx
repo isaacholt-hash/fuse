@@ -1,4 +1,4 @@
-import { Brain, Check, Copy, Pencil, Search, Trash2, X } from "lucide-react";
+import { Brain, Check, Copy, Eye, EyeOff, Pencil, Search, Trash2, X } from "lucide-react";
 import { Fragment, useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -218,12 +218,15 @@ function MemoryRow({
   chats,
   onEdit,
   onDelete,
+  onExclude,
 }: {
   memory: MemoryView;
   projects: ProjectOption[];
   chats: ChatOption[];
   onEdit: (form: MemoryForm) => string | null;
   onDelete: () => void;
+  /** PM-17: leave it out of future context (true) or bring it back. */
+  onExclude?: (excluded: boolean) => void;
 }) {
   const [draft, setDraft] = useState<MemoryForm | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -302,6 +305,22 @@ function MemoryRow({
         >
           <Pencil />
         </Button>
+        {onExclude && memory.status !== "expired" && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={
+              memory.status === "excluded"
+                ? `Include memory again: ${memory.text}`
+                : `Exclude memory: ${memory.text}`
+            }
+            onClick={() => {
+              onExclude(memory.status !== "excluded");
+            }}
+          >
+            {memory.status === "excluded" ? <Eye /> : <EyeOff />}
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-xs"
@@ -346,7 +365,10 @@ export function MemorySection({
   replaced = [],
   onRestore,
   currentChat = null,
+  onExclude,
 }: {
+  /** PM-17: excludes a memory from context without deleting it, or includes it again. */
+  onExclude?: (id: string, excluded: boolean) => void;
   /** The chat open behind Settings, so a memory can be kept for it only (PM-13). */
   currentChat?: ChatOption | null;
   /** PM-11: facts replaced by newer ones, kept as history. */
@@ -547,6 +569,13 @@ export function MemorySection({
                       memory={m}
                       projects={projects}
                       chats={chats}
+                      {...(onExclude
+                        ? {
+                            onExclude: (excluded: boolean) => {
+                              onExclude(m.id, excluded);
+                            },
+                          }
+                        : {})}
                       onEdit={(form) => onEdit(m.id, form)}
                       onDelete={() => {
                         onDelete(m.id);

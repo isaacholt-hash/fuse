@@ -110,6 +110,7 @@ import {
   listDecisions,
   listMemories,
   listTasks,
+  setMemoryExcluded,
   addTask,
   blockedBy,
   renameTask,
@@ -517,7 +518,9 @@ export function ChatApp({
   // FK-10: a file open in the side panel, at the place an answer cited.
   const [viewer, setViewer] = useState<FileViewerView | null>(null);
   // Memories sent with the answers on screen, by message id.
-  const [threadMemories, setThreadMemories] = useState<Map<string, { text: string }[]>>(new Map());
+  const [threadMemories, setThreadMemories] = useState<
+    Awaited<ReturnType<typeof memoriesForMessages>>
+  >(new Map());
   // Memory (step 7): saved facts, suggestions waiting, and what the last check skipped as secrets.
   // MM-04: a newer fetched price list and your own edits, on top of the shipped catalog.
   const [fetchedPrices, setFetchedPrices] = useState<string | null>(null);
@@ -3483,6 +3486,9 @@ export function ChatApp({
                   }}
                   onCopyAll={copyMemories}
                   currentChat={thread ? { id: thread.id, title: thread.title } : null}
+                  onExclude={(id, excluded) => {
+                    setMemoryExcluded(db, tenant, id, excluded).then(refreshMemory).catch(report);
+                  }}
                   replaced={replaced}
                   onRestore={(id) => {
                     restoreMemory(db, tenant, id).then(refreshMemory).catch(report);
