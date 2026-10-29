@@ -2,6 +2,7 @@
  * Embeddings (MM-11): the embedding model, and indexing chunks with it. Every call is logged as
  * `purpose: embed` with its cost, like any other provider call.
  */
+import { egressRefusal, threadPolicy } from "@/context/egress";
 import type { Catalog, EmbeddingModel, ProviderId } from "@/catalog/catalog";
 import { priceToMicro } from "@/cost/cost";
 import { ProviderError, userMessage } from "@/providers/errors";
@@ -48,6 +49,13 @@ export async function embedTexts(
   threadId: string | null = null,
   signal?: AbortSignal,
 ): Promise<Float32Array[]> {
+  // SE-13: a chat's project may forbid sending its content to be embedded.
+  const refused = egressRefusal(
+    await threadPolicy(deps.db, deps.tenant, threadId),
+    model.provider,
+    "embeddings",
+  );
+  if (refused) throw new Error(refused);
   const adapter = deps.adapterFor(model.provider);
   if (!adapter.embed) throw new Error(`${model.provider} has no embeddings`);
   const now = deps.now ?? Date.now;

@@ -23,6 +23,7 @@ import { listMemories } from "@/storage/memories";
 import { getProject } from "@/storage/projects";
 import { getMemorySettings } from "@/storage/settings";
 import { getThread } from "@/storage/threads";
+import { allowedEmbedding, threadPolicy } from "./egress";
 import type { Context } from "./gather";
 
 export type PartKind =
@@ -82,9 +83,10 @@ export async function assemble(
   deps: ChatDeps,
   threadId: string,
   { history, earlier, fileSources }: Context,
-  embedding: EmbeddingModel | null | undefined,
+  wanted: EmbeddingModel | null | undefined,
 ): Promise<ContextPackage> {
   const { db, tenant } = deps;
+  const embedding = allowedEmbedding(await threadPolicy(db, tenant, threadId), wanted);
   const thread = await getThread(db, tenant, threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
   const instructions = effectiveInstructions(

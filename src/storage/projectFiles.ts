@@ -8,6 +8,8 @@ export interface ProjectFile extends FileRecord {
   /** Chunks made from the file, and how many have a vector: the index status. */
   chunks: number;
   embedded: number;
+  /** SE-13: false keeps it on this device: never sent or embedded. */
+  maySend: boolean;
 }
 
 export async function listProjectFiles(
@@ -27,9 +29,10 @@ export async function listProjectFiles(
     created_at: number;
     chunks: number;
     embedded: number;
+    may_send: number;
   }>(
     `SELECT f.id, f.name, f.mime, f.size_bytes, f.sha256, f.width, f.height, f.token_estimate,
-            f.created_at,
+            f.created_at, f.may_send,
             (SELECT COUNT(*) FROM chunks c
               WHERE c.workspace_id = pf.workspace_id AND c.source_kind = 'file' AND c.source_id = f.id)
               AS chunks,
@@ -54,6 +57,7 @@ export async function listProjectFiles(
     mode: "retrieval",
     chunks: r.chunks,
     embedded: r.embedded,
+    maySend: r.may_send === 1,
   }));
 }
 

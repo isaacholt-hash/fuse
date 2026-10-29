@@ -2551,6 +2551,46 @@ describe("projects", () => {
     expect(system).not.toContain("Order oak samples");
   });
 
+  test("project privacy: a blocked provider gets nothing; Local only sends nothing; both say why (SE-13)", async () => {
+    const { calls, user } = setup();
+    await composer();
+    await user.click(screen.getByRole("button", { name: "New project" }));
+    const create = within(await screen.findByRole("dialog"));
+    await user.type(create.getByLabelText("Name"), "Health");
+    await user.click(create.getByRole("button", { name: "Create project" }));
+    const openPrivacy = async () => {
+      await user.click(await screen.findByRole("button", { name: "Project: Health" }));
+      return within(
+        within(await screen.findByRole("dialog")).getByRole("region", { name: "Project privacy" }),
+      );
+    };
+    const privacy = await openPrivacy();
+    await user.selectOptions(privacy.getByLabelText("Anthropic in this project"), "block");
+    await waitFor(() => {
+      expect(privacy.getByLabelText("Anthropic in this project")).toHaveValue("block");
+    });
+    await user.keyboard("{Escape}");
+
+    // Balanced is Anthropic-only in the test catalog, so nothing may answer at the floor.
+    await user.type(await composer(), "My blood results?{Enter}");
+    expect(
+      await screen.findByText(
+        /The project “Health” blocks Anthropic; allow it in privacy settings/,
+      ),
+    ).toBeInTheDocument();
+    expect(calls.anthropic).toHaveLength(0);
+
+    const again = await openPrivacy();
+    await user.selectOptions(again.getByLabelText("Anthropic in this project"), "default");
+    await user.selectOptions(again.getByLabelText("Privacy mode"), "local_only");
+    expect(await again.findByText(/no local model yet/)).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.type(await composer(), "And now?{Enter}");
+    expect(await screen.findByText(/set to Local only, so nothing is sent/)).toBeInTheDocument();
+    expect(calls.anthropic).toHaveLength(0);
+    expect(calls.openai).toHaveLength(0);
+  });
+
   test("project knowledge: files are indexed once and searched for every chat in the project", async () => {
     const { calls, user } = setup({ anthropic: [() => answer("At dawn.")] });
     await composer();

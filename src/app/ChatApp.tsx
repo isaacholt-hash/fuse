@@ -133,6 +133,7 @@ import {
   deleteProject,
   listProjects,
   updateProject,
+  setProjectPrivacy,
   type Project,
 } from "@/storage/projects";
 import { listRecentRequests, logRequest, medianFirstTokenMs } from "@/storage/requestLog";
@@ -227,7 +228,10 @@ import { QuickCaptureSection } from "@/ui/QuickCapture";
 import { DataSection } from "@/ui/DataSection";
 import type { DecisionInputView, DecisionView } from "@/ui/Decisions";
 import type { TaskStatusView, TaskView } from "@/ui/Tasks";
+import type { PrivacyModeView } from "@/ui/ProjectPrivacy";
 import type { BackupsApi } from "@/data/backups";
+import { allowedEmbedding, egressRefusal, policyFor, projectPolicy } from "@/context/egress";
+import { listEgressRules, setEgressRule, setFileMaySend, type EgressRule } from "@/storage/egress";
 import { ImportPaste } from "@/ui/ImportPaste";
 import { ModelsSection } from "@/ui/Models";
 import { PricesSection } from "@/ui/Prices";
@@ -739,13 +743,22 @@ export function ChatApp({
       setProblem(String(e));
     });
   }, [db, tenant]);
+  // SE-13: provider rules, global and per project (privacy modes live on the project).
+  const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
   const refreshProjects = useCallback(async () => {
     setProjects(await listProjects(db, tenant));
+    setEgressRules(await listEgressRules(db, tenant));
   }, [db, tenant]);
   useEffect(() => {
-    listProjects(db, tenant).then(setProjects, (e: unknown) => {
-      setProblem(String(e));
-    });
+    Promise.all([listProjects(db, tenant), listEgressRules(db, tenant)]).then(
+      ([list, rules]) => {
+        setProjects(list);
+        setEgressRules(rules);
+      },
+      (e: unknown) => {
+        setProblem(String(e));
+      },
+    );
   }, [db, tenant]);
   const refreshThreads = useCallback(async () => {
     const list = await listThreads(db, tenant);
@@ -1050,7 +1063,21 @@ export function ChatApp({
   );
   /** Keys past their spend cap (and not raised for today): no calls on them (MM-09). */
   const stoppedProviders = capStates.filter((s) => s.over && !s.raised).map((s) => s.provider);
-  const savedProviders = keyedProviders.filter((p) => !stoppedProviders.includes(p));
+  /** SE-13: the policy of the project being written in (or the global rules). */
+  const egress = policyFor(
+    projects.find(
+      (p) => p.id === (threads.find((t) => t.id === selectedId)?.projectId ?? draftProject),
+    ) ?? null,
+    egressRules,
+  );
+  /** Why this project can't send to any provider with a key; null when one is allowed. */
+  const egressBlock =
+    keyedProviders.length > 0 && keyedProviders.every((p) => egressRefusal(egress, p, "chat"))
+      ? egressRefusal(egress, keyedProviders[0] ?? "anthropic", "chat")
+      : null;
+  const savedProviders = keyedProviders.filter(
+    (p) => !stoppedProviders.includes(p) && egressRefusal(egress, p, "chat") === null,
+  );
   const raiseCap = (p: ProviderId) => {
     const next = { ...raises, [p]: localDay(Date.now()) };
     setRaises(next);
@@ -1166,6 +1193,10 @@ export function ChatApp({
     /** RT-12: compare mode sends to chosen models whatever the chat's mode. */
     modeOverride?: RouteMode,
   ) => {
+    if (egressBlock) {
+      setProblem(egressBlock);
+      return null;
+    }
     const task = checked ?? classify(classifyInput(text, files, history, webSearch));
     const routed = route(policy, catalog, modeOverride ?? mode, task, {
       providers: savedProviders,
@@ -1175,7 +1206,13 @@ export function ChatApp({
       downshift,
     });
     if (!routed.ok) {
-      setProblem(routed.error);
+      // SE-13: say when the project's privacy settings, not a missing key, left nothing to use.
+      const blockedHere = keyedProviders.filter((p) => egress.blocked.includes(p));
+      setProblem(
+        blockedHere.length
+          ? `${routed.error} ${egress.projectName ? `The project “${egress.projectName}”` : "Your privacy settings"} block${egress.projectName ? "s" : ""} ${blockedHere.map(providerName).join(" and ")}; allow it in privacy settings to use its models.`
+          : routed.error,
+      );
       return null;
     }
     // MM-09: a model you picked on a key past its cap isn't called.
@@ -1924,10 +1961,14 @@ export function ChatApp({
   }));
   /** Indexes a project's files that aren't fully searchable yet (needs an OpenAI key). */
   const indexKnowledge = async (projectId: string) => {
-    const model = embeddingModel(catalog, savedProviders);
+    // SE-13: nothing is embedded for a project that forbids it, or from a file kept on device.
+    const model = allowedEmbedding(
+      await projectPolicy(db, tenant, projectId),
+      embeddingModel(catalog, keyedProviders),
+    );
     const files = await listProjectFiles(db, tenant, projectId);
     if (model) {
-      for (const f of files.filter((x) => x.chunks === 0 || x.embedded < x.chunks)) {
+      for (const f of files.filter((x) => x.maySend && (x.chunks === 0 || x.embedded < x.chunks))) {
         await ensureIndexed(
           { db, tenant, adapterFor, files: filesApi, priceVersion: catalog.priceVersion },
           model,
@@ -1985,6 +2026,7 @@ export function ChatApp({
             ? "Indexing…"
             : "Not indexed",
       wholeMicro: Math.round((tokens * priceToMicro(model.price.input)) / 1_000_000),
+      maySend: f.maySend,
     };
   });
   const saveProject = (form: ProjectForm) => {
@@ -3911,6 +3953,30 @@ export function ChatApp({
           {...(editedProject ? { onDelete: removeProject } : {})}
           {...(editedProject
             ? {
+                privacy: {
+                  mode: editedProject.privacyMode,
+                  allowEmbeddings: editedProject.allowEmbeddings,
+                  providers: (["anthropic", "openai"] as const).map((id) => ({
+                    id,
+                    name: providerName(id),
+                    own:
+                      egressRules.find((r) => r.projectId === editedProject.id && r.provider === id)
+                        ?.allow ?? null,
+                    global:
+                      egressRules.find((r) => r.projectId === null && r.provider === id)?.allow ??
+                      true,
+                  })),
+                  onChange: (change: { mode: PrivacyModeView; allowEmbeddings: boolean }) => {
+                    setProjectPrivacy(db, tenant, editedProject.id, change)
+                      .then(refreshProjects)
+                      .catch(report);
+                  },
+                  onProvider: (provider: ProviderId, allow: boolean | null) => {
+                    setEgressRule(db, tenant, editedProject.id, provider, allow)
+                      .then(refreshProjects)
+                      .catch(report);
+                  },
+                },
                 tasks: {
                   tasks: taskViews,
                   onAdd: (text: string) => {
@@ -3986,6 +4052,15 @@ export function ChatApp({
                   onRemove: (fileId: string) => {
                     const projectId = editedProject.id;
                     removeProjectFile(db, tenant, projectId, fileId)
+                      .then(() => listProjectFiles(db, tenant, projectId))
+                      .then((files) => {
+                        setKnowledge((k) => (k ? { ...k, files } : k));
+                      })
+                      .catch(report);
+                  },
+                  onMaySend: (fileId: string, maySend: boolean) => {
+                    const projectId = editedProject.id;
+                    setFileMaySend(db, tenant, fileId, maySend)
                       .then(() => listProjectFiles(db, tenant, projectId))
                       .then((files) => {
                         setKnowledge((k) => (k ? { ...k, files } : k));

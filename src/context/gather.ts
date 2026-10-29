@@ -12,6 +12,7 @@ import { filesForMessages } from "@/storage/files";
 import type { Message } from "@/storage/messages";
 import { listProjectFiles } from "@/storage/projectFiles";
 import { getThread } from "@/storage/threads";
+import { allowedEmbedding, threadPolicy } from "./egress";
 
 /**
  * The history sent to the model: every saved turn with text, oldest first. The same plain-text
@@ -96,8 +97,11 @@ export async function gatherContext(
   deps: ChatDeps,
   threadId: string,
   path: Message[],
-  embedding: EmbeddingModel | null | undefined,
+  wanted: EmbeddingModel | null | undefined,
 ): Promise<Context> {
+  // SE-13: no embedding when the project forbids it; keyword-only memory search still works.
+  const policy = await threadPolicy(deps.db, deps.tenant, threadId);
+  const embedding = allowedEmbedding(policy, wanted);
   const { earlier, kept } = await summarizedPath(deps, threadId, path);
   const history = historyFor(kept, await attachmentsFor(deps, kept));
   const files = await filesForMessages(
@@ -107,8 +111,9 @@ export async function gatherContext(
   );
   // PM-09: a project's knowledge files are searched for every chat in it.
   const thread = await getThread(deps.db, deps.tenant, threadId);
+  // Knowledge files kept on this device are never searched for a request (SE-13).
   const knowledge = thread?.projectId
-    ? await listProjectFiles(deps.db, deps.tenant, thread.projectId)
+    ? (await listProjectFiles(deps.db, deps.tenant, thread.projectId)).filter((f) => f.maySend)
     : [];
   const searched = [
     ...new Map(
@@ -140,7 +145,9 @@ export async function gatherContext(
   }
   if (!embedding) {
     throw new Error(
-      "Searching inside large files needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or attach the file again and send it whole.",
+      wanted
+        ? "This project doesn't allow sending its content to be embedded, so a large file can't be searched. Attach it again and send it whole, or allow search in the project's privacy settings."
+        : "Searching inside large files needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or attach the file again and send it whole.",
     );
   }
   if (!deps.files) throw new Error("This message has attachments but no file store is set up");

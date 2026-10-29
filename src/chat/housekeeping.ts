@@ -1,5 +1,6 @@
 // Housekeeping calls: small jobs FUSE runs for itself (memory suggestions, chat titles) on a cheap
 // model. Never shown to the user as an answer (RT-17); every call is logged like any other.
+import { egressRefusal, threadPolicy } from "@/context/egress";
 import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { cost } from "@/cost/cost";
 import { ProviderError, userMessage } from "@/providers/errors";
@@ -56,6 +57,13 @@ export async function housekeepingCall(
 ): Promise<HousekeepingResult> {
   const { db, tenant } = deps;
   const { model } = req;
+  // SE-13: titles, summaries, memory suggestions and second opinions obey the policy too.
+  const refused = egressRefusal(
+    await threadPolicy(db, tenant, req.threadId),
+    model.provider,
+    "housekeeping",
+  );
+  if (refused) return { ok: false, error: refused };
   const now = deps.now ?? Date.now;
   const started = now();
   let text = "";

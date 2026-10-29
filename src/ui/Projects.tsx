@@ -1,6 +1,7 @@
 import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
 import { DecisionsSection, type DecisionsProps } from "./Decisions";
 import { TasksSection, type TasksProps } from "./Tasks";
+import { ProjectPrivacySection, type ProjectPrivacyProps } from "./ProjectPrivacy";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,8 @@ export interface KnowledgeFileView {
   ready: boolean;
   /** What sending it whole with every message would cost, for comparison. */
   wholeMicro: number;
+  /** SE-13: false keeps it on this device: never searched for a request or embedded. */
+  maySend: boolean;
 }
 
 export interface KnowledgeProps {
@@ -28,10 +31,11 @@ export interface KnowledgeProps {
   error: string | null;
   onAdd: (files: File[]) => void;
   onRemove: (id: string) => void;
+  onMaySend?: (id: string, maySend: boolean) => void;
 }
 
 /** Project settings → Knowledge: files every chat in the project searches. */
-function KnowledgeSection({ files, busy, error, onAdd, onRemove }: KnowledgeProps) {
+function KnowledgeSection({ files, busy, error, onAdd, onRemove, onMaySend }: KnowledgeProps) {
   const picker = useRef<HTMLInputElement>(null);
   return (
     <section aria-label="Knowledge files">
@@ -92,8 +96,21 @@ function KnowledgeSection({ files, busy, error, onAdd, onRemove }: KnowledgeProp
               <span
                 className={`shrink-0 text-[10px] ${f.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"}`}
               >
-                {f.status}
+                {f.maySend ? f.status : "Kept on this computer"}
               </span>
+              {onMaySend && (
+                <label className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    aria-label={`Keep ${f.name} on this computer`}
+                    checked={!f.maySend}
+                    onChange={(e) => {
+                      onMaySend(f.id, !e.target.checked);
+                    }}
+                  />
+                  Local
+                </label>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -128,7 +145,10 @@ export function ProjectDialog({
   onOpenArtifact,
   decisions,
   tasks,
+  privacy,
 }: {
+  /** Only when editing: where the project's content may be sent (SE-13). */
+  privacy?: ProjectPrivacyProps;
   /** Only when editing: the project's tasks (PM-16). */
   tasks?: TasksProps;
   /** Only when editing: the project's decisions (PM-15). */
@@ -279,6 +299,11 @@ export function ProjectDialog({
       {tasks && (
         <div className="mt-4">
           <TasksSection {...tasks} />
+        </div>
+      )}
+      {privacy && (
+        <div className="mt-4">
+          <ProjectPrivacySection {...privacy} />
         </div>
       )}
       <div className="flex items-center gap-2 pt-4">

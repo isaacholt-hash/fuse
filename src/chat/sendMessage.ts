@@ -32,6 +32,7 @@ import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import type { RouteInfo } from "@/routing/route";
 import { assemble } from "@/context/assemble";
 import { gatherContext, type Context } from "@/context/gather";
+import { egressRefusal, threadPolicy } from "@/context/egress";
 
 /** The history sent to a model (PM-18 gathers it in `src/context/gather.ts`). */
 export { historyFor } from "@/context/gather";
@@ -296,6 +297,8 @@ async function streamAnswer(
     picked.map((p) => ({ id: p.memory.id, reason: p.reason, score: p.score })),
   );
 
+  const policy = await threadPolicy(db, tenant, input.threadId);
+
   /** One provider call, streamed into the answer. */
   const attempt = async (m: CatalogModel) => {
     const started = now();
@@ -307,6 +310,9 @@ async function streamAnswer(
     const sources: Source[] = [];
     const webSearch = Boolean(input.webSearch) && m.capabilities.includes("web_search");
     try {
+      // SE-13: a provider this project blocks never gets the request; you see why.
+      const refused = egressRefusal(policy, m.provider, "chat");
+      if (refused) throw new ProviderError("blocked", refused, { code: "egress" });
       const adapter = deps.adapterFor(m.provider);
       const mine = input.defaults?.(m) ?? {};
       // "Think harder" (max) beats everything; then your default; then the router's (RT-08).

@@ -8,7 +8,8 @@ export type ProviderErrorKind =
   | "invalid_request"
   | "not_found"
   | "stream" // error after the stream started
-  | "aborted";
+  | "aborted"
+  | "blocked"; // the egress policy (SE-13) refused it before anything was sent
 
 const RETRYABLE: ReadonlySet<ProviderErrorKind> = new Set([
   "rate_limit",
@@ -75,6 +76,8 @@ export function userMessage(e: ProviderError, providerName: string): string {
       return `The answer was cut off: ${e.message}`;
     case "aborted":
       return "Stopped.";
+    case "blocked":
+      return e.message;
   }
 }
 
