@@ -20,6 +20,7 @@ import { defaultUpdateApi, type UpdateApi } from "@/update/api";
 import { tauriWebApi, type WebApi } from "@/web/api";
 import { tauriPreviewApi, type PreviewApi } from "@/artifacts/preview";
 import { tauriExportApi, type ExportApi } from "@/artifacts/export";
+import { tauriBackupsApi, type BackupsApi } from "@/data/backups";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
 import { tauriZoom, type ZoomApi } from "@/app/appearance";
 import { tauriHello, type HelloApi } from "@/security/hello";
@@ -54,6 +55,7 @@ interface Props {
   web?: WebApi;
   preview?: PreviewApi;
   exporter?: ExportApi;
+  backups?: BackupsApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
   zoom?: ZoomApi;
@@ -77,6 +79,7 @@ export default function App({
   web = tauriWebApi,
   preview = tauriPreviewApi,
   exporter = tauriExportApi,
+  backups = tauriBackupsApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
   hello = tauriHello,
@@ -138,6 +141,7 @@ export default function App({
       web={web}
       preview={preview}
       exporter={exporter}
+      backups={backups}
       quickCapture={quickCapture}
       zoom={zoom}
       hello={hello}

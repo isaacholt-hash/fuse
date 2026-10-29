@@ -9,7 +9,7 @@
 ## Steps (one PR each, in order)
 
 - [x] **0. M5 plan.** This file, and CLAUDE.md pointed at it.
-- [ ] **1. Backup and restore (PL-11).**
+- [x] **1. Backup and restore (PL-11).**
   - "Back up now" and a list of backups with Restore in Settings → Data; a restore is applied at the next start, before the database opens, and the current database is kept aside.
   - Backups stay encrypted; an integrity check re-hashes attachment files against the database.
   - A test harness upgrades a seeded database from migration 25 and checks nothing is lost.

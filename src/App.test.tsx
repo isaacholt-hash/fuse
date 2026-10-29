@@ -20,6 +20,7 @@ import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
 import { CLASSIFY_SYSTEM } from "@/routing/classifyFallback";
 import App from "./App";
+import type { BackupInfo } from "@/data/backups";
 import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 
 // Placeholder prices for arithmetic; real ones live in data/models.json.
@@ -229,6 +230,29 @@ function setup(
       return Promise.resolve(() => undefined);
     },
   };
+  // Database backups (PL-11): what's listed, and the restores asked for.
+  const backups = {
+    list: [] as BackupInfo[],
+    restored: [] as string[],
+    api: {
+      list: () => Promise.resolve([...backups.list]),
+      backupNow: () => {
+        const made: BackupInfo = {
+          name: `fuse-${String(1_800_000_000_000 + backups.list.length)}-manual.db`,
+          createdMs: 1_800_000_000_000,
+          bytes: 2 * 1024 * 1024,
+          reason: "manual",
+        };
+        backups.list.unshift(made);
+        return Promise.resolve(made);
+      },
+      restore: (name: string) => {
+        backups.restored.push(name);
+        return Promise.resolve();
+      },
+      checkFiles: () => Promise.resolve({ checked: 3, missing: ["a".repeat(64)], changed: [] }),
+    },
+  };
   // Files handed to "Save as…" (AR-04).
   const saves: { name: string; bytes: Uint8Array }[] = [];
   // Pages handed to the preview scheme (AR-05).
@@ -265,6 +289,7 @@ function setup(
       onRestart={() => {
         restarts.push(Date.now());
       }}
+      backups={backups.api}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -296,6 +321,7 @@ function setup(
     hello,
     remote,
     restarts,
+    backups,
     user: userEvent.setup(),
   };
 }
@@ -1131,6 +1157,36 @@ test("Settings → Your data exports everything as one zip", async () => {
     /Saved fuse-export-\d{4}-\d{2}-\d{2}\.zip: 1 chats, 0 files\./,
   );
   expect(saves[0]?.bytes.slice(0, 2)).toEqual(new Uint8Array([0x50, 0x4b]));
+});
+
+test("Settings → Your data backs up now, checks files and restores a backup after confirming", async () => {
+  const { backups, user } = setup();
+  backups.list.push({
+    name: "fuse-1700000000000.db",
+    createdMs: 1_700_000_000_000,
+    bytes: 512 * 1024,
+    reason: "update",
+  });
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  const group = within(await screen.findByRole("group", { name: "Backups" }));
+  expect(await group.findByText(/512 KB · before an update/)).toBeInTheDocument();
+
+  await user.click(group.getByRole("button", { name: "Back up now" }));
+  expect(await group.findByRole("status")).toHaveTextContent(
+    /Backed up: .*2\.0 MB · backed up by you/,
+  );
+  expect(group.getAllByRole("button", { name: /^Restore / })).toHaveLength(2);
+
+  await user.click(group.getByRole("button", { name: "Check attached files" }));
+  expect(await group.findByRole("status")).toHaveTextContent(
+    "Checked 3 attached files: 1 missing.",
+  );
+
+  await user.click(group.getByRole("button", { name: /^Restore .*before an update/ }));
+  const dialog = within(await screen.findByRole("dialog"));
+  await user.click(dialog.getByRole("button", { name: "Restore and restart" }));
+  expect(backups.restored).toEqual(["fuse-1700000000000.db"]);
 });
 
 test("delete everything: typed confirmation, all data gone, keys only when ticked, then a restart", async () => {
