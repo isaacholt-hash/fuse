@@ -57,7 +57,10 @@ P1 is the whole product in miniature; P2 and P3 only add reach, and each waits f
 
 Each phase ships only when its gate passes. P1's gate is the one that matters: if you are not using the app instead of Claude and ChatGPT for two straight weeks, fix P1 before adding anything.
 
-**P1.5 "Local and lean" (added 2026-10-29)** sits between P1 and P2: cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
+**P1.5 (added 2026-10-29) sits between P1 and P2 and is built while the P1 trial runs; anything the trial turns up is fixed first.** It has two parts, in this order:
+
+1. **Continuity core** (from `docs/specs/fuse-requirements-v0.1.md`): FUSE owns your context in a provider-neutral form, so a project moves between models without losing decisions or constraints. Typed memory with scope, provenance and authority, decisions and tasks, one context assembler, an egress policy every send obeys, backup before migrations, and a documented export with restore (PM-12 to PM-19, SE-13 to SE-15, PL-11, PL-12). Gate: the two-provider continuity test (PM-19) passes, and no content reaches a blocked provider in tests.
+2. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
 
 ## 4. Users and key use cases
 
@@ -159,7 +162,7 @@ Memory lives in the app's database, is written as plain facts you can read and d
 | PM-01 | Projects: a container holding instructions, knowledge files, a default tier or routing override, a default provider preference, memories scoped to the project, and threads. Threads can move between projects. | Must | P1 |
 | PM-02 | Memory store: facts with text, source thread, date, scope (global or project) and a user-visible confidence; full list view with search, edit and delete; export and wipe. | Must | P1 |
 | PM-03 | Memory extraction: at the end of a thread (or on demand) a Cheap-tier or local model proposes new facts, updates and deletions; you approve them, or set auto-approve per category (preferences, people, projects, facts about you). Nothing is written from an incognito thread. | Must | P1 |
-| PM-04 | Memory injection: before each send, retrieve the most relevant memories by semantic and keyword search, capped at a configurable token budget (default 1,500), placed in the cacheable prefix (RT-07); a toggle disables injection per thread; the injected set is viewable per message. | Must | P1 |
+| PM-04 | Memory injection: before each send, retrieve the most relevant memories by semantic and keyword search, capped at a configurable token budget (default 1,500), placed in the cacheable prefix (RT-07); a toggle disables injection per thread; the injected set is viewable per message. Extended by PM-18 (one context assembler) and to decisions and artifacts (search by meaning, P2). | Must | P1 |
 | PM-05 | Secrets filter: memory extraction never stores API keys, passwords, card or account numbers, or government IDs; detected items are shown and skipped. | Must | P1 |
 | PM-06 | Context management: when a thread nears the model's window, older turns are replaced by a rolling summary kept per thread; pinned messages and attachments are never summarized away; a context meter in the composer shows tokens used and the summarization point. | Must | P1 |
 | PM-07 | "What do you know about me" view: memories grouped by category with the thread each came from. | Must | P1 |
@@ -167,6 +170,14 @@ Memory lives in the app's database, is written as plain facts you can read and d
 | PM-09 | Project knowledge: files attached to a project are indexed once and available to every thread in it (FK-02); the project shows index status and token cost of including each file whole. | Must | P1 |
 | PM-10 | Cross-thread recall: "what did we decide about X last week" searches thread history and summaries, not just memories, and cites the thread. | Should | P1 |
 | PM-11 | Memory conflict handling: a new fact that contradicts an old one shows both and asks which stands; the old one is kept as history, not silently overwritten. | Should | P1 |
+| PM-12 | Typed memory records (provider-neutral, the system of record): fact, preference, person, constraint, decision, task and source reference. Provider message formats never become the stored form; adapters translate. | Must | P1.5 |
+| PM-13 | Memory scope: global, workspace, project or conversation. Context selection respects scope. | Must | P1.5 |
+| PM-14 | Memory provenance and status: authority (you, imported, extracted), source chat, message or artifact, extraction method and model, confidence, last verified, expiry, status (active, excluded, superseded, expired, deleted), sensitivity and whether it may be sent to providers. Raw history is kept apart from promoted memory. Each record carries `revision` and `device_id` so sync (PL-04) needs no second schema change. | Must | P1.5 |
+| PM-15 | Decisions: a project's explicit choices with rationale, alternatives considered, status and what they replace. Never added automatically; always sent ahead of other memory. A model summary or extracted fact never overrides a decision or anything you entered (authority order: you > imported > extracted). | Must | P1.5 |
+| PM-16 | Tasks: a project's open work with status and dependencies, listed in the project and available to context. | Should | P1.5 |
+| PM-17 | Exclude and explain: a memory can be excluded from future context without deleting it, and each answer records why each memory was used (keyword or meaning score and reason). | Must | P1.5 |
+| PM-18 | Context assembler: one module builds a bounded package for every request, in this order: instructions, constraints and decisions, tasks, memories (ranked by authority, recency and relevance), summaries, file excerpts, history. Each part carries its source; the egress policy (SE-13) is applied before anything is sent. Merges LL-05. | Must | P1.5 |
+| PM-19 | Two-provider continuity test: a recorded project history whose decisions and constraints must all reach both providers' requests (automated, no API calls), plus a live benchmark run with your keys. Gate: critical decisions and constraints kept in at least 90% of benchmark scenarios. | Must | P1.5 |
 
 ## 9. Files, knowledge and web search
 
@@ -256,13 +267,15 @@ One codebase serves both; the desktop app adds OS features (hotkey, local files,
 | PL-01 | Desktop builds for Windows and Linux (macOS dropped from P1, decided 2026-10-26); web supports the last two versions of Chrome, Edge, Safari and Firefox; responsive layout down to 390 px wide. | Must | P1 |
 | PL-02 | Feature parity between desktop and web except OS-only features; those degrade visibly (greyed with a reason) rather than disappearing. | Must | P1 |
 | PL-03 | Storage: desktop stores everything locally in an encrypted database (plain SQLite in M0; SQLCipher in M1, decided 2026-10-26); web v1 runs as a self-hosted single-user server with the same database, protected by a login. No shared cloud storage in P1. | Must | P1 |
-| PL-04 | Sync across devices: end-to-end encrypted sync of threads, memory, projects and settings through a storage location you own (your server, S3-compatible bucket or a file-sync folder); conflicts resolved per record with last-writer-wins and a history. | Should | P2 |
+| PL-04 | Sync across devices: end-to-end encrypted sync of threads, memory, projects and settings through a storage location you own (your server, S3-compatible bucket or a file-sync folder); conflicts resolved per record with last-writer-wins and a history. Syncs logical records and versioned files, never the database file; competing edits to decisions or facts go to review; device revocation, deletion propagation and lost-key behaviour defined; sync is not backup (PL-11). | Should | P2 |
 | PL-05 | Offline on desktop: read history, draft and queue messages, use local models; queued sends go out when back online with a notice. | Should | P2 |
 | PL-06 | Auto-update with signed builds and release notes; web deploys with a version shown in settings. Planned for M1; M0 installs by hand from CI artifacts. | Must | P1 |
 | PL-07 | OS integration: menu bar or tray icon, global hotkey for quick capture (CH-08), system notifications for finished runs and budget alerts, "send selection to app" from any application. | Should | P1 |
 | PL-08 | Import threads and projects from ChatGPT and Claude data exports, preserving dates and attachments. | Should | P1 |
 | PL-09 | Deep links to a thread, artifact or project that work in desktop and web. | Nice | P2 |
 | PL-10 | Theme: light, dark and system; font size setting; reduced motion. | Must | P1 |
+| PL-11 | Backup and restore: an automatic encrypted backup before every database migration (the rollback path; migrations stay forward-only), backup and restore on demand, and an integrity check of stored files against the database. | Must | P1.5 |
+| PL-12 | Portable export and restore: a documented, versioned format (`docs/export-format.md`; JSON plus files named by hash) another program could read, and restore of a project or everything, with duplicates removed and ids kept stable. Extends SE-07. | Must | P1.5 |
 
 ## 15. Accounts, security and privacy
 
@@ -282,6 +295,9 @@ V1 is single-user and local-first; the product-ready pieces (multi-tenant data m
 | SE-10 | Audit log of tool calls, key use and policy changes (AG-04), exportable. | Should | P2 |
 | SE-11 | Secrets scanning on files and memory (FK-11, PM-05) and redaction of detected secrets in logs and exports. | Should | P1 |
 | SE-12 | Dependency and build security: signed releases, pinned dependencies, automated vulnerability scanning in CI. | Should | P1 |
+| SE-13 | Egress policy: per project and per record, which providers may receive content (allow or block), privacy mode (Normal, Local only, Cloud only) and whether content may go to a provider for embeddings. Every path that sends checks it, failover, compare, housekeeping, embeddings, retrieval and the classifier's second opinion included, in the Rust transport as well as the router. Blocked content is never sent; you see why. | Must | P1.5 |
+| SE-14 | Threat model covering local compromise, sync compromise, malicious imports and provider exposure (`docs/threat-model.md`), reviewed when sync or tools land. | Should | P1.5 |
+| SE-15 | Clear boundaries in Settings → Privacy: local storage doesn't mean local inference; cloud answers send the selected context to that provider. | Must | P1.5 |
 
 ## 16. Non-functional requirements
 
@@ -356,6 +372,9 @@ The biggest risk is scope: a solo build of "everything" at a few hours a week do
 | Native local runtime | A C++ runtime adds build time, app size and crash risk on two OSes | Behind the adapter (LL-02), crash and memory isolation (LL-08), built in CI on Windows and Linux, opt-in |
 | Model licence and provenance | A downloaded model is third-party code with its own licence | Pinned source, checksum and licence in `data/`, checked before download (LL-03, LL-08) |
 | False downgrades | A small local model misjudges a hard request and the answer suffers | Local only for housekeeping (RT-17 kept), shadow mode and false-downgrade rate before enabling (LL-09), one fallback to the cloud |
+| Rebuilding the memory table | Changing typed memory means rebuilding a table that holds your data | Backup before every migration comes first (PL-11); migration tested on a copy of a real database |
+| Egress gaps | One missed send path leaks content to a blocked provider | One checkpoint in the Rust transport (SE-13) plus a test per path |
+| Context changes | A new assembler changes answers and prompt-cache hits | Cache-friendly order kept (RT-07); routing test set and continuity test compared before and after |
 | Hardware variance | What runs well on one PC stalls another | Hardware profile and compatibility card (LL-03); benchmarks on Isaac's own PC; cloud path always works |
 
 **Decisions needed before build starts**
@@ -368,7 +387,18 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Default tier mapping: open, set in M1 from current model lists and prices. Budget for month one: decided (no app budget; provider-console hard limits + CO-07 alert)
 - [ ] Storage location for P2 sync: deferred to P2
 
-**Open decisions for P1.5 (Local and lean), with the recommendation**
+**Decided 2026-10-29 for Continuity core (from `docs/specs/fuse-requirements-v0.1.md`)**
+
+- [x] Placement: Continuity core is P1.5 part 1 (M5), before Local and lean (M6); P2 follows
+- [x] One requirement list: the spec's items are folded in as PM-12 to PM-19, SE-13 to SE-15, PL-11 and PL-12; its Phase 0 market validation and commercial gates are product-phase (P3) notes, not built now
+- [x] Decisions and tasks are typed memory records with their own fields, not separate tables
+- [x] Approval: extracted memories still need review; your own entries and confirmed imports are saved straight away; decisions are never added automatically
+- [x] Scopes: global, workspace, project and conversation, added now
+- [x] Embeddings: a per-project switch to never send content to a provider for search; keyword search (LL-05) covers those projects until local embeddings arrive
+- [x] Rollback: an automatic encrypted backup before every migration, built first; no reverse migrations
+- [x] Egress is checked in the Rust transport as well as the router
+
+**Open decisions for P1.5 part 2 (Local and lean), with the recommendation**
 
 - [ ] Local runtime: embedded llama.cpp through Rust (`llama-cpp-2`), CPU build first, GPU (Vulkan) later; optional localhost adapter for Ollama or LM Studio
 - [ ] First model: Qwen3 1.7B, 4-bit GGUF, non-thinking mode; licence (expected Apache-2.0), source and checksum verified at implementation, downloaded only when you opt in
@@ -390,7 +420,8 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Add the second provider, tiers, Auto routing and escalation; then memory, projects and artifacts
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
-- [ ] P1.5 Local and lean (section 16b), alongside the P1 trial: decide the open items in section 17, then a milestone file; trial fixes go first
+- [ ] P1.5 part 1, Continuity core (M5): backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
+- [ ] P1.5 part 2, Local and lean (M6, section 16b): decide its open items in section 17 first; trial fixes go first
 
 **Can wait**
 
