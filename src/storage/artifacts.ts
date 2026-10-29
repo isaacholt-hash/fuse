@@ -198,3 +198,77 @@ export async function saveArtifacts(
     await addVersion(db, tenant, id, b.content, "model", messageId);
   }
 }
+
+export interface ArtifactHit {
+  id: string;
+  key: string;
+  title: string;
+  threadId: string;
+  threadTitle: string;
+  projectId: string | null;
+  /** The latest version. */
+  content: string;
+  updatedAt: number;
+}
+
+const ARTIFACT_HIT = `
+  SELECT a.id, a.key, a.title, a.thread_id, t.title AS thread_title, t.project_id, v.content,
+         a.updated_at
+  FROM artifacts a
+  JOIN threads t ON t.id = a.thread_id AND t.deleted_at IS NULL AND t.incognito = 0
+  JOIN artifact_versions v ON v.artifact_id = a.id
+    AND v.version = (SELECT MAX(version) FROM artifact_versions WHERE artifact_id = a.id)
+  WHERE a.workspace_id = ? AND a.deleted_at IS NULL`;
+
+interface ArtifactHitRow {
+  id: string;
+  key: string;
+  title: string;
+  thread_id: string;
+  thread_title: string;
+  project_id: string | null;
+  content: string;
+  updated_at: number;
+}
+
+const toHit = (r: ArtifactHitRow): ArtifactHit => ({
+  id: r.id,
+  key: r.key,
+  title: r.title,
+  threadId: r.thread_id,
+  threadTitle: r.thread_title,
+  projectId: r.project_id,
+  content: r.content,
+  updatedAt: r.updated_at,
+});
+
+/** AR-06: artifacts whose title or latest version has every word, newest first. */
+export async function searchArtifacts(
+  db: SqlDb,
+  tenant: Tenant,
+  text: string,
+  limit = 5,
+): Promise<ArtifactHit[]> {
+  const words = text.match(/[\p{L}\p{N}_]+/gu) ?? [];
+  if (words.length === 0) return [];
+  const like = (w: string) => `%${w.replace(/[%_\\]/g, "")}%`;
+  const rows = await db.select<ArtifactHitRow>(
+    `${ARTIFACT_HIT} ${words.map(() => "AND (a.title LIKE ? OR v.content LIKE ?)").join(" ")}
+     ORDER BY a.updated_at DESC LIMIT ?`,
+    [tenant.workspaceId, ...words.flatMap((w) => [like(w), like(w)]), limit],
+  );
+  return rows.map(toHit);
+}
+
+/** AR-06: the artifacts made in a project's chats, newest first. */
+export async function projectArtifacts(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+): Promise<ArtifactHit[]> {
+  const rows = await db.select<ArtifactHitRow>(
+    `${ARTIFACT_HIT} AND t.project_id = ? ORDER BY a.updated_at DESC`,
+    [tenant.workspaceId, projectId],
+  );
+  return rows.map(toHit);
+}
