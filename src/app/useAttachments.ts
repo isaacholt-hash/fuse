@@ -84,7 +84,8 @@ export function useAttachments(deps: {
               tokenEstimate: doc.tokens,
             });
             // FK-03: big text files are searched by default; past the whole-file limit, always.
-            const searched = doc.kind === "text" && doc.tokens > LARGE_TEXT_TOKENS;
+            const searched =
+              doc.searchOnly === true || (doc.kind === "text" && doc.tokens > LARGE_TEXT_TOKENS);
             update(id, {
               status: "ready",
               file,

@@ -1495,8 +1495,7 @@ export function ChatApp({
       const problems: string[] = [];
       for (const f of list) {
         try {
-          const doc = await prepareDocument(f);
-          if (doc.kind === "pdf") throw new Error("PDFs can't be searched yet.");
+          const doc = await prepareDocument(f, { searchPdf: true });
           const stored = await filesApi.put(doc.bytes);
           const file = await addFile(db, tenant, {
             name: f.name,

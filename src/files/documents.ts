@@ -2,9 +2,13 @@
 // everything else is turned into text on this machine, so the same history works on either
 // provider after a model switch.
 import { strFromU8, unzipSync } from "fflate";
+import { joinPages, readPdfText, type PdfTextReader } from "./pdfText";
 
+/** The largest PDF sent to the provider as it is; past this (or MAX_PDF_PAGES) it's searched. */
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
 export const MAX_PDF_PAGES = 100;
+/** The largest PDF read on this machine to be searched (FK-02). */
+export const MAX_SEARCHED_PDF_BYTES = 200 * 1024 * 1024;
 /** The most a text file can be sent whole; bigger ones are searched (FK-03). */
 export const MAX_TEXT_TOKENS = 200_000;
 /** The most a text file can be to be searched (about 20 MB of text). */
@@ -94,22 +98,59 @@ export interface PreparedDocument {
   mime: "application/pdf" | "text/plain";
   tokens: number;
   pages: number | null;
+  /** A PDF too long to send as a PDF: its text, searched by default (FK-02). */
+  searchOnly?: boolean;
 }
 
-/** Checks a document and turns it into what's stored and sent. Throws a plain-English error. */
-export async function prepareDocument(file: File): Promise<PreparedDocument> {
+/**
+ * Checks a document and turns it into what's stored and sent. Throws a plain-English error.
+ * A PDF over the page or size limit becomes its text, page by page, to be searched (FK-02).
+ */
+export async function prepareDocument(
+  file: File,
+  options: {
+    readPdf?: PdfTextReader;
+    /** Always search a PDF, whatever its size (project knowledge is always searched). */
+    searchPdf?: boolean;
+  } = {},
+): Promise<PreparedDocument> {
+  const { readPdf = readPdfText, searchPdf = false } = options;
   const kind = documentKind(file.name, file.type);
   if (!kind) {
     throw new Error("Unsupported file. Images, PDF, Word (.docx), text, CSV and code work.");
   }
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (kind === "pdf") {
-    if (bytes.length > MAX_PDF_BYTES) throw new Error("PDFs over 20 MB aren't supported yet.");
     const pages = pdfPageCount(bytes);
-    if (pages > MAX_PDF_PAGES) {
-      throw new Error(
-        `PDFs over ${String(MAX_PDF_PAGES)} pages aren't supported yet (${String(pages)} pages).`,
-      );
+    if (searchPdf || bytes.length > MAX_PDF_BYTES || pages > MAX_PDF_PAGES) {
+      if (bytes.length > MAX_SEARCHED_PDF_BYTES)
+        throw new Error("PDFs over 200 MB aren't supported.");
+      let texts: string[];
+      try {
+        texts = await readPdf(bytes);
+      } catch {
+        throw new Error("Couldn't read the text in this PDF.");
+      }
+      if (!texts.some((t) => t.trim())) {
+        throw new Error(
+          "This PDF is too long to send whole and has no text to search (scanned pages?).",
+        );
+      }
+      const text = joinPages(texts);
+      const tokens = textTokens(text);
+      if (tokens > MAX_SEARCH_TOKENS) {
+        throw new Error(
+          `Too long even to search (~${tokens.toLocaleString("en-US")} tokens; the limit is ${MAX_SEARCH_TOKENS.toLocaleString("en-US")}).`,
+        );
+      }
+      return {
+        kind: "text",
+        bytes: new TextEncoder().encode(text),
+        mime: "text/plain",
+        tokens,
+        pages: texts.length,
+        searchOnly: true,
+      };
     }
     return {
       kind,

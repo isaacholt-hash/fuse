@@ -3,6 +3,7 @@
  * boundaries where possible, with a little overlap so a fact cut in two is still found.
  * Each chunk keeps its line range for citations.
  */
+import { PAGE_MARKER } from "@/files/pdfText";
 import type { NewChunk } from "@/storage/vectors";
 
 export const CHUNK_TOKENS = 400;
@@ -11,6 +12,14 @@ const tokensOf = (text: string) => Math.ceil(text.length / 4);
 
 export function chunkText(text: string, maxTokens = CHUNK_TOKENS): NewChunk[] {
   const lines = text.replace(/\r\n?/g, "\n").split("\n");
+  // A PDF's text carries page markers (pdfText.ts): each line's page, for citations.
+  const pageOf: (number | null)[] = [];
+  let page: number | null = null;
+  for (const line of lines) {
+    const m = PAGE_MARKER.exec(line);
+    if (m) page = Number(m[1]);
+    pageOf.push(page);
+  }
   const out: NewChunk[] = [];
   let start = 0;
   while (start < lines.length) {
@@ -31,12 +40,16 @@ export function chunkText(text: string, maxTokens = CHUNK_TOKENS): NewChunk[] {
         : [piece];
     for (const p of pieces) {
       if (p.trim()) {
+        // The page the chunk's text starts on (a marker line itself belongs to its page).
+        const first = lines.slice(start, end).findIndex((l) => l.trim() && !PAGE_MARKER.test(l));
+        const chunkPage = pageOf[start + Math.max(0, first)] ?? null;
         out.push({
           ordinal: out.length,
           text: p.trim(),
           tokens: tokensOf(p),
-          lineStart: start + 1,
-          lineEnd: end,
+          ...(chunkPage === null
+            ? { lineStart: start + 1, lineEnd: end }
+            : { page: chunkPage, lineStart: null, lineEnd: null }),
         });
       }
     }

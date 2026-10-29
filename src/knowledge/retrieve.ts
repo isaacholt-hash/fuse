@@ -34,6 +34,9 @@ export async function ensureIndexed(
 
 const lines = (a: number | null, b: number | null) =>
   a === null ? "" : b === null || b === a ? `line ${String(a)}` : `lines ${String(a)}–${String(b)}`;
+/** Where a chunk is: its page (PDFs) or its lines. */
+const where = (c: { page: number | null; lineStart: number | null; lineEnd: number | null }) =>
+  c.page !== null ? `page ${String(c.page)}` : lines(c.lineStart, c.lineEnd);
 
 /** The parts of these files that best match the question, in file order. */
 export async function retrieveExcerpts(
@@ -64,15 +67,13 @@ export async function retrieveExcerpts(
     (a, b) => a.chunk.sourceId.localeCompare(b.chunk.sourceId) || a.chunk.ordinal - b.chunk.ordinal,
   );
   const label = (h: (typeof hits)[number]) =>
-    [name.get(h.chunk.sourceId) ?? "A file", lines(h.chunk.lineStart, h.chunk.lineEnd)]
-      .filter(Boolean)
-      .join(", ");
+    [name.get(h.chunk.sourceId) ?? "A file", where(h.chunk)].filter(Boolean).join(", ");
   return {
     text: [
-      "Excerpts from the user's attached files that best match the question (the files are too long to send whole). Answer from them where they help, and say which file and lines you used. If they don't cover the question, say so.",
+      "Excerpts from the user's attached files that best match the question (the files are too long to send whole). Answer from them where they help, and say which file and page or lines you used. If they don't cover the question, say so.",
       ...ordered.map(
         (h) =>
-          `<excerpt file="${name.get(h.chunk.sourceId) ?? ""}" ${lines(h.chunk.lineStart, h.chunk.lineEnd)}>\n${h.chunk.text}\n</excerpt>`,
+          `<excerpt file="${name.get(h.chunk.sourceId) ?? ""}" ${where(h.chunk)}>\n${h.chunk.text}\n</excerpt>`,
       ),
     ].join("\n\n"),
     sources: ordered.map((h) => ({ chunkId: h.chunk.id, label: label(h) })),
