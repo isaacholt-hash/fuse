@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "tauri": "tauri",
     "check": "bash scripts/check.sh",
-    "record-fixtures": "node scripts/record-fixtures.ts"
+    "record-fixtures": "node scripts/record-fixtures.ts",
+    "continuity:live": "vitest run --mode continuity src/context/continuity.live.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
