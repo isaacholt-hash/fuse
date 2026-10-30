@@ -52,10 +52,11 @@
   - `src/providers/local/adapter.ts`: `createLocalAdapter` is the `ProviderAdapter` over the worker (`tauri.ts` calls `local_generate` and `local_cancel`). Text only, output capped at 1,024 tokens, a 2-minute time limit.
   - Token counts come from llama.cpp; the cost is zero, priced from the zero catalog price. A length stop reads as `max_tokens`. A stray thinking block is removed, and the answer is held back until the end so it never shows.
   - Not installed, a worker error or crash, or an empty answer is a `ProviderError` (`unavailable` or `stream`), never shown as text. Stop cancels the worker and ends as `aborted`.
-- [ ] **8. Routing to local (LL-04).**
-  - When a model is installed, local is first choice in the Cheap tier for each housekeeping job. One fallback to the cloud Cheap model, with no retry loops; both attempts are logged as one task.
-  - Local only projects get titles, summaries and memory suggestions locally. Chat there is still refused, with a clearer message.
-  - The switch in Settings → Local model turns it all off at once.
+- [x] **8. Routing to local (LL-04).**
+  - `housekeepingCall` tries the installed local model first for titles, summaries, memory suggestions and the classifier's second opinion. If that fails, it tries the request's cloud Cheap model once: two attempts at most, each logged. With no cloud key, the local model does housekeeping alone.
+  - Local only projects do housekeeping locally, and nothing goes to the cloud if it fails. Cloud only projects never use it. Chat in Local only projects is still refused, with a message saying the local model only does housekeeping (fixed-rule answers still work). The privacy wording is updated.
+  - Settings → Local model has one switch, "Use the local model for housekeeping" (setting `local.enabled`, on by default), that sends everything back to the cloud at once.
+  - A failed local attempt doesn't count as a cloud call avoided. Coding-run summaries stay on the cloud Cheap model.
 - [ ] **9. Shadow and evaluation (LL-09).**
   - Some housekeeping jobs also run on the cloud model, sampled and off by default after a week, and both results are recorded.
   - A false-downgrade rate for the classifier's second opinion on the routing test set, plus p50/p95 latency and peak memory.

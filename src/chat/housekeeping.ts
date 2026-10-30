@@ -1,5 +1,7 @@
 // Housekeeping calls: small jobs FUSE runs for itself (memory suggestions, chat titles) on a cheap
-// model. Never shown to the user as an answer (RT-17); every call is logged like any other.
+// model. Never shown to the user as an answer (RT-17); every call is logged like any other. With
+// a local model installed (M7, LL-04), it goes first and the cloud Cheap model is the one
+// fallback.
 import { threadScope } from "@/providers/types";
 import { egressRefusal, threadPolicy } from "@/context/egress";
 import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
@@ -20,7 +22,8 @@ const PROVIDER_NAMES: Record<ProviderId, string> = {
 
 /**
  * The model that does housekeeping: the cheapest model in the purpose's tier (Cheap in
- * data/routing.json) from a provider with a saved key, the chat's provider first on a tie.
+ * data/routing.json) from a provider with a saved key, the chat's provider first on a tie. With
+ * no cloud model, the local one (when installed and on) does it alone.
  */
 export function housekeepingModel(
   policy: RoutingPolicy,
@@ -28,15 +31,18 @@ export function housekeepingModel(
   purpose: HousekeepingPurpose,
   providers: readonly ProviderId[],
   prefer?: ProviderId,
+  local: CatalogModel | null = null,
 ): CatalogModel | null {
   const opts = prefer ? { providers, prefer } : { providers };
-  return tierModels(policy, catalog, policy.housekeeping[purpose], opts)[0] ?? null;
+  return tierModels(policy, catalog, policy.housekeeping[purpose], opts)[0] ?? local;
 }
 
 export interface HousekeepingDeps {
   db: SqlDb;
   tenant: Tenant;
   adapterFor: (provider: ProviderId) => ProviderAdapter;
+  /** LL-04: the installed local model, tried before the request's cloud model; null when off. */
+  local?: CatalogModel | null;
   now?: () => number;
 }
 
@@ -54,8 +60,27 @@ export interface HousekeepingRequest {
 export type HousekeepingResult =
   { ok: true; text: string; costMicroUsd: number } | { ok: false; error: string };
 
-/** One non-streamed request: collects the reply, prices it and writes the request_log row. */
+/**
+ * One housekeeping request (LL-04): on the local model first when it's installed and the
+ * project allows it, then once on the request's cloud model if that fails. No retry loops:
+ * at most two attempts, each logged.
+ */
 export async function housekeepingCall(
+  deps: HousekeepingDeps,
+  catalog: Catalog,
+  req: HousekeepingRequest,
+): Promise<HousekeepingResult> {
+  const local = deps.local;
+  if (!local || req.model.provider === "local") return attempt(deps, catalog, req);
+  const policy = await threadPolicy(deps.db, deps.tenant, req.threadId);
+  if (egressRefusal(policy, "local", "housekeeping")) return attempt(deps, catalog, req);
+  const first = await attempt(deps, catalog, { ...req, model: local });
+  if (first.ok || req.signal?.aborted) return first;
+  return attempt(deps, catalog, req);
+}
+
+/** One non-streamed request: collects the reply, prices it and writes the request_log row. */
+async function attempt(
   deps: HousekeepingDeps,
   catalog: Catalog,
   req: HousekeepingRequest,

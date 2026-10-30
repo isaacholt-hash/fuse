@@ -2644,7 +2644,7 @@ describe("projects", () => {
     const again = await openPrivacy();
     await user.selectOptions(again.getByLabelText("Anthropic in this project"), "default");
     await user.selectOptions(again.getByLabelText("Privacy mode"), "local_only");
-    expect(await again.findByText(/no local model yet/)).toBeInTheDocument();
+    expect(await again.findByText(/local model only does housekeeping/)).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await user.type(await composer(), "And now?{Enter}");
     expect(await screen.findByText(/set to Local only, so nothing is sent/)).toBeInTheDocument();

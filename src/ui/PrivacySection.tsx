@@ -35,15 +35,18 @@ export function PrivacySection({
           <span className="font-medium text-foreground">
             Stored locally doesn&apos;t mean answered locally.
           </span>{" "}
-          Every answer comes from a cloud model at OpenAI or Anthropic; FUSE has no local model yet.
+          Every answer comes from a cloud model at OpenAI or Anthropic, or from a fixed rule on this
+          computer for sums, conversions and checks. The local model, once installed, does only
+          housekeeping, and nothing it sees leaves this computer.
         </p>
         <p>
           <span className="font-medium text-foreground">What a cloud answer sends</span> to the
           provider that answers: your message and the chat so far (or its summary), your
           instructions, the memories, decisions and tasks that apply to the chat, and the matching
-          parts of any files it searches. Titles, summaries and memory suggestions go to a cheap
-          model the same way. Searching by meaning sends text to OpenAI to be embedded. Each
-          provider handles what it receives under its own terms.
+          parts of any files it searches. Titles, summaries and memory suggestions go to the local
+          model when it&apos;s installed, and otherwise (or if it fails) to a cheap cloud model the
+          same way. Searching by meaning sends text to OpenAI to be embedded. Each provider handles
+          what it receives under its own terms.
         </p>
         <p>
           <span className="font-medium text-foreground">What never leaves:</span> memories and

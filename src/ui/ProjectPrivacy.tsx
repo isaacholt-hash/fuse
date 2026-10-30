@@ -69,8 +69,8 @@ export function ProjectPrivacySection({
       </select>
       {mode === "local_only" && (
         <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
-          FUSE has no local model yet, so chats in this project can&apos;t be answered until local
-          models arrive or you change this.
+          Chats here get no model answers: the local model only does housekeeping (titles,
+          summaries, memory suggestions). Sums, conversions and checks are still answered.
         </p>
       )}
       <div className="mt-2 space-y-1 text-xs">

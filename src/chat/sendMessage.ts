@@ -50,6 +50,8 @@ export interface ChatDeps {
   tenant: Tenant;
   catalog: Catalog;
   adapterFor: (provider: ProviderId) => ProviderAdapter;
+  /** LL-04: the installed local model, tried first for housekeeping; null when off. */
+  local?: CatalogModel | null;
   /** Where attachment bytes live; needed once a thread has attachments. */
   files?: FilesApi;
   /** The linked repository (CA-01); its CLAUDE.md and AGENTS.md join the instructions (CA-06). */
