@@ -665,8 +665,9 @@ mod tests {
     fn no_network_unless_allowed() {
         let dir = fresh_dir("net");
         grant(&dir).unwrap();
+        // Into the folder: the container can't open the NUL device by name (`-o NUL` fails).
         let probe = |url: &str| {
-            format!("curl.exe -sS -m 15 -o NUL {url} && echo connected || echo blocked")
+            format!("curl.exe -sS -m 15 -o page.html {url} && echo connected || echo blocked")
         };
         let (off, _) = run(&dir, &probe("http://example.com"), false);
         assert!(

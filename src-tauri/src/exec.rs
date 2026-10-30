@@ -118,6 +118,7 @@ pub struct Sandbox {
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxKind {
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     Bubblewrap,
     /// Windows: an AppContainer and a job object (src-tauri/sandbox-win), while it's switched on.
     #[cfg_attr(not(windows), allow(dead_code))]
