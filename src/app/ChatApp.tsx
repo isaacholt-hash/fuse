@@ -2,7 +2,8 @@
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
 import type { LocalApi } from "@/local/api";
 import { gb, pickProfile, type Hardware } from "@/local/hardware";
-import { localModels } from "@/local/models";
+import { statusFor, type InstalledFile } from "@/local/install";
+import { localModels, type LocalProfile } from "@/local/models";
 import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
@@ -521,12 +522,39 @@ const lastModelOf = (messages: Message[], catalog: Catalog) => {
     : undefined;
 };
 
-/** Settings → Local model (LL-03): this computer, and the profile it gets. */
-function localModelView(hw: Hardware | null): LocalModelView | null {
+/** Where an install of the recommended profile is up to (LL-03). */
+interface LocalJob {
+  status: "downloading" | "verifying";
+  progress: { done: number; total: number } | null;
+}
+
+/** Settings → Local model (LL-03): this computer, the profile it gets, and its install. */
+function localModelView(
+  hw: Hardware | null,
+  installed: readonly InstalledFile[],
+  job: LocalJob | null,
+  installError: string | null,
+): LocalModelView | null {
   if (!hw) return null;
   const choice = pickProfile(hw, localModels.profiles);
   const p = choice.profile;
+  const others = installed
+    .filter((f) => f.file !== p?.file)
+    .map((f) => ({
+      file: f.file,
+      label: `${localModels.profiles.find((x) => x.file === f.file)?.displayName ?? f.file} (${gb(f.sizeBytes)})`,
+    }));
   return {
+    others,
+    ...(p
+      ? {
+          install: {
+            status: job?.status ?? statusFor(p, installed).kind,
+            progress: job?.progress ?? null,
+            error: installError,
+          },
+        }
+      : {}),
     computer: [
       `${gb(hw.totalMemoryBytes)} memory (${gb(hw.availableMemoryBytes)} free)`,
       `${String(hw.logicalCpus)} CPUs`,
@@ -538,6 +566,7 @@ function localModelView(hw: Hardware | null): LocalModelView | null {
     profile: p
       ? {
           name: p.displayName,
+          file: p.file,
           detail: `${p.quantization} · ${gb(p.sizeBytes)} download · about ${gb(p.peakMemoryBytes)} of memory`,
           licence: p.licence,
           licenceUrl: p.licenceUrl,
@@ -727,6 +756,35 @@ export function ChatApp({
   const [economicsView, setEconomicsView] = useState<EconomicsView | null>(null);
   const [localHardware, setLocalHardware] = useState<Hardware | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [localInstalled, setLocalInstalled] = useState<InstalledFile[]>([]);
+  const [localJob, setLocalJob] = useState<LocalJob | null>(null);
+  const [localInstallError, setLocalInstallError] = useState<string | null>(null);
+  const refreshLocalInstalled = () => localApi?.installed().then(setLocalInstalled, report);
+  /** LL-03: downloads, checks and installs the profile this computer gets. */
+  const installLocal = (profile: LocalProfile) => {
+    if (!localApi) return;
+    setLocalInstallError(null);
+    setLocalJob({ status: "downloading", progress: null });
+    localApi
+      .install(profile, (m) => {
+        if (m.kind === "progress") {
+          setLocalJob({ status: "downloading", progress: { done: m.done, total: m.total } });
+        } else if (m.kind === "verifying") {
+          setLocalJob((j) => ({ status: "verifying", progress: j?.progress ?? null }));
+        }
+      })
+      .then(
+        () => {
+          setLocalJob(null);
+          void refreshLocalInstalled();
+        },
+        (e: unknown) => {
+          setLocalJob(null);
+          setLocalInstallError(String(e));
+          void refreshLocalInstalled();
+        },
+      );
+  };
   // SE-03: the app lock. `hash` is the stored passcode hash (null = off, undefined = loading).
   const [lock, setLock] = useState<{
     hash: string | null | undefined;
@@ -2705,6 +2763,7 @@ export function ChatApp({
     if (view !== "settings") return;
     budgetStatesFor(budgets, null, true).then(setBudgetStates, report);
     // LL-03: what this computer can run, read fresh each time Settings opens.
+    void refreshLocalInstalled();
     localApi?.hardware().then(
       (hw) => {
         setLocalHardware(hw);
@@ -3595,7 +3654,30 @@ export function ChatApp({
               }
               local={
                 localApi && (
-                  <LocalModelSection view={localModelView(localHardware)} error={localError} />
+                  <LocalModelSection
+                    view={localModelView(
+                      localHardware,
+                      localInstalled,
+                      localJob,
+                      localInstallError,
+                    )}
+                    error={localError}
+                    onInstall={() => {
+                      const choice =
+                        localHardware && pickProfile(localHardware, localModels.profiles);
+                      if (choice?.profile) installLocal(choice.profile);
+                    }}
+                    onPause={() => {
+                      localApi.cancelInstall().catch(report);
+                    }}
+                    onRemove={(file) => {
+                      setLocalInstallError(null);
+                      localApi
+                        .remove(file)
+                        .then(() => refreshLocalInstalled())
+                        .catch(report);
+                    }}
+                  />
                 )
               }
               keyCaps={
