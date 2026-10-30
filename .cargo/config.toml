@@ -1,0 +1,9 @@
+# llama.cpp (M7, LL-02) is compiled for AVX2, FMA and F16C so the local model is fast on CPU.
+# These reach only llama.cpp's own C++ build (llama-cpp-sys-2 forwards GGML_* to CMake); FUSE's
+# Rust code stays baseline x86-64, and the worker refuses to start on a CPU without them
+# (local_worker::cpu_supported).
+[env]
+GGML_AVX = "ON"
+GGML_AVX2 = "ON"
+GGML_FMA = "ON"
+GGML_F16C = "ON"

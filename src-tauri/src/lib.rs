@@ -7,6 +7,8 @@ mod files;
 mod git;
 mod hello;
 mod keys;
+mod local;
+pub mod local_worker;
 mod preview;
 mod quick;
 mod repo;
@@ -30,6 +32,7 @@ pub fn run() {
         .manage(transport::Transport::default())
         .manage(exec::Execs::default())
         .manage(preview::Previews::default())
+        .manage(local::Local::default())
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
             use tauri::Manager;
@@ -71,6 +74,10 @@ pub fn run() {
             exec::commands::repo_exec,
             exec::commands::repo_exec_stop,
             git::commands::repo_git,
+            local::commands::local_generate,
+            local::commands::local_cancel,
+            local::commands::local_unload,
+            local::commands::local_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
