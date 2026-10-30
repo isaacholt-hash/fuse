@@ -33,10 +33,12 @@
   - Both are official Qwen builds under Apache-2.0. Qwen3 4B is Q4_K_M (2.50 GB). Qwen ships Qwen3 1.7B only as Q8_0 (1.83 GB), so that profile is 8-bit, not 4-bit.
   - Local models are priced at zero. Egress allows local in Normal and Local only projects and refuses it in Cloud only ones.
   - The local adapter fails with a clear reason until a model is installed. `scriptedLocal` stands in for it in tests.
-- [ ] **4. Runtime in Rust (LL-02).**
-  - `local.rs` and a worker mode of the FUSE executable. Load, stream, cancel, time limit, unload and reload. One request at a time, a bounded context, CPU threads capped.
-  - No network code on this path.
-  - Checked on Linux here and on Windows in CI. Release builds need `cmake`, so CI installs it.
+- [x] **4. Runtime in Rust (LL-02).**
+  - `src-tauri/src/local_worker.rs`: the FUSE executable started with `--local-worker` runs llama.cpp (`llama-cpp-2` 0.1.160, CPU, OpenMP) and speaks JSON lines: load, generate (Qwen3 chat format, non-thinking, control tokens stripped from content), cancel.
+  - `src-tauri/src/local.rs` starts it with an empty environment and no window, loads the model from `models/<file>` in the app's data folder, and streams one request at a time.
+  - Stop, a time limit (2 min by default; cancel, then end the worker after 3 s), unload, and a worker that dies mid-answer all end with a clear error while the app keeps running.
+  - llama.cpp is built with AVX2, FMA and F16C (`.cargo/config.toml`). The worker refuses a CPU without them, and llama.cpp is built without curl.
+  - Checked on HULK with the real Qwen3 1.7B file (SHA-256 matched): it loaded, wrote a 7-word chat title using about 4 s of CPU, and peaked at 2.4 GB on a 585-token prompt. Building needs `cmake` and `clang` (both on HULK and the CI runners).
 - [ ] **5. Hardware detection (LL-03).**
   - RAM, free memory, CPU features (AVX2 and others) and free disk, read without elevated rights.
   - Picks the profile: 4B when there's enough memory for its peak plus the app, otherwise 1.7B, otherwise none. Settings → Local model shows why.

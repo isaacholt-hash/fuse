@@ -41,6 +41,10 @@ tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).
 tauri-plugin-updater = "2"
 
+# The local model (M7, LL-02): llama.cpp, CPU only, in a worker process (src/local_worker.rs).
+# Pinned: released 2026-10-15. Default features off (no Android bits); OpenMP for CPU threads.
+llama-cpp-2 = { version = "=0.1.160", default-features = false, features = ["openmp"] }
+
 # Ending a command's whole process group on the time limit or Stop (CA-03, src/exec.rs).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
