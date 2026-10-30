@@ -25,6 +25,8 @@ export interface Run {
    * aren't sent again. */
   summary: string | null;
   summaryUpto: number | null;
+  /** CA-05: the branch it made for itself, if it did. */
+  branch: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -67,6 +69,7 @@ interface RunRow {
   note: string | null;
   summary: string | null;
   summary_upto: number | null;
+  branch: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -102,6 +105,7 @@ const toRun = (r: RunRow): Run => ({
   note: r.note,
   summary: r.summary,
   summaryUpto: r.summary_upto,
+  branch: r.branch,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -169,7 +173,8 @@ export async function createRun(
 export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run | null> {
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, thread_id, message_id, task, mode, provider, model, status,
-       cap_micro_usd, spent_micro_usd, note, summary, summary_upto, created_at, updated_at
+       cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, created_at,
+       updated_at
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
   );
@@ -200,6 +205,20 @@ export async function setRunStatus(
     "UPDATE runs SET status = ?, note = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
     [status, note, Date.now(), tenant.workspaceId, id],
   );
+}
+
+export async function setRunBranch(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  branch: string,
+): Promise<void> {
+  await db.execute("UPDATE runs SET branch = ?, updated_at = ? WHERE workspace_id = ? AND id = ?", [
+    branch,
+    Date.now(),
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 /** A cost outside the run's turns (its summaries), added to what it has spent. */

@@ -41,6 +41,7 @@ import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
+import type { GitApi } from "@/repo/git";
 import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
 import {
@@ -401,6 +402,8 @@ export interface ChatAppProps {
   repoApi?: RepoApi;
   /** Commands in that repository (CA-03). */
   execApi?: ExecApi;
+  /** git and gh there (CA-05). */
+  gitApi?: GitApi;
   /** Backup and restore of the database (PL-11). */
   backups?: BackupsApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
@@ -516,6 +519,7 @@ export function ChatApp({
   exporter,
   repoApi,
   execApi,
+  gitApi,
   backups,
   quickCapture,
   zoom,
@@ -790,6 +794,8 @@ export function ChatApp({
   >(new Map());
   // CA-04: what a run may do, per chat ("draft" before it exists); the project's mode otherwise.
   const [codeMode, setCodeMode] = useState<Record<string, RunMode>>({});
+  // CA-05: start runs on a branch of their own, per chat.
+  const [codeBranch, setCodeBranch] = useState<Record<string, boolean>>({});
   // AG-04: recent coding-run tool calls, for Settings.
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   // CA-04: commands the edited project always allows, for its settings.
@@ -1427,6 +1433,7 @@ export function ChatApp({
               codeMode.draft ??
               projects.find((p) => p.id === runIn)?.runMode ??
               "ask",
+            newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
             signal: controller.signal,
             onProgress: (answerId, p) => {
               setThreadRuns((m) => new Map(m).set(answerId, p));
@@ -1975,6 +1982,7 @@ export function ChatApp({
       return helper ? { summarizer: helper } : {};
     })(),
     ...(execApi ? { exec: execApi } : {}),
+    ...(gitApi ? { git: gitApi } : {}),
     approve: (req: ApprovalRequest) =>
       new Promise<ApprovalAnswer>((resolve) => {
         const done = (a: ApprovalAnswer) => {
@@ -4102,6 +4110,10 @@ export function ChatApp({
                           codeMode: codeMode[codeKey] ?? activeProject?.runMode ?? "ask",
                           onCodeMode: (m: RunMode) => {
                             setCodeMode((all) => ({ ...all, [codeKey]: m }));
+                          },
+                          codeBranch: codeBranch[codeKey] ?? false,
+                          onCodeBranch: (on: boolean) => {
+                            setCodeBranch((all) => ({ ...all, [codeKey]: on }));
                           },
                           onToggleCode: () => {
                             setCodeOn((all) => ({ ...all, [codeKey]: !codeActive }));

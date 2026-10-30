@@ -22,7 +22,7 @@
 - [x] **7. Commands (CA-03).** Rust runs a command in the root with streamed output, a time limit, an output cap and the exit code. Each command asks first, with the exact command shown.
 - [x] **8. Permission modes (CA-04).** Ask, Auto-edit and Plan only per project; always-allow per command; destructive commands always ask; every tool call goes in an audit log with inputs, outputs, model and cost.
 - [x] **9. Context budget for tools (CA-08).** File reads and command output capped with a pointer to the rest; older tool results summarized on the Cheap tier; resume a stopped run from its record.
-- [ ] **10. Git (CA-05).** Status, diff, branch and commit with a message; a run can work on its own branch or worktree; push and open a pull request through `gh`, and a push always asks.
+- [x] **10. Git (CA-05).** Status, diff, branch and commit with a message; a run can work on its own branch or worktree; push and open a pull request through `gh`, and a push always asks. Built with a branch per run; a worktree per run needs the root to move with it and comes with parallel runs (CA-14).
 - [ ] **11. Routing inside runs (CA-07 part 2, RT-14).** Planning on Best, steps on Balanced, summaries on Cheap, never below the quality floor; one-click override per run; the run's total against its cap.
 - [ ] **12. Egress and threat model for the agent (CA-09, SE-13).** A test per new send path; a Local only project runs no cloud step; `docs/threat-model.md` covers file and command tools on the host.
 - [ ] **13. Coding benchmark.** Recorded tasks on a small fixture repository (add a test and make it pass, fix a bug across two files, commit on a branch), checked on both providers with recorded responses and no API calls, plus `pnpm coding:live` for Isaac.

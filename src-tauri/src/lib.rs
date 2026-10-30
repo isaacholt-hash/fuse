@@ -4,6 +4,7 @@ mod egress;
 mod exec;
 mod export;
 mod files;
+mod git;
 mod hello;
 mod keys;
 mod preview;
@@ -69,6 +70,7 @@ pub fn run() {
             repo::commands::repo_move,
             exec::commands::repo_exec,
             exec::commands::repo_exec_stop,
+            git::commands::repo_git,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -929,6 +929,8 @@ export function Composer({
   onToggleCode,
   codeMode = "ask",
   onCodeMode,
+  codeBranch = false,
+  onCodeBranch,
   routing,
   insert,
   status = null,
@@ -969,6 +971,9 @@ export function Composer({
   /** CA-04: what that run may do. */
   codeMode?: "plan" | "ask" | "auto_edit";
   onCodeMode?: (mode: "plan" | "ask" | "auto_edit") => void;
+  /** CA-05: start the run on a branch of its own. */
+  codeBranch?: boolean;
+  onCodeBranch?: (on: boolean) => void;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
@@ -1485,6 +1490,18 @@ export function Composer({
                 <option value="auto_edit">Can edit files</option>
               </select>
             )}
+            {onToggleCode && code && onCodeBranch && codeMode !== "plan" && (
+              <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={codeBranch}
+                  onChange={(e) => {
+                    onCodeBranch(e.target.checked);
+                  }}
+                />
+                New branch
+              </label>
+            )}
             <Tip
               label={
                 thinkHarder
@@ -1674,6 +1691,11 @@ function RunCard({
         <SquareTerminal className="size-3.5 text-muted-foreground" />
         <span className="font-medium">Coding run</span>
         <span className="text-muted-foreground">{run.modeLabel}</span>
+        {run.branch && (
+          <span className="truncate font-mono text-[10px] text-muted-foreground">
+            on {run.branch}
+          </span>
+        )}
         <span
           className={`rounded px-1.5 py-0.5 text-[10px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
         >
@@ -1714,7 +1736,13 @@ function RunCard({
       {run.approval && onApprove && (
         <div
           role="alertdialog"
-          aria-label={run.approval.kind === "command" ? "Run this command?" : "Make this change?"}
+          aria-label={
+            run.approval.kind === "command"
+              ? "Run this command?"
+              : run.approval.kind === "git"
+                ? "Go ahead with git?"
+                : "Make this change?"
+          }
           className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
         >
           {run.approval.kind === "command" ? (
@@ -1726,6 +1754,15 @@ function RunCard({
               {run.approval.destructive && (
                 <p className="mb-2 text-destructive">
                   This {run.approval.destructive}, so it asks every time.
+                </p>
+              )}
+            </>
+          ) : run.approval.kind === "git" ? (
+            <>
+              <p className="mb-1 font-medium">{run.approval.summary}?</p>
+              {run.approval.remote && (
+                <p className="mb-2 text-amber-700 dark:text-amber-400">
+                  This goes to GitHub, outside this computer.
                 </p>
               )}
             </>

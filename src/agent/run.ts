@@ -29,6 +29,7 @@ import {
   raiseRunCap,
   setRunStatus,
   setRunSummary,
+  setRunBranch,
   addRunCost,
   type Approval,
   type Run,
@@ -44,12 +45,20 @@ import {
   EDIT_TOOL_NAMES,
   EDIT_TOOLS,
   previewChange,
+  GIT_LOCAL_NAMES,
+  GIT_READ_NAMES,
+  GIT_READ_TOOLS,
+  GIT_REMOTE_NAMES,
+  GIT_WRITE_TOOLS,
+  gitArgs,
+  gitSummary,
   READ_ONLY_TOOLS,
   readWhole,
   runTool,
   type FileChange,
 } from "./tools";
 import type { ExecApi } from "@/repo/exec";
+import type { GitApi } from "@/repo/git";
 
 /** AG-05's default cap per run. */
 export const DEFAULT_RUN_CAP_MICRO_USD = 1_000_000;
@@ -84,7 +93,9 @@ export const AGENT_GUIDE = agentGuide("plan");
 
 /** The run's tools: fixed for the whole run so the prompt cache holds. */
 export const toolsFor = (mode: RunMode) =>
-  mode === "plan" ? READ_ONLY_TOOLS : [...READ_ONLY_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL];
+  mode === "plan"
+    ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
+    : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];
 
 export interface RunDeps extends ChatDeps {
   repo: RepoApi;
@@ -92,6 +103,8 @@ export interface RunDeps extends ChatDeps {
   summarizer?: CatalogModel;
   /** Runs commands (CA-03); without it, run_command is refused. */
   exec?: ExecApi;
+  /** git and gh (CA-05); without it, the git tools are refused. */
+  git?: GitApi;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
@@ -108,7 +121,9 @@ export type ApprovalAsk =
       /** Why it always asks, when it's destructive; it can't be always-allowed. */
       destructive?: string | null;
     }
-  | { kind: "edit"; change: FileChange };
+  | { kind: "edit"; change: FileChange }
+  /** CA-05: a commit, branch, push or pull request, in words. `remote`: it leaves this computer. */
+  | { kind: "git"; summary: string; remote: boolean };
 
 export type ApprovalRequest = ApprovalAsk & {
   runId: string;
@@ -136,6 +151,8 @@ export interface RunInput {
   model: CatalogModel;
   /** CA-04; read-only when omitted. */
   mode?: RunMode;
+  /** CA-05: start the run on a branch of its own (fuse/…), made before the first turn. */
+  newBranch?: boolean;
   capMicroUsd?: number;
   signal?: AbortSignal;
   onProgress?: (p: RunProgress) => void;
@@ -210,8 +227,11 @@ async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<str
   );
   const open = (m: (typeof memories)[number]) =>
     m.kind === "task" && (m.taskStatus === "open" || m.taskStatus === "doing");
+  const guide = run.branch
+    ? `${agentGuide(run.mode)}\nThis run works on its own branch, ${run.branch}, made for it; commit there, and don't switch away.`
+    : agentGuide(run.mode);
   return systemPrompt(instructions, {
-    guides: [agentGuide(run.mode)],
+    guides: [guide],
     pinned: memories
       .filter((m) => m.kind === "decision" || m.kind === "constraint")
       .map(memoryLine),
@@ -465,10 +485,18 @@ async function handleCall(
 ): Promise<CallOutcome> {
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isCommand = call.name === COMMAND_TOOL.name;
-  if (run.mode === "plan" && (isEdit || isCommand)) {
+  const isGit =
+    GIT_READ_NAMES.has(call.name) ||
+    GIT_LOCAL_NAMES.has(call.name) ||
+    GIT_REMOTE_NAMES.has(call.name);
+  if (
+    run.mode === "plan" &&
+    (isEdit || isCommand || GIT_LOCAL_NAMES.has(call.name) || GIT_REMOTE_NAMES.has(call.name))
+  ) {
     return { output: "Error: this run is read-only.", isError: true };
   }
   if (isCommand) return runCommand(deps, run, call, input);
+  if (isGit) return runGit(deps, run, call, input);
   if (isEdit && run.mode === "ask") {
     const preview = await previewChange(deps.repo, run.projectId, call);
     if ("error" in preview) return { output: preview.error, isError: true };
@@ -493,6 +521,62 @@ async function handleCall(
   }
   const out = await runTool(deps.repo, run.projectId, call);
   return { output: out.output, isError: out.isError, approval: "auto", change: out.change };
+}
+
+/** CA-05: git tools. Looking goes ahead; branch and commit are like edits; push and PR ask. */
+async function runGit(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  if (!deps.git) return { output: "Error: git isn't available here.", isError: true };
+  const plan = gitArgs(call);
+  if ("error" in plan) return { output: plan.error, isError: true };
+  const remote = GIT_REMOTE_NAMES.has(call.name);
+  const asks = remote || (GIT_LOCAL_NAMES.has(call.name) && run.mode === "ask");
+  let approval: Approval = "auto";
+  if (asks) {
+    if (!deps.approve) {
+      return {
+        output: "Error: this needs the user's approval, and there's no one to ask here.",
+        isError: true,
+      };
+    }
+    const summary = gitSummary(call);
+    await progress(deps, run.id, input, `Waiting for your OK: ${summary}`);
+    const answer = await ask(deps, run, { kind: "git", summary, remote }, input);
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no")
+      return { output: `Error: the user declined: ${summary}.`, isError: true, approval: "denied" };
+    approval = "you";
+  }
+  const parts: string[] = [];
+  for (const args of plan.steps) {
+    try {
+      const r = await deps.git.run(run.projectId, plan.program, args);
+      parts.push(`$ ${plan.program} ${args.join(" ")}\n${r.output.trimEnd()}`.trimEnd());
+      if (r.exitCode !== 0) {
+        return {
+          output: `${parts.join("\n")}\n[exit code ${String(r.exitCode ?? "unknown")}]`,
+          isError: true,
+          approval,
+        };
+      }
+    } catch (e) {
+      return {
+        output: `Error: ${e instanceof Error ? e.message : String(e)}`,
+        isError: true,
+        approval,
+      };
+    }
+  }
+  const out = parts.join("\n");
+  return {
+    output: out.length > 40_000 ? `${out.slice(0, 40_000)}\n[… cut]` : out,
+    isError: false,
+    approval,
+  };
 }
 
 /** CA-03: asks first (unless always-allowed), then runs it, streaming output to the progress. */
@@ -563,6 +647,26 @@ export async function startRun(deps: RunDeps, input: RunInput): Promise<Run> {
     capMicroUsd: input.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
     mode: input.mode ?? "plan",
   });
+  if (input.newBranch && deps.git && run.mode !== "plan") {
+    const branch = branchName(input.task, run.id);
+    const made = await deps.git
+      .run(run.projectId, "git", ["switch", "-c", branch])
+      .catch((e: unknown) => ({ output: e instanceof Error ? e.message : String(e), exitCode: 1 }));
+    if (made.exitCode === 0) await setRunBranch(deps.db, deps.tenant, run.id, branch);
+    else {
+      await setRunStatus(
+        deps.db,
+        deps.tenant,
+        run.id,
+        "error",
+        `Couldn't make a branch: ${made.output.trim()}`,
+      );
+      await progress(deps, run.id, input);
+      const failed = await getRun(deps.db, deps.tenant, run.id);
+      if (!failed) throw new Error("Run not found");
+      return failed;
+    }
+  }
   await progress(deps, run.id, input);
   return work(deps, run.id, input);
 }
@@ -711,4 +815,17 @@ async function summarizeSteps(deps: RunDeps, run: Run, steps: RunStep[]): Promis
   // The summary's cost counts against the run's cap like any of its turns.
   if (costMicroUsd) await addRunCost(deps.db, deps.tenant, run.id, costMicroUsd);
   return text.trim() || listed;
+}
+
+/** fuse/<a few words of the task>-<4 characters of the run id>, safe as a git branch name. */
+export function branchName(task: string, runId: string): string {
+  const words = task
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 5)
+    .join("-");
+  return `fuse/${words || "run"}-${runId.replace(/-/g, "").slice(-4)}`;
 }

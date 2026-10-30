@@ -131,6 +131,8 @@ export interface RunView {
   streaming: string;
   /** "read-only" or "can edit files". */
   modeLabel: string;
+  /** The branch it made for itself (CA-05). */
+  branch: string | null;
   /** Files the run changed (CA-02), oldest first. */
   changes: RunChangeView[];
   /** What the run is waiting for your OK on (CA-03, CA-04). */
@@ -144,7 +146,9 @@ export type ApprovalView =
       /** Why it always asks; such commands can't be always-allowed. */
       destructive: string | null;
     }
-  | { kind: "edit"; change: RunChangeView };
+  | { kind: "edit"; change: RunChangeView }
+  /** `remote`: it leaves this computer (push, pull request). */
+  | { kind: "git"; summary: string; remote: boolean };
 
 export interface RunChangeView {
   id: string;

@@ -16,6 +16,8 @@ export interface ChatRunInput {
   model: CatalogModel;
   /** CA-04; read-only when omitted. */
   mode?: RunMode;
+  /** CA-05: on a branch of its own. */
+  newBranch?: boolean;
   capMicroUsd?: number;
   signal?: AbortSignal;
   /** Called first with the answer's id (before any step), then as the run goes. */
@@ -82,6 +84,7 @@ export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<
     task: input.task,
     model: input.model,
     ...(input.mode ? { mode: input.mode } : {}),
+    ...(input.newBranch ? { newBranch: true } : {}),
     ...(input.capMicroUsd !== undefined ? { capMicroUsd: input.capMicroUsd } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     onProgress: (p) => input.onProgress?.(answerId, p),

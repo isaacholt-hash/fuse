@@ -161,11 +161,18 @@ test("an editing run changes files and records each change with what was there",
     "list_files",
     "read_file",
     "search_files",
+    "git_status",
+    "git_diff",
+    "git_log",
     "edit_file",
     "write_file",
     "delete_file",
     "move_file",
     "run_command",
+    "git_branch",
+    "git_commit",
+    "git_push",
+    "open_pull_request",
   ]);
 });
 
