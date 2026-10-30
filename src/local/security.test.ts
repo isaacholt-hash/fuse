@@ -126,8 +126,10 @@ test("malformed local output never becomes a decision: a junk second opinion kee
   const r = await checkClassification(deps, defaultCatalog, haiku, heuristic, question, null);
   expect(r.intent).toBe(heuristic.intent);
   expect(r.complexity).toBe(heuristic.complexity);
-  // The junk reply was the local model's; the cloud fallback is tried only when it *fails*.
+  // The junk reply counts as a local failure: the cloud is asked once (here it's offline, so the
+  // heuristics stand).
   expect(l.calls).toHaveLength(1);
+  expect(cloud.calls()).toBe(1);
 });
 
 test("too much input: it's cut to the local ceiling before it's sent, with a marker", async () => {

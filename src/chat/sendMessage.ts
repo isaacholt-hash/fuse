@@ -54,6 +54,8 @@ export interface ChatDeps {
   adapterFor: (provider: ProviderId) => ProviderAdapter;
   /** LL-04: the installed local model, tried first for housekeeping; null when off. */
   local?: CatalogModel | null;
+  /** LL-06: false turns the response cache off (the P1.5 gate's cloud-only baseline). */
+  cache?: boolean;
   /** Where attachment bytes live; needed once a thread has attachments. */
   files?: FilesApi;
   /** The linked repository (CA-01); its CLAUDE.md and AGENTS.md join the instructions (CA-06). */
@@ -379,6 +381,7 @@ async function streamAnswer(
   const question = history.findLast((m) => m.role === "user")?.content ?? "";
   const cacheKeyFor =
     firstQuestion &&
+    deps.cache !== false &&
     fileSources.length === 0 &&
     chatCacheable({
       question,
