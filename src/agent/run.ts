@@ -30,6 +30,7 @@ import {
   setRunStatus,
   setRunSummary,
   setRunBranch,
+  setRunPlan,
   addRunCost,
   type Approval,
   type Run,
@@ -153,6 +154,11 @@ export interface RunInput {
   mode?: RunMode;
   /** CA-05: start the run on a branch of its own (fuse/…), made before the first turn. */
   newBranch?: boolean;
+  /**
+   * RT-14: a stronger model that writes the plan first, in a request of its own (Auto routing:
+   * the cheapest Best model). The loop itself stays on `model`.
+   */
+  planner?: CatalogModel | null;
   capMicroUsd?: number;
   signal?: AbortSignal;
   onProgress?: (p: RunProgress) => void;
@@ -166,7 +172,10 @@ export function historyFromSteps(
   task: string,
   steps: RunStep[],
   summary: { text: string; upto: number } | null = null,
+  plan: string | null = null,
 ): ChatMessage[] {
+  if (plan)
+    task = `${task}\n\n<plan>\nA plan for this, written before you started:\n${plan}\n</plan>`;
   const history: ChatMessage[] = [
     {
       role: "user",
@@ -227,9 +236,19 @@ async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<str
   );
   const open = (m: (typeof memories)[number]) =>
     m.kind === "task" && (m.taskStatus === "open" || m.taskStatus === "doing");
-  const guide = run.branch
-    ? `${agentGuide(run.mode)}\nThis run works on its own branch, ${run.branch}, made for it; commit there, and don't switch away.`
-    : agentGuide(run.mode);
+  const guide = [
+    agentGuide(run.mode),
+    ...(run.branch
+      ? [
+          `This run works on its own branch, ${run.branch}, made for it; commit there, and don't switch away.`,
+        ]
+      : []),
+    ...(run.plan
+      ? [
+          "A plan was written for this task before you started (with the task). Follow it, and adjust as you learn more.",
+        ]
+      : []),
+  ].join("\n");
   return systemPrompt(instructions, {
     guides: [guide],
     pinned: memories
@@ -312,7 +331,7 @@ async function work(
       r.summary !== null && r.summaryUpto !== null
         ? { text: r.summary, upto: r.summaryUpto }
         : null;
-    let history = historyFromSteps(run.task, steps, summaryOf(run));
+    let history = historyFromSteps(run.task, steps, summaryOf(run), run.plan);
     // CA-08: past the budget, earlier steps are summarized and the loop starts again from there.
     const lastModel = steps.findLast((s) => s.kind === "model");
     if (
@@ -328,7 +347,7 @@ async function work(
         steps.filter((s) => s.seq > (run.summaryUpto ?? 0)),
       );
       await setRunSummary(db, tenant, runId, text, upto);
-      history = historyFromSteps(run.task, steps, { text, upto });
+      history = historyFromSteps(run.task, steps, { text, upto }, run.plan);
     }
     const adapter = deps.adapterFor(model.provider);
 
@@ -667,8 +686,96 @@ export async function startRun(deps: RunDeps, input: RunInput): Promise<Run> {
       return failed;
     }
   }
+  if (
+    input.planner &&
+    (input.planner.provider !== input.model.provider || input.planner.id !== input.model.id)
+  ) {
+    await progress(deps, run.id, input, `Planning on ${input.planner.displayName}…`);
+    await writePlan(deps, run, input.planner, input.signal);
+  }
   await progress(deps, run.id, input);
   return work(deps, run.id, input);
+}
+
+const PLAN_GUIDE = [
+  "<coding_plan>",
+  "You plan coding work in the user's repository for another model that will do it with tools (list, read, search, edit, run commands, git). You can't see the files yet.",
+  "Write a short numbered plan (3 to 8 steps): what to look at first and why, the likely approach, the risks, and how to check it works (which tests or commands). No code, no preamble.",
+  "</coding_plan>",
+].join("\n");
+
+/** RT-14: the plan, from the planner, priced against the run's cap. A failure leaves no plan. */
+async function writePlan(
+  deps: RunDeps,
+  run: Run,
+  planner: CatalogModel,
+  signal?: AbortSignal,
+): Promise<void> {
+  const system = (await systemFor(deps, run, [])) ?? "";
+  // The run's own guide is swapped for the planning one; instructions, decisions and tasks stay.
+  const planSystem = `${PLAN_GUIDE}\n\n${system.replace(/<coding_agent>[\s\S]*?<\/coding_agent>\n*/, "")}`;
+  let text = "";
+  let done: StreamDone | null = null;
+  let failure: ProviderError | null = null;
+  const started = (deps.now ?? Date.now)();
+  try {
+    for await (const ev of deps.adapterFor(planner.provider).streamChat(
+      [{ role: "user", content: run.task }],
+      planner.id,
+      {
+        scope: run.threadId
+          ? { kind: "thread", id: run.threadId }
+          : { kind: "project", id: run.projectId },
+        system: planSystem,
+        maxOutputTokens: Math.min(planner.maxOutput, 4000),
+      },
+      signal,
+    )) {
+      if (ev.type === "text") text += ev.text;
+      else if (ev.type === "done") done = ev;
+    }
+  } catch (e) {
+    failure = e instanceof ProviderError ? e : new ProviderError("stream", String(e));
+  }
+  const tokens = done?.usage;
+  const totalInput = tokens
+    ? tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens
+    : 0;
+  const costMicroUsd =
+    tokens && done?.usageReported
+      ? cost({ ...EMPTY_USAGE, ...tokens }, priceFor(planner, totalInput))
+      : 0;
+  await logRequest(deps.db, deps.tenant, {
+    threadId: run.threadId,
+    messageId: run.messageId,
+    purpose: "agent",
+    provider: planner.provider,
+    model: planner.id,
+    attempt: done?.attempts ?? 1,
+    usage: tokens
+      ? {
+          ...EMPTY_USAGE,
+          ...tokens,
+          costMicroUsd,
+          priceVersion: deps.catalog.priceVersion,
+          latencyMs: (deps.now ?? Date.now)() - started,
+        }
+      : EMPTY_USAGE,
+    httpStatus: failure?.status ?? null,
+    errorCode: failure ? (failure.code ?? failure.kind) : null,
+    errorMessage: failure?.message ?? null,
+    providerRequestId: done?.providerRequestId ?? null,
+    tier: "best",
+  });
+  if (costMicroUsd) await addRunCost(deps.db, deps.tenant, run.id, costMicroUsd);
+  if (text.trim())
+    await setRunPlan(
+      deps.db,
+      deps.tenant,
+      run.id,
+      text.trim(),
+      `${planner.provider}/${planner.id}`,
+    );
 }
 
 /**

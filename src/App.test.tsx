@@ -2909,7 +2909,13 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
     };
   }
   const { user, calls } = setup(
-    { anthropic: [lookFirst, () => answer("It's called Lighthouse.")] },
+    {
+      anthropic: [
+        () => answer("1. Read the README."),
+        lookFirst,
+        () => answer("It's called Lighthouse."),
+      ],
+    },
     undefined,
     {},
     { repo },
@@ -2934,6 +2940,8 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   const card = within(await screen.findByRole("region", { name: "Coding run" }));
   expect(await card.findByText("Done")).toBeInTheDocument();
   expect(card.getByText("Read README.md")).toBeInTheDocument();
+  // RT-14: on Auto, the Best tier planned first; the loop ran on the routed model.
+  expect(card.getByText(/Plan \(anthropic\/test-best\)/)).toBeInTheDocument();
   expect(card.getByText("1. Read the README.")).toBeInTheDocument();
   expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
   // The tool result went back to the model with the turn.
@@ -2992,7 +3000,9 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
     };
   }
   const { user, options } = setup(
-    { anthropic: [edit, () => answer("Changed the tide to 4.")] },
+    {
+      anthropic: [() => answer("1. Edit the tide."), edit, () => answer("Changed the tide to 4.")],
+    },
     undefined,
     {},
     { repo },
@@ -3073,7 +3083,7 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
     };
   }
   const { user, calls } = setup(
-    { anthropic: [test1, () => answer("All 3 tests pass.")] },
+    { anthropic: [() => answer("1. Run the tests."), test1, () => answer("All 3 tests pass.")] },
     undefined,
     {},
     { repo, exec },
@@ -3154,7 +3164,7 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
     };
   }
   const { user } = setup(
-    { anthropic: [edit, () => answer("Set a to 2.")] },
+    { anthropic: [() => answer("1. Set a."), edit, () => answer("Set a to 2.")] },
     undefined,
     {},
     { repo },

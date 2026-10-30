@@ -120,7 +120,16 @@ export function runView(
   changes: RunChange[] = [],
 ): RunView {
   const lastModel = steps.findLast((s) => s.kind === "model");
-  const views: RunStepView[] = [];
+  const views: RunStepView[] = run.plan
+    ? [
+        {
+          id: "plan",
+          kind: "note",
+          label: `Plan (${run.planner ?? "planner"}):\n${run.plan}`,
+          error: null,
+        },
+      ]
+    : [];
   for (const s of steps) {
     if (run.summaryUpto !== null && s.seq === run.summaryUpto + 1) {
       views.push({

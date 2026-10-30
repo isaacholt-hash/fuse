@@ -17,6 +17,8 @@ const run: Run = {
   summary: null,
   summaryUpto: null,
   branch: null,
+  plan: null,
+  planner: null,
   createdAt: 1,
   updatedAt: 1,
 };

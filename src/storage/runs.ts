@@ -27,6 +27,9 @@ export interface Run {
   summaryUpto: number | null;
   /** CA-05: the branch it made for itself, if it did. */
   branch: string | null;
+  /** RT-14: the plan a Best model wrote before the loop, and which model ("provider/id"). */
+  plan: string | null;
+  planner: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -70,6 +73,8 @@ interface RunRow {
   summary: string | null;
   summary_upto: number | null;
   branch: string | null;
+  plan: string | null;
+  planner: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -106,6 +111,8 @@ const toRun = (r: RunRow): Run => ({
   summary: r.summary,
   summaryUpto: r.summary_upto,
   branch: r.branch,
+  plan: r.plan,
+  planner: r.planner,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -173,7 +180,7 @@ export async function createRun(
 export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run | null> {
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, thread_id, message_id, task, mode, provider, model, status,
-       cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, created_at,
+       cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
        updated_at
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
@@ -204,6 +211,19 @@ export async function setRunStatus(
   await db.execute(
     "UPDATE runs SET status = ?, note = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
     [status, note, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+export async function setRunPlan(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  plan: string,
+  planner: string,
+): Promise<void> {
+  await db.execute(
+    "UPDATE runs SET plan = ?, planner = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
+    [plan, planner, Date.now(), tenant.workspaceId, id],
   );
 }
 

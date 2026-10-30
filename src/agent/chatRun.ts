@@ -18,6 +18,8 @@ export interface ChatRunInput {
   mode?: RunMode;
   /** CA-05: on a branch of its own. */
   newBranch?: boolean;
+  /** RT-14: the model that plans first (Auto routing). */
+  planner?: CatalogModel | null;
   capMicroUsd?: number;
   signal?: AbortSignal;
   /** Called first with the answer's id (before any step), then as the run goes. */
@@ -85,6 +87,7 @@ export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<
     model: input.model,
     ...(input.mode ? { mode: input.mode } : {}),
     ...(input.newBranch ? { newBranch: true } : {}),
+    ...(input.planner ? { planner: input.planner } : {}),
     ...(input.capMicroUsd !== undefined ? { capMicroUsd: input.capMicroUsd } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     onProgress: (p) => input.onProgress?.(answerId, p),
