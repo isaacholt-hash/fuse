@@ -232,7 +232,7 @@ pub mod commands {
     pub async fn repo_exec(
         db: State<'_, Database>,
         execs: State<'_, Execs>,
-        project_id: String,
+        folder_id: String,
         command: String,
         timeout_secs: Option<u64>,
         on_event: Channel<ExecMsg>,
@@ -240,7 +240,7 @@ pub mod commands {
         if command.trim().is_empty() {
             return Err("Give a command to run.".into());
         }
-        let (root, _) = crate::repo::project_root(&db.pool()?, &project_id).await?;
+        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
         let root = std::fs::canonicalize(&root)
             .map_err(|e| format!("The linked folder is missing: {e}"))?;
         let id = execs.next_id.fetch_add(1, Ordering::Relaxed);

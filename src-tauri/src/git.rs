@@ -144,11 +144,11 @@ pub mod commands {
     #[tauri::command]
     pub async fn repo_git(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         program: String,
         args: Vec<String>,
     ) -> Result<GitResult, String> {
-        let (root, _) = crate::repo::project_root(&db.pool()?, &project_id).await?;
+        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
         let root = std::fs::canonicalize(&root)
             .map_err(|e| format!("The linked folder is missing: {e}"))?;
         run(&root, &program, &args).await

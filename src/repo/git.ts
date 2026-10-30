@@ -8,9 +8,9 @@ export interface GitResult {
 }
 
 export interface GitApi {
-  run(projectId: string, program: "git" | "gh", args: string[]): Promise<GitResult>;
+  run(folderId: string, program: "git" | "gh", args: string[]): Promise<GitResult>;
 }
 
 export const tauriGit: GitApi = {
-  run: (projectId, program, args) => invoke<GitResult>("repo_git", { projectId, program, args }),
+  run: (folderId, program, args) => invoke<GitResult>("repo_git", { folderId, program, args }),
 };

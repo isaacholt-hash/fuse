@@ -1,5 +1,5 @@
-// The linked repository (CA-01), through Rust: every path is checked there against the root
-// stored for the project, so nothing here can reach outside it (src-tauri/src/repo.rs).
+// Folders FUSE may work in (CA-01, WF-02), through Rust: every path is checked there against the
+// granted folder's root from the database, so nothing here can reach outside it (src-tauri/src/repo.rs).
 import { invoke } from "@tauri-apps/api/core";
 
 export interface RepoInfo {
@@ -39,24 +39,23 @@ export interface RepoApi {
   /** The folder picker; null when cancelled. */
   pick(): Promise<RepoInfo | null>;
   check(path: string): Promise<RepoInfo>;
-  list(projectId: string, path: string, recursive: boolean): Promise<RepoEntry[]>;
-  read(projectId: string, path: string, offset: number): Promise<RepoFileText>;
-  search(projectId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
-  write(projectId: string, path: string, content: string): Promise<RepoChange>;
-  remove(projectId: string, path: string): Promise<RepoChange>;
-  move(projectId: string, from: string, to: string): Promise<RepoChange>;
+  list(folderId: string, path: string, recursive: boolean): Promise<RepoEntry[]>;
+  read(folderId: string, path: string, offset: number): Promise<RepoFileText>;
+  search(folderId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
+  write(folderId: string, path: string, content: string): Promise<RepoChange>;
+  remove(folderId: string, path: string): Promise<RepoChange>;
+  move(folderId: string, from: string, to: string): Promise<RepoChange>;
 }
 
 export const tauriRepo: RepoApi = {
   pick: () => invoke<RepoInfo | null>("repo_pick"),
   check: (path) => invoke<RepoInfo>("repo_check", { path }),
-  list: (projectId, path, recursive) =>
-    invoke<RepoEntry[]>("repo_list", { projectId, path, recursive }),
-  read: (projectId, path, offset) => invoke<RepoFileText>("repo_read", { projectId, path, offset }),
-  search: (projectId, path, query, ignoreCase) =>
-    invoke<RepoHit[]>("repo_search", { projectId, path, query, ignoreCase }),
-  write: (projectId, path, content) =>
-    invoke<RepoChange>("repo_write", { projectId, path, content }),
-  remove: (projectId, path) => invoke<RepoChange>("repo_delete", { projectId, path }),
-  move: (projectId, from, to) => invoke<RepoChange>("repo_move", { projectId, from, to }),
+  list: (folderId, path, recursive) =>
+    invoke<RepoEntry[]>("repo_list", { folderId, path, recursive }),
+  read: (folderId, path, offset) => invoke<RepoFileText>("repo_read", { folderId, path, offset }),
+  search: (folderId, path, query, ignoreCase) =>
+    invoke<RepoHit[]>("repo_search", { folderId, path, query, ignoreCase }),
+  write: (folderId, path, content) => invoke<RepoChange>("repo_write", { folderId, path, content }),
+  remove: (folderId, path) => invoke<RepoChange>("repo_delete", { folderId, path }),
+  move: (folderId, from, to) => invoke<RepoChange>("repo_move", { folderId, from, to }),
 };

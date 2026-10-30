@@ -4,6 +4,7 @@ import { changeView, runView, toolLabel } from "./runView";
 const run: Run = {
   id: "r1",
   projectId: "p",
+  kind: "code",
   threadId: "t",
   messageId: "m",
   task: "How high is the tide?",

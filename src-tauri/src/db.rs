@@ -235,6 +235,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "folders",
         sql: include_str!("../migrations/0040_folders.sql"),
     },
+    MigrationFile {
+        version: 41,
+        description: "run_folders",
+        sql: include_str!("../migrations/0041_run_folders.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -1106,6 +1111,63 @@ mod tests {
             })
             .collect();
         assert_eq!(got, vec!["p1 /code/app", "p2 /code/app", "p3 /docs"]);
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn runs_made_before_0041_keep_their_steps_and_get_their_folder() {
+        let dir = temp_dir("runs41");
+        let store = MemoryStore::default();
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(40).run(&pool).await.unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
+               SELECT 'p1', workspace_id, id, 'P', 1, 1 FROM users LIMIT 1;
+             INSERT INTO folders (id, workspace_id, user_id, path, created_at, updated_at)
+               SELECT 'f1', workspace_id, id, '/code/app', 1, 1 FROM users LIMIT 1;
+             INSERT INTO project_folders (id, workspace_id, user_id, project_id, folder_id, created_at)
+               SELECT 'pf1', workspace_id, id, 'p1', 'f1', 1 FROM users LIMIT 1;
+             INSERT INTO runs (id, workspace_id, user_id, project_id, task, mode, provider, model,
+                               status, cap_micro_usd, branch, plan, created_at, updated_at)
+               SELECT 'r1', workspace_id, id, 'p1', 'Fix it', 'ask', 'anthropic', 'm', 'done',
+                      1000000, 'fuse/fix-it', 'Look first', 2, 2 FROM users LIMIT 1;
+             INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, text, created_at,
+                                    updated_at)
+               SELECT 's1', workspace_id, id, 'r1', 0, 'model', 'Done.', 3, 3 FROM users LIMIT 1;",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), "40").unwrap();
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let run = select(
+            &pool,
+            "SELECT kind, mode, branch, plan, project_id FROM runs",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(run[0]["kind"], "code");
+        assert_eq!(run[0]["mode"], "ask");
+        assert_eq!(run[0]["branch"], "fuse/fix-it");
+        assert_eq!(run[0]["plan"], "Look first");
+        let steps = select(&pool, "SELECT run_id FROM run_steps", &[])
+            .await
+            .unwrap();
+        assert_eq!(steps.len(), 1);
+        let folders = select(&pool, "SELECT folder_id, label FROM run_folders", &[])
+            .await
+            .unwrap();
+        assert_eq!(folders.len(), 1);
+        assert_eq!(folders[0]["folder_id"], "f1");
+        let broken: Vec<SqliteRow> = sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(broken.is_empty(), "foreign keys still hold");
         pool.close().await;
     }
 

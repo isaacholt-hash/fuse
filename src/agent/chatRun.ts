@@ -11,7 +11,8 @@ import { continueRun, runAnswer, startRun, type RunDeps, type RunProgress } from
 
 export interface ChatRunInput {
   threadId: string;
-  projectId: string;
+  /** Null for a chat outside a project (M8, WF-02). */
+  projectId: string | null;
   task: string;
   model: CatalogModel;
   /** CA-04; read-only when omitted. */

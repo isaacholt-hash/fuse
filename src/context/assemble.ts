@@ -3,6 +3,7 @@
 // memories (ranked by kind, then relevance), the summary of earlier turns, artifacts you edited,
 // then the history with any file excerpts and recalled chats on the question. Each part records
 // where it came from. Send, edit, regenerate, retry, escalate and compare all come through here.
+import { foldersFor, instructionsIn } from "@/agent/folders";
 import { trimHistory } from "./ceilings";
 import type { EmbeddingModel } from "@/catalog/catalog";
 import { ARTIFACT_GUIDE } from "@/artifacts/parse";
@@ -18,7 +19,6 @@ import {
   type PickedMemory,
 } from "@/memory/inject";
 import type { ChatMessage } from "@/providers/types";
-import { loadRepoInstructions } from "@/repo/instructions";
 import { listArtifacts } from "@/storage/artifacts";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories } from "@/storage/memories";
@@ -96,9 +96,14 @@ export async function assemble(
   const embedding = allowedEmbedding(await threadPolicy(db, tenant, threadId), wanted);
   const thread = await getThread(db, tenant, threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
-  // CA-06: the linked repository's root CLAUDE.md and AGENTS.md (nested ones come with runs).
-  const repoFiles =
-    project?.repoRoot && deps.repo ? await loadRepoInstructions(deps.repo, project.id) : [];
+  // CA-06, WF-02: CLAUDE.md and AGENTS.md at the root of the chat's folders (nested ones come
+  // with runs).
+  const repoFiles = deps.repo
+    ? await instructionsIn(
+        deps.repo,
+        await foldersFor(deps, { projectId: thread?.projectId ?? null, threadId }),
+      )
+    : [];
   const instructions = effectiveInstructions(
     await getGlobalInstructions(db, tenant),
     project?.instructions ?? "",

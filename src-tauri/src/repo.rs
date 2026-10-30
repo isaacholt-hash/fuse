@@ -465,26 +465,15 @@ pub fn search(
     Ok(hits)
 }
 
-/// The project's first linked folder (WF-02, `project_folders`) and whether it may read
-/// secret-looking files.
-pub async fn project_root(pool: &SqlitePool, project_id: &str) -> Result<(PathBuf, bool), String> {
-    let exists = sqlx::query("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL")
-        .bind(project_id)
+/// A granted folder (WF-02) by id: its path and whether it may read secret-looking files.
+/// The path comes from the database, never from the webview.
+pub async fn folder_root(pool: &SqlitePool, folder_id: &str) -> Result<(PathBuf, bool), String> {
+    let row = sqlx::query("SELECT path, read_sensitive FROM folders WHERE id = ?")
+        .bind(folder_id)
         .fetch_optional(pool)
         .await
-        .map_err(|e| format!("Couldn't read the project: {e}"))?;
-    if exists.is_none() {
-        return Err("That project doesn't exist.".into());
-    }
-    let row = sqlx::query(
-        "SELECT f.path, f.read_sensitive FROM project_folders pf JOIN folders f ON f.id = pf.folder_id
-         WHERE pf.project_id = ? ORDER BY pf.created_at, pf.id LIMIT 1",
-    )
-    .bind(project_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| format!("Couldn't read the project's folders: {e}"))?
-    .ok_or("This project has no linked folder.")?;
+        .map_err(|e| format!("Couldn't read the folder: {e}"))?
+        .ok_or("That folder isn't granted to FUSE.")?;
     let root: String = row.get("path");
     let secrets: i64 = row.get("read_sensitive");
     Ok((PathBuf::from(root), secrets == 1))
@@ -514,66 +503,66 @@ pub mod commands {
     #[tauri::command]
     pub async fn repo_list(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         path: String,
         recursive: bool,
     ) -> Result<Vec<Entry>, String> {
-        let (root, _) = project_root(&db.pool()?, &project_id).await?;
+        let (root, _) = folder_root(&db.pool()?, &folder_id).await?;
         list(&root, &path, recursive)
     }
 
     #[tauri::command]
     pub async fn repo_read(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         path: String,
         offset: u64,
     ) -> Result<FileText, String> {
-        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         read(&root, &path, offset, secrets)
     }
 
     #[tauri::command]
     pub async fn repo_write(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         path: String,
         content: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         write(&root, &path, &content, secrets)
     }
 
     #[tauri::command]
     pub async fn repo_delete(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         path: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         delete(&root, &path, secrets)
     }
 
     #[tauri::command]
     pub async fn repo_move(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         from: String,
         to: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         rename(&root, &from, &to, secrets)
     }
 
     #[tauri::command]
     pub async fn repo_search(
         db: State<'_, Database>,
-        project_id: String,
+        folder_id: String,
         path: String,
         query: String,
         ignore_case: bool,
     ) -> Result<Vec<Hit>, String> {
-        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         search(&root, &path, &query, ignore_case, secrets)
     }
 }
@@ -870,47 +859,23 @@ mod tests {
             Opened::NeedsRecoveryKey => panic!("expected the database to open"),
         };
         let r = repo();
-        for id in ["linked", "bare"] {
-            execute(
-                &pool,
-                "INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
-                 SELECT ?, workspace_id, id, 'P', 1, 1 FROM users LIMIT 1",
-                &[serde_json::Value::String(id.into())],
-            )
-            .await
-            .unwrap();
-        }
-        // WF-02: folders are their own records; a project links them.
+        // WF-02: the root comes from the granted folder's row, never from the caller.
         execute(
             &pool,
             "INSERT INTO folders (id, workspace_id, user_id, path, read_sensitive, created_at, updated_at)
-             SELECT 'f1', workspace_id, id, ?, 0, 1, 1 FROM users LIMIT 1",
+             SELECT 'f1', workspace_id, id, ?, 1, 1, 1 FROM users LIMIT 1",
             &[serde_json::Value::String(r.to_string_lossy().into_owned())],
         )
         .await
         .unwrap();
-        execute(
-            &pool,
-            "INSERT INTO project_folders (id, workspace_id, user_id, project_id, folder_id, created_at)
-             SELECT 'pf1', workspace_id, id, 'linked', 'f1', 1 FROM users LIMIT 1",
-            &[],
-        )
-        .await
-        .unwrap();
-        let (root, secrets) = project_root(&pool, "linked").await.unwrap();
+        let (root, secrets) = folder_root(&pool, "f1").await.unwrap();
         assert_eq!(root, r);
-        assert!(!secrets);
+        assert!(secrets);
         assert!(
-            project_root(&pool, "bare")
+            folder_root(&pool, "missing")
                 .await
                 .unwrap_err()
-                .contains("no linked folder")
-        );
-        assert!(
-            project_root(&pool, "missing")
-                .await
-                .unwrap_err()
-                .contains("doesn't exist")
+                .contains("isn't granted")
         );
     }
 
