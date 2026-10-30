@@ -14,6 +14,10 @@ export const DELETE_ORDER = [
   "run_steps",
   "runs",
   "project_commands",
+  // M8: folder links before what they link.
+  "thread_folders",
+  "project_folders",
+  "folders",
   // M7: shadow checks and the response cache.
   "local_shadow",
   "response_cache",

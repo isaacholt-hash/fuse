@@ -465,19 +465,28 @@ pub fn search(
     Ok(hits)
 }
 
-/// The project's linked folder and whether it may read secret-looking files.
+/// The project's first linked folder (WF-02, `project_folders`) and whether it may read
+/// secret-looking files.
 pub async fn project_root(pool: &SqlitePool, project_id: &str) -> Result<(PathBuf, bool), String> {
+    let exists = sqlx::query("SELECT 1 FROM projects WHERE id = ? AND deleted_at IS NULL")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| format!("Couldn't read the project: {e}"))?;
+    if exists.is_none() {
+        return Err("That project doesn't exist.".into());
+    }
     let row = sqlx::query(
-        "SELECT repo_root, repo_read_sensitive FROM projects WHERE id = ? AND deleted_at IS NULL",
+        "SELECT f.path, f.read_sensitive FROM project_folders pf JOIN folders f ON f.id = pf.folder_id
+         WHERE pf.project_id = ? ORDER BY pf.created_at, pf.id LIMIT 1",
     )
     .bind(project_id)
     .fetch_optional(pool)
     .await
-    .map_err(|e| format!("Couldn't read the project: {e}"))?
-    .ok_or("That project doesn't exist.")?;
-    let root: Option<String> = row.get("repo_root");
-    let secrets: i64 = row.get("repo_read_sensitive");
-    let root = root.ok_or("This project has no linked folder.")?;
+    .map_err(|e| format!("Couldn't read the project's folders: {e}"))?
+    .ok_or("This project has no linked folder.")?;
+    let root: String = row.get("path");
+    let secrets: i64 = row.get("read_sensitive");
     Ok((PathBuf::from(root), secrets == 1))
 }
 
@@ -861,22 +870,33 @@ mod tests {
             Opened::NeedsRecoveryKey => panic!("expected the database to open"),
         };
         let r = repo();
-        for (id, root) in [
-            ("linked", Some(r.to_string_lossy().into_owned())),
-            ("bare", None),
-        ] {
-            let root = root
-                .map(serde_json::Value::String)
-                .unwrap_or(serde_json::Value::Null);
+        for id in ["linked", "bare"] {
             execute(
                 &pool,
-                "INSERT INTO projects (id, workspace_id, user_id, name, repo_root, created_at, updated_at)
-                 SELECT ?, workspace_id, id, 'P', ?, 1, 1 FROM users LIMIT 1",
-                &[serde_json::Value::String(id.into()), root],
+                "INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
+                 SELECT ?, workspace_id, id, 'P', 1, 1 FROM users LIMIT 1",
+                &[serde_json::Value::String(id.into())],
             )
             .await
             .unwrap();
         }
+        // WF-02: folders are their own records; a project links them.
+        execute(
+            &pool,
+            "INSERT INTO folders (id, workspace_id, user_id, path, read_sensitive, created_at, updated_at)
+             SELECT 'f1', workspace_id, id, ?, 0, 1, 1 FROM users LIMIT 1",
+            &[serde_json::Value::String(r.to_string_lossy().into_owned())],
+        )
+        .await
+        .unwrap();
+        execute(
+            &pool,
+            "INSERT INTO project_folders (id, workspace_id, user_id, project_id, folder_id, created_at)
+             SELECT 'pf1', workspace_id, id, 'linked', 'f1', 1 FROM users LIMIT 1",
+            &[],
+        )
+        .await
+        .unwrap();
         let (root, secrets) = project_root(&pool, "linked").await.unwrap();
         assert_eq!(root, r);
         assert!(!secrets);

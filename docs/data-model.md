@@ -208,3 +208,5 @@ Agents/tools/MCP/audit (P2), sync metadata (P2: sync will need a per-row `versio
 - `request_log (created_at DESC)`
 
 It also seeds the default workspace and user with fixed UUIDs. Before each migration the app copies the database file to `backups/fuse-<timestamp>.db` (section 16, Data).
+
+**Folders (M8 step 1, `0040_folders.sql`, WF-02).** `folders` is a folder FUSE may work in: its absolute path as Rust resolved it, unique per workspace, and `read_sensitive`. `project_folders` and `thread_folders` link folders to projects (used by all their chats) and to single chats. The migration moved each project's `repo_root` into these tables, so the project's first linked folder is its M6 repository. `projects.repo_root` and `repo_read_sensitive` stay in the table (migrations are forward-only) but are no longer read. Folders aren't exported: a path only means something on this computer.
