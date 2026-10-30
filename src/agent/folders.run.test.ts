@@ -175,3 +175,53 @@ test("a chat with no folder can't start a run", async () => {
     startRun(deps, { projectId: null, threadId: thread.id, messageId: null, task: "x", model }),
   ).rejects.toThrow(/Pick a folder/);
 });
+
+test("WF-01: a Work run has its own guide and no git tools, and is recorded as work", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const docs = await grantFolder(db, t, "/home/me/docs");
+  await linkThreadFolder(db, t, thread.id, docs.id);
+  const seen: { system: string; tools: string[] }[] = [];
+  const adapter: ProviderAdapter = {
+    provider: "anthropic",
+    listModels: () => Promise.resolve([]),
+    async *streamChat(_h, m, options): AsyncGenerator<StreamEvent> {
+      seen.push({ system: options.system ?? "", tools: (options.tools ?? []).map((x) => x.name) });
+      await Promise.resolve();
+      yield { type: "text", text: "Here's the summary." };
+      yield {
+        type: "done",
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cachedInputTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          webSearchCalls: 0,
+        },
+        usageReported: true,
+        stopReason: "end_turn",
+        providerRequestId: null,
+        attempts: 1,
+        turn: { provider: "anthropic", model: m, items: [] },
+      };
+    },
+  };
+  const deps: RunDeps = { db, tenant: t, catalog, repo: filesRepo({}), adapterFor: () => adapter };
+  const run = await startRun(deps, {
+    projectId: null,
+    threadId: thread.id,
+    messageId: null,
+    task: "Summarise my notes",
+    model,
+    mode: "auto_edit",
+    kind: "work",
+  });
+  expect(run.kind).toBe("work");
+  expect(seen[0]?.system).toContain("<work_agent>");
+  expect(seen[0]?.system).not.toContain("<coding_agent>");
+  expect(seen[0]?.tools).toEqual(
+    expect.arrayContaining(["read_file", "write_file", "move_file", "run_command"]),
+  );
+  expect(seen[0]?.tools.some((n) => n.startsWith("git_") || n === "open_pull_request")).toBe(false);
+});

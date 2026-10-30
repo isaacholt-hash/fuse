@@ -4,7 +4,7 @@
 import type { CatalogModel } from "@/catalog/catalog";
 import { addMessage, finishMessage, listPath, markStreaming } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
-import { getRun, listSteps, type Run, type RunMode } from "@/storage/runs";
+import { getRun, listSteps, type Run, type RunKind, type RunMode } from "@/storage/runs";
 import { setActiveLeaf } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import { continueRun, runAnswer, startRun, type RunDeps, type RunProgress } from "./run";
@@ -17,6 +17,8 @@ export interface ChatRunInput {
   model: CatalogModel;
   /** CA-04; read-only when omitted. */
   mode?: RunMode;
+  /** WF-01: coding (default) or work on documents. */
+  kind?: RunKind;
   /** CA-05: on a branch of its own. */
   newBranch?: boolean;
   /** RT-14: the model that plans first (Auto routing). */
@@ -87,6 +89,7 @@ export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<
     task: input.task,
     model: input.model,
     ...(input.mode ? { mode: input.mode } : {}),
+    ...(input.kind ? { kind: input.kind } : {}),
     ...(input.newBranch ? { newBranch: true } : {}),
     ...(input.planner ? { planner: input.planner } : {}),
     ...(input.capMicroUsd !== undefined ? { capMicroUsd: input.capMicroUsd } : {}),

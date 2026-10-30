@@ -24,6 +24,7 @@ import {
   Square,
   Sparkles,
   X,
+  Briefcase,
   FolderOpen,
   FolderPlus,
   Columns2,
@@ -959,6 +960,8 @@ export function Composer({
   onToggleWebSearch,
   code = false,
   onToggleCode,
+  work = false,
+  onToggleWork,
   folders = [],
   onAddFolder,
   onRemoveFolder,
@@ -1010,6 +1013,9 @@ export function Composer({
   /** M6: the next message starts a coding run in the chat's folders. */
   code?: boolean;
   onToggleCode?: () => void;
+  /** WF-01: the next message starts a Work run (documents, deliverables) instead. */
+  work?: boolean;
+  onToggleWork?: () => void;
   /** CA-04: what that run may do. */
   codeMode?: "plan" | "ask" | "auto_edit";
   onCodeMode?: (mode: "plan" | "ask" | "auto_edit") => void;
@@ -1555,7 +1561,28 @@ export function Composer({
                 </Button>
               </Tip>
             )}
-            {onToggleCode && code && onCodeMode && (
+            {onToggleWork && (
+              <Tip
+                label={
+                  work
+                    ? "Work on: the next message starts a run on the documents in this chat's folders"
+                    : "Work off"
+                }
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Work run"
+                  aria-pressed={work}
+                  className={`gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                  onClick={onToggleWork}
+                >
+                  <Briefcase className="size-3.5" />
+                  <span className="hidden min-[900px]:inline">Work</span>
+                </Button>
+              </Tip>
+            )}
+            {onToggleCode && (code || work) && onCodeMode && (
               <select
                 aria-label="What the coding run may do"
                 className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
@@ -1766,10 +1793,10 @@ function RunCard({
   const [shown, setShown] = useState<string | null>(null);
   const applied = run.changes.filter((c) => !c.undone);
   return (
-    <section aria-label="Coding run" className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
+    <section aria-label={run.title} className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
       <div className="flex items-center gap-2 text-[11px]">
         <SquareTerminal className="size-3.5 text-muted-foreground" />
-        <span className="font-medium">Coding run</span>
+        <span className="font-medium">{run.title}</span>
         <span className="text-muted-foreground">{run.modeLabel}</span>
         {run.branch && (
           <span className="truncate font-mono text-[10px] text-muted-foreground">

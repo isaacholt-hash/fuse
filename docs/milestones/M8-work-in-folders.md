@@ -27,9 +27,10 @@
   - `src/agent/folders.ts` scopes a run to its folders. One folder works as in M6. With several, paths start with the folder's label, the root lists them, and search covers all of them. Commands and git run in the first folder.
   - A run takes the chat's folders, then the project's. CLAUDE.md and AGENTS.md are read from each folder's root. Part 2 is the pickers.
   - Part 2 done (pickers): the composer shows the chat's folders as chips, with an X on the chat's own and the project's shown without one, plus a Folder button that picks one. A new chat's folders are kept until it's saved. Code works in any chat with a folder, in a project or not. Project settings → Folders lists several, each with Remove and its own secrets switch.
-- [ ] **3. Work mode (WF-01).**
-  - Off / Code / Work in the composer. Work has its own guide: deliverables, citing which files it used, no git. Tools: list, read, search, write, move, organise, documents and commands.
-  - Runs, plan, cost cap, approvals and undo work as in Code.
+- [x] **3. Work mode (WF-01).**
+  - The composer has Code and Work side by side; one at a time, per chat. Both use the same permission modes, approvals, diffs, undo, plan and cost cap.
+  - Work runs (`runs.kind = 'work'`) get their own guide (`<work_agent>`): deliverables, say which files were used, prefer a new file over overwriting, never delete unless asked. Their planner has its own guide too.
+  - Tools: list, read, search, write, edit, move, delete and commands, with no git and no branch. Document, preview and organise tools join in steps 4 to 7. The run card says "Work run".
 - [ ] **4. Reading documents (WF-03).** `read_file` returns:
   - Word as text with headings and tables
   - Excel as sheets with cell ranges (capped, and searchable by range)

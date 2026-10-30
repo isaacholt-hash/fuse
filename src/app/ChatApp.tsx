@@ -957,7 +957,8 @@ export function ChatApp({
       setChatFolderMap((m) => ({ ...m, [threadId]: fs }));
     });
   // M6: Code on per chat ("draft" before the chat exists), and each answer's coding run.
-  const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
+  /** M6 / WF-01: per chat, the next message starts a Code or a Work run (or neither). */
+  const [codeOn, setCodeOn] = useState<Record<string, "code" | "work" | false>>({});
   // CA-03: commands waiting for your OK, by run.
   const [approvals, setApprovals] = useState<
     Map<string, { request: ApprovalRequest; answer: (a: ApprovalAnswer) => void }>
@@ -1538,7 +1539,7 @@ export function ChatApp({
     job: Job,
     webSearch = false,
     /** Start a run (Code) instead of answering; the project is null outside one (WF-02). */
-    runIn: { projectId: string | null } | null = null,
+    runIn: { projectId: string | null; kind: "code" | "work" } | null = null,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
@@ -1605,6 +1606,7 @@ export function ChatApp({
         ? startChatRun(runDeps(repoApi), {
             threadId,
             projectId: runIn.projectId,
+            kind: runIn.kind,
             task: job.text,
             model: routed.model,
             mode:
@@ -1840,7 +1842,7 @@ export function ChatApp({
         routed,
         { kind: "send", text, files: sent },
         search,
-        codeActive ? { projectId: activeProjectId ?? null } : null,
+        runKind ? { projectId: activeProjectId ?? null, kind: runKind } : null,
       );
       if (compareMode) {
         setCompareKeys([]);
@@ -2257,7 +2259,8 @@ export function ChatApp({
       }),
   });
   const codeKey = selectedId ?? "draft";
-  const codeActive = codeAvailable && (codeOn[codeKey] ?? false);
+  const runKind = codeAvailable ? codeOn[codeKey] || null : null;
+  const codeActive = runKind !== null;
   /** M6: goes on with a paused or stopped run in the open chat. */
   const continueRunHere = (runId: string, raise: boolean) => {
     if (!repoApi || !selectedId) return;
@@ -4477,7 +4480,6 @@ export function ChatApp({
                       : {})}
                     {...(codeAvailable
                       ? {
-                          code: codeActive,
                           codeMode: codeMode[codeKey] ?? activeProject?.runMode ?? "ask",
                           onCodeMode: (m: RunMode) => {
                             setCodeMode((all) => ({ ...all, [codeKey]: m }));
@@ -4486,8 +4488,19 @@ export function ChatApp({
                           onCodeBranch: (on: boolean) => {
                             setCodeBranch((all) => ({ ...all, [codeKey]: on }));
                           },
+                          code: runKind === "code",
                           onToggleCode: () => {
-                            setCodeOn((all) => ({ ...all, [codeKey]: !codeActive }));
+                            setCodeOn((all) => ({
+                              ...all,
+                              [codeKey]: runKind === "code" ? false : "code",
+                            }));
+                          },
+                          work: runKind === "work",
+                          onToggleWork: () => {
+                            setCodeOn((all) => ({
+                              ...all,
+                              [codeKey]: runKind === "work" ? false : "work",
+                            }));
                           },
                         }
                       : {})}

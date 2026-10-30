@@ -33,6 +33,7 @@ test("LL-01: an answer from a fixed rule says no model was asked, at $0", () => 
 test("WF-02: a chat's folders show in the composer; its own can be removed, its project's can't", () => {
   const onAddFolder = vi.fn();
   const onRemoveFolder = vi.fn();
+  const onToggleWork = vi.fn();
   const m = {
     id: "m",
     provider: "anthropic" as const,
@@ -61,6 +62,12 @@ test("WF-02: a chat's folders show in the composer; its own can be removed, its 
         ]}
         onAddFolder={onAddFolder}
         onRemoveFolder={onRemoveFolder}
+        code={false}
+        onToggleCode={() => undefined}
+        work
+        onToggleWork={onToggleWork}
+        codeMode="ask"
+        onCodeMode={() => undefined}
       />
     </Tooltip.Provider>,
   );
@@ -71,4 +78,14 @@ test("WF-02: a chat's folders show in the composer; its own can be removed, its 
   expect(screen.queryByRole("button", { name: "Remove folder app" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Add a folder" }));
   expect(onAddFolder).toHaveBeenCalled();
+  // WF-01: Work sits beside Code; with Work on, its permission mode can be picked.
+  expect(screen.getByRole("button", { name: "Work run" }).getAttribute("aria-pressed")).toBe(
+    "true",
+  );
+  expect(screen.getByRole("button", { name: "Coding run" }).getAttribute("aria-pressed")).toBe(
+    "false",
+  );
+  expect(screen.getByLabelText("What the coding run may do")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Work run" }));
+  expect(onToggleWork).toHaveBeenCalled();
 });
