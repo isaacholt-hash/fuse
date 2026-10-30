@@ -16,6 +16,7 @@ export const DELETE_ORDER = [
   "runs",
   "project_commands",
   // M8: folder links before what they link.
+  "folder_files",
   "thread_folders",
   "project_folders",
   "folders",

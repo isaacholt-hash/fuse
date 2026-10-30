@@ -13,6 +13,8 @@ export interface RepoEntry {
   dir: boolean;
   size: number;
   secret: boolean;
+  /** Milliseconds since the epoch, when the file system says (FK-07 change checks). */
+  modified?: number;
 }
 
 export interface RepoFileText {

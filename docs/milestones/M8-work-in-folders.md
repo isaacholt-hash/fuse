@@ -78,7 +78,14 @@
   - When a sandboxed command fails with what looks like a network error (DNS or connect errors from common tools), the run asks: Allow for this chat, Allow for this folder, or No. Allowing runs it again, once. It's never allowed without asking.
   - Project settings → Folders has a switch per folder. Each command's result in the activity log says "[sandboxed, network on]", "[sandboxed, network off]", or that it wasn't sandboxed.
   - This applies to Code runs too, since M6 commands had the network: the first `pnpm install` in a folder now asks once.
-- [ ] **11. Knowledge that follows a folder (FK-07).** A project folder's documents are indexed (M7's word search, plus embeddings when allowed). They're re-indexed when they change: watched while FUSE runs, and checked against their content hash at start. Ignored and secret files are skipped.
+- [x] **11. Knowledge that follows a folder (FK-07).**
+  - The documents in a project's folders are added to its knowledge and indexed like uploaded files (word search always, embeddings when the project allows them). That covers PDF, Word, Excel, Markdown, text, CSV, HTML and similar. Code isn't included, since the agent reads code with its tools.
+  - Ignored files are never listed and secret-looking files are skipped. Files over 25 MB, and anything past 500 documents per folder, are left out.
+  - At start, every project's folders are checked by content hash. While FUSE runs, they're checked each minute by size and modified time, and a changed file is re-read and re-hashed.
+  - A changed document replaces its old text, chunks and embeddings. A deleted one leaves knowledge.
+  - A folder that's missing, like an unplugged drive, keeps what was indexed. Unlinking a folder takes its documents out of the project.
+  - In Project settings → Knowledge they show "In folder" instead of Remove (migration 0046, `folder_files`).
+  - **Deviation:** the folder is polled once a minute instead of using a file watcher. That avoids a new dependency and works the same on every platform and drive. A change can take up to a minute to show.
 - [ ] **12. Security and privacy.** The threat model gets a section on Work and the sandbox. Every send path keeps the egress policy (Local only projects can still use fixed rules and local housekeeping). The privacy wording says what leaves the computer when a model reads your documents.
 - [ ] **13. Work benchmark.** A fixture folder (`data/work/fixture`: documents, CSVs, a messy folder) and three recorded tasks, checked on both providers with no API calls:
   - summarise the documents into a .docx with a table

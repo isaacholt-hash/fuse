@@ -10,6 +10,8 @@ export interface ProjectFile extends FileRecord {
   embedded: number;
   /** SE-13: false keeps it on this device: never sent or embedded. */
   maySend: boolean;
+  /** FK-07: the folder it comes from, for a folder's document; null for an uploaded file. */
+  folderId: string | null;
 }
 
 export async function listProjectFiles(
@@ -30,9 +32,10 @@ export async function listProjectFiles(
     chunks: number;
     embedded: number;
     may_send: number;
+    folder_id: string | null;
   }>(
     `SELECT f.id, f.name, f.mime, f.size_bytes, f.sha256, f.width, f.height, f.token_estimate,
-            f.created_at, f.may_send,
+            f.created_at, f.may_send, ff.folder_id,
             (SELECT COUNT(*) FROM chunks c
               WHERE c.workspace_id = pf.workspace_id AND c.source_kind = 'file' AND c.source_id = f.id)
               AS chunks,
@@ -40,6 +43,7 @@ export async function listProjectFiles(
               WHERE c.workspace_id = pf.workspace_id AND c.source_kind = 'file' AND c.source_id = f.id)
               AS embedded
      FROM project_files pf JOIN files f ON f.id = pf.file_id
+     LEFT JOIN folder_files ff ON ff.workspace_id = pf.workspace_id AND ff.file_id = f.id
      WHERE pf.workspace_id = ? AND pf.project_id = ? AND pf.deleted_at IS NULL
      ORDER BY pf.created_at`,
     [tenant.workspaceId, projectId],
@@ -58,6 +62,7 @@ export async function listProjectFiles(
     chunks: r.chunks,
     embedded: r.embedded,
     maySend: r.may_send === 1,
+    folderId: r.folder_id,
   }));
 }
 

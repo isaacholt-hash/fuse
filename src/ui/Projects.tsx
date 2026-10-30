@@ -24,6 +24,8 @@ export interface KnowledgeFileView {
   wholeMicro: number;
   /** SE-13: false keeps it on this device: never searched for a request or embedded. */
   maySend: boolean;
+  /** FK-07: the folder it's in, for a folder's document (it follows the file, so no Remove). */
+  folder?: string;
 }
 
 export interface KnowledgeProps {
@@ -36,7 +38,14 @@ export interface KnowledgeProps {
 }
 
 /** Project settings → Knowledge: files every chat in the project searches. */
-function KnowledgeSection({ files, busy, error, onAdd, onRemove, onMaySend }: KnowledgeProps) {
+export function KnowledgeSection({
+  files,
+  busy,
+  error,
+  onAdd,
+  onRemove,
+  onMaySend,
+}: KnowledgeProps) {
   const picker = useRef<HTMLInputElement>(null);
   return (
     <section aria-label="Knowledge files">
@@ -71,7 +80,8 @@ function KnowledgeSection({ files, busy, error, onAdd, onRemove, onMaySend }: Kn
       </div>
       <p className="mb-2 text-[10px] leading-4 text-muted-foreground">
         Text, Markdown, Word, CSV and code. Indexed once, then every chat in this project gets the
-        parts that match each question (about 3,000 tokens) instead of whole files.
+        parts that match each question (about 3,000 tokens) instead of whole files. Documents in the
+        project&apos;s folders are added here too, and kept in step when they change.
       </p>
       {error && (
         <p role="alert" className="mb-2 text-[11px] text-destructive">
@@ -112,17 +122,26 @@ function KnowledgeSection({ files, busy, error, onAdd, onRemove, onMaySend }: Kn
                   Local
                 </label>
               )}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Remove ${f.name}`}
-                onClick={() => {
-                  onRemove(f.id);
-                }}
-              >
-                <Trash2 />
-              </Button>
+              {f.folder ? (
+                <span
+                  className="shrink-0 text-[10px] text-muted-foreground"
+                  title={`Kept in step with ${f.folder}: change or delete the file there.`}
+                >
+                  In folder
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Remove ${f.name}`}
+                  onClick={() => {
+                    onRemove(f.id);
+                  }}
+                >
+                  <Trash2 />
+                </Button>
+              )}
             </li>
           ))}
         </ul>
