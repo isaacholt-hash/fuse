@@ -378,7 +378,10 @@ export function Messages({
   onUndoChange,
   onUndoRun,
   onApprove,
+  onPreviewChange,
 }: {
+  /** WF-05: opens a file a run made or changed in the side panel. */
+  onPreviewChange?: (changeId: string) => void;
   /** CA-03, CA-04: answers what a run asked for ("always": don't ask again for this command). */
   onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
@@ -644,6 +647,7 @@ export function Messages({
                         {...(onUndoChange ? { onUndoChange } : {})}
                         {...(onUndoRun ? { onUndoRun } : {})}
                         {...(onApprove ? { onApprove } : {})}
+                        {...(onPreviewChange ? { onPreviewChange } : {})}
                       />
                     )}
                     {message.content && (
@@ -1781,9 +1785,12 @@ function RunCard({
   onUndoChange,
   onUndoRun,
   onApprove,
+  onPreviewChange,
 }: {
   run: RunView;
   busy: boolean;
+  /** WF-05: opens a changed file in the side panel. */
+  onPreviewChange?: (changeId: string) => void;
   onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
   onContinue?: (runId: string, raise: boolean) => void;
   onUndoChange?: (changeId: string) => void;
@@ -1962,6 +1969,18 @@ function RunCard({
                       <span className="text-destructive">−{c.removed}</span>
                     </span>
                   )}
+                  {c.previewable && onPreviewChange && (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="ml-auto"
+                      onClick={() => {
+                        onPreviewChange(c.id);
+                      }}
+                    >
+                      Preview
+                    </Button>
+                  )}
                   {c.undone ? (
                     <span className="ml-auto text-[10px] text-muted-foreground">Undone</span>
                   ) : (
@@ -1970,7 +1989,7 @@ function RunCard({
                       <Button
                         variant="ghost"
                         size="xs"
-                        className="ml-auto"
+                        className={c.previewable && onPreviewChange ? "" : "ml-auto"}
                         disabled={busy}
                         onClick={() => {
                           onUndoChange(c.id);

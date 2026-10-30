@@ -1,5 +1,8 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
+import { resolvePath } from "@/agent/folders";
+import { docKind, docxText, xlsxText } from "@/documents/read";
+import { getChange, listRunFolders } from "@/storage/runs";
 import {
   recordShadow,
   shadowSummary,
@@ -2616,6 +2619,54 @@ export function ChatApp({
           : { ...base, kind: "text", text: new TextDecoder().decode(bytes) },
     );
   };
+  /**
+   * WF-05: a file a run made or changed, read from its folder and shown in the side panel:
+   * Word and Excel as text and tables, PDFs as pages, images as images, anything else as text.
+   */
+  const previewChange = async (changeId: string) => {
+    if (!repoApi) return;
+    const change = await getChange(db, tenant, changeId);
+    if (!change) return;
+    const folders = await listRunFolders(db, tenant, change.runId);
+    const { folder, rel } = resolvePath(folders, change.path);
+    const base = {
+      name: change.path,
+      ...(repoApi.open
+        ? {
+            onOpen: () => {
+              repoApi.open?.(folder.folderId, rel, false).catch(report);
+            },
+            onReveal: () => {
+              repoApi.open?.(folder.folderId, rel, true).catch(report);
+            },
+          }
+        : {}),
+    };
+    const kind = docKind(change.path);
+    const bytes =
+      kind !== "other" && repoApi.readBytes ? await repoApi.readBytes(folder.folderId, rel) : null;
+    setOpenArtifact(null);
+    if (kind === "image" && bytes) {
+      const ext = change.path.split(".").at(-1)?.toLowerCase() ?? "png";
+      const mime = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+      setViewer({
+        ...base,
+        kind: "image",
+        url: URL.createObjectURL(new Blob([bytes.slice()], { type: mime })),
+      });
+    } else if (kind === "pdf" && bytes) {
+      setViewer({ ...base, kind: "pdf", bytes });
+    } else if ((kind === "word" || kind === "excel") && bytes) {
+      setViewer({
+        ...base,
+        kind: "document",
+        markdown: kind === "word" ? docxText(bytes) : xlsxText(bytes),
+      });
+    } else {
+      const text = await repoApi.read(folder.folderId, rel, 0);
+      setViewer({ ...base, kind: "text", text: text.content });
+    }
+  };
   /** FK-10: a cited excerpt opens its file there; excerpts from past chats have no file. */
   const openSource = async (chunkId: string) => {
     const chunk = await getChunk(db, tenant, chunkId);
@@ -4343,6 +4394,9 @@ export function ChatApp({
                     onContinueRun={continueRunHere}
                     onApprove={(runId, answer) => {
                       approvals.get(runId)?.answer(answer);
+                    }}
+                    onPreviewChange={(changeId) => {
+                      previewChange(changeId).catch(report);
                     }}
                     onUndoChange={(changeId) => {
                       if (!repoApi || !selectedId) return;

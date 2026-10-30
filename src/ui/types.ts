@@ -164,6 +164,8 @@ export interface RunChangeView {
   removed: number;
   lines: { kind: "same" | "add" | "del"; text: string }[];
   undone: boolean;
+  /** WF-05: the file is still there to preview (not deleted, not undone). */
+  previewable: boolean;
 }
 
 export interface RunStepView {

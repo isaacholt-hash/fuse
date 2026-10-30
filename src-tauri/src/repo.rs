@@ -227,6 +227,18 @@ pub fn delete(root: &Path, rel: &str, allow_secrets: bool) -> Result<Change, Str
     })
 }
 
+/// WF-05: what "Open in its app" may open: documents, images and plain text. Never a program, a
+/// script or a web page, which would run something.
+pub fn openable(path: &Path) -> bool {
+    const OK: [&str; 14] = [
+        "docx", "xlsx", "xlsm", "pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv",
+        "pptx", "odt",
+    ];
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| OK.contains(&e.to_ascii_lowercase().as_str()))
+}
+
 /// WF-04: writes a binary file (a Word, Excel or PDF document) all at once, like `write`. The
 /// caller keeps what it replaced (it reads the old bytes first), for undo.
 pub fn write_bytes(
@@ -624,6 +636,36 @@ pub mod commands {
         write_bytes(&root, &path, bytes, secrets)
     }
 
+    /// WF-05: opens a file in the folder with its app, or shows it in the file manager. The path
+    /// goes through the same rules as a read, so nothing outside the folder can be opened.
+    #[tauri::command]
+    pub async fn repo_open(
+        app: AppHandle,
+        db: State<'_, Database>,
+        folder_id: String,
+        path: String,
+        reveal: bool,
+    ) -> Result<(), String> {
+        use tauri_plugin_opener::OpenerExt;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
+        let root = fs::canonicalize(&root).map_err(|e| format!("The folder is missing: {e}"))?;
+        let full = resolve(&root, &path)?;
+        readable(&root, &full, &path, secrets)?;
+        if reveal {
+            app.opener()
+                .reveal_item_in_dir(&full)
+                .map_err(|e| e.to_string())
+        } else if openable(&full) {
+            app.opener()
+                .open_path(full.to_string_lossy(), None::<&str>)
+                .map_err(|e| e.to_string())
+        } else {
+            Err(format!(
+                "{path}: only documents, images and text files open from FUSE; use Show in folder."
+            ))
+        }
+    }
+
     #[tauri::command]
     pub async fn repo_remove_bytes(
         db: State<'_, Database>,
@@ -1009,6 +1051,23 @@ mod tests {
                 .unwrap_err()
                 .contains("isn't granted")
         );
+    }
+
+    #[test]
+    fn only_documents_images_and_text_open_in_their_app() {
+        for ok in ["a.docx", "b.XLSX", "c.pdf", "d.png", "e.md", "f.csv"] {
+            assert!(openable(Path::new(ok)), "{ok}");
+        }
+        for no in [
+            "run.sh",
+            "x.exe",
+            "page.html",
+            "s.bat",
+            "noext",
+            "a.docx.lnk",
+        ] {
+            assert!(!openable(Path::new(no)), "{no}");
+        }
     }
 
     #[test]

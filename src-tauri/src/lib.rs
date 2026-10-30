@@ -73,6 +73,7 @@ pub fn run() {
             repo::commands::repo_read_bytes,
             repo::commands::repo_write_bytes,
             repo::commands::repo_remove_bytes,
+            repo::commands::repo_open,
             repo::commands::repo_search,
             repo::commands::repo_write,
             repo::commands::repo_delete,

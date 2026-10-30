@@ -53,7 +53,10 @@
   - `src/documents/write.ts` writes minimal Office Open XML zipped with fflate (formulas are calculated when the file opens), and PDFs with jsPDF. Both libraries were already in the app, so no new dependency. The PDF font covers Latin scripts.
   - Rust `repo_write_bytes` and `repo_remove_bytes` apply the same path rules as text writes. Migration 0043 adds `before_sha` and `after_sha` to `run_changes`: the old and new bytes go into the attachment store, and the diff shows readable text of both.
   - Undo is refused if the file changed since. Otherwise it puts the old bytes back, or removes a file the run created.
-- [ ] **6. Previews (WF-05).** Files FUSE made or changed open in the side panel: documents rendered, sheets as tables, PDFs as pages, images as images. "Open in its app" and "Show in folder" are there too.
+- [x] **6. Previews (WF-05).**
+  - Each file a run made or changed (not deleted or undone) has **Preview** in the run card. It opens in the side panel from its folder: Word and Excel as formatted text and tables, PDFs as pages, images as images, anything else as text.
+  - **Open in its app** and **Show in folder** use Rust `repo_open`, which resolves the path inside the granted folder first. Only documents, images and plain text open in their app, never a program, script or web page; Show in folder works for any file.
+  - Fixed: written Excel files now have a default cell style, which openpyxl asked for. Checked with `uvx` and python-docx, openpyxl and pypdf: Word, Excel and PDF files from step 5 open with their headings, lists, tables, numbers and formulas.
 - [ ] **7. Organise as one plan (WF-06).**
   - An `organise` tool proposes moves, renames and new folders together. You see the whole plan as a tree before and after, then Allow all, untick some, or Deny. It runs as one change with one Undo.
   - Nothing is deleted by an organise plan.

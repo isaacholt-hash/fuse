@@ -2,10 +2,17 @@ import { ChevronLeft, ChevronRight, FileText, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { PAGE_MARKER } from "@/files/pdfText";
 import { Button } from "@/components/ui/button";
+import { Markdown } from "./Markdown";
 
 export interface FileViewerView {
   name: string;
-  kind: "image" | "pdf" | "text";
+  /** "document": Word or Excel read as Markdown-like text (headings, tables), WF-05. */
+  kind: "image" | "pdf" | "text" | "document";
+  /** Documents: the text to render. */
+  markdown?: string;
+  /** WF-05: a file in a chat's folder can open in its app or show in its folder. */
+  onOpen?: () => void;
+  onReveal?: () => void;
   /** Images: a blob: URL. */
   url?: string;
   /** Text files (and long PDFs read as text). */
@@ -26,6 +33,16 @@ export function FileViewer({ file, onClose }: { file: FileViewerView; onClose: (
       <header className="flex h-[52px] shrink-0 items-center gap-2 border-b px-4">
         <FileText className="size-4 text-muted-foreground" />
         <span className="flex-1 truncate text-sm font-medium">{file.name}</span>
+        {file.onOpen && (
+          <Button variant="ghost" size="sm" className="text-xs" onClick={file.onOpen}>
+            Open in its app
+          </Button>
+        )}
+        {file.onReveal && (
+          <Button variant="ghost" size="sm" className="text-xs" onClick={file.onReveal}>
+            Show in folder
+          </Button>
+        )}
         <Button variant="ghost" size="icon-sm" aria-label="Close file" onClick={onClose}>
           <X />
         </Button>
@@ -35,6 +52,10 @@ export function FileViewer({ file, onClose }: { file: FileViewerView; onClose: (
           <img src={file.url} alt={file.name} className="mx-auto max-w-full p-4" />
         ) : file.kind === "pdf" && file.bytes ? (
           <PdfPages bytes={file.bytes} page={file.focus?.page ?? 1} />
+        ) : file.kind === "document" ? (
+          <div className="prose-sm max-w-none p-5 text-sm">
+            <Markdown content={file.markdown ?? ""} />
+          </div>
         ) : (
           <TextLines text={file.text ?? ""} focus={file.focus} />
         )}
