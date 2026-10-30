@@ -344,7 +344,10 @@ export function Messages({
   onContinueRun,
   onUndoChange,
   onUndoRun,
+  onApprove,
 }: {
+  /** CA-03: answers a run's request to run a command. */
+  onApprove?: (runId: string, yes: boolean) => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
   onContinueRun?: (runId: string, raise: boolean) => void;
   /** CA-02: puts one file a run changed back as it was. */
@@ -607,6 +610,7 @@ export function Messages({
                         {...(onContinueRun ? { onContinue: onContinueRun } : {})}
                         {...(onUndoChange ? { onUndoChange } : {})}
                         {...(onUndoRun ? { onUndoRun } : {})}
+                        {...(onApprove ? { onApprove } : {})}
                       />
                     )}
                     {message.content && (
@@ -1650,9 +1654,11 @@ function RunCard({
   onContinue,
   onUndoChange,
   onUndoRun,
+  onApprove,
 }: {
   run: RunView;
   busy: boolean;
+  onApprove?: (runId: string, yes: boolean) => void;
   onContinue?: (runId: string, raise: boolean) => void;
   onUndoChange?: (changeId: string) => void;
   onUndoRun?: (runId: string) => void;
@@ -1702,6 +1708,37 @@ function RunCard({
             <li className="whitespace-pre-wrap text-muted-foreground">{run.streaming}</li>
           )}
         </ol>
+      )}
+      {run.approval && onApprove && (
+        <div
+          role="alertdialog"
+          aria-label="Run this command?"
+          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+        >
+          <p className="mb-1 font-medium">Run this command in the repository?</p>
+          <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+            {run.approval.command}
+          </pre>
+          <div className="flex gap-2">
+            <Button
+              size="xs"
+              onClick={() => {
+                onApprove(run.id, true);
+              }}
+            >
+              Allow
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                onApprove(run.id, false);
+              }}
+            >
+              Deny
+            </Button>
+          </div>
+        </div>
       )}
       {live && !run.streaming && (
         <p

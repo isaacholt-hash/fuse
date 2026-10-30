@@ -165,6 +165,7 @@ test("an editing run changes files and records each change with what was there",
     "write_file",
     "delete_file",
     "move_file",
+    "run_command",
   ]);
 });
 

@@ -1,6 +1,7 @@
 mod backup;
 mod db;
 mod egress;
+mod exec;
 mod export;
 mod files;
 mod hello;
@@ -26,6 +27,7 @@ pub fn run() {
         .manage(db::Database::default())
         .manage(keys::Keys::default())
         .manage(transport::Transport::default())
+        .manage(exec::Execs::default())
         .manage(preview::Previews::default())
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
@@ -65,6 +67,8 @@ pub fn run() {
             repo::commands::repo_write,
             repo::commands::repo_delete,
             repo::commands::repo_move,
+            exec::commands::repo_exec,
+            exec::commands::repo_exec_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

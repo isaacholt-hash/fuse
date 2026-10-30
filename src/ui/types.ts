@@ -133,6 +133,8 @@ export interface RunView {
   modeLabel: string;
   /** Files the run changed (CA-02), oldest first. */
   changes: RunChangeView[];
+  /** A command waiting for your OK (CA-03). */
+  approval?: { command: string };
 }
 
 export interface RunChangeView {

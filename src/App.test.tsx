@@ -6,6 +6,7 @@ import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
+import type { ExecApi } from "@/repo/exec";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -152,7 +153,11 @@ function setup(
   scripts: Partial<Record<"anthropic" | "openai", Script[]>> = {},
   savedKeys: ("anthropic" | "openai")[] = ["anthropic", "openai"],
   chores: Chores = {},
-  { helloAvailable = false, repo = noRepo }: { helloAvailable?: boolean; repo?: RepoApi } = {},
+  {
+    helloAvailable = false,
+    repo = noRepo,
+    exec,
+  }: { helloAvailable?: boolean; repo?: RepoApi; exec?: ExecApi } = {},
 ) {
   const db = openTestDb();
   const keys = fakeKeysApi();
@@ -293,6 +298,7 @@ function setup(
       }}
       backups={backups.api}
       repo={repo}
+      {...(exec ? { exec } : {})}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -3017,4 +3023,82 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   await user.click(card.getByRole("button", { name: "Undo" }));
   expect(await card.findByText("Undone")).toBeInTheDocument();
   expect(files.get("src/tide.ts")).toBe("export const tide = 3;\n");
+});
+
+test("M6: a command waits for Allow, then runs, and its output goes back to the model", async () => {
+  const repo: RepoApi = {
+    ...noRepo,
+    pick: () => Promise.resolve({ root: "/home/me/lighthouse", name: "lighthouse", isGit: true }),
+  };
+  const ran: string[] = [];
+  const exec: ExecApi = {
+    run: (_p, command) => {
+      ran.push(command);
+      return Promise.resolve({
+        output: "3 passed\n",
+        exitCode: 0,
+        timedOut: false,
+        stopped: false,
+        truncated: false,
+        elapsedMs: 900,
+      });
+    },
+  };
+  async function* test1(_h: ChatMessage[]): AsyncGenerator<StreamEvent> {
+    await Promise.resolve();
+    yield { type: "text", text: "1. Run the tests." };
+    yield {
+      type: "tool_call",
+      call: {
+        id: "r1",
+        name: "run_command",
+        input: { command: "pnpm test", timeout_seconds: null },
+      },
+    };
+    yield {
+      type: "done",
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 400,
+        cachedInputTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        webSearchCalls: 0,
+      },
+      usageReported: true,
+      stopReason: "tool_use",
+      providerRequestId: "req_c",
+      attempts: 1,
+      turn: { provider: "anthropic", model: "x", items: [] },
+    };
+  }
+  const { user, calls } = setup(
+    { anthropic: [test1, () => answer("All 3 tests pass.")] },
+    undefined,
+    {},
+    { repo, exec },
+  );
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  await user.keyboard("{Escape}");
+  await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
+  await user.type(await composer(), "Run the tests{Enter}");
+
+  const ask = within(await screen.findByRole("alertdialog", { name: "Run this command?" }));
+  expect(ask.getByText("pnpm test")).toBeInTheDocument();
+  expect(ran).toEqual([]);
+  await user.click(ask.getByRole("button", { name: "Allow" }));
+  expect(await screen.findByText("All 3 tests pass.")).toBeInTheDocument();
+  expect(ran).toEqual(["pnpm test"]);
+  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
+    "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]",
+  );
+  expect(screen.queryByRole("alertdialog", { name: "Run this command?" })).toBeNull();
 });
