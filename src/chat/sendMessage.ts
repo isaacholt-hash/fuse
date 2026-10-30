@@ -1,3 +1,4 @@
+import { cacheGet, cacheKey, cachePut, chatCacheable } from "@/cache/responseCache";
 import { chatCeiling } from "@/context/ceilings";
 import {
   priceFor,
@@ -143,6 +144,9 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
     input,
     userMessageId,
     await historyTo(deps, input.threadId, input.embedding),
+    null,
+    // LL-06: only a chat's first question, with nothing attached, may use the cache.
+    previous.length === 0 && fileIds.length === 0,
   );
 }
 
@@ -322,6 +326,7 @@ async function streamAnswer(
   userMessageId: string,
   context: Context,
   escalatedFromId: string | null = null,
+  firstQuestion = false,
 ): Promise<SendResult> {
   const { db, tenant } = deps;
   let model = input.model;
@@ -365,6 +370,68 @@ async function streamAnswer(
   );
 
   const policy = await threadPolicy(db, tenant, input.threadId);
+
+  // LL-06: the same first question, in the same context, on the same model, is answered from
+  // the cache at $0 (never with files, web search, memories, incognito, or anything that can go
+  // stale or is personal). Regenerate, retry and "stronger model" always ask the model.
+  const thread = await getThread(db, tenant, input.threadId);
+  const scope = thread?.projectId ?? "none";
+  const question = history.findLast((m) => m.role === "user")?.content ?? "";
+  const cacheKeyFor =
+    firstQuestion &&
+    fileSources.length === 0 &&
+    chatCacheable({
+      question,
+      firstInChat: true,
+      files: 0,
+      webSearch: Boolean(input.webSearch),
+      incognito: thread?.incognito ?? false,
+      memoriesSent: picked.length,
+    })
+      ? await cacheKey([
+          "chat",
+          `${model.provider}/${model.id}`,
+          input.route?.effort ?? "",
+          system ?? "",
+          JSON.stringify(history.map((m) => [m.role, m.content])),
+          "markdown",
+          scope,
+        ])
+      : null;
+  if (cacheKeyFor) {
+    const hit = await cacheGet(db, tenant, cacheKeyFor, scope, now());
+    if (hit) {
+      const usage: Usage = {
+        ...EMPTY_USAGE,
+        priceVersion: deps.catalog.priceVersion,
+        latencyMs: 0,
+      };
+      await setMessageModel(db, tenant, assistantMessageId, "cache", hit.model);
+      const requestId = await logRequest(db, tenant, {
+        threadId: input.threadId,
+        messageId: assistantMessageId,
+        purpose: "chat",
+        provider: "cache",
+        model: hit.model,
+        attempt: 1,
+        usage,
+        httpStatus: null,
+        errorCode: null,
+        errorMessage: null,
+        providerRequestId: null,
+        tier: input.route?.tier ?? null,
+        routeRuleId: input.route?.ruleId ?? null,
+      });
+      await finishMessage(db, tenant, assistantMessageId, {
+        content: hit.response,
+        status: "complete",
+        usage,
+        requestId,
+      });
+      input.onText?.(hit.response);
+      return { userMessageId, assistantMessageId, status: "complete", costMicroUsd: 0 };
+    }
+  }
 
   /** One provider call, streamed into the answer. */
   const attempt = async (m: CatalogModel) => {
@@ -552,6 +619,25 @@ async function streamAnswer(
     requestId,
   });
   if (sources.length > 0) await addCitations(db, tenant, assistantMessageId, sources);
+  // LL-06: a clean, complete answer to a cacheable question is kept for next time.
+  if (
+    cacheKeyFor &&
+    status === "complete" &&
+    !truncated &&
+    !paused &&
+    !failedOver &&
+    sources.length === 0 &&
+    artifactsIn(answer).length === 0
+  ) {
+    await cachePut(db, tenant, {
+      key: cacheKeyFor,
+      kind: "chat",
+      scope,
+      model: `${model.provider}/${model.id}`,
+      response: answer,
+      costMicroUsd: usage.costMicroUsd,
+    });
+  }
   if (fileSources.length > 0) {
     await addFileCitations(db, tenant, assistantMessageId, fileSources);
   }

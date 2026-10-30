@@ -73,9 +73,11 @@
   - Token ceilings as data (`data/context.json`). A chat request stays under the smaller of 400K tokens and 75% of the model's context. Past it, the oldest messages are left out, the request says so, and the context package records a `trimmed` part. Housekeeping input is capped at 8K tokens, and the local model's at 2.5K, each with a marker.
   - Coding-run tool outputs were already capped at 40,000 characters (M6).
   - Tests: a 1,200-section manual (about 27K tokens) gets about 3K tokens of on-topic, cited excerpts with no key.
-- [ ] **11. Exact-match cache (LL-06, RT-13).**
-  - Keyed by normalised input, context version, model or operation version, project and output format, with TTLs and invalidation.
-  - Never used in incognito, for answers that used web search, or for personal, dynamic or high-stakes requests. Tested for stale and cross-project hits.
+- [x] **11. Exact-match cache (LL-06, RT-13).**
+  - `src/cache/responseCache.ts`, migration 0039. The key is a SHA-256 of the model, effort, the whole system prompt (instructions, memories, decisions), the messages, the output format and the project; the row also checks the project. A chat answer is kept 24 hours, a classifier second opinion 30 days. Matching is exact only, never semantic.
+  - Chat answers are only for the first question of a chat. They're never used with files, web search, memories, incognito, or a time-sensitive, personal or high-stakes question (word lists), or for answers that were cut off, failed over, cited the web or held artifacts.
+  - Regenerate, retry and "stronger model" always ask the model. A hit is logged with provider `cache` at $0, counts as a cloud call avoided, and shows "from cache · <model> · $0".
+  - Delete everything now clears every table. It had missed the M6 coding-run tables (`runs`, `run_steps`, `run_changes`, `project_commands`), `local_shadow` and the cache. A test now fails if a new table is left out.
 - [ ] **12. Local-path security (LL-08).**
   - Tests: offline use, Local only, cross-project isolation, malformed output, out of memory, and the worker crashing mid-answer.
   - The threat model gets a section for local models and their files.

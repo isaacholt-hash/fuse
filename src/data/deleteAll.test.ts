@@ -7,7 +7,7 @@ import { createProject } from "@/storage/projects";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, listThreads } from "@/storage/threads";
 import { EXPORTED_TABLES } from "./exportAll";
-import { deleteAllData } from "./deleteAll";
+import { DELETE_ORDER, deleteAllData } from "./deleteAll";
 
 const t = DEFAULT_TENANT;
 
@@ -36,4 +36,18 @@ test("every data table ends up empty; the workspace stays", async () => {
   expect(await listThreads(db, t)).toEqual([]);
   const [ws] = await db.select<{ n: number }>("SELECT COUNT(*) AS n FROM workspaces");
   expect(ws?.n).toBe(1);
+});
+
+test("delete everything covers every table but the workspace, the user and the schema record", async () => {
+  const db = openTestDb();
+  const tables = (
+    await db.select<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+         AND name NOT LIKE '%_fts%'`,
+    )
+  ).map((r) => r.name);
+  const kept = ["workspaces", "users", "schema_meta"];
+  expect(
+    tables.filter((t) => !kept.includes(t) && !(DELETE_ORDER as readonly string[]).includes(t)),
+  ).toEqual([]);
 });

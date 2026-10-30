@@ -77,6 +77,8 @@ export interface MessageView {
   model?: string;
   /** LL-01: answered by this fixed rule (e.g. "Arithmetic"), with no model, at $0. */
   noModel?: string;
+  /** LL-06: reused from the cache at $0; the model that first wrote it. */
+  cachedFrom?: string;
   usage?: UsageView;
   /** Divider shown above this answer when the model changed. */
   switchLabel?: string;

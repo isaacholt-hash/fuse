@@ -4,7 +4,9 @@
  * any failure or odd reply keeps the local answer.
  */
 import type { Catalog, CatalogModel } from "@/catalog/catalog";
+import { cacheGet, cacheKey, cachePut } from "@/cache/responseCache";
 import { housekeepingCall, type HousekeepingDeps } from "@/chat/housekeeping";
+import { getThread } from "@/storage/threads";
 import type { Classification } from "./classify";
 import type { Complexity, Intent } from "./policy";
 
@@ -54,15 +56,43 @@ export async function checkClassification(
   threadId: string | null,
 ): Promise<Classification> {
   if (!local.unsure) return local;
-  const call = await housekeepingCall(deps, catalog, {
-    purpose: "classify",
-    threadId,
-    model,
-    system: CLASSIFY_SYSTEM,
-    input: question.slice(0, MAX_INPUT_CHARS),
-    maxOutputTokens: 60,
-  });
-  const read = call.ok ? parseClassifyReply(call.text) : null;
+  const input = question.slice(0, MAX_INPUT_CHARS);
+  // LL-06: the same words get the same second opinion for a month, in the same project only.
+  const thread = threadId ? await getThread(deps.db, deps.tenant, threadId) : null;
+  const scope = thread?.projectId ?? "none";
+  const key =
+    thread?.incognito === true
+      ? null
+      : await cacheKey([
+          "classify",
+          `${model.provider}/${model.id}`,
+          CLASSIFY_SYSTEM,
+          input,
+          scope,
+        ]);
+  const cached = key ? await cacheGet(deps.db, deps.tenant, key, scope) : null;
+  let read = cached ? parseClassifyReply(cached.response) : null;
+  if (!read) {
+    const call = await housekeepingCall(deps, catalog, {
+      purpose: "classify",
+      threadId,
+      model,
+      system: CLASSIFY_SYSTEM,
+      input,
+      maxOutputTokens: 60,
+    });
+    read = call.ok ? parseClassifyReply(call.text) : null;
+    if (read && key && call.ok) {
+      await cachePut(deps.db, deps.tenant, {
+        key,
+        kind: "classify",
+        scope,
+        model: `${model.provider}/${model.id}`,
+        response: JSON.stringify(read),
+        costMicroUsd: call.costMicroUsd,
+      });
+    }
+  }
   if (!read) return local;
   return {
     ...local,
