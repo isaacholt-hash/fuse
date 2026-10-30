@@ -24,6 +24,8 @@ import {
   Square,
   Sparkles,
   X,
+  FolderOpen,
+  FolderPlus,
   Columns2,
   FolderTree,
   SquareTerminal,
@@ -957,6 +959,9 @@ export function Composer({
   onToggleWebSearch,
   code = false,
   onToggleCode,
+  folders = [],
+  onAddFolder,
+  onRemoveFolder,
   codeMode = "ask",
   onCodeMode,
   codeBranch = false,
@@ -995,7 +1000,14 @@ export function Composer({
   /** On / off, or null when the selected model can't search. */
   webSearch?: boolean | null;
   onToggleWebSearch?: () => void;
-  /** M6: the next message starts a coding run in the project's repository. */
+  /**
+   * WF-02: the folders this chat can work in (its own, then its project's). `own` ones can be
+   * removed here; a project's are managed in its settings.
+   */
+  folders?: { id: string; name: string; path: string; own: boolean }[];
+  onAddFolder?: () => void;
+  onRemoveFolder?: (id: string) => void;
+  /** M6: the next message starts a coding run in the chat's folders. */
   code?: boolean;
   onToggleCode?: () => void;
   /** CA-04: what that run may do. */
@@ -1484,11 +1496,49 @@ export function Composer({
                 </Button>
               </Tip>
             )}
+            {folders.map((f) => (
+              <span
+                key={f.id}
+                className="flex max-w-40 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                title={f.own ? f.path : `${f.path} (from the project)`}
+              >
+                <FolderOpen className="size-3 shrink-0" />
+                <span className="truncate">{f.name}</span>
+                {f.own && onRemoveFolder && (
+                  <button
+                    type="button"
+                    aria-label={`Remove folder ${f.name}`}
+                    className="hover:text-foreground"
+                    onClick={() => {
+                      onRemoveFolder(f.id);
+                    }}
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </span>
+            ))}
+            {onAddFolder && (
+              <Tip label="Pick a folder on this computer for this chat to work in">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Add a folder"
+                  className="gap-1.5 text-xs text-muted-foreground"
+                  onClick={onAddFolder}
+                >
+                  <FolderPlus className="size-3.5" />
+                  {folders.length === 0 && (
+                    <span className="hidden min-[900px]:inline">Folder</span>
+                  )}
+                </Button>
+              </Tip>
+            )}
             {onToggleCode && (
               <Tip
                 label={
                   code
-                    ? "Code on: the next message starts a coding run that reads this project's repository"
+                    ? "Code on: the next message starts a run that works in this chat's folders"
                     : "Code off"
                 }
               >

@@ -55,7 +55,17 @@ import type { ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 import type { RepoInstruction } from "@/repo/instructions";
 import { instructionsIn } from "@/agent/folders";
-import { listProjectFolders } from "@/storage/folders";
+import {
+  folderName,
+  grantFolder,
+  linkProjectFolder,
+  linkThreadFolder,
+  listProjectFolders,
+  listThreadFolders,
+  unlinkProjectFolder,
+  unlinkThreadFolder,
+  type Folder as FolderRecord,
+} from "@/storage/folders";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
 import {
   DEFAULT_RUN_CAP_MICRO_USD,
@@ -166,7 +176,6 @@ import {
   updateProject,
   setProjectPrivacy,
   setProjectAnswerWithoutModel,
-  setProjectRepo,
   setProjectRunMode,
   disallowCommand,
   listAllowedCommands,
@@ -936,6 +945,17 @@ export function ChatApp({
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
   // CA-01: a line under the linked folder (git or not, or why linking failed).
   const [repoNote, setRepoNote] = useState<string | null>(null);
+  /** WF-02: each project's folders, and each chat's own ("draft" before it's saved). */
+  const [projectFolderMap, setProjectFolderMap] = useState<Record<string, FolderRecord[]>>({});
+  const [chatFolderMap, setChatFolderMap] = useState<Record<string, FolderRecord[]>>({});
+  const loadProjectFolders = (projectId: string) =>
+    listProjectFolders(db, tenant, projectId).then((fs) => {
+      setProjectFolderMap((m) => ({ ...m, [projectId]: fs }));
+    });
+  const loadChatFolders = (threadId: string) =>
+    listThreadFolders(db, tenant, threadId).then((fs) => {
+      setChatFolderMap((m) => ({ ...m, [threadId]: fs }));
+    });
   // M6: Code on per chat ("draft" before the chat exists), and each answer's coding run.
   const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
   // CA-03: commands waiting for your OK, by run.
@@ -1517,7 +1537,8 @@ export function ChatApp({
     routed: NonNullable<ReturnType<typeof routeFor>>,
     job: Job,
     webSearch = false,
-    runIn: string | null = null,
+    /** Start a run (Code) instead of answering; the project is null outside one (WF-02). */
+    runIn: { projectId: string | null } | null = null,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
@@ -1583,13 +1604,13 @@ export function ChatApp({
       const result = await (runIn && repoApi && job.kind === "send"
         ? startChatRun(runDeps(repoApi), {
             threadId,
-            projectId: runIn,
+            projectId: runIn.projectId,
             task: job.text,
             model: routed.model,
             mode:
               codeMode[threadId] ??
               codeMode.draft ??
-              projects.find((p) => p.id === runIn)?.runMode ??
+              projects.find((p) => p.id === runIn.projectId)?.runMode ??
               "ask",
             newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
             // RT-14: on Auto, the cheapest Best model plans; a pinned tier or model does it all.
@@ -1665,6 +1686,12 @@ export function ChatApp({
         model:
           draftMode.kind === "model" ? { provider: draftMode.provider, id: draftMode.id } : null,
       });
+    }
+    // WF-02: folders picked for the draft become the new chat's.
+    const pending = chatFolderMap.draft ?? [];
+    for (const f of pending) await linkThreadFolder(db, tenant, threadId, f.id);
+    if (pending.length > 0) {
+      setChatFolderMap((m) => ({ ...m, [threadId]: pending, draft: [] }));
     }
     setSelectedId(threadId);
     selectedRef.current = threadId;
@@ -1813,7 +1840,7 @@ export function ChatApp({
         routed,
         { kind: "send", text, files: sent },
         search,
-        codeActive && activeProjectId ? activeProjectId : null,
+        codeActive ? { projectId: activeProjectId ?? null } : null,
       );
       if (compareMode) {
         setCompareKeys([]);
@@ -2157,7 +2184,51 @@ export function ChatApp({
   const chatInstructions = thread ? thread.instructions : draftInstructions;
   const activeProjectId = thread ? thread.projectId : draftProject;
   const activeProject = projects.find((p) => p.id === activeProjectId);
-  const codeAvailable = Boolean(activeProject?.repoRoot && repoApi);
+  // WF-02: Code works wherever the chat has a folder: its own, or its project's.
+  const chatOwnFolders = chatFolderMap[selectedId ?? "draft"] ?? [];
+  const sharedFolders = activeProjectId ? (projectFolderMap[activeProjectId] ?? []) : [];
+  const chatFolders = [
+    ...chatOwnFolders,
+    ...sharedFolders.filter((f) => !chatOwnFolders.some((o) => o.id === f.id)),
+  ];
+  const codeAvailable = Boolean(chatFolders.length > 0 && repoApi);
+  useEffect(() => {
+    if (activeProjectId) loadProjectFolders(activeProjectId).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the project changes
+  }, [activeProjectId, activeProject?.repoRoot]);
+  useEffect(() => {
+    if (selectedId) loadChatFolders(selectedId).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the chat changes
+  }, [selectedId]);
+  /** WF-02: pick a folder on this computer for this chat (or the draft). */
+  const addChatFolder = () => {
+    if (!repoApi) return;
+    repoApi
+      .pick()
+      .then(async (info) => {
+        if (!info) return;
+        const folder = await grantFolder(db, tenant, info.root);
+        if (selectedId) {
+          await linkThreadFolder(db, tenant, selectedId, folder.id);
+          await loadChatFolders(selectedId);
+        } else {
+          setChatFolderMap((m) => ({
+            ...m,
+            draft: [...(m.draft ?? []).filter((f) => f.id !== folder.id), folder],
+          }));
+        }
+      })
+      .catch(report);
+  };
+  const removeChatFolder = (folderId: string) => {
+    if (selectedId) {
+      unlinkThreadFolder(db, tenant, selectedId, folderId)
+        .then(() => loadChatFolders(selectedId))
+        .catch(report);
+    } else {
+      setChatFolderMap((m) => ({ ...m, draft: (m.draft ?? []).filter((f) => f.id !== folderId) }));
+    }
+  };
   /** Everything a run needs: the repository, commands, and a way to ask you first. */
   const runDeps = (repo: RepoApi) => ({
     ...deps,
@@ -4392,6 +4463,18 @@ export function ChatApp({
                     {...(web ? { onAddLink: attachments.addLink } : {})}
                     webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                     onToggleWebSearch={toggleSearch}
+                    {...(repoApi
+                      ? {
+                          folders: chatFolders.map((f) => ({
+                            id: f.id,
+                            name: folderName(f.path),
+                            path: f.path,
+                            own: chatOwnFolders.some((o) => o.id === f.id),
+                          })),
+                          onAddFolder: addChatFolder,
+                          onRemoveFolder: removeChatFolder,
+                        }
+                      : {})}
                     {...(codeAvailable
                       ? {
                           code: codeActive,
@@ -4549,9 +4632,11 @@ export function ChatApp({
                 ...(repoApi
                   ? {
                       repo: {
-                        root: editedProject.repoRoot,
-                        readSecrets: editedProject.repoReadSecrets,
-                        runMode: editedProject.runMode,
+                        folders: (projectFolderMap[editedProject.id] ?? []).map((f) => ({
+                          id: f.id,
+                          path: f.path,
+                          readSecrets: f.readSecrets,
+                        })),
                         onRunMode: (mode: RunMode) => {
                           setProjectRunMode(db, tenant, editedProject.id, mode)
                             .then(refreshProjects)
@@ -4565,40 +4650,39 @@ export function ChatApp({
                             .catch(report);
                         },
                         note: repoNote,
-                        onLink: () => {
+                        onAdd: () => {
                           repoApi
                             .pick()
                             .then(async (info) => {
                               if (!info) return;
-                              await setProjectRepo(db, tenant, editedProject.id, {
-                                root: info.root,
-                                readSecrets: false,
-                              });
+                              const folder = await grantFolder(db, tenant, info.root);
+                              await linkProjectFolder(db, tenant, editedProject.id, folder.id);
                               setRepoNote(
                                 info.isGit
                                   ? `${info.name}: a git repository.`
-                                  : `${info.name}: not a git repository, so git steps won't work here.`,
+                                  : `${info.name}: not a git repository, so git steps won't work there.`,
                               );
+                              await loadProjectFolders(editedProject.id);
                               await refreshProjects();
                             })
                             .catch((e: unknown) => {
                               setRepoNote(e instanceof Error ? e.message : String(e));
                             });
                         },
-                        onUnlink: () => {
+                        onRemove: (folderId: string) => {
                           setRepoNote(null);
-                          setProjectRepo(db, tenant, editedProject.id, {
-                            root: null,
-                            readSecrets: false,
-                          })
+                          unlinkProjectFolder(db, tenant, editedProject.id, folderId)
+                            .then(() => loadProjectFolders(editedProject.id))
                             .then(refreshProjects)
                             .catch(report);
                         },
-                        onReadSecrets: (allow: boolean) => {
-                          setProjectRepo(db, tenant, editedProject.id, {
-                            root: editedProject.repoRoot,
-                            readSecrets: allow,
-                          })
+                        onReadSecrets: (folderId: string, allow: boolean) => {
+                          const f = projectFolderMap[editedProject.id]?.find(
+                            (x) => x.id === folderId,
+                          );
+                          if (!f) return;
+                          grantFolder(db, tenant, f.path, allow)
+                            .then(() => loadProjectFolders(editedProject.id))
                             .then(refreshProjects)
                             .catch(report);
                         },
