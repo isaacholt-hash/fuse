@@ -1,5 +1,11 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
+import {
+  recordShadow,
+  shadowSummary,
+  type ShadowRecord,
+  type ShadowSummary,
+} from "@/storage/localShadow";
 import type { LocalApi } from "@/local/api";
 import { gb, pickProfile, type Hardware } from "@/local/hardware";
 import { statusFor, usableProfile, type InstalledFile } from "@/local/install";
@@ -522,6 +528,10 @@ const lastModelOf = (messages: Message[], catalog: Catalog) => {
     : undefined;
 };
 
+/** LL-09: shadow checks run for this long after install, on this share of local jobs. */
+const SHADOW_DAYS = 7;
+const SHADOW_RATE = 0.1;
+
 /** Where an install of the recommended profile is up to (LL-03). */
 interface LocalJob {
   status: "downloading" | "verifying";
@@ -767,6 +777,12 @@ export function ChatApp({
     () => (localOn && usableLocal ? localCatalogModel(usableLocal, localModels.verifiedOn) : null),
     [localOn, usableLocal],
   );
+  /** LL-09: in the week after install, about 1 in 10 local jobs is also run on the cloud. */
+  const shadowRate = (() => {
+    const file = usableLocal && localInstalled.find((f) => f.file === usableLocal.file);
+    return file && Date.now() - file.installedMs < SHADOW_DAYS * 86_400_000 ? SHADOW_RATE : 0;
+  })();
+  const [shadow, setShadow] = useState<ShadowSummary | null>(null);
   useEffect(() => {
     getSetting(db, tenant, "local.enabled").then((v) => {
       setLocalOn(v !== "off");
@@ -896,9 +912,12 @@ export function ChatApp({
       files,
       // LL-04: housekeeping tries the local model first when it's installed and on.
       local: localHelper,
+      ...(shadowRate > 0
+        ? { shadow: { rate: shadowRate, record: (r: ShadowRecord) => recordShadow(db, tenant, r) } }
+        : {}),
       ...(repoApi ? { repo: repoApi } : {}),
     }),
-    [db, tenant, catalog, adapterFor, files, repoApi, localHelper],
+    [db, tenant, catalog, adapterFor, files, repoApi, localHelper, shadowRate],
   );
   const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
@@ -2803,6 +2822,7 @@ export function ChatApp({
     budgetStatesFor(budgets, null, true).then(setBudgetStates, report);
     // LL-03: what this computer can run, read fresh each time Settings opens.
     void refreshLocalInstalled();
+    shadowSummary(db, tenant, 0).then(setShadow, report);
     localApi?.hardware().then(
       (hw) => {
         setLocalHardware(hw);
@@ -3710,6 +3730,13 @@ export function ChatApp({
                       localApi.cancelInstall().catch(report);
                     }}
                     enabled={localOn}
+                    shadow={
+                      shadow && shadow.checks > 0
+                        ? `Shadow checks: ${String(shadow.checks)}, the same answer as the cloud model in ${String(Math.round((shadow.same / shadow.checks) * 100))}%. Median time ${((shadow.localP50 ?? 0) / 1000).toFixed(1)} s here, ${((shadow.cloudP50 ?? 0) / 1000).toFixed(1)} s in the cloud.`
+                        : shadowRate > 0
+                          ? "Shadow checks are on for its first week: about 1 in 10 of its jobs also runs on a cheap cloud model to compare (timings and agreement only, never the text)."
+                          : null
+                    }
                     onEnabled={(on) => {
                       setLocalOn(on);
                       setSetting(db, tenant, "local.enabled", on ? "on" : "off").catch(report);
