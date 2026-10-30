@@ -47,6 +47,8 @@ export interface RepoApi {
   writeBytes?(folderId: string, path: string, bytes: Uint8Array): Promise<string>;
   /** WF-04: removes a binary file (undoing one FUSE made). */
   removeBytes?(folderId: string, path: string): Promise<void>;
+  /** WF-05: opens a document in its app, or (`reveal`) shows it in the file manager. */
+  open?(folderId: string, path: string, reveal: boolean): Promise<void>;
   search(folderId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
   write(folderId: string, path: string, content: string): Promise<RepoChange>;
   remove(folderId: string, path: string): Promise<RepoChange>;
@@ -66,6 +68,7 @@ export const tauriRepo: RepoApi = {
       headers: { "x-folder-id": encodeURIComponent(folderId), "x-path": encodeURIComponent(path) },
     }),
   removeBytes: (folderId, path) => invoke("repo_remove_bytes", { folderId, path }),
+  open: (folderId, path, reveal) => invoke("repo_open", { folderId, path, reveal }),
   search: (folderId, path, query, ignoreCase) =>
     invoke<RepoHit[]>("repo_search", { folderId, path, query, ignoreCase }),
   write: (folderId, path, content) => invoke<RepoChange>("repo_write", { folderId, path, content }),

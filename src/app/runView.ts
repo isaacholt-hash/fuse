@@ -59,7 +59,15 @@ export function changeView(c: RunChange): RunChangeView {
       : c.after === null
         ? `Deleted ${c.path}`
         : `Edited ${c.path}`;
-  return { id: c.id, label, added, removed, lines, undone: c.status === "undone" };
+  return {
+    id: c.id,
+    label,
+    added,
+    removed,
+    lines,
+    undone: c.status === "undone",
+    previewable: c.status !== "undone" && (c.after !== null || c.fromPath !== null),
+  };
 }
 
 /** What the run is asking you about, as the card shows it. */
