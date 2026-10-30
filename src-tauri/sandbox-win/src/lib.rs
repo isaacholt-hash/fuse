@@ -682,6 +682,16 @@ mod tests {
     }
 
     #[test]
+    fn redirecting_to_nul_works() {
+        // Scripts send output to NUL all the time; it must work inside the container.
+        let dir = fresh_dir("nul");
+        grant(&dir).unwrap();
+        let (out, code) = run(&dir, "echo hidden>NUL && echo shown", false);
+        assert!(out.contains("shown") && !out.contains("hidden"), "{out}");
+        assert_eq!(code, 0, "{out}");
+    }
+
+    #[test]
     fn killing_ends_the_whole_tree() {
         let dir = fresh_dir("kill");
         grant(&dir).unwrap();
