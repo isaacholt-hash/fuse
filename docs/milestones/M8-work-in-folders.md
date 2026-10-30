@@ -94,12 +94,15 @@
     - Sandboxed commands can read what you can read, and their output reaches the model.
     - Once the network is allowed for a folder, every later command there has it.
     - Windows has no sandbox yet.
-- [ ] **13. Work benchmark.** A fixture folder (`data/work/fixture`: documents, CSVs, a messy folder) and three recorded tasks, checked on both providers with no API calls:
-  - summarise the documents into a .docx with a table
-  - build an .xlsx with a formula from two CSVs
-  - reorganise the messy folder through one approved plan
-
-  Plus `pnpm work:live` for Isaac.
+- [x] **13. Work benchmark.**
+  - The fixture `data/work/fixture` has three reports (Markdown, text, and a Word file made by python-docx, not by FUSE), two CSVs whose rows are in different orders, and a messy folder of 8 files: PDFs, images, notes and a CSV.
+  - The three tasks are in `data/work/tasks.json`:
+    - summarise the reports into a .docx with a table
+    - build an .xlsx with a formula per row and a SUM total from the two CSVs
+    - sort the messy folder in one organise plan, with no loose files left and the same files kept
+  - `pnpm test` runs them on both providers through the real adapters with scripted turns and no API calls (`src/agent/work.benchmark.test.ts`). The checks read the made files back with FUSE's own Word and Excel readers.
+  - Isaac runs `pnpm work:live` with his keys. A provider passes with 2 of the 3 tasks.
+  - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
 ## Notes
 
