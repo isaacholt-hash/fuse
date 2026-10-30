@@ -3,6 +3,8 @@
 // a step with its cost; the run pauses at its cost cap and asks before going on. Every call goes
 // through the adapters (so the Rust egress check applies) and is logged as purpose "agent".
 // A tool loop stays on one model (docs/providers.md, M6); routing inside runs is step 11.
+import { foldersFor, labelFolders, scopedExec, scopedGit, scopedRepo } from "./folders";
+import type { Folder } from "@/storage/folders";
 import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
 import { effectiveInstructions, systemPrompt } from "@/chat/instructions";
 import { PROVIDER_NAMES, type ChatDeps } from "@/chat/sendMessage";
@@ -30,7 +32,9 @@ import {
   raiseRunCap,
   setRunStatus,
   setRunSummary,
+  listRunFolders,
   setRunBranch,
+  setRunFolders,
   setRunPlan,
   addRunCost,
   type Approval,
@@ -99,6 +103,12 @@ export const toolsFor = (mode: RunMode) =>
     ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
     : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];
 
+/**
+ * The first argument of every file, command and git call: unused, since `forRun` scopes them to
+ * the run's folders (WF-02).
+ */
+const HERE = "";
+
 export interface RunDeps extends ChatDeps {
   repo: RepoApi;
   /** CA-08: the Cheap-tier model that summarizes earlier steps; without it FUSE lists them. */
@@ -146,7 +156,12 @@ export interface RunProgress {
 }
 
 export interface RunInput {
-  projectId: string;
+  /** Null for a run in a chat outside a project (M8, WF-02). */
+  projectId: string | null;
+  /**
+   * WF-02: the folders it works in. When omitted: the chat's own folders, then the project's.
+   */
+  folders?: readonly Folder[];
   threadId: string | null;
   messageId: string | null;
   task: string;
@@ -222,8 +237,10 @@ function foldersOf(steps: RunStep[]): string[] {
 
 async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<string | undefined> {
   const { db, tenant } = deps;
-  const project = await getProject(db, tenant, run.projectId);
-  const files = await loadRepoInstructions(deps.repo, run.projectId, foldersOf(steps));
+  const project = run.projectId ? await getProject(db, tenant, run.projectId) : null;
+  const labels = (await listRunFolders(db, tenant, run.id)).map((f) => f.label);
+  const roots = labels.length > 1 ? labels : [""];
+  const files = await loadRepoInstructions(deps.repo, HERE, [...roots, ...foldersOf(steps)]);
   const instructions = effectiveInstructions(
     await getGlobalInstructions(db, tenant),
     project?.instructions ?? "",
@@ -287,7 +304,9 @@ async function work(
   const scope = (run: Run) =>
     run.threadId
       ? { kind: "thread" as const, id: run.threadId }
-      : { kind: "project" as const, id: run.projectId };
+      : run.projectId
+        ? { kind: "project" as const, id: run.projectId }
+        : { kind: "global" as const };
   for (let turn = 0; ; turn++) {
     const run = await getRun(db, tenant, runId);
     if (!run) throw new Error("Run not found");
@@ -528,7 +547,7 @@ async function handleCall(
   if (isCommand) return runCommand(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && run.mode === "ask") {
-    const preview = await previewChange(deps.repo, run.projectId, call);
+    const preview = await previewChange(deps.repo, HERE, call);
     if ("error" in preview) return { output: preview.error, isError: true };
     if (!deps.approve) {
       return {
@@ -546,10 +565,10 @@ async function handleCall(
         approval: "denied",
       };
     }
-    const out = await runTool(deps.repo, run.projectId, call);
+    const out = await runTool(deps.repo, HERE, call);
     return { output: out.output, isError: out.isError, approval: "you", change: out.change };
   }
-  const out = await runTool(deps.repo, run.projectId, call);
+  const out = await runTool(deps.repo, HERE, call);
   return { output: out.output, isError: out.isError, approval: "auto", change: out.change };
 }
 
@@ -584,7 +603,7 @@ async function runGit(
   const parts: string[] = [];
   for (const args of plan.steps) {
     try {
-      const r = await deps.git.run(run.projectId, plan.program, args);
+      const r = await deps.git.run(HERE, plan.program, args);
       parts.push(`$ ${plan.program} ${args.join(" ")}\n${r.output.trimEnd()}`.trimEnd());
       if (r.exitCode !== 0) {
         return {
@@ -627,7 +646,9 @@ async function runCommand(
     };
   }
   const danger = destructiveReason(command);
-  const allowed = await listAllowedCommands(deps.db, deps.tenant, run.projectId);
+  const allowed = run.projectId
+    ? await listAllowedCommands(deps.db, deps.tenant, run.projectId)
+    : [];
   let approval: Approval = "always";
   if (danger || !allowed.includes(command)) {
     await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
@@ -641,11 +662,12 @@ async function runCommand(
       };
     }
     if (answer === "always" && !danger)
-      await allowCommand(deps.db, deps.tenant, run.projectId, command);
+      // Always-allow is kept per project; outside one, the next run asks again.
+      if (run.projectId) await allowCommand(deps.db, deps.tenant, run.projectId, command);
     approval = "you";
   }
   try {
-    const result = await deps.exec.run(run.projectId, command, {
+    const result = await deps.exec.run(HERE, command, {
       timeoutSecs,
       ...(input.signal ? { signal: input.signal } : {}),
       onOutput: (soFar) => {
@@ -666,8 +688,21 @@ async function runCommand(
   }
 }
 
-export async function startRun(deps: RunDeps, input: RunInput): Promise<Run> {
-  const run = await createRun(deps.db, deps.tenant, {
+/** The run's dependencies, with files, commands and git scoped to its recorded folders. */
+async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
+  const folders = await listRunFolders(deps.db, deps.tenant, runId);
+  return {
+    ...deps,
+    repo: scopedRepo(deps.repo, folders),
+    ...(deps.exec ? { exec: scopedExec(deps.exec, folders) } : {}),
+    ...(deps.git ? { git: scopedGit(deps.git, folders) } : {}),
+  };
+}
+
+export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
+  const folders = input.folders ?? (await foldersFor(base, input));
+  if (folders.length === 0) throw new Error("Pick a folder for this chat first.");
+  const run = await createRun(base.db, base.tenant, {
     projectId: input.projectId,
     threadId: input.threadId,
     messageId: input.messageId,
@@ -677,10 +712,12 @@ export async function startRun(deps: RunDeps, input: RunInput): Promise<Run> {
     capMicroUsd: input.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
     mode: input.mode ?? "plan",
   });
+  await setRunFolders(base.db, base.tenant, run.id, labelFolders(folders));
+  const deps = await forRun(base, run.id);
   if (input.newBranch && deps.git && run.mode !== "plan") {
     const branch = branchName(input.task, run.id);
     const made = await deps.git
-      .run(run.projectId, "git", ["switch", "-c", branch])
+      .run(HERE, "git", ["switch", "-c", branch])
       .catch((e: unknown) => ({ output: e instanceof Error ? e.message : String(e), exitCode: 1 }));
     if (made.exitCode === 0) await setRunBranch(deps.db, deps.tenant, run.id, branch);
     else {
@@ -745,7 +782,9 @@ async function writePlan(
       {
         scope: run.threadId
           ? { kind: "thread", id: run.threadId }
-          : { kind: "project", id: run.projectId },
+          : run.projectId
+            ? { kind: "project", id: run.projectId }
+            : { kind: "global" },
         system: planSystem,
         maxOutputTokens: Math.min(planner.maxOutput, 4000),
       },
@@ -810,7 +849,7 @@ export async function continueRun(
   const { db, tenant } = deps;
   if (input.raiseCapBy) await raiseRunCap(db, tenant, runId, input.raiseCapBy);
   await setRunStatus(db, tenant, runId, "running");
-  return work(deps, runId, input);
+  return work(await forRun(deps, runId), runId, input);
 }
 
 /** The run's answer: the text of its last model turn. */
@@ -822,22 +861,23 @@ export function runAnswer(steps: RunStep[]): string {
  * Undoes one change: the file goes back to what it held before the run changed it. Refused when
  * the file has changed since (by you, or a later step), so nothing newer is lost.
  */
-export async function undoChange(deps: RunDeps, changeId: string): Promise<void> {
-  const { db, tenant, repo } = deps;
+export async function undoChange(base: RunDeps, changeId: string): Promise<void> {
+  const { db, tenant } = base;
   const c = await getChange(db, tenant, changeId);
   if (!c || c.status === "undone") return;
   const run = await getRun(db, tenant, c.runId);
   if (!run) throw new Error("Run not found");
-  const now = await readWhole(repo, run.projectId, c.path).catch(() => null);
+  const { repo } = await forRun(base, run.id);
+  const now = await readWhole(repo, HERE, c.path).catch(() => null);
   if (c.fromPath) {
     if (now === null) throw new Error(`${c.path} isn't there any more, so the move wasn't undone.`);
-    await repo.move(run.projectId, c.path, c.fromPath);
+    await repo.move(HERE, c.path, c.fromPath);
   } else {
     if (now !== c.after) {
       throw new Error(`${c.path} has changed since the run changed it, so it wasn't undone.`);
     }
-    if (c.before === null) await repo.remove(run.projectId, c.path);
-    else await repo.write(run.projectId, c.path, c.before);
+    if (c.before === null) await repo.remove(HERE, c.path);
+    else await repo.write(HERE, c.path, c.before);
   }
   await markUndone(db, tenant, changeId);
 }
@@ -909,7 +949,9 @@ async function summarizeSteps(deps: RunDeps, run: Run, steps: RunStep[]): Promis
         {
           scope: run.threadId
             ? { kind: "thread", id: run.threadId }
-            : { kind: "project", id: run.projectId },
+            : run.projectId
+              ? { kind: "project", id: run.projectId }
+              : { kind: "global" },
           system: SUMMARY_SYSTEM,
           maxOutputTokens: 1200,
         },

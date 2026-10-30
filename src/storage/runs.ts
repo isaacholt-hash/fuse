@@ -8,9 +8,14 @@ export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
 /** CA-04: read-only, ask before each edit and command (step 8), or edits go ahead. */
 export type RunMode = "plan" | "ask" | "auto_edit";
 
+/** M6 coding, or M8 work on documents (WF-01). */
+export type RunKind = "code" | "work";
+
 export interface Run {
   id: string;
-  projectId: string;
+  /** Null for a run in a chat outside a project (M8, WF-02). */
+  projectId: string | null;
+  kind: RunKind;
   threadId: string | null;
   messageId: string | null;
   task: string;
@@ -59,7 +64,8 @@ export type Approval = "auto" | "you" | "always" | "denied";
 
 interface RunRow {
   id: string;
-  project_id: string;
+  project_id: string | null;
+  kind: RunKind;
   thread_id: string | null;
   message_id: string | null;
   task: string;
@@ -98,6 +104,7 @@ interface StepRow {
 const toRun = (r: RunRow): Run => ({
   id: r.id,
   projectId: r.project_id,
+  kind: r.kind,
   threadId: r.thread_id,
   messageId: r.message_id,
   task: r.task,
@@ -148,14 +155,14 @@ export async function createRun(
   run: Pick<
     Run,
     "projectId" | "threadId" | "messageId" | "task" | "provider" | "model" | "capMicroUsd"
-  > & { mode?: RunMode },
+  > & { mode?: RunMode; kind?: RunKind },
 ): Promise<Run> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
-    `INSERT INTO runs (id, workspace_id, user_id, project_id, thread_id, message_id, task, mode,
-       provider, model, status, cap_micro_usd, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+    `INSERT INTO runs (id, workspace_id, user_id, project_id, thread_id, message_id, task, kind,
+       mode, provider, model, status, cap_micro_usd, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -164,6 +171,7 @@ export async function createRun(
       run.threadId,
       run.messageId,
       run.task,
+      run.kind ?? "code",
       run.mode ?? "plan",
       run.provider,
       run.model,
@@ -179,7 +187,7 @@ export async function createRun(
 
 export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run | null> {
   const rows = await db.select<RunRow>(
-    `SELECT id, project_id, thread_id, message_id, task, mode, provider, model, status,
+    `SELECT id, project_id, kind, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
        updated_at
      FROM runs WHERE workspace_id = ? AND id = ?`,
@@ -523,9 +531,9 @@ export async function recentToolCalls(
     approval: Approval | null;
     spent_micro_usd: number;
   }>(
-    `SELECT s.id, s.created_at, p.name AS project, r.provider, r.model, s.tool_name, s.input,
-       s.output, s.is_error, s.approval, r.spent_micro_usd
-     FROM run_steps s JOIN runs r ON r.id = s.run_id JOIN projects p ON p.id = r.project_id
+    `SELECT s.id, s.created_at, COALESCE(p.name, 'No project') AS project, r.provider, r.model,
+       s.tool_name, s.input, s.output, s.is_error, s.approval, r.spent_micro_usd
+     FROM run_steps s JOIN runs r ON r.id = s.run_id LEFT JOIN projects p ON p.id = r.project_id
      WHERE s.workspace_id = ? AND s.kind = 'tool'
      ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
     [tenant.workspaceId, limit],
@@ -542,4 +550,41 @@ export async function recentToolCalls(
     approval: r.approval,
     runCostMicroUsd: r.spent_micro_usd,
   }));
+}
+
+/** A folder a run works in, and what its paths call it (M8, WF-02). */
+export interface RunFolder {
+  folderId: string;
+  label: string;
+}
+
+/** Records the folders a run works in, in order, so continuing or undoing it uses the same ones. */
+export async function setRunFolders(
+  db: SqlDb,
+  tenant: Tenant,
+  runId: string,
+  folders: readonly RunFolder[],
+): Promise<void> {
+  const now = Date.now();
+  for (const [i, f] of folders.entries()) {
+    await db.execute(
+      `INSERT INTO run_folders (id, workspace_id, user_id, run_id, folder_id, label, ordinal,
+         created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [uuidv7(now), tenant.workspaceId, tenant.userId, runId, f.folderId, f.label, i, now],
+    );
+  }
+}
+
+export async function listRunFolders(
+  db: SqlDb,
+  tenant: Tenant,
+  runId: string,
+): Promise<RunFolder[]> {
+  const rows = await db.select<{ folder_id: string; label: string }>(
+    `SELECT folder_id, label FROM run_folders WHERE workspace_id = ? AND run_id = ?
+     ORDER BY ordinal`,
+    [tenant.workspaceId, runId],
+  );
+  return rows.map((r) => ({ folderId: r.folder_id, label: r.label }));
 }

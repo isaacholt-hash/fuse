@@ -23,6 +23,9 @@
 - [ ] **2. Pick folders for a chat, and several for a project (WF-02).**
   - The composer gets a folder button, and Project settings lists folders with Add and Remove. Only granted folders are reachable.
   - The tools name paths as `<folder>/<path>` when a chat has more than one folder.
+  - Part 1 done (engine): the Rust file, command and git calls take a folder id. Migration 0041 makes `runs.project_id` optional, adds `runs.kind`, and adds `run_folders`, the folders a run works in and their labels. Old runs got their project's folder.
+  - `src/agent/folders.ts` scopes a run to its folders. One folder works as in M6. With several, paths start with the folder's label, the root lists them, and search covers all of them. Commands and git run in the first folder.
+  - A run takes the chat's folders, then the project's. CLAUDE.md and AGENTS.md are read from each folder's root. Part 2 is the pickers.
 - [ ] **3. Work mode (WF-01).**
   - Off / Code / Work in the composer. Work has its own guide: deliverables, citing which files it used, no git. Tools: list, read, search, write, move, organise, documents and commands.
   - Runs, plan, cost cap, approvals and undo work as in Code.

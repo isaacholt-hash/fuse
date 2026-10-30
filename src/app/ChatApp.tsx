@@ -53,7 +53,9 @@ import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
-import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
+import type { RepoInstruction } from "@/repo/instructions";
+import { instructionsIn } from "@/agent/folders";
+import { listProjectFolders } from "@/storage/folders";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
 import {
   DEFAULT_RUN_CAP_MICRO_USD,
@@ -2217,7 +2219,8 @@ export function ChatApp({
   useEffect(() => {
     if (!repoProjectId || !repoApi) return;
     let live = true;
-    loadRepoInstructions(repoApi, repoProjectId)
+    listProjectFolders(db, tenant, repoProjectId)
+      .then((folders) => instructionsIn(repoApi, folders))
       .then((files) => {
         if (live) setRepoFiles({ projectId: repoProjectId, files });
       })
@@ -2225,7 +2228,7 @@ export function ChatApp({
     return () => {
       live = false;
     };
-  }, [repoProjectId, repoRootNow, repoApi]); // report changes every render, like the effects above
+  }, [db, tenant, repoProjectId, repoRootNow, repoApi]); // report changes every render, like the effects above
   const moveThread = (projectId: string | null) => {
     if (!thread) return;
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);

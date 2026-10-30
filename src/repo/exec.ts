@@ -27,14 +27,14 @@ export interface ExecResult {
 
 export interface ExecApi {
   run(
-    projectId: string,
+    folderId: string,
     command: string,
     opts: { timeoutSecs?: number; signal?: AbortSignal; onOutput?: (soFar: string) => void },
   ): Promise<ExecResult>;
 }
 
 export const tauriExec: ExecApi = {
-  run: (projectId, command, { timeoutSecs, signal, onOutput }) =>
+  run: (folderId, command, { timeoutSecs, signal, onOutput }) =>
     new Promise<ExecResult>((resolve, reject) => {
       let output = "";
       const channel = new Channel<ExecMsg>();
@@ -48,7 +48,7 @@ export const tauriExec: ExecApi = {
         } else reject(new Error(m.message));
       };
       invoke<number>("repo_exec", {
-        projectId,
+        folderId,
         command,
         timeoutSecs: timeoutSecs ?? null,
         onEvent: channel,

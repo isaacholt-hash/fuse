@@ -11,6 +11,7 @@ import type { SqlDb } from "@/storage/sql";
 export const DELETE_ORDER = [
   // Coding runs (M6): changes and steps before their run, runs before their messages.
   "run_changes",
+  "run_folders",
   "run_steps",
   "runs",
   "project_commands",
