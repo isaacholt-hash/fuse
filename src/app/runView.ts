@@ -106,7 +106,12 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   return req.kind === "command"
-    ? { kind: "command", command: req.command, destructive: req.destructive ?? null }
+    ? {
+        kind: "command",
+        command: req.command,
+        destructive: req.destructive ?? null,
+        ...(req.unsandboxed ? { unsandboxed: true } : {}),
+      }
     : {
         kind: "edit",
         change: changeView({

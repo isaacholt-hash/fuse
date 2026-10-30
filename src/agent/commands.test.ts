@@ -132,6 +132,8 @@ test("allowed: it runs in the repo, and the model gets the output and exit code"
       kind: "command",
       command: "pnpm test",
       destructive: null,
+      // This fake can't sandbox, so the request says the command would run unsandboxed (WF-07).
+      unsandboxed: true,
     },
   ]);
   expect(ran).toEqual([{ command: "pnpm test", timeoutSecs: 120 }]);

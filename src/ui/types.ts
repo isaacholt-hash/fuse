@@ -151,6 +151,8 @@ export type ApprovalView =
       command: string;
       /** Why it always asks; such commands can't be always-allowed. */
       destructive: string | null;
+      /** WF-07: no sandbox on this computer: it runs with your full rights. */
+      unsandboxed?: boolean;
     }
   | { kind: "edit"; change: RunChangeView }
   /** WF-06: a reorganisation to allow in full, in part, or not at all. */

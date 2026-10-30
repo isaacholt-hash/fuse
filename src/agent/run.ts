@@ -179,6 +179,8 @@ export type ApprovalAsk =
       command: string;
       /** Why it always asks, when it's destructive; it can't be always-allowed. */
       destructive?: string | null;
+      /** WF-07: this computer can't sandbox it, so it runs with your full rights. */
+      unsandboxed?: boolean;
     }
   | { kind: "edit"; change: FileChange }
   /** CA-05: a commit, branch, push or pull request, in words. `remote`: it leaves this computer. */
@@ -882,7 +884,13 @@ async function runCommand(
   let approval: Approval = "always";
   if (danger || !allowed.includes(command)) {
     await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
-    const answer = await ask(deps, run, { kind: "command", command, destructive: danger }, input);
+    const unsandboxed = (await deps.exec.sandboxKind?.()) !== "bubblewrap";
+    const answer = await ask(
+      deps,
+      run,
+      { kind: "command", command, destructive: danger, ...(unsandboxed ? { unsandboxed } : {}) },
+      input,
+    );
     if (answer === "stopped") return STOPPED;
     if (answer === "no") {
       return {
