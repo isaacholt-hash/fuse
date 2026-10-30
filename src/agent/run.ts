@@ -7,6 +7,7 @@ import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
 import { effectiveInstructions, systemPrompt } from "@/chat/instructions";
 import { PROVIDER_NAMES, type ChatDeps } from "@/chat/sendMessage";
 import { cost } from "@/cost/cost";
+import { egressRefusal, projectPolicy } from "@/context/egress";
 import { inScope, memoryLine } from "@/memory/inject";
 import { ProviderError, userMessage } from "@/providers/errors";
 import type { ChatMessage, NativeTurn, StreamDone, ToolCall, ToolResult } from "@/providers/types";
@@ -323,6 +324,16 @@ async function work(
         "error",
         `${run.model} isn't in the model list any more.`,
       );
+      break;
+    }
+    // SE-13: the project's egress policy, read fresh each turn, before anything is built or sent.
+    const refused = egressRefusal(
+      await projectPolicy(db, tenant, run.projectId),
+      model.provider,
+      "chat",
+    );
+    if (refused) {
+      await setRunStatus(db, tenant, runId, "error", refused);
       break;
     }
     const steps = await listSteps(db, tenant, runId);
@@ -711,6 +722,15 @@ async function writePlan(
   planner: CatalogModel,
   signal?: AbortSignal,
 ): Promise<void> {
+  // SE-13: a planner on a blocked provider (or a Local only project) isn't asked; no plan.
+  if (
+    egressRefusal(
+      await projectPolicy(deps.db, deps.tenant, run.projectId),
+      planner.provider,
+      "chat",
+    )
+  )
+    return;
   const system = (await systemFor(deps, run, [])) ?? "";
   // The run's own guide is swapped for the planning one; instructions, decisions and tasks stay.
   const planSystem = `${PLAN_GUIDE}\n\n${system.replace(/<coding_agent>[\s\S]*?<\/coding_agent>\n*/, "")}`;
@@ -866,6 +886,16 @@ async function summarizeSteps(deps: RunDeps, run: Run, steps: RunStep[]): Promis
   const listed = lines.join("\n");
   const model = deps.summarizer;
   if (!model) return listed;
+  // SE-13: summarizing sends the steps too; a blocked provider gets the plain list instead.
+  if (
+    egressRefusal(
+      await projectPolicy(deps.db, deps.tenant, run.projectId),
+      model.provider,
+      "housekeeping",
+    )
+  ) {
+    return listed;
+  }
   let text = "";
   let done: StreamDone | null = null;
   let failure: ProviderError | null = null;
