@@ -252,7 +252,7 @@ Added 2026-10-30. The first requirements missed that Claude Code and Codex are p
 | CA-08 | Context budget for tools: file reads and command output are capped with a pointer to the rest, older tool results are summarized, and a run can be resumed from its record. Never whole repositories or logs (LL-05). | Must | P1.5 |
 | CA-09 | Same rules as chat: every model call in a run goes through routing, the egress check in Rust and `request_log`. A Local only project runs no cloud step. | Must | P1.5 |
 | CA-10 | Code review: review a diff, branch or pull request and report findings by severity. | Should | P2 |
-| CA-11 | Sandboxed commands: an OS sandbox for commands, no network unless allowed. | Should | P2 |
+| CA-11 | Sandboxed commands: an OS sandbox for commands, no network unless allowed. Brought forward to M8 as WF-07. | Should | P2 |
 | CA-12 | Skills: packaged instructions with files and scripts, called by name; extends the prompt library (CH-12). | Should | P2 |
 | CA-13 | Hooks: your own commands at points in a run (before a tool, after a stop). | Nice | P2 |
 | CA-14 | Subagents and parallel runs, each in its own worktree, with a combined cost cap (AG-09). | Should | P2 |
@@ -261,6 +261,21 @@ Added 2026-10-30. The first requirements missed that Claude Code and Codex are p
 | CA-17 | Plugins: packs of skills, hooks and MCP servers. | Nice | P3 |
 | CA-18 | Entry points outside the app: a `fuse` terminal command and an IDE extension. | Nice | P3 |
 | CA-19 | Security scanning on a schedule (AG-07), with proposed fixes. | Nice | P3 |
+
+## 11c. Work in folders (P2 part 1, M8)
+
+Added 2026-10-30, after looking at Claude's Cowork and ChatGPT's Work on the desktop. The goal is FUSE working on the files in folders you pick: documents, spreadsheets, PDFs and images, not just code. It's built on the M6 coding agent.
+
+| ID | Requirement | Priority | Phase |
+| --- | --- | --- | --- |
+| WF-01 | Work mode: beside Code, a mode for documents, research and finished deliverables in a folder, with its own instructions and tools, and the same approvals, diffs, undo, plan and cost cap. | Must | P2 |
+| WF-02 | Folders per chat and per project: any chat can work in folders you pick; a project can link several, used by all its chats. Granted once, removable; nothing outside is reachable. | Must | P2 |
+| WF-03 | Read Word, Excel and PDF files and images in a folder, within the context ceilings (LL-05). | Must | P2 |
+| WF-04 | Create Word, Excel and PDF files from structured content, with undo that restores the previous bytes. | Must | P2 |
+| WF-05 | Preview what FUSE made or changed in the side panel; open it in its app or show it in the folder. | Should | P2 |
+| WF-06 | Organise as one plan: moves, renames and new folders proposed together, approved in full or in part, undone in one step; never deletes. | Must | P2 |
+| WF-07 | Sandboxed commands (CA-11 brought forward): writes only in the chat's folders, no network unless allowed per chat or folder; Linux and Windows. | Must | P2 |
+| WF-08 | Work benchmark: recorded document, spreadsheet and organising tasks on a fixture folder, on both providers, plus a live run. | Must | P2 |
 
 ## 12. Voice and images (P3, dictation earlier)
 
@@ -469,6 +484,7 @@ Decided 2026-10-30:
 - [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); live continuity benchmark passed 2026-10-30 (100% kept on claude-sonnet-5-5 and gpt-6.1-sol, gate 90%). Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
 - [x] P1.5 part 2, Coding agent (M6, section 11b, added 2026-10-30): built 2026-10-30 (`docs/milestones/M6-coding-agent.md`); live benchmark passed 3 of 3 on both providers (2026-10-30); Isaac skipped the two-week gate (2026-10-30). Tool calling on both providers, a linked repository read through Rust, CLAUDE.md and AGENTS.md, runs with plan, steps, cost cap and summaries, edits with diffs and undo, commands with approval, permission modes and always-allow, git with branch, commit, push and PR, egress on every send path, and the coding benchmark (CA-01 to CA-09)
 - [x] P1.5 part 3, Local and lean (M7, section 16b): built 2026-10-30 (`docs/milestones/M7-local-and-lean.md`). The automated P1.5 gate passes: cost per successful task fell 21% on the routing test set with no quality drop, and a Local only project makes no cloud call. Cost per successful task (LL-07), answers without a model (LL-01), Qwen3 1.7B or 4B built in through llama.cpp in a worker process, with hardware detection and a checked install (LL-02, LL-03), housekeeping local first (LL-04), search by word without a key and token ceilings (LL-05), an exact-match cache (LL-06), shadow checks and `pnpm local:bench` (LL-09), and local-path security (LL-08)
+- [ ] P2 part 1, Work in folders (M8, section 11c, added 2026-10-30): decisions made and plan written (`docs/milestones/M8-work-in-folders.md`); build waits on Isaac's go
 
 **Can wait**
 
