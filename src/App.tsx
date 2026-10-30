@@ -1,3 +1,4 @@
+import { unavailableLocalAdapter } from "@/providers/local/adapter";
 import { useEffect, useState } from "react";
 import type { Catalog, ProviderId } from "@/catalog/catalog";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
@@ -33,6 +34,7 @@ import { tauriHello, type HelloApi } from "@/security/hello";
 const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
   anthropic: createAnthropicAdapter({ fetch: providerFetch("anthropic") }),
   openai: createOpenAIAdapter({ fetch: providerFetch("openai") }),
+  local: unavailableLocalAdapter(),
 };
 const desktopAdapterFor = (p: ProviderId) => desktopAdapters[p];
 const desktopUpdates = defaultUpdateApi();

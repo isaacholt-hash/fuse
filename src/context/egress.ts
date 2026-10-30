@@ -9,7 +9,11 @@ import { getProject, type PrivacyMode, type Project } from "@/storage/projects";
 import type { SqlDb } from "@/storage/sql";
 import { getThread } from "@/storage/threads";
 
-const NAMES: Record<ProviderId, string> = { anthropic: "Anthropic", openai: "OpenAI" };
+const NAMES: Record<ProviderId, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  local: "the local model",
+};
 
 export interface EgressPolicy {
   /** null: a chat outside any project, under the global rules only. */
@@ -56,6 +60,12 @@ export function egressRefusal(
   purpose: EgressPurpose,
 ): string | null {
   const where = policy.projectName ? `The project “${policy.projectName}”` : "Your settings";
+  // LL-04: the local model never leaves this computer, so only Cloud only refuses it.
+  if (provider === "local") {
+    return policy.mode === "cloud_only"
+      ? `${where} is set to Cloud only, so the local model isn't used.`
+      : null;
+  }
   if (policy.mode === "local_only") {
     return `${where} is set to Local only, so nothing is sent to a cloud model. FUSE has no local model yet, so it can't answer here; change the privacy mode in the project's settings to send.`;
   }

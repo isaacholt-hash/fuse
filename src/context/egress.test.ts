@@ -34,6 +34,13 @@ test("refusals say why, per purpose", () => {
   expect(egressRefusal(blocked, "openai", "chat")).toBeNull();
   const local = policyFor({ ...project, privacyMode: "local_only" }, []);
   expect(egressRefusal(local, "openai", "housekeeping")).toMatch(/Local only/);
+  // LL-04: the local model stays on this computer: allowed in Local only, refused in Cloud only.
+  expect(egressRefusal(local, "local", "housekeeping")).toBeNull();
+  expect(egressRefusal(local, "local", "chat")).toBeNull();
+  expect(egressRefusal(policyFor(project, []), "local", "chat")).toBeNull();
+  const cloud = policyFor({ ...project, privacyMode: "cloud_only" }, []);
+  expect(egressRefusal(cloud, "local", "housekeeping")).toMatch(/Cloud only/);
+  expect(egressRefusal(cloud, "openai", "housekeeping")).toBeNull();
   const noSearch = policyFor({ ...project, allowEmbeddings: false }, []);
   expect(egressRefusal(noSearch, "openai", "chat")).toBeNull();
   expect(egressRefusal(noSearch, "openai", "embeddings")).toMatch(/embedded/);

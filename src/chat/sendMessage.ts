@@ -42,6 +42,7 @@ export { historyFor } from "@/context/gather";
 export const PROVIDER_NAMES: Record<ProviderId, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
+  local: "Local model",
 };
 
 export interface ChatDeps {

@@ -2,6 +2,7 @@
 // M6 step 12: no repository content reaches a blocked provider (SE-13, CA-09). One test per
 // send path of a run: its turns, the plan, and summaries. The Rust transport checks the same
 // scope again (src-tauri/src/egress.rs); these are the app's own checks.
+import { unavailableLocalAdapter } from "@/providers/local/adapter";
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import type { ChatOptions, ProviderAdapter, StreamEvent, ToolCall } from "@/providers/types";
 import type { ProviderId } from "@/catalog/catalog";
@@ -100,7 +101,10 @@ function providers() {
     };
   };
   const adapters = { anthropic: make("anthropic"), openai: make("openai") };
-  return { sent, adapterFor: (p: ProviderId) => adapters[p] };
+  return {
+    sent,
+    adapterFor: (p: ProviderId) => (p === "local" ? unavailableLocalAdapter() : adapters[p]),
+  };
 }
 
 async function setup(

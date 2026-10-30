@@ -16,6 +16,8 @@ export const MODEL_CHECK_DAYS = 7;
 
 /** Where a hand-added model's prices are checked. */
 export const PRICING_PAGE: Record<ProviderId, string> = {
+  // Local models are free to run; this is where their files come from (data/local-models.json).
+  local: "https://huggingface.co/Qwen",
   anthropic: "https://platform.claude.com/docs/en/about-claude/pricing",
   openai: "https://developers.openai.com/api/docs/pricing",
 };

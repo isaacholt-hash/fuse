@@ -28,10 +28,11 @@
   - The answer shows "answered without a model · $0" and is logged with provider `deterministic` (migration 0036).
   - Pure TypeScript with no shell: input is capped at 100,000 characters, nesting at 50 levels, and a rule that takes over 100 ms is ignored. Only Auto sends with nothing attached are eligible. Each project can turn it off under Privacy.
   - A 29-question suite passes with no model call, plus 14 questions it must leave to a model.
-- [ ] **3. A local provider in the catalog (LL-02, LL-08).**
-  - `ProviderId` gains `local`. `data/local-models.json` lists the two profiles: file size, peak memory, context limit, licence, source URL, SHA-256 and `verified_on`.
-  - Price is zero. Egress treats local as never leaving the computer.
-  - A scripted local adapter is added for tests.
+- [x] **3. A local provider in the catalog (LL-02, LL-08).**
+  - `ProviderId` gains `local`; `CloudProviderId` covers the providers with keys. `data/local-models.json` lists the two profiles with pinned revision, SHA-256, size, peak memory estimate, context limit and licence, verified from Hugging Face on 2026-10-30.
+  - Both are official Qwen builds under Apache-2.0. Qwen3 4B is Q4_K_M (2.50 GB). Qwen ships Qwen3 1.7B only as Q8_0 (1.83 GB), so that profile is 8-bit, not 4-bit.
+  - Local models are priced at zero. Egress allows local in Normal and Local only projects and refuses it in Cloud only ones.
+  - The local adapter fails with a clear reason until a model is installed. `scriptedLocal` stands in for it in tests.
 - [ ] **4. Runtime in Rust (LL-02).**
   - `local.rs` and a worker mode of the FUSE executable. Load, stream, cancel, time limit, unload and reload. One request at a time, a bounded context, CPU threads capped.
   - No network code on this path.

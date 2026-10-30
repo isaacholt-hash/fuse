@@ -301,3 +301,11 @@ This is the main change from M0, where history is plain text.
 Sources:
 - Anthropic: [define tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools), [handle tool calls](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls), [overview and pricing](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview), [parallel tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use), [strict tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use), [tool use with prompt caching](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching), [streaming](https://platform.claude.com/docs/en/build-with-claude/streaming), [thinking](https://platform.claude.com/docs/en/build-with-claude/thinking)
 - OpenAI: [function calling](https://developers.openai.com/api/docs/guides/function-calling), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), [streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events)
+
+## Local model (M7, LL-02)
+
+`ProviderId` includes `local`: a model file on this computer, run by FUSE's own worker (from step 4). It never makes a network request, needs no key and is priced at zero. `CLOUD_PROVIDERS` and `CloudProviderId` cover the two that need keys.
+
+- **Profiles** are data, in `data/local-models.json` (parsed by `src/local/models.ts`). Each names one GGUF file at a pinned Hugging Face revision with its SHA-256, size, licence and an estimate of peak memory, listed largest first. Verified 2026-10-30 from the Hugging Face API: both are official Qwen builds under Apache-2.0. Qwen3 4B is Q4_K_M (2.50 GB). Qwen publishes Qwen3 1.7B only as Q8_0 (1.83 GB), so that profile is 8-bit rather than the 4-bit in the plan. Both run with a 4,096-token context.
+- **Egress:** the local model is allowed in Normal and Local only projects and refused in Cloud only ones.
+- **Adapter:** `src/providers/local/adapter.ts`. Until a model is installed, every request fails with `ProviderError("unavailable")` before any text, so callers fall back to the cloud. Tests use `scriptedLocal` (`src/providers/local/scripted.ts`).

@@ -1,10 +1,15 @@
+import type { ProviderId } from "@/catalog/catalog";
 import { Boxes, CircleAlert, LoaderCircle, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type Provider = "anthropic" | "openai";
-const PROVIDER_NAME: Record<Provider, string> = { anthropic: "Anthropic", openai: "OpenAI" };
+type Provider = ProviderId;
+const PROVIDER_NAME: Record<Provider, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  local: "Local model",
+};
 
 export interface ModelCheckView {
   /** e.g. "Oct 28" */

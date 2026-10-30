@@ -9,7 +9,8 @@ export type ProviderErrorKind =
   | "not_found"
   | "stream" // error after the stream started
   | "aborted"
-  | "blocked"; // the egress policy (SE-13) refused it before anything was sent
+  | "blocked" // the egress policy (SE-13) refused it before anything was sent
+  | "unavailable"; // the local model (LL-02) isn't installed, or can't run right now
 
 const RETRYABLE: ReadonlySet<ProviderErrorKind> = new Set([
   "rate_limit",
@@ -77,6 +78,7 @@ export function userMessage(e: ProviderError, providerName: string): string {
     case "aborted":
       return "Stopped.";
     case "blocked":
+    case "unavailable":
       return e.message;
   }
 }
