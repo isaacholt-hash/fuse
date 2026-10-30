@@ -42,7 +42,11 @@ export type RunStep =
       call: ToolCall;
       output: string;
       isError: boolean;
+      /** How it was allowed (AG-04 audit): needed nobody, you, always-allowed, or declined. */
+      approval: Approval | null;
     };
+
+export type Approval = "auto" | "you" | "always" | "denied";
 
 interface RunRow {
   id: string;
@@ -73,6 +77,7 @@ interface StepRow {
   input: string | null;
   output: string | null;
   is_error: number;
+  approval: Approval | null;
   cost_micro_usd: number;
 }
 
@@ -115,6 +120,7 @@ const toStep = (r: StepRow): RunStep =>
         },
         output: r.output ?? "",
         isError: r.is_error === 1,
+        approval: r.approval,
       };
 
 export async function createRun(
@@ -205,7 +211,7 @@ export async function raiseRunCap(
 export async function listSteps(db: SqlDb, tenant: Tenant, runId: string): Promise<RunStep[]> {
   const rows = await db.select<StepRow>(
     `SELECT id, seq, kind, text, native, request_id, tool_name, tool_call_id, input, output,
-       is_error, cost_micro_usd
+       is_error, approval, cost_micro_usd
      FROM run_steps WHERE workspace_id = ? AND run_id = ? ORDER BY seq`,
     [tenant.workspaceId, runId],
   );
@@ -257,14 +263,14 @@ export async function addToolStep(
   db: SqlDb,
   tenant: Tenant,
   runId: string,
-  step: { call: ToolCall; output: string; isError: boolean },
+  step: { call: ToolCall; output: string; isError: boolean; approval?: Approval },
 ): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, tool_name, tool_call_id,
-       input, output, is_error, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?)`,
+       input, output, is_error, approval, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -276,6 +282,7 @@ export async function addToolStep(
       JSON.stringify(step.call.input),
       step.output,
       step.isError ? 1 : 0,
+      step.approval ?? null,
       now,
       now,
     ],
@@ -396,4 +403,57 @@ export async function markUndone(db: SqlDb, tenant: Tenant, id: string): Promise
     "UPDATE run_changes SET status = 'undone', updated_at = ? WHERE workspace_id = ? AND id = ?",
     [Date.now(), tenant.workspaceId, id],
   );
+}
+
+/** One tool call for the audit log (AG-04): what ran, how it was allowed, and its run. */
+export interface AuditEntry {
+  id: string;
+  at: number;
+  project: string;
+  model: string;
+  tool: string;
+  input: Record<string, unknown>;
+  output: string;
+  isError: boolean;
+  approval: Approval | null;
+  runCostMicroUsd: number;
+}
+
+export async function recentToolCalls(
+  db: SqlDb,
+  tenant: Tenant,
+  limit = 200,
+): Promise<AuditEntry[]> {
+  const rows = await db.select<{
+    id: string;
+    created_at: number;
+    project: string;
+    provider: string;
+    model: string;
+    tool_name: string;
+    input: string | null;
+    output: string | null;
+    is_error: number;
+    approval: Approval | null;
+    spent_micro_usd: number;
+  }>(
+    `SELECT s.id, s.created_at, p.name AS project, r.provider, r.model, s.tool_name, s.input,
+       s.output, s.is_error, s.approval, r.spent_micro_usd
+     FROM run_steps s JOIN runs r ON r.id = s.run_id JOIN projects p ON p.id = r.project_id
+     WHERE s.workspace_id = ? AND s.kind = 'tool'
+     ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+    [tenant.workspaceId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    at: r.created_at,
+    project: r.project,
+    model: `${r.provider}/${r.model}`,
+    tool: r.tool_name,
+    input: r.input ? (JSON.parse(r.input) as Record<string, unknown>) : {},
+    output: r.output ?? "",
+    isError: r.is_error === 1,
+    approval: r.approval,
+    runCostMicroUsd: r.spent_micro_usd,
+  }));
 }

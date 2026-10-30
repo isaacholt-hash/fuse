@@ -43,9 +43,18 @@ import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
-import { DEFAULT_RUN_CAP_MICRO_USD, undoChange, undoRun, type RunProgress } from "@/agent/run";
-import { runsForThread } from "@/storage/runs";
-import { runView } from "./runView";
+import {
+  DEFAULT_RUN_CAP_MICRO_USD,
+  undoChange,
+  undoRun,
+  type ApprovalAnswer,
+  type ApprovalRequest,
+  type RunProgress,
+} from "@/agent/run";
+import type { RunMode } from "@/storage/runs";
+import { recentToolCalls, runsForThread, type AuditEntry } from "@/storage/runs";
+import { AgentAuditSection } from "@/ui/AgentAudit";
+import { approvalView, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -142,6 +151,9 @@ import {
   updateProject,
   setProjectPrivacy,
   setProjectRepo,
+  setProjectRunMode,
+  disallowCommand,
+  listAllowedCommands,
   type Project,
 } from "@/storage/projects";
 import { listRecentRequests, logRequest, medianFirstTokenMs } from "@/storage/requestLog";
@@ -774,10 +786,14 @@ export function ChatApp({
   const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
   // CA-03: commands waiting for your OK, by run.
   const [approvals, setApprovals] = useState<
-    Map<string, { command: string; answer: (yes: boolean) => void }>
+    Map<string, { request: ApprovalRequest; answer: (a: ApprovalAnswer) => void }>
   >(new Map());
-  // CA-04: what a run may do, per chat ("draft" before it exists); read-only by default.
-  const [codeMode, setCodeMode] = useState<Record<string, "plan" | "auto_edit">>({});
+  // CA-04: what a run may do, per chat ("draft" before it exists); the project's mode otherwise.
+  const [codeMode, setCodeMode] = useState<Record<string, RunMode>>({});
+  // AG-04: recent coding-run tool calls, for Settings.
+  const [audit, setAudit] = useState<AuditEntry[]>([]);
+  // CA-04: commands the edited project always allows, for its settings.
+  const [allowedCommands, setAllowedCommands] = useState<string[]>([]);
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
@@ -1406,7 +1422,11 @@ export function ChatApp({
             projectId: runIn,
             task: job.text,
             model: routed.model,
-            mode: codeMode[threadId] ?? codeMode.draft ?? "plan",
+            mode:
+              codeMode[threadId] ??
+              codeMode.draft ??
+              projects.find((p) => p.id === runIn)?.runMode ??
+              "ask",
             signal: controller.signal,
             onProgress: (answerId, p) => {
               setThreadRuns((m) => new Map(m).set(answerId, p));
@@ -1950,29 +1970,20 @@ export function ChatApp({
     ...deps,
     repo,
     ...(execApi ? { exec: execApi } : {}),
-    approve: (req: { runId: string; command: string; signal?: AbortSignal }) =>
-      new Promise<boolean>((resolve) => {
-        req.signal?.addEventListener("abort", () => {
+    approve: (req: ApprovalRequest) =>
+      new Promise<ApprovalAnswer>((resolve) => {
+        const done = (a: ApprovalAnswer) => {
           setApprovals((all) => {
             const next = new Map(all);
             next.delete(req.runId);
             return next;
           });
-          resolve(false);
+          resolve(a);
+        };
+        req.signal?.addEventListener("abort", () => {
+          done("no");
         });
-        setApprovals((m) =>
-          new Map(m).set(req.runId, {
-            command: req.command,
-            answer: (yes: boolean) => {
-              setApprovals((all) => {
-                const next = new Map(all);
-                next.delete(req.runId);
-                return next;
-              });
-              resolve(yes);
-            },
-          }),
-        );
+        setApprovals((m) => new Map(m).set(req.runId, { request: req, answer: done }));
       }),
   });
   const codeKey = selectedId ?? "draft";
@@ -2023,6 +2034,10 @@ export function ChatApp({
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
   };
   const editedProject = projects.find((p) => p.id === projectDialog);
+  useEffect(() => {
+    if (!projectDialog) return;
+    listAllowedCommands(db, tenant, projectDialog).then(setAllowedCommands, report);
+  }, [db, tenant, projectDialog]);
   /**
    * A Claude project: found or made by name; its instructions fill an empty project's, and its
    * documents become knowledge files (searched when used, PM-09) unless one of that name is there.
@@ -2261,7 +2276,7 @@ export function ChatApp({
       if (r) {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
         const waiting = approvals.get(r.run.id);
-        if (waiting) v.run.approval = { command: waiting.command };
+        if (waiting) v.run.approval = approvalView(waiting.request);
       }
       const fromFiles = threadFileSources.get(v.id);
       if (fromFiles?.length) v.fileSources = fromFiles;
@@ -2594,6 +2609,10 @@ export function ChatApp({
     }
     if (fresh.length > 0) setAlerts((a) => [...a, ...fresh]);
   };
+  useEffect(() => {
+    if (view !== "settings") return;
+    recentToolCalls(db, tenant).then(setAudit, report);
+  }, [view, db, tenant]);
   useEffect(() => {
     if (view !== "settings") return;
     budgetStatesFor(budgets, null, true).then(setBudgetStates, report);
@@ -3336,6 +3355,7 @@ export function ChatApp({
                   />
                 </ImportSection>
               }
+              agent={<AgentAuditSection rows={audit.map(auditRow)} />}
               privacy={
                 <PrivacySection
                   providers={(["anthropic", "openai"] as const).map((id) => ({
@@ -3946,8 +3966,8 @@ export function ChatApp({
                       openSource(chunkId).catch(report);
                     }}
                     onContinueRun={continueRunHere}
-                    onApprove={(runId, yes) => {
-                      approvals.get(runId)?.answer(yes);
+                    onApprove={(runId, answer) => {
+                      approvals.get(runId)?.answer(answer);
                     }}
                     onUndoChange={(changeId) => {
                       if (!repoApi || !selectedId) return;
@@ -4074,8 +4094,8 @@ export function ChatApp({
                     {...(codeAvailable
                       ? {
                           code: codeActive,
-                          codeMode: codeMode[codeKey] ?? "plan",
-                          onCodeMode: (m: "plan" | "auto_edit") => {
+                          codeMode: codeMode[codeKey] ?? activeProject?.runMode ?? "ask",
+                          onCodeMode: (m: RunMode) => {
                             setCodeMode((all) => ({ ...all, [codeKey]: m }));
                           },
                           onToggleCode: () => {
@@ -4226,6 +4246,19 @@ export function ChatApp({
                       repo: {
                         root: editedProject.repoRoot,
                         readSecrets: editedProject.repoReadSecrets,
+                        runMode: editedProject.runMode,
+                        onRunMode: (mode: RunMode) => {
+                          setProjectRunMode(db, tenant, editedProject.id, mode)
+                            .then(refreshProjects)
+                            .catch(report);
+                        },
+                        commands: allowedCommands,
+                        onDisallow: (command: string) => {
+                          disallowCommand(db, tenant, editedProject.id, command)
+                            .then(() => listAllowedCommands(db, tenant, editedProject.id))
+                            .then(setAllowedCommands)
+                            .catch(report);
+                        },
                         note: repoNote,
                         onLink: () => {
                           repoApi

@@ -338,3 +338,51 @@ export async function runTool(
     return { output: `Error: ${message}`, isError: true, folder: null };
   }
 }
+
+/**
+ * What an edit tool would change, without changing anything: for Ask mode's diff before you
+ * allow it (CA-04). Same rules as running it; an edit that would fail says why here.
+ */
+export async function previewChange(
+  repo: RepoApi,
+  projectId: string,
+  call: ToolCall,
+): Promise<{ change: FileChange } | { error: string }> {
+  const input = call.input;
+  const path = str(input.path);
+  const current = () => readWhole(repo, projectId, path).catch(() => null);
+  try {
+    switch (call.name) {
+      case "edit_file": {
+        const before = await readWhole(repo, projectId, path);
+        const oldText = str(input.old_text);
+        const n = count(before, oldText);
+        if (n !== 1) {
+          return {
+            error: n
+              ? `Error: old_text appears ${String(n)} times in ${path}; include more lines so it's unique.`
+              : `Error: old_text isn't in ${path}. Read the file and copy it exactly.`,
+          };
+        }
+        const after = before.replace(oldText, () => str(input.new_text));
+        return { change: { path, fromPath: null, before, after } };
+      }
+      case "write_file":
+        return {
+          change: { path, fromPath: null, before: await current(), after: str(input.content) },
+        };
+      case "delete_file": {
+        const before = await readWhole(repo, projectId, path);
+        return { change: { path, fromPath: null, before, after: null } };
+      }
+      case "move_file":
+        return {
+          change: { path: str(input.to), fromPath: str(input.from), before: null, after: null },
+        };
+      default:
+        return { error: `Error: there's no tool called ${call.name}.` };
+    }
+  } catch (e) {
+    return { error: `Error: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}

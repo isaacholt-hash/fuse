@@ -235,6 +235,7 @@ export function SettingsView({
   appLock,
   importer,
   privacy,
+  agent,
   theme,
   onTheme,
   textSize,
@@ -276,6 +277,8 @@ export function SettingsView({
   data?: ReactNode;
   /** Settings → Privacy (SE-15): what's sent where, and providers allowed everywhere. */
   privacy?: ReactNode;
+  /** Settings → Coding agent activity (AG-04). */
+  agent?: ReactNode;
   /** Settings → App lock (SE-03). */
   appLock?: ReactNode;
   /** Settings → Import (PL-08). */
@@ -343,6 +346,7 @@ export function SettingsView({
           </p>
         </div>
         {privacy}
+        {agent}
         {instructions}
         {memory}
         {budgets}

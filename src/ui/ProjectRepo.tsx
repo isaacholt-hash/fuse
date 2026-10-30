@@ -9,7 +9,19 @@ export interface ProjectRepoProps {
   onLink: () => void;
   onUnlink: () => void;
   onReadSecrets: (allow: boolean) => void;
+  /** CA-04: the mode its coding runs start in. */
+  runMode?: "plan" | "ask" | "auto_edit";
+  onRunMode?: (mode: "plan" | "ask" | "auto_edit") => void;
+  /** Commands its runs may run without asking. */
+  commands?: string[];
+  onDisallow?: (command: string) => void;
 }
+
+const MODES = {
+  plan: "Read-only: list, read and search",
+  ask: "Ask first: each edit and command waits for you",
+  auto_edit: "Can edit files: edits go ahead, commands ask",
+} as const;
 
 const buttonClass = "h-7 rounded-lg border border-input px-2 text-xs hover:bg-muted";
 
@@ -24,6 +36,10 @@ export function ProjectRepoSection({
   onLink,
   onUnlink,
   onReadSecrets,
+  runMode = "ask",
+  onRunMode,
+  commands = [],
+  onDisallow,
 }: ProjectRepoProps) {
   return (
     <section aria-label="Project repository">
@@ -59,6 +75,54 @@ export function ProjectRepoSection({
             />
             Let the agent read files that look like secrets (.env, keys)
           </label>
+          {onRunMode && (
+            <label className="flex items-center gap-2">
+              <span className="shrink-0">Coding runs start as</span>
+              <select
+                aria-label="Coding runs start as"
+                className="h-7 min-w-0 flex-1 rounded-lg border border-input bg-background px-2 text-xs"
+                value={runMode}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  onRunMode(v === "plan" ? "plan" : v === "auto_edit" ? "auto_edit" : "ask");
+                }}
+              >
+                {(Object.keys(MODES) as (keyof typeof MODES)[]).map((m) => (
+                  <option key={m} value={m}>
+                    {MODES[m]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {commands.length > 0 && (
+            <div>
+              <p className="mb-1 text-[10px] text-muted-foreground">
+                Always allowed here (destructive commands still ask):
+              </p>
+              <ul className="space-y-1">
+                {commands.map((c) => (
+                  <li key={c} className="flex items-center gap-2">
+                    <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-0.5">
+                      {c}
+                    </code>
+                    {onDisallow && (
+                      <button
+                        type="button"
+                        className={buttonClass}
+                        aria-label={`Stop always allowing ${c}`}
+                        onClick={() => {
+                          onDisallow(c);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-1">

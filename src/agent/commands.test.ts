@@ -127,7 +127,12 @@ test("allowed: it runs in the repo, and the model gets the output and exit code"
     },
   });
   expect(asked).toEqual([
-    { runId: expect.any(String) as string, kind: "command", command: "pnpm test" },
+    {
+      runId: expect.any(String) as string,
+      kind: "command",
+      command: "pnpm test",
+      destructive: null,
+    },
   ]);
   expect(ran).toEqual([{ command: "pnpm test", timeoutSecs: 120 }]);
   expect(tool).toMatchObject({

@@ -14,7 +14,7 @@ import type { RepoApi } from "@/repo/api";
 import { loadRepoInstructions } from "@/repo/instructions";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories } from "@/storage/memories";
-import { getProject } from "@/storage/projects";
+import { allowCommand, getProject, listAllowedCommands } from "@/storage/projects";
 import { logRequest } from "@/storage/requestLog";
 import {
   addChange,
@@ -28,20 +28,24 @@ import {
   markUndone,
   raiseRunCap,
   setRunStatus,
+  type Approval,
   type Run,
   type RunChange,
   type RunMode,
   type RunStep,
 } from "@/storage/runs";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
+import { destructiveReason } from "./destructive";
 import {
   COMMAND_TOOL,
   commandOutput,
   EDIT_TOOL_NAMES,
   EDIT_TOOLS,
+  previewChange,
   READ_ONLY_TOOLS,
   readWhole,
   runTool,
+  type FileChange,
 } from "./tools";
 import type { ExecApi } from "@/repo/exec";
 
@@ -66,7 +70,9 @@ export function agentGuide(mode: RunMode): string {
       : [
           "You can list, read and search files, change them with edit_file, write_file, delete_file and move_file, and run commands (tests, builds) with run_command. The user approves each command and may decline; if they do, carry on without it or say what they should run.",
           "Make focused changes that do what was asked and nothing more. Read a file before editing it. Keep the repository's style.",
-          "End with what you changed (each file and why) and anything the user should check. The user sees every change as a diff and can undo it.",
+          mode === "ask"
+            ? "The user approves each change and each command before it happens, and may decline; if they do, take that into account. End with what you changed (each file and why) and anything they should check."
+            : "End with what you changed (each file and why) and anything the user should check. The user sees every change as a diff and can undo it.",
         ];
   return ["<coding_agent>", GUIDE_START, ...lines, GUIDE_DATA, "</coding_agent>"].join("\n");
 }
@@ -86,17 +92,28 @@ export interface RunDeps extends ChatDeps {
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
    */
-  approve?: (request: ApprovalRequest) => Promise<boolean>;
+  approve?: (request: ApprovalRequest) => Promise<boolean | ApprovalAnswer>;
 }
 
 /** What a run wants to do that needs your say-so. */
-export interface ApprovalRequest {
+/** The two things a run can ask about. */
+export type ApprovalAsk =
+  | {
+      kind: "command";
+      command: string;
+      /** Why it always asks, when it's destructive; it can't be always-allowed. */
+      destructive?: string | null;
+    }
+  | { kind: "edit"; change: FileChange };
+
+export type ApprovalRequest = ApprovalAsk & {
   runId: string;
-  kind: "command";
-  command: string;
   /** Stop: the question goes away and counts as no. */
   signal?: AbortSignal;
-}
+};
+
+/** "always": yes, and don't ask again for this exact command in this project. */
+export type ApprovalAnswer = "yes" | "always" | "no";
 
 export interface RunProgress {
   run: Run;
@@ -343,21 +360,14 @@ async function work(
     }
     // Every call gets a result, in call order (docs/providers.md, M6).
     for (const call of calls) {
-      // A read-only run never changes files or runs commands, whatever the model asks for.
-      const out =
-        run.mode === "plan" && (EDIT_TOOL_NAMES.has(call.name) || call.name === COMMAND_TOOL.name)
-          ? { output: "Error: this run is read-only.", isError: true, folder: null }
-          : call.name === COMMAND_TOOL.name
-            ? await runCommand(deps, run, call, input)
-            : await runTool(deps.repo, run.projectId, call);
+      const out = await handleCall(deps, run, call, input);
       const stepId = await addToolStep(db, tenant, runId, {
         call,
         output: out.output,
         isError: out.isError,
+        ...(out.approval ? { approval: out.approval } : {}),
       });
-      if ("change" in out && out.change) {
-        await addChange(db, tenant, { runId, stepId, ...out.change });
-      }
+      if (out.change) await addChange(db, tenant, { runId, stepId, ...out.change });
     }
     await progress(deps, runId, input);
   }
@@ -367,49 +377,118 @@ async function work(
   return finished;
 }
 
-/** CA-03: asks first, then runs the command, streaming its output to the run's progress. */
+interface CallOutcome {
+  output: string;
+  isError: boolean;
+  approval?: Approval;
+  change?: FileChange | undefined;
+}
+
+/**
+ * Asks the user, unless the run is stopped first. "always" (commands only) also adds the command
+ * to the project's always-allowed list.
+ */
+async function ask(
+  deps: RunDeps,
+  run: Run,
+  req: ApprovalAsk,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<ApprovalAnswer | "stopped"> {
+  if (!deps.approve) return "no";
+  const stopped = new Promise<"stopped">((resolve) => {
+    if (input.signal?.aborted) resolve("stopped");
+    input.signal?.addEventListener("abort", () => {
+      resolve("stopped");
+    });
+  });
+  const answer = await Promise.race([
+    deps
+      .approve({ ...req, runId: run.id, ...(input.signal ? { signal: input.signal } : {}) })
+      .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a)),
+    stopped,
+  ]);
+  return input.signal?.aborted ? "stopped" : answer;
+}
+
+const STOPPED: CallOutcome = { output: "Error: the run was stopped.", isError: true };
+
+/**
+ * One tool call under the run's permission mode (CA-04): reads always go ahead; edits go ahead
+ * in Auto-edit and ask in Ask; commands always ask unless always-allowed, and destructive ones
+ * ask every time; a read-only run never edits or runs anything.
+ */
+async function handleCall(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  const isEdit = EDIT_TOOL_NAMES.has(call.name);
+  const isCommand = call.name === COMMAND_TOOL.name;
+  if (run.mode === "plan" && (isEdit || isCommand)) {
+    return { output: "Error: this run is read-only.", isError: true };
+  }
+  if (isCommand) return runCommand(deps, run, call, input);
+  if (isEdit && run.mode === "ask") {
+    const preview = await previewChange(deps.repo, run.projectId, call);
+    if ("error" in preview) return { output: preview.error, isError: true };
+    if (!deps.approve) {
+      return {
+        output: "Error: edits need the user's approval, and there's no one to ask here.",
+        isError: true,
+      };
+    }
+    await progress(deps, run.id, input, `Waiting for your OK to change ${preview.change.path}`);
+    const answer = await ask(deps, run, { kind: "edit", change: preview.change }, input);
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no") {
+      return {
+        output: `Error: the user declined this change to ${preview.change.path}.`,
+        isError: true,
+        approval: "denied",
+      };
+    }
+    const out = await runTool(deps.repo, run.projectId, call);
+    return { output: out.output, isError: out.isError, approval: "you", change: out.change };
+  }
+  const out = await runTool(deps.repo, run.projectId, call);
+  return { output: out.output, isError: out.isError, approval: "auto", change: out.change };
+}
+
+/** CA-03: asks first (unless always-allowed), then runs it, streaming output to the progress. */
 async function runCommand(
   deps: RunDeps,
   run: Run,
   call: ToolCall,
   input: Pick<RunInput, "signal" | "onProgress">,
-): Promise<{ output: string; isError: boolean; folder: null }> {
+): Promise<CallOutcome> {
   const command = typeof call.input.command === "string" ? call.input.command.trim() : "";
   const asked = typeof call.input.timeout_seconds === "number" ? call.input.timeout_seconds : 120;
   const timeoutSecs = Math.min(Math.max(Math.round(asked), 1), 600);
-  if (!command) return { output: "Error: give a command to run.", isError: true, folder: null };
+  if (!command) return { output: "Error: give a command to run.", isError: true };
   if (!deps.exec || !deps.approve) {
     return {
       output: "Error: commands need the user's approval, and there's no one to ask here.",
       isError: true,
-      folder: null,
     };
   }
-  await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
-  const stopped = new Promise<boolean>((resolve) => {
-    if (input.signal?.aborted) resolve(false);
-    input.signal?.addEventListener("abort", () => {
-      resolve(false);
-    });
-  });
-  const yes = await Promise.race([
-    deps.approve({
-      runId: run.id,
-      kind: "command",
-      command,
-      ...(input.signal ? { signal: input.signal } : {}),
-    }),
-    stopped,
-  ]);
-  if (input.signal?.aborted) {
-    return { output: "Error: the run was stopped.", isError: true, folder: null };
-  }
-  if (!yes) {
-    return {
-      output: `Error: the user declined to run \`${command}\`.`,
-      isError: true,
-      folder: null,
-    };
+  const danger = destructiveReason(command);
+  const allowed = await listAllowedCommands(deps.db, deps.tenant, run.projectId);
+  let approval: Approval = "always";
+  if (danger || !allowed.includes(command)) {
+    await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
+    const answer = await ask(deps, run, { kind: "command", command, destructive: danger }, input);
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no") {
+      return {
+        output: `Error: the user declined to run \`${command}\`.`,
+        isError: true,
+        approval: "denied",
+      };
+    }
+    if (answer === "always" && !danger)
+      await allowCommand(deps.db, deps.tenant, run.projectId, command);
+    approval = "you";
   }
   try {
     const result = await deps.exec.run(run.projectId, command, {
@@ -422,13 +501,13 @@ async function runCommand(
     return {
       output: commandOutput(command, result, timeoutSecs),
       isError: result.timedOut || result.stopped || result.exitCode !== 0,
-      folder: null,
+      approval,
     };
   } catch (e) {
     return {
       output: `Error: ${e instanceof Error ? e.message : String(e)}`,
       isError: true,
-      folder: null,
+      approval,
     };
   }
 }
