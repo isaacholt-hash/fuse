@@ -434,13 +434,13 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [x] Rollback: an automatic encrypted backup before every migration, built first; no reverse migrations
 - [x] Egress is checked in the Rust transport as well as the router
 
-**Open decisions for P1.5 part 2 (Coding agent), with the recommendation**
+**Decided 2026-10-30 for P1.5 part 2 (Coding agent)** (all as recommended)
 
-- [ ] Where tools run: file and command tools in Rust, behind the same transport as provider calls, with the path check there
-- [ ] First version: one repository per project, desktop only, commands on the host with Ask as the default mode
-- [ ] Tool calling: through each provider adapter's native tool interface (both providers at once), not a text protocol
-- [ ] Git hosting: GitHub through the `gh` command already on the machine; no GitHub token stored by FUSE in this phase
-- [ ] Gate: two weeks of your edit, run, review and commit loop in FUSE (section 3)
+- [x] Where tools run: file and command tools in Rust, behind the same transport as provider calls, with the path check there
+- [x] First version: one repository per project, desktop only, commands on the host with Ask as the default mode
+- [x] Tool calling: through each provider adapter's native tool interface (both providers at once), not a text protocol
+- [x] Git hosting: GitHub through the `gh` command already on the machine; no GitHub token stored by FUSE in this phase
+- [x] Gate: two weeks of your edit, run, review and commit loop in FUSE (section 3)
 
 **Open decisions for P1.5 part 3 (Local and lean), with the recommendation**
 
