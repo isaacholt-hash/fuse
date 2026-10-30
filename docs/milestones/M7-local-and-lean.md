@@ -78,9 +78,10 @@
   - Chat answers are only for the first question of a chat. They're never used with files, web search, memories, incognito, or a time-sensitive, personal or high-stakes question (word lists), or for answers that were cut off, failed over, cited the web or held artifacts.
   - Regenerate, retry and "stronger model" always ask the model. A hit is logged with provider `cache` at $0, counts as a cloud call avoided, and shows "from cache · <model> · $0".
   - Delete everything now clears every table. It had missed the M6 coding-run tables (`runs`, `run_steps`, `run_changes`, `project_commands`), `local_shadow` and the cache. A test now fails if a new table is left out.
-- [ ] **12. Local-path security (LL-08).**
-  - Tests: offline use, Local only, cross-project isolation, malformed output, out of memory, and the worker crashing mid-answer.
-  - The threat model gets a section for local models and their files.
+- [x] **12. Local-path security (LL-08).**
+  - Rust (`local.rs`), with a stand-in worker: a crash mid-answer, a SIGKILL like the OOM killer (then a fresh worker on the next request), unreadable output, a hang past the time limit, and no environment. `model_files.rs`: URL pinning, a bad checksum, a full disk, resume.
+  - TypeScript (`src/local/security.test.ts`): offline, where housekeeping runs locally with the cloud unreachable and no cloud call made. Also Local only with no key, where it never falls back to the cloud. A junk second opinion keeps the heuristics. Oversized input is cut to the local ceiling with a marker. One project's file chunks never answer another's search.
+  - Threat model: trust boundary 6 (the worker) and section 6 (local models and the cache), including their gaps: files aren't signed, and the worker and the network aren't sandboxed by the OS.
 - [ ] **13. P1.5 gate test.**
   - Automated: on the routing test set, with recorded cloud responses and the scripted local adapter, cost per successful task is below the step 1 baseline with no quality drop, and a Local only project makes no cloud call.
   - Plus `pnpm local:bench` for the live numbers on Isaac's PC.

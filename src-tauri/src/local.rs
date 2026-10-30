@@ -446,6 +446,53 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn a_worker_killed_like_the_out_of_memory_killer_is_an_error_and_restarts() {
+        // SIGKILL mid-answer is what Linux's OOM killer does.
+        let w = script(&format!(
+            "{LOADS}echo '{{\"ev\":\"text\",\"id\":\"r1\",\"text\":\"a\"}}'; kill -9 $$"
+        ));
+        let local = Local::default();
+        let mut got = Vec::new();
+        let r = local
+            .generate(
+                &w,
+                Path::new("/m/a.gguf"),
+                "s".into(),
+                vec![],
+                16,
+                DEFAULT_TIMEOUT,
+                |m| got.push(m),
+            )
+            .await;
+        assert_eq!(r, Err(STOPPED.into()));
+        assert!(local.loaded().await.is_none(), "the dead worker is dropped");
+        // The next request starts a fresh worker.
+        let ok = script(&format!(
+            "{LOADS}echo '{{\"ev\":\"done\",\"id\":\"r2\",\"input_tokens\":1,\"output_tokens\":0,\"stop\":\"stop\"}}'; read x"
+        ));
+        let again = local
+            .generate(
+                &ok,
+                Path::new("/m/a.gguf"),
+                "s".into(),
+                vec![],
+                16,
+                DEFAULT_TIMEOUT,
+                |_| {},
+            )
+            .await;
+        assert_eq!(again, Ok(()));
+    }
+
+    #[tokio::test]
+    async fn unreadable_output_from_the_worker_is_an_error_not_a_crash() {
+        let w = script(&format!("{LOADS}echo 'not json at all'; read x"));
+        let (got, r) = run(&w, DEFAULT_TIMEOUT).await;
+        assert!(got.is_empty());
+        assert_eq!(r, Err(STOPPED.into()));
+    }
+
+    #[tokio::test]
     async fn a_load_error_is_returned() {
         let w = script(
             r#"read l; echo '{"ev":"error","id":null,"message":"Couldn'"'"'t load the local model: bad file"}'; read x"#,
