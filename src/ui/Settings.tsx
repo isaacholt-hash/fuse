@@ -220,6 +220,7 @@ export function KeyCard({
 export function SettingsView({
   keys,
   version,
+  onCheckUpdates,
   onRecoveryKey,
   instructions,
   memory,
@@ -252,6 +253,8 @@ export function SettingsView({
   keys: KeyView[];
   /** The installed app version; null while it loads. */
   version: string | null;
+  /** F1: "Check for updates" next to the version; resolves to what to say. */
+  onCheckUpdates?: () => Promise<string>;
   /** The database recovery key, shown only when asked for. */
   onRecoveryKey: () => Promise<string>;
   /** Settings → Custom instructions; rendered once loaded. */
@@ -424,15 +427,53 @@ export function SettingsView({
           </span>
           <span className="text-muted-foreground">↗</span>
         </button>
-        {version && (
-          <p className="mt-7 border-t pt-5 font-mono text-[10px] text-muted-foreground">
-            {version === "dev"
-              ? "FUSE development build · auto-update off"
-              : `FUSE ${version} · updates install automatically`}
-          </p>
-        )}
+        {version && <VersionLine version={version} onCheck={onCheckUpdates} />}
       </div>
     </main>
+  );
+}
+
+/** The installed version, and F1's "Check for updates" with what it found. */
+function VersionLine({
+  version,
+  onCheck,
+}: {
+  version: string;
+  onCheck?: (() => Promise<string>) | undefined;
+}) {
+  const [note, setNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-5 font-mono text-[10px] text-muted-foreground">
+      <span>
+        {version === "dev"
+          ? "FUSE development build · auto-update off"
+          : `FUSE ${version} · updates install automatically`}
+      </span>
+      {onCheck && version !== "dev" && (
+        <button
+          className="underline underline-offset-2 hover:text-foreground disabled:opacity-60"
+          disabled={busy}
+          onClick={() => {
+            setBusy(true);
+            setNote(null);
+            onCheck().then(
+              (n) => {
+                setNote(n);
+                setBusy(false);
+              },
+              (e: unknown) => {
+                setNote(String(e));
+                setBusy(false);
+              },
+            );
+          }}
+        >
+          {busy ? "Checking…" : "Check for updates"}
+        </button>
+      )}
+      {note && <span role="status">{note}</span>}
+    </div>
   );
 }
 
