@@ -1,5 +1,5 @@
 import type { Run, RunStep } from "@/storage/runs";
-import { changeView, runView, toolLabel } from "./runView";
+import { changeView, groupBatches, runView, toolLabel } from "./runView";
 
 const run: Run = {
   id: "r1",
@@ -107,6 +107,7 @@ test("changes: labels, diff stats and undone", () => {
     status: "applied" as const,
     beforeSha: null,
     afterSha: null,
+    batchId: null,
   };
   expect(
     changeView({
@@ -146,4 +147,29 @@ test("changes: labels, diff stats and undone", () => {
     lines: [],
     undone: true,
   });
+});
+
+test("WF-06: a plan's moves show as one row that lists them", () => {
+  const c = (id: string, from: string, to: string, batchId: string | null) => ({
+    id,
+    runId: "r",
+    stepId: null,
+    path: to,
+    fromPath: from,
+    before: null,
+    after: null,
+    beforeSha: null,
+    afterSha: null,
+    batchId,
+    status: "applied" as const,
+    createdAt: 1,
+  });
+  const views = groupBatches([
+    c("1", "a.jpg", "P/a.jpg", "b1"),
+    c("2", "b.jpg", "P/b.jpg", "b1"),
+    c("3", "x", "y", null),
+  ]);
+  expect(views.map((v) => v.label)).toEqual(["Organised 2 files", "Moved x → y"]);
+  expect(views[0]?.id).toBe("1");
+  expect(views[0]?.lines.map((l) => l.text)).toEqual(["a.jpg → P/a.jpg", "b.jpg → P/b.jpg"]);
 });

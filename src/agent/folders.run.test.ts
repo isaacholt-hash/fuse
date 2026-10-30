@@ -432,3 +432,121 @@ test("WF-04: a Work run writes a Word file; undo removes it, or puts the old one
   await undoChange(deps, changes[0]?.id ?? "");
   expect(disk.has("summary.docx")).toBe(false);
 });
+
+test("WF-06: an organise plan asks once, runs the moves allowed, and comes back with one Undo", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const desk = await grantFolder(db, t, "/home/me/Desktop");
+  await linkThreadFolder(db, t, thread.id, desk.id);
+  const disk = new Map<string, string>([
+    ["IMG_1.jpg", "a"],
+    ["IMG_2.jpg", "b"],
+    ["taxes.pdf", "c"],
+  ]);
+  const moved: string[] = [];
+  const repo: RepoApi = {
+    ...filesRepo({}),
+    move: (_id, from, to) => {
+      const v = disk.get(from);
+      if (v === undefined) return Promise.reject(new Error(`${from}: no such file.`));
+      if (disk.has(to)) return Promise.reject(new Error(`${to} already exists.`));
+      disk.delete(from);
+      disk.set(to, v);
+      moved.push(`${from}>${to}`);
+      return Promise.resolve({ path: to, before: null });
+    },
+  };
+  const plan = (moves: { from: string; to: string }[]) => ({
+    id: `p${String(moves.length)}`,
+    name: "organise",
+    input: { moves, reason: "Photos together, papers together" },
+  });
+  const go = async (moves: { from: string; to: string }[], answer: unknown) => {
+    const turns = [{ text: "", calls: [plan(moves)] }, { text: "Tidied." }];
+    let n = 0;
+    const asked: unknown[] = [];
+    const adapter: ProviderAdapter = {
+      provider: "anthropic",
+      listModels: () => Promise.resolve([]),
+      async *streamChat(_h, m): AsyncGenerator<StreamEvent> {
+        const turn = turns[n++];
+        await Promise.resolve();
+        yield { type: "text", text: turn?.text ?? "" };
+        for (const call of turn?.calls ?? []) yield { type: "tool_call", call };
+        yield {
+          type: "done",
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            webSearchCalls: 0,
+          },
+          usageReported: true,
+          stopReason: turn?.calls?.length ? "tool_use" : "end_turn",
+          providerRequestId: null,
+          attempts: 1,
+          turn: { provider: "anthropic", model: m, items: [{ n }] },
+        };
+      },
+    };
+    const deps: RunDeps = {
+      db,
+      tenant: t,
+      catalog,
+      repo,
+      adapterFor: () => adapter,
+      approve: (req) => {
+        asked.push(req);
+        return Promise.resolve(answer as never);
+      },
+    };
+    // Even in "Can edit files", a plan asks.
+    const r = await startRun(deps, {
+      projectId: null,
+      threadId: thread.id,
+      messageId: null,
+      task: "Tidy my desktop",
+      model,
+      mode: "auto_edit",
+      kind: "work",
+    });
+    return { r, asked, deps };
+  };
+  const first = await go(
+    [
+      { from: "IMG_1.jpg", to: "Photos/IMG_1.jpg" },
+      { from: "IMG_2.jpg", to: "Photos/IMG_2.jpg" },
+      { from: "taxes.pdf", to: "Papers/taxes.pdf" },
+    ],
+    { keep: [0, 1] },
+  );
+  expect(first.asked).toHaveLength(1);
+  expect(first.asked[0]).toMatchObject({
+    kind: "organise",
+    moves: [{ from: "IMG_1.jpg" }, {}, {}],
+  });
+  expect([...disk.keys()].sort()).toEqual(["Photos/IMG_1.jpg", "Photos/IMG_2.jpg", "taxes.pdf"]);
+  const changes = await listChanges(db, t, first.r.id);
+  expect(changes).toHaveLength(2);
+  expect(new Set(changes.map((c) => c.batchId)).size).toBe(1);
+  // One Undo, on either move, puts the whole plan back.
+  await undoChange(first.deps, changes[1]?.id ?? "");
+  expect([...disk.keys()].sort()).toEqual(["IMG_1.jpg", "IMG_2.jpg", "taxes.pdf"]);
+  expect((await listChanges(db, t, first.r.id)).every((c) => c.status === "undone")).toBe(true);
+
+  // A move that fails half way: the ones before it are put back; nothing stays moved.
+  moved.length = 0;
+  const broken = await go(
+    [
+      { from: "IMG_1.jpg", to: "Photos/IMG_1.jpg" },
+      { from: "missing.jpg", to: "Photos/missing.jpg" },
+    ],
+    "yes",
+  );
+  const steps = await listSteps(db, t, broken.r.id);
+  const step = steps.find((s) => s.kind === "tool");
+  expect(step?.kind === "tool" ? step.output : "").toMatch(/nothing was moved/);
+  expect([...disk.keys()].sort()).toEqual(["IMG_1.jpg", "IMG_2.jpg", "taxes.pdf"]);
+});

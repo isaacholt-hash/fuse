@@ -3,6 +3,7 @@
 // a step with its cost; the run pauses at its cost cap and asks before going on. Every call goes
 // through the adapters (so the Rust egress check applies) and is logged as purpose "agent".
 // A tool loop stays on one model (docs/providers.md, M6); routing inside runs is step 11.
+import { uuidv7 } from "@/storage/ids";
 import { foldersFor, labelFolders, scopedExec, scopedGit, scopedRepo } from "./folders";
 import type { Folder } from "@/storage/folders";
 import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
@@ -60,7 +61,10 @@ import {
   GIT_WRITE_TOOLS,
   gitArgs,
   gitSummary,
+  ORGANISE_TOOL,
   READ_DOCUMENT_TOOL,
+  checkMoves,
+  type Move,
   WRITE_DOCUMENT_TOOL,
   READ_ONLY_TOOLS,
   readWhole,
@@ -95,7 +99,7 @@ function workGuide(mode: RunMode): string {
           "End with a clear answer: what you found, and for a deliverable the user wants, exactly what you'd write and where. Don't claim to have changed anything.",
         ]
       : [
-          "You can list, read and search files, create and change text files with write_file and edit_file, make Word, Excel and PDF files with write_document, rename and move them with move_file, delete them with delete_file, and run commands with run_command. The user approves each command and may decline.",
+          "You can list, read and search files, create and change text files with write_file and edit_file, make Word, Excel and PDF files with write_document, rename and move one file with move_file or reorganise many with organise (one plan the user approves), delete them with delete_file, and run commands with run_command. The user approves each command and may decline.",
           "Do what was asked and nothing more. Prefer writing a new file over overwriting one the user made; never delete a file unless asked to.",
           mode === "ask"
             ? "The user approves each change before it happens, and may decline; if they do, take that into account. End with what you made or changed (each file and why)."
@@ -134,7 +138,14 @@ export const toolsFor = (mode: RunMode, kind: RunKind = "code") =>
   kind === "work"
     ? mode === "plan"
       ? [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL]
-      : [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL, ...EDIT_TOOLS, WRITE_DOCUMENT_TOOL, COMMAND_TOOL]
+      : [
+          ...READ_ONLY_TOOLS,
+          READ_DOCUMENT_TOOL,
+          ...EDIT_TOOLS,
+          WRITE_DOCUMENT_TOOL,
+          ORGANISE_TOOL,
+          COMMAND_TOOL,
+        ]
     : mode === "plan"
       ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
       : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];
@@ -171,7 +182,9 @@ export type ApprovalAsk =
     }
   | { kind: "edit"; change: FileChange }
   /** CA-05: a commit, branch, push or pull request, in words. `remote`: it leaves this computer. */
-  | { kind: "git"; summary: string; remote: boolean };
+  | { kind: "git"; summary: string; remote: boolean }
+  /** WF-06: a whole reorganisation; the answer may keep only some moves. */
+  | { kind: "organise"; moves: Move[]; reason: string | null };
 
 export type ApprovalRequest = ApprovalAsk & {
   runId: string;
@@ -179,8 +192,11 @@ export type ApprovalRequest = ApprovalAsk & {
   signal?: AbortSignal;
 };
 
-/** "always": yes, and don't ask again for this exact command in this project. */
-export type ApprovalAnswer = "yes" | "always" | "no";
+/**
+ * "always": yes, and don't ask again for this exact command in this project. `keep`: an organise
+ * plan with only these moves (by index).
+ */
+export type ApprovalAnswer = "yes" | "always" | "no" | { keep: number[] };
 
 export interface RunProgress {
   run: Run;
@@ -518,6 +534,10 @@ async function work(
         ...(kept.images.length ? { images: kept.images } : {}),
       });
       if (out.change) await recordChange(deps, runId, stepId, out.change);
+      if (out.batch?.length) {
+        const batchId = uuidv7(Date.now());
+        for (const c of out.batch) await recordChange(deps, runId, stepId, c, batchId);
+      }
     }
     await progress(deps, runId, input);
   }
@@ -532,6 +552,8 @@ interface CallOutcome {
   isError: boolean;
   approval?: Approval;
   change?: FileChange | undefined;
+  /** WF-06: an organise plan's moves, recorded as one batch. */
+  batch?: FileChange[];
   images?: { mime: string; bytes: Uint8Array }[];
 }
 
@@ -587,6 +609,10 @@ async function handleCall(
     return { output: "Error: this run is read-only.", isError: true };
   }
   if (isCommand) return runCommand(deps, run, call, input);
+  if (call.name === ORGANISE_TOOL.name) {
+    if (run.mode === "plan") return { output: "Error: this run is read-only.", isError: true };
+    return runOrganise(deps, run, call, input);
+  }
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && run.mode === "ask") {
     const preview = await previewChange(deps.repo, HERE, call);
@@ -660,6 +686,7 @@ async function recordChange(
   runId: string,
   stepId: string,
   change: FileChange,
+  batchId: string | null = null,
 ): Promise<void> {
   const { binary, ...text } = change;
   let beforeSha: string | null = null;
@@ -668,7 +695,7 @@ async function recordChange(
     afterSha = (await deps.files.put(binary.after)).sha256;
     if (binary.before) beforeSha = (await deps.files.put(binary.before)).sha256;
   }
-  await addChange(deps.db, deps.tenant, { runId, stepId, ...text, beforeSha, afterSha });
+  await addChange(deps.db, deps.tenant, { runId, stepId, ...text, beforeSha, afterSha, batchId });
 }
 
 /** SHA-256 hex of bytes, as the attachment store names them. */
@@ -703,6 +730,76 @@ async function withImages(deps: RunDeps, history: ChatMessage[], steps: RunStep[
       }
     }
   }
+}
+
+/**
+ * WF-06: an organise plan always asks, whatever the mode: it moves many files at once. The
+ * allowed moves run in order; if one fails, the ones already made are put back.
+ */
+async function runOrganise(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  const checked = checkMoves(call.input);
+  if ("error" in checked) return { output: checked.error, isError: true };
+  if (!deps.approve) {
+    return {
+      output: "Error: a plan needs the user's approval, and there's no one to ask here.",
+      isError: true,
+    };
+  }
+  const reason = typeof call.input.reason === "string" ? call.input.reason : null;
+  await progress(
+    deps,
+    run.id,
+    input,
+    `Waiting for your OK on a plan to move ${String(checked.moves.length)} files`,
+  );
+  const answer = await ask(deps, run, { kind: "organise", moves: checked.moves, reason }, input);
+  if (answer === "stopped") return STOPPED;
+  if (answer === "no") {
+    return {
+      output: "Error: the user declined the whole plan.",
+      isError: true,
+      approval: "denied",
+    };
+  }
+  const kept =
+    typeof answer === "object"
+      ? checked.moves.filter((_, i) => answer.keep.includes(i))
+      : checked.moves;
+  if (kept.length === 0) {
+    return {
+      output: "Error: the user declined every move in the plan.",
+      isError: true,
+      approval: "denied",
+    };
+  }
+  const done: Move[] = [];
+  for (const m of kept) {
+    try {
+      await deps.repo.move(HERE, m.from, m.to);
+      done.push(m);
+    } catch (e) {
+      // Put back what moved, newest first, so the folder is as it was.
+      for (const d of [...done].reverse())
+        await deps.repo.move(HERE, d.to, d.from).catch(() => undefined);
+      return {
+        output: `Error: ${m.from} → ${m.to} failed (${e instanceof Error ? e.message : String(e)}), so nothing was moved.`,
+        isError: true,
+        approval: "you",
+      };
+    }
+  }
+  const skipped = checked.moves.length - kept.length;
+  return {
+    output: `Moved ${String(done.length)} files${skipped ? ` (the user left out ${String(skipped)})` : ""}:\n${done.map((m) => `${m.from} → ${m.to}`).join("\n")}`,
+    isError: false,
+    approval: "you",
+    batch: done.map((m) => ({ path: m.to, fromPath: m.from, before: null, after: null })),
+  };
 }
 
 /** CA-05: git tools. Looking goes ahead; branch and commit are like edits; push and PR ask. */
@@ -1007,6 +1104,18 @@ export async function undoChange(base: RunDeps, changeId: string): Promise<void>
   const { db, tenant } = base;
   const c = await getChange(db, tenant, changeId);
   if (!c || c.status === "undone") return;
+  if (c.batchId) {
+    // WF-06: a plan comes back as a whole, newest move first.
+    const batch = (await listChanges(db, tenant, c.runId)).filter(
+      (x) => x.batchId === c.batchId && x.status === "applied",
+    );
+    const { repo } = await forRun(base, c.runId);
+    for (const x of batch.reverse()) {
+      if (x.fromPath) await repo.move(HERE, x.path, x.fromPath);
+      await markUndone(db, tenant, x.id);
+    }
+    return;
+  }
   const run = await getRun(db, tenant, c.runId);
   if (!run) throw new Error("Run not found");
   const { repo } = await forRun(base, run.id);

@@ -216,3 +216,5 @@ It also seeds the default workspace and user with fixed UUIDs. Before each migra
 **Step images (M8 step 4, `0042_step_images.sql`, WF-03).** `run_steps.images` is a JSON list of `{sha256, mime}` for the images a tool step showed the model. The bytes are in the attachment store (`files/<sha256>`, encrypted), and each later turn of the run loads them and sends them with that step's result again.
 
 **Document changes (M8 step 5, `0043_change_bytes.sql`, WF-04).** When a run writes a Word, Excel or PDF file, its `run_changes` row keeps readable text of the old and new document in `before` and `after`, for the diff. `before_sha` and `after_sha` name the bytes in the attachment store. Undo checks that the file still hashes to `after_sha`, then writes `before_sha`'s bytes back, or removes the file when `before_sha` is null.
+
+**Organise plans (M8 step 7, `0044_change_batch.sql`, WF-06).** Each move in an approved plan is its own `run_changes` row (`from_path` to `path`), and all of them share a `batch_id`. Undoing any one of them undoes the whole batch, newest move first.

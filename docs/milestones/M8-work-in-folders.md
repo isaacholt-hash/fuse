@@ -57,9 +57,11 @@
   - Each file a run made or changed (not deleted or undone) has **Preview** in the run card. It opens in the side panel from its folder: Word and Excel as formatted text and tables, PDFs as pages, images as images, anything else as text.
   - **Open in its app** and **Show in folder** use Rust `repo_open`, which resolves the path inside the granted folder first. Only documents, images and plain text open in their app, never a program, script or web page; Show in folder works for any file.
   - Fixed: written Excel files now have a default cell style, which openpyxl asked for. Checked with `uvx` and python-docx, openpyxl and pypdf: Word, Excel and PDF files from step 5 open with their headings, lists, tables, numbers and formulas.
-- [ ] **7. Organise as one plan (WF-06).**
-  - An `organise` tool proposes moves, renames and new folders together. You see the whole plan as a tree before and after, then Allow all, untick some, or Deny. It runs as one change with one Undo.
-  - Nothing is deleted by an organise plan.
+- [x] **7. Organise as one plan (WF-06).**
+  - Work runs have an `organise` tool: a list of moves and renames, with new folders made as needed, and one line on the idea behind it. It's checked before anything moves: no move onto itself, no two moves to one place, and nothing landing where another file is moving from. At most 500 moves.
+  - It always asks, even in "Can edit files". The card lists every move with a box, all ticked, and the folders they go into, with Allow all, Allow N ticked, or Deny. Nothing is deleted.
+  - The allowed moves run in order. If one fails, the ones already made are put back and nothing stays moved.
+  - Migration 0044 adds `run_changes.batch_id`. The run card shows the plan as one row, "Organised N files", listing the moves, with one Undo that puts the whole plan back.
 - [ ] **8. Sandbox on Linux (WF-07, CA-11).**
   - Commands run under bubblewrap. The system is read-only, the chat's folders are writable, and there's a private temporary folder and no network (`--unshare-net`) unless allowed.
   - Without bubblewrap, a command asks with a plain warning that it will run unsandboxed.
