@@ -16,16 +16,16 @@ const hw = (over: Partial<Hardware> = {}): Hardware => ({
 const pick = (over: Partial<Hardware> = {}) => pickProfile(hw(over), localModels.profiles);
 
 test("the largest model that fits in 40% of RAM", () => {
-  // 4B needs ~3.4 GB: fits from ~8.5 GB of RAM; 1.7B (~2.6 GB) from ~6.5 GB.
+  // 4B needs ~4.9 GB (measured): fits from ~12.3 GB of RAM; 1.7B (~2.5 GB) from ~6.3 GB.
   expect(pick().profile?.id).toBe("qwen3-4b");
   expect(pick({ totalMemoryBytes: 14 * GB }).profile?.id).toBe("qwen3-4b");
   expect(pick({ totalMemoryBytes: 8 * GB }).profile?.id).toBe("qwen3-1.7b");
   expect(pick({ totalMemoryBytes: 8 * GB }).reason).toMatch(
-    /Qwen3 4B \(local\) would need 3\.4 GB/,
+    /Qwen3 4B \(local\) would need 4\.9 GB/,
   );
   const small = pick({ totalMemoryBytes: 4 * GB });
   expect(small.profile).toBeNull();
-  expect(small.reason).toMatch(/needs about 2\.6 GB/);
+  expect(small.reason).toMatch(/needs about 2\.5 GB/);
 });
 
 test("no AVX2 or not x86-64: none, and why", () => {
