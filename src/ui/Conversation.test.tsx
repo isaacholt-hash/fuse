@@ -8,6 +8,8 @@ test("LL-01: an answer from a fixed rule says no model was asked, at $0", () => 
   render(
     <Tooltip.Provider>
       <Messages
+        startedAt={0}
+        onRetry={() => undefined}
         modelName="Auto"
         messages={[
           { id: "q", role: "user", content: "convert 5 km to miles", status: "complete" },
