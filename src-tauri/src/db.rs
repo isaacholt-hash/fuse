@@ -230,6 +230,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "response_cache",
         sql: include_str!("../migrations/0039_response_cache.sql"),
     },
+    MigrationFile {
+        version: 40,
+        description: "folders",
+        sql: include_str!("../migrations/0040_folders.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -1039,6 +1044,69 @@ mod tests {
                 "backed up before migrating"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn linked_repositories_become_project_folders_in_0040() {
+        let dir = temp_dir("folders40");
+        let store = MemoryStore::default();
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(39).run(&pool).await.unwrap();
+        // Two projects sharing one folder, one with its own, one with none, one deleted.
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, workspace_id, user_id, name, repo_root, repo_read_sensitive,
+                                   created_at, updated_at)
+               SELECT 'p1', workspace_id, id, 'A', '/code/app', 1, 1, 1 FROM users LIMIT 1;
+             INSERT INTO projects (id, workspace_id, user_id, name, repo_root, created_at, updated_at)
+               SELECT 'p2', workspace_id, id, 'B', '/code/app', 2, 2 FROM users LIMIT 1;
+             INSERT INTO projects (id, workspace_id, user_id, name, repo_root, created_at, updated_at)
+               SELECT 'p3', workspace_id, id, 'C', '/docs', 3, 3 FROM users LIMIT 1;
+             INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
+               SELECT 'p4', workspace_id, id, 'D', 4, 4 FROM users LIMIT 1;
+             INSERT INTO projects (id, workspace_id, user_id, name, repo_root, created_at, updated_at,
+                                   deleted_at)
+               SELECT 'p5', workspace_id, id, 'E', '/gone', 5, 5, 5 FROM users LIMIT 1;",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), "39").unwrap();
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let folders = select(
+            &pool,
+            "SELECT path, read_sensitive FROM folders ORDER BY path",
+            &[],
+        )
+        .await
+        .unwrap();
+        let got: Vec<String> = folders
+            .iter()
+            .map(|r| format!("{} {}", r["path"].as_str().unwrap(), r["read_sensitive"]))
+            .collect();
+        assert_eq!(got, vec!["/code/app 1", "/docs 0"]);
+        let links = select(
+            &pool,
+            "SELECT pf.project_id, f.path FROM project_folders pf JOIN folders f ON f.id = pf.folder_id
+             ORDER BY pf.project_id",
+            &[],
+        )
+        .await
+        .unwrap();
+        let got: Vec<String> = links
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} {}",
+                    r["project_id"].as_str().unwrap(),
+                    r["path"].as_str().unwrap()
+                )
+            })
+            .collect();
+        assert_eq!(got, vec!["p1 /code/app", "p2 /code/app", "p3 /docs"]);
+        pool.close().await;
     }
 
     #[tokio::test]

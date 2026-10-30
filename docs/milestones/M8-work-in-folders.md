@@ -16,9 +16,10 @@
 ## Steps (one PR each, in order)
 
 - [x] **0. M8 plan.** This file, requirements §11c (WF-01 to WF-08), and CLAUDE.md pointed here.
-- [ ] **1. Folders as their own records (WF-02).**
-  - `folders` (path, name, read-secrets) with `thread_folders` and `project_folders` (many each). The existing `projects.repo_root` moves to `project_folders`, proven on the upgrade harness first.
-  - The Rust file commands take a folder id instead of a project. They keep the M6 path rules (no `..`, symlinks resolved inside the root, `.git` untouched, ignore rules, secret files refused).
+- [x] **1. Folders as their own records (WF-02).**
+  - Migration 0040: `folders` (path, read-secrets; one row per path), `project_folders` and `thread_folders`. Every project's `repo_root` became a folder linked to it; projects sharing a path share one folder, and deleted projects are skipped. Proven by an upgrade test from 0039. `projects.repo_root` is no longer read.
+  - Rust's `project_root` reads the project's first linked folder. `src/storage/folders.ts` grants folders and links them to projects and chats, and the M6 setter is now backed by it. Delete everything covers the three tables.
+  - No behaviour change yet. The commands take a folder id in step 2.
 - [ ] **2. Pick folders for a chat, and several for a project (WF-02).**
   - The composer gets a folder button, and Project settings lists folders with Add and Remove. Only granted folders are reachable.
   - The tools name paths as `<folder>/<path>` when a chat has more than one folder.

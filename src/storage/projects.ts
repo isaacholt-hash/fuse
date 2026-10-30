@@ -1,4 +1,5 @@
 import type { ProviderId } from "@/catalog/catalog";
+import { grantFolder, linkProjectFolder, listProjectFolders, unlinkProjectFolder } from "./folders";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import type { SqlDb } from "./sql";
@@ -66,8 +67,15 @@ const toProject = (r: ProjectRow): Project => ({
   updatedAt: r.updated_at,
 });
 
-const COLUMNS =
-  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, run_mode, answer_without_model, created_at, updated_at";
+/** WF-02: the project's first linked folder stands in for its M6 repository. */
+const FIRST_FOLDER = (col: "path" | "read_sensitive") =>
+  `(SELECT f.${col} FROM project_folders pf JOIN folders f ON f.id = pf.folder_id
+    WHERE pf.project_id = projects.id ORDER BY pf.created_at, pf.id LIMIT 1)`;
+
+const COLUMNS = `id, name, instructions, default_provider, default_model, default_tier, privacy_mode,
+  allow_embeddings, ${FIRST_FOLDER("path")} AS repo_root,
+  COALESCE(${FIRST_FOLDER("read_sensitive")}, 0) AS repo_read_sensitive, run_mode,
+  answer_without_model, created_at, updated_at`;
 
 /** SE-13: a project's privacy mode and whether it may be embedded. */
 export async function setProjectPrivacy(
@@ -84,8 +92,9 @@ export async function setProjectPrivacy(
 }
 
 /**
- * CA-01: link a folder (already resolved by Rust's `repo_check`), or unlink with null. Unlinking
- * also turns secret reading back off.
+ * CA-01, WF-02: make `root` (already resolved by Rust's `repo_check`) the project's linked
+ * folder, or unlink it with null. The folder stays granted; unlinking turns secret reading off.
+ * Several folders per project come in M8 step 2; until then this keeps one.
  */
 export async function setProjectRepo(
   db: SqlDb,
@@ -93,11 +102,21 @@ export async function setProjectRepo(
   id: string,
   repo: { root: string | null; readSecrets: boolean },
 ): Promise<void> {
-  await db.execute(
-    `UPDATE projects SET repo_root = ?, repo_read_sensitive = ?, updated_at = ?
-     WHERE workspace_id = ? AND id = ?`,
-    [repo.root, repo.root && repo.readSecrets ? 1 : 0, Date.now(), tenant.workspaceId, id],
-  );
+  const current = await listProjectFolders(db, tenant, id);
+  for (const f of current) {
+    if (f.path !== repo.root) await unlinkProjectFolder(db, tenant, id, f.id);
+  }
+  if (repo.root) {
+    const folder = await grantFolder(db, tenant, repo.root, repo.readSecrets);
+    await linkProjectFolder(db, tenant, id, folder.id);
+  } else {
+    for (const f of current) await grantFolder(db, tenant, f.path, false);
+  }
+  await db.execute("UPDATE projects SET updated_at = ? WHERE workspace_id = ? AND id = ?", [
+    Date.now(),
+    tenant.workspaceId,
+    id,
+  ]);
 }
 
 /** CA-04: the mode the project's coding runs start in. */
