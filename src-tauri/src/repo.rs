@@ -37,6 +37,9 @@ pub struct Entry {
     pub dir: bool,
     pub size: u64,
     pub secret: bool,
+    /// Milliseconds since the epoch, when the file system says (FK-07 change checks).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified: Option<u64>,
 }
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -400,8 +403,12 @@ pub fn list(root: &Path, rel: &str, recursive: bool) -> Result<Vec<Entry>, Strin
         out.push(Entry {
             path: rel_string(&root, e.path()),
             dir: e.file_type().is_some_and(|t| t.is_dir()),
-            size: meta.map(|m| m.len()).unwrap_or(0),
+            size: meta.as_ref().map(|m| m.len()).unwrap_or(0),
             secret: is_secret(&e.file_name().to_string_lossy()),
+            modified: meta
+                .and_then(|m| m.modified().ok())
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .and_then(|d| u64::try_from(d.as_millis()).ok()),
         });
         if out.len() >= MAX_LIST {
             break;

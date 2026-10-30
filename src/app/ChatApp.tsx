@@ -268,6 +268,7 @@ import {
   removeProjectFile,
   type ProjectFile,
 } from "@/storage/projectFiles";
+import { syncFolderKnowledge } from "@/knowledge/folderSync";
 import { ensureIndexed } from "@/knowledge/retrieve";
 import { prepareDocument } from "@/files/documents";
 import { addFile } from "@/storage/files";
@@ -2426,6 +2427,61 @@ export function ChatApp({
     }
     return listProjectFiles(db, tenant, projectId);
   };
+  /** FK-07: the name of a folder by id, from any project's folders. */
+  const folderLabel = (folderId: string) => {
+    const f = Object.values(projectFolderMap)
+      .flat()
+      .find((x) => x.id === folderId);
+    return f ? folderName(f.path) : "its folder";
+  };
+  /**
+   * FK-07: brings a project's folder documents into its knowledge and indexes what changed. A
+   * full pass hashes every document; a quick one reads only those with a new size or time.
+   */
+  const folderSyncing = useRef(new Set<string>());
+  const syncFolders = async (projectId: string, full: boolean) => {
+    if (!repoApi || folderSyncing.current.has(projectId)) return;
+    folderSyncing.current.add(projectId);
+    try {
+      const r = await syncFolderKnowledge(
+        { db, tenant, repo: repoApi, files: filesApi },
+        projectId,
+        full,
+      );
+      if (r.added + r.updated + r.removed > 0 || full) {
+        const files = await indexKnowledge(projectId).catch(() =>
+          listProjectFiles(db, tenant, projectId),
+        );
+        setKnowledge((k) => (k?.projectId === projectId ? { ...k, files } : k));
+      }
+    } finally {
+      folderSyncing.current.delete(projectId);
+    }
+  };
+  const syncFoldersRef = useRef(syncFolders);
+  syncFoldersRef.current = syncFolders;
+  // FK-07: every project's folders checked by hash at start, then by size and time each minute
+  // while FUSE runs (no file watcher: this works the same on every platform and drive).
+  useEffect(() => {
+    if (!repoApi) return;
+    const pass = (full: boolean) =>
+      listProjects(db, tenant)
+        .then(async (ps) => {
+          for (const p of ps) {
+            if ((await listProjectFolders(db, tenant, p.id)).length > 0) {
+              await syncFoldersRef.current(p.id, full);
+            }
+          }
+        })
+        .catch(() => {
+          // A failed pass is tried again on the next tick.
+        });
+    void pass(true);
+    const timer = setInterval(() => void pass(false), 60_000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [db, tenant, repoApi]);
   const addKnowledge = (projectId: string, list: File[]) => {
     setKnowledge((k) => (k ? { ...k, busy: true, error: null } : k));
     void (async () => {
@@ -2477,6 +2533,7 @@ export function ChatApp({
             : "Not indexed",
       wholeMicro: Math.round((tokens * priceToMicro(model.price.input)) / 1_000_000),
       maySend: f.maySend,
+      ...(f.folderId ? { folder: folderLabel(f.folderId) } : {}),
     };
   });
   const saveProject = (form: ProjectForm) => {
@@ -4745,6 +4802,7 @@ export function ChatApp({
                               );
                               await loadProjectFolders(editedProject.id);
                               await refreshProjects();
+                              await syncFolders(editedProject.id, true);
                             })
                             .catch((e: unknown) => {
                               setRepoNote(e instanceof Error ? e.message : String(e));
@@ -4755,6 +4813,7 @@ export function ChatApp({
                           unlinkProjectFolder(db, tenant, editedProject.id, folderId)
                             .then(() => loadProjectFolders(editedProject.id))
                             .then(refreshProjects)
+                            .then(() => syncFolders(editedProject.id, true))
                             .catch(report);
                         },
                         onReadSecrets: (folderId: string, allow: boolean) => {
