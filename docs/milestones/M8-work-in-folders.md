@@ -112,6 +112,14 @@
     - sort the messy folder in one organise plan, with no loose files left and the same files kept
   - `pnpm test` runs them on both providers through the real adapters with scripted turns and no API calls (`src/agent/work.benchmark.test.ts`). The checks read the made files back with FUSE's own Word and Excel readers.
   - Isaac runs `pnpm work:live` with his keys. A provider passes with 2 of the 3 tasks.
+  - **Live result (2026-10-30, Isaac on HULK):** both providers passed all 3 tasks, for $0.091 in all.
+
+    | Model | summarise-to-docx | xlsx-from-csvs | organise-messy | Cost |
+    | --- | --- | --- | --- | --- |
+    | anthropic/claude-sonnet-5-5 | pass, 4 turns | pass, 3 turns | pass, 3 turns | $0.064 |
+    | openai/gpt-6.1-sol | pass, 4 turns | pass, 5 turns | pass, 4 turns | $0.027 |
+
+    None of the tasks reads a picture, so images in tool results (step 4) are still unchecked against the live APIs.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
 ## Notes
