@@ -36,7 +36,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 
 ## How to work in this repo
 
-- **One step at a time.** Do the next unchecked step in the current milestone, nothing more.
+- **One step at a time.** Do the next unchecked step in the current milestone, nothing more. Fixes Isaac reports (F1, F2, …) go into the step list at the point he picks, and are done when the queue reaches them.
 - **Each step = one branch + one PR** (`m0/<short-name>`). PR description says: what changed, how Isaac tests it (exact commands), what's next.
 - Before opening a PR: `pnpm lint`, `pnpm typecheck`, `pnpm test` pass, and the app starts with `pnpm tauri dev`.
 - **Ship every step with the `ship-step` skill** (`.claude/skills/ship-step/`): `pnpm check`, `scripts/screenshot.sh`, PR, merge.
