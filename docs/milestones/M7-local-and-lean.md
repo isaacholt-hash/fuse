@@ -62,10 +62,12 @@
   - `pnpm local:bench` runs FUSE's real worker (the newest build) on the installed model, or `FUSE_LOCAL_MODEL`. It covers the shipped routing test set (`data/routing-test/prompts.jsonl`: 40 synthetic prompts, 35 standalone) and five chats to title. It reports parse rate, tier accuracy against the heuristics alone, false downgrades, p50/p95 latency and peak memory. No key, no network, $0.
   - HULK, Qwen3 1.7B (Q8_0), debug build: 97% of replies parsed; the tier was right 86% of the time with the local check, against 80% for the heuristics alone; 3% false downgrades; about 3.1 s per classification; 4 of 5 titles usable; 2.43 GB peak.
   - The bench caught the 1.7B model copying the title prompt's example ("Lisbon trip with kids") for unrelated chats. The example is gone from the prompt, and a title must now share a word with the question to count.
-- [ ] **10. Smaller context (LL-05).**
-  - FTS5 lexical search over file chunks and knowledge, as the default and the fallback, so search works without an OpenAI key. Embeddings are added when available.
-  - Token ceilings per model and request type, with explicit truncation and the source recorded. The coding agent's tool outputs are capped the same way.
-  - Large-document and repository tests show bounded input.
+- [x] **10. Smaller context (LL-05).**
+  - FTS5 over file chunks (migration 0038, kept up to date by triggers). Large attached files and project knowledge are searched by their words on this computer (BM25), so this works with no OpenAI key and in projects that don't allow embedding.
+  - With an embedding model, the word and meaning rankings are merged (reciprocal rank fusion), and an embedding failure falls back to words. The send-time "needs an OpenAI key" block is gone, and knowledge files without embeddings read "Searchable by word".
+  - Token ceilings as data (`data/context.json`). A chat request stays under the smaller of 400K tokens and 75% of the model's context. Past it, the oldest messages are left out, the request says so, and the context package records a `trimmed` part. Housekeeping input is capped at 8K tokens, and the local model's at 2.5K, each with a marker.
+  - Coding-run tool outputs were already capped at 40,000 characters (M6).
+  - Tests: a 1,200-section manual (about 27K tokens) gets about 3K tokens of on-topic, cited excerpts with no key.
 - [ ] **11. Exact-match cache (LL-06, RT-13).**
   - Keyed by normalised input, context version, model or operation version, project and output format, with TTLs and invalidation.
   - Never used in incognito, for answers that used web search, or for personal, dynamic or high-stakes requests. Tested for stale and cross-project hits.

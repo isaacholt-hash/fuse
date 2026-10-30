@@ -1682,14 +1682,7 @@ export function ChatApp({
             ? [{ ...p.file, ...(p.mode ? { mode: p.mode } : {}) }]
             : [],
         );
-    // FK-02: searching a file embeds it, and only OpenAI has embeddings.
-    const embedding = embeddingModel(catalog, savedProviders);
-    if (!embedding && ready.some((f) => f.mode === "retrieval")) {
-      setProblem(
-        "Searching inside a large file needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or switch the file to Whole.",
-      );
-      return;
-    }
+    // LL-05: a large file is searched by its words on this computer, so no OpenAI key is needed.
     const search = searchOn;
     // LL-01: a sum, conversion or check is answered by a fixed rule before anything is routed
     // or spent. Only on Auto with nothing attached, outside coding runs and compare mode, and
@@ -2326,7 +2319,10 @@ export function ChatApp({
       : null,
     date: new Date(d.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }),
   }));
-  /** Indexes a project's files that aren't fully searchable yet (needs an OpenAI key). */
+  /**
+   * Indexes a project's files that aren't fully searchable yet: by word always (LL-05, on this
+   * computer), and by meaning too with an OpenAI key the project allows.
+   */
   const indexKnowledge = async (projectId: string) => {
     // SE-13: nothing is embedded for a project that forbids it, or from a file kept on device.
     const model = allowedEmbedding(
@@ -2334,15 +2330,15 @@ export function ChatApp({
       embeddingModel(catalog, keyedProviders),
     );
     const files = await listProjectFiles(db, tenant, projectId);
-    if (model) {
-      for (const f of files.filter((x) => x.maySend && (x.chunks === 0 || x.embedded < x.chunks))) {
-        await ensureIndexed(
-          { db, tenant, adapterFor, files: filesApi, priceVersion: catalog.priceVersion },
-          model,
-          f,
-          { kind: "project", id: projectId },
-        );
-      }
+    for (const f of files.filter(
+      (x) => x.maySend && (x.chunks === 0 || (model !== null && x.embedded < x.chunks)),
+    )) {
+      await ensureIndexed(
+        { db, tenant, adapterFor, files: filesApi, priceVersion: catalog.priceVersion },
+        model,
+        f,
+        { kind: "project", id: projectId },
+      );
     }
     return listProjectFiles(db, tenant, projectId);
   };
@@ -2380,16 +2376,18 @@ export function ChatApp({
   };
   const knowledgeViews: KnowledgeFileView[] = (knowledge?.files ?? []).map((f) => {
     const tokens = f.tokenEstimate ?? 0;
-    const ready = f.chunks > 0 && f.embedded >= f.chunks;
+    // LL-05: chunked means searchable by word; embedded too means by meaning as well.
+    const ready = f.chunks > 0;
+    const byMeaning = ready && f.embedded >= f.chunks;
     return {
       id: f.id,
       name: f.name,
       tokens,
       ready,
-      status: ready
+      status: byMeaning
         ? "Searchable"
-        : !embeddingModel(catalog, savedProviders)
-          ? "Needs an OpenAI key"
+        : ready
+          ? "Searchable by word"
           : knowledge?.busy
             ? "Indexing…"
             : "Not indexed",

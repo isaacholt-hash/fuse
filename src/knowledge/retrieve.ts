@@ -1,12 +1,14 @@
 /**
- * Retrieval over large files (FK-02, FK-03): a file too big to resend every turn is chunked and
- * embedded once, and each question gets the excerpts that match it best, with citations.
+ * Retrieval over large files (FK-02, FK-03): a file too big to resend every turn is chunked once,
+ * and each question gets the excerpts that match it best, with citations. Matching is by words
+ * first, on this computer (LL-05, FTS5), so it works with no OpenAI key; with an embedding model
+ * the two rankings are merged.
  */
 import { threadScope, type SendScope } from "@/providers/types";
 import type { EmbeddingModel } from "@/catalog/catalog";
 import type { FilesApi } from "@/files/api";
 import type { FileRecord } from "@/storage/files";
-import { listChunks, nearest, replaceChunks } from "@/storage/vectors";
+import { lexicalNearest, listChunks, nearest, replaceChunks, type Match } from "@/storage/vectors";
 import { chunkText } from "./chunk";
 import { embedTexts, indexChunks, modelKey, type EmbedDeps } from "./embed";
 
@@ -20,10 +22,13 @@ export interface Excerpts {
   sources: { chunkId: string; label: string }[];
 }
 
-/** Chunks and embeds a file once (later calls only embed chunks that lack a vector). */
+/**
+ * Chunks a file once (the chunks are indexed by word as they're saved), and with a model embeds
+ * them too (later calls only embed chunks that lack a vector).
+ */
 export async function ensureIndexed(
   deps: EmbedDeps & { files: FilesApi },
-  model: EmbeddingModel,
+  model: EmbeddingModel | null,
   file: FileRecord,
   /** Where the file's text may be sent (SE-13): its chat's or its project's scope. */
   scope: SendScope = { kind: "global" },
@@ -32,7 +37,23 @@ export async function ensureIndexed(
     const text = new TextDecoder().decode(await deps.files.get(file.sha256));
     await replaceChunks(deps.db, deps.tenant, "file", file.id, chunkText(text));
   }
-  await indexChunks(deps, model, "file", [file.id], undefined, scope);
+  if (model) await indexChunks(deps, model, "file", [file.id], undefined, scope);
+}
+
+/** Reciprocal rank fusion: a chunk high in either ranking rises; k = 60 as usual. */
+export function fuse(rankings: readonly Match[][], limit: number): Match[] {
+  const scores = new Map<string, { match: Match; score: number }>();
+  for (const ranking of rankings) {
+    ranking.forEach((m, rank) => {
+      const entry = scores.get(m.chunk.id) ?? { match: m, score: 0 };
+      entry.score += 1 / (60 + rank + 1);
+      scores.set(m.chunk.id, entry);
+    });
+  }
+  return [...scores.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((e) => e.match);
 }
 
 const lines = (a: number | null, b: number | null) =>
@@ -44,27 +65,56 @@ const where = (c: { page: number | null; lineStart: number | null; lineEnd: numb
 /** The parts of these files that best match the question, in file order. */
 export async function retrieveExcerpts(
   deps: EmbedDeps & { files: FilesApi },
-  model: EmbeddingModel,
+  model: EmbeddingModel | null,
   files: readonly FileRecord[],
   question: string,
   threadId: string | null,
 ): Promise<Excerpts> {
-  for (const f of files) await ensureIndexed(deps, model, f, threadScope(threadId));
-  const [query] = await embedTexts(
-    deps,
-    model,
-    [question || files.map((f) => f.name).join(", ")],
-    threadId,
-  );
-  if (!query) return { text: "", sources: [] };
-  const hits = await nearest(
+  const ids = files.map((f) => f.id);
+  const asked = question || files.map((f) => f.name).join(", ");
+  let embedded = model;
+  for (const f of files) {
+    try {
+      await ensureIndexed(deps, embedded, f, threadScope(threadId));
+    } catch {
+      // An embedding failure falls back to words alone (LL-05); the chunks are saved by now.
+      embedded = null;
+      await ensureIndexed(deps, null, f, threadScope(threadId));
+    }
+  }
+  const byWords = await lexicalNearest(
     deps.db,
     deps.tenant,
-    modelKey(model),
-    query,
-    { kind: "file", ids: files.map((f) => f.id) },
-    EXCERPTS,
+    asked,
+    { kind: "file", ids },
+    2 * EXCERPTS,
   );
+  let byMeaning: Match[] = [];
+  if (embedded) {
+    try {
+      const [query] = await embedTexts(deps, embedded, [asked], threadId);
+      if (query) {
+        byMeaning = await nearest(
+          deps.db,
+          deps.tenant,
+          modelKey(embedded),
+          query,
+          { kind: "file", ids },
+          2 * EXCERPTS,
+        );
+      }
+    } catch {
+      byMeaning = [];
+    }
+  }
+  let hits = fuse([byMeaning, byWords], EXCERPTS);
+  if (hits.length === 0) {
+    // No word in common and no embeddings: the start of each file, so the model has something.
+    const all = (
+      await Promise.all(ids.map((id) => listChunks(deps.db, deps.tenant, "file", id)))
+    ).flat();
+    hits = all.slice(0, EXCERPTS).map((chunk) => ({ chunk, score: 0 }));
+  }
   const name = new Map(files.map((f) => [f.id, f.name]));
   const ordered = [...hits].sort(
     (a, b) => a.chunk.sourceId.localeCompare(b.chunk.sourceId) || a.chunk.ordinal - b.chunk.ordinal,

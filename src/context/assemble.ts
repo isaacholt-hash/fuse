@@ -3,6 +3,7 @@
 // memories (ranked by kind, then relevance), the summary of earlier turns, artifacts you edited,
 // then the history with any file excerpts and recalled chats on the question. Each part records
 // where it came from. Send, edit, regenerate, retry, escalate and compare all come through here.
+import { trimHistory } from "./ceilings";
 import type { EmbeddingModel } from "@/catalog/catalog";
 import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 import type { ChatDeps } from "@/chat/sendMessage";
@@ -35,7 +36,9 @@ export type PartKind =
   | "memories"
   | "summary"
   | "artifacts"
-  | "history";
+  | "history"
+  /** LL-05: older messages left out to keep the request under its ceiling (count, not ids). */
+  | "trimmed";
 
 /** One part of a request, with where it came from (ids, or the instruction level). */
 export interface ContextPart {
@@ -83,9 +86,12 @@ async function editedArtifacts(deps: Pick<ChatDeps, "db" | "tenant">, threadId: 
 export async function assemble(
   deps: ChatDeps,
   threadId: string,
-  { history, earlier, fileSources }: Context,
+  { history: gathered, earlier, fileSources }: Context,
   wanted: EmbeddingModel | null | undefined,
+  /** LL-05: the most this request may carry, in rough tokens; none = no ceiling. */
+  ceiling?: number,
 ): Promise<ContextPackage> {
+  let history = gathered;
   const { db, tenant } = deps;
   const embedding = allowedEmbedding(await threadPolicy(db, tenant, threadId), wanted);
   const thread = await getThread(db, tenant, threadId);
@@ -139,6 +145,18 @@ export async function assemble(
     guides: [ARTIFACT_GUIDE],
     tail: artifacts.text ? [artifacts.text] : [],
   });
+  // LL-05: past the ceiling, the oldest messages are left out, and the request says so.
+  let trimmed: { dropped: number; droppedTokens: number } | null = null;
+  let sent = system;
+  if (ceiling !== undefined) {
+    const cut = trimHistory(history, ceiling - textTokens(system ?? ""));
+    if (cut.dropped > 0) {
+      history = cut.kept;
+      trimmed = cut;
+      const note = `<note>The ${String(cut.dropped)} oldest messages of this chat weren't sent, to keep this request under its size limit. If the question depends on them, say so.</note>`;
+      sent = system ? `${system}\n\n${note}` : note;
+    }
+  }
 
   const ids = (list: PickedMemory[]) => list.map((p) => p.memory.id);
   const tokensOf = (list: PickedMemory[]) =>
@@ -180,6 +198,15 @@ export async function assemble(
       sources: [threadId, ...fileSources.map((f) => f.chunkId)],
       tokens: history.reduce((sum, m) => sum + textTokens(m.content), 0),
     },
+    ...(trimmed
+      ? [
+          {
+            kind: "trimmed" as const,
+            sources: [`${String(trimmed.dropped)} messages`],
+            tokens: trimmed.droppedTokens,
+          },
+        ]
+      : []),
   ];
-  return { system, history, parts, picked, fileSources };
+  return { system: sent, history, parts, picked, fileSources };
 }

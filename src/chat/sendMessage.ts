@@ -1,3 +1,4 @@
+import { chatCeiling } from "@/context/ceilings";
 import {
   priceFor,
   toolPrice,
@@ -354,6 +355,7 @@ async function streamAnswer(
     input.threadId,
     context,
     input.embedding,
+    chatCeiling(model),
   );
   await recordInjected(
     db,

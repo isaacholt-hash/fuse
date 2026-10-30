@@ -49,16 +49,19 @@ describe("migrations", () => {
   test("every table has workspace_id, user_id and created_at", async () => {
     const db = openTestDb();
     const tables = await db.select<{ name: string }>(
-      // The search index (0012) is an index over messages, not a table of its own: skip FTS5's
-      // virtual table and its shadow tables; the index still carries workspace_id and user_id.
+      // The search indexes (0012 over messages, 0038 over chunks) aren't tables of their own:
+      // skip FTS5's virtual tables and their shadow tables; each index still carries
+      // workspace_id and user_id.
       `SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-         AND name NOT LIKE 'messages_fts%'`,
+         AND name NOT LIKE 'messages_fts%' AND name NOT LIKE 'chunks_fts%'`,
     );
     expect(tables.length).toBeGreaterThanOrEqual(6);
-    const index = (await db.select<{ name: string }>("PRAGMA table_info(messages_fts)")).map(
-      (c) => c.name,
-    );
-    expect(index).toEqual(expect.arrayContaining(["workspace_id", "user_id"]));
+    for (const fts of ["messages_fts", "chunks_fts"]) {
+      const index = (await db.select<{ name: string }>(`PRAGMA table_info(${fts})`)).map(
+        (c) => c.name,
+      );
+      expect(index, fts).toEqual(expect.arrayContaining(["workspace_id", "user_id"]));
+    }
     for (const { name } of tables) {
       const cols = (await db.select<{ name: string }>(`PRAGMA table_info(${name})`)).map(
         (c) => c.name,

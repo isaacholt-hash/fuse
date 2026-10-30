@@ -1,0 +1,6 @@
+{
+  "notes": "Token ceilings per request type (M7 step 10, LL-05). A chat request is kept under the smaller of max_tokens and share_of_context times the model's context window; past it the oldest messages are left out and the request says so (rolling summaries, PM-06, normally keep chats well under it). Housekeeping input is cut to its ceiling with a marker; the local model's is smaller to fit its 4,096-token context with room for the reply.",
+  "chat": { "share_of_context": 0.75, "max_tokens": 400000 },
+  "housekeeping_input_tokens": 8000,
+  "local_input_tokens": 2500
+}

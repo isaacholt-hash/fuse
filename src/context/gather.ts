@@ -139,17 +139,8 @@ export async function gatherContext(
   if (searched.length === 0 || last?.role !== "user") {
     return { history, earlier, fileSources: recallSources };
   }
-  // Without an OpenAI key a project's files simply aren't used; a file attached to search fails.
-  if (!embedding && knowledge.length === searched.length) {
-    return { history, earlier, fileSources: recallSources };
-  }
-  if (!embedding) {
-    throw new Error(
-      wanted
-        ? "This project doesn't allow sending its content to be embedded, so a large file can't be searched. Attach it again and send it whole, or allow search in the project's privacy settings."
-        : "Searching inside large files needs an OpenAI key (Anthropic has no embeddings). Add one in Settings, or attach the file again and send it whole.",
-    );
-  }
+  // LL-05: files are searched by their words on this computer, so this works with no OpenAI key
+  // and in projects that don't allow embedding; meaning is merged in when it's allowed.
   if (!deps.files) throw new Error("This message has attachments but no file store is set up");
   const excerpts = await retrieveExcerpts(
     { ...deps, files: deps.files, priceVersion: deps.catalog.priceVersion },

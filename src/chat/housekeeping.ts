@@ -2,6 +2,7 @@
 // model. Never shown to the user as an answer (RT-17); every call is logged like any other. With
 // a local model installed (M7, LL-04), it goes first and the cloud Cheap model is the one
 // fallback.
+import { ceilings, clipToTokens } from "@/context/ceilings";
 import { threadScope } from "@/providers/types";
 import { egressRefusal, threadPolicy } from "@/context/egress";
 import { priceFor, type Catalog, type CatalogModel, type ProviderId } from "@/catalog/catalog";
@@ -131,9 +132,14 @@ async function attempt(
   let text = "";
   let done: StreamDone | null = null;
   let failure: ProviderError | null = null;
+  // LL-05: housekeeping input has a ceiling; the local model's is smaller (a 4,096-token context).
+  const input = clipToTokens(
+    req.input,
+    model.provider === "local" ? ceilings.localInputTokens : ceilings.housekeepingInputTokens,
+  );
   try {
     const stream = deps.adapterFor(model.provider).streamChat(
-      [{ role: "user", content: req.input }],
+      [{ role: "user", content: input }],
       model.id,
       {
         system: req.system,

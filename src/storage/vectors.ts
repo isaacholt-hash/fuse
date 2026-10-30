@@ -205,6 +205,52 @@ export async function nearest(
     .slice(0, limit);
 }
 
+/** Words too common to search by (LL-05's lexical search). */
+const STOPWORDS = new Set(
+  "a an and are as at be but by can do does for from had has have how i if in into is it its me my no not of on or our so than that the their them then there these they this to was we were what when where which who why will with you your".split(
+    " ",
+  ),
+);
+
+/** A question as an FTS5 query: any of its words (quoted, so nothing in them is syntax). */
+export function lexicalQuery(text: string): string | null {
+  const words = [...new Set(text.toLowerCase().match(/[\p{L}\p{N}_]+/gu) ?? [])].filter(
+    (w) => w.length > 1 && !STOPWORDS.has(w),
+  );
+  return words.length
+    ? words
+        .slice(0, 32)
+        .map((w) => `"${w}"`)
+        .join(" OR ")
+    : null;
+}
+
+/**
+ * LL-05: the chunks of these sources that best match the question's words (BM25), on this
+ * computer. Works with no embedding model at all.
+ */
+export async function lexicalNearest(
+  db: SqlDb,
+  tenant: Tenant,
+  question: string,
+  sources: { kind: ChunkSource; ids: readonly string[] },
+  limit = 8,
+): Promise<Match[]> {
+  const query = lexicalQuery(question);
+  if (!query || sources.ids.length === 0) return [];
+  const rows = await db.select<ChunkRow & { score: number }>(
+    `SELECT c.id, c.source_kind, c.source_id, c.ordinal, c.text, c.tokens, c.page, c.line_start,
+            c.line_end, bm25(chunks_fts) AS score
+     FROM chunks_fts JOIN chunks c ON c.rowid = chunks_fts.rowid
+     WHERE chunks_fts MATCH ? AND c.workspace_id = ? AND c.source_kind = ?
+       AND c.source_id IN (${sources.ids.map(() => "?").join(", ")})
+     ORDER BY score LIMIT ?`,
+    [query, tenant.workspaceId, sources.kind, ...sources.ids, limit],
+  );
+  // BM25 is lower-is-better; flip it so every Match reads higher-is-better.
+  return rows.map((r) => ({ chunk: toChunk(r), score: -r.score }));
+}
+
 /** Chunks of these sources that have no vector for `model` yet. */
 export async function unembedded(
   db: SqlDb,
