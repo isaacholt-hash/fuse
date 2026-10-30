@@ -1,0 +1,52 @@
+{
+  "scenario": "tool-reasoning",
+  "description": "A tool call on a reasoning model; thinking or reasoning items replayed",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6.1-sol",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read README.md and tell me the project's name in one word."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 3000,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_138399c88bfe468288bfbdfb997d6d97",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "1000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1634
+}

@@ -1,0 +1,78 @@
+{
+  "scenario": "tool-parallel-result",
+  "description": "Two tool calls in one turn",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read a.txt and b.txt (both at once), then reply with only the sum of the two numbers."
+      },
+      {
+        "id": "fc_0d9a36909724ab42016ae404f0a83887d193921397c092f84e",
+        "type": "function_call",
+        "status": "completed",
+        "arguments": "{\"path\":\"a.txt\"}",
+        "call_id": "call_bev8dixlZd07IPkgohJaTW0Z",
+        "name": "read_file"
+      },
+      {
+        "id": "fc_0d9a36909724ab42016ae404f0a85087d19468062841b79fd5",
+        "type": "function_call",
+        "status": "completed",
+        "arguments": "{\"path\":\"b.txt\"}",
+        "call_id": "call_cXYdu5XWHTS0znmAnwDKfn5z",
+        "name": "read_file"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_bev8dixlZd07IPkgohJaTW0Z",
+        "output": "17\n"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_cXYdu5XWHTS0znmAnwDKfn5z",
+        "output": "25\n"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 600,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_656ff21162224fe2a833880e0b697dd8",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1394
+}

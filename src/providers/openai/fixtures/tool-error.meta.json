@@ -1,0 +1,52 @@
+{
+  "scenario": "tool-error",
+  "description": "A tool result that is an error",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read notes.txt and tell me what it says."
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 600,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_2a1fb210c15d4337ae5814718b7062ab",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1667
+}

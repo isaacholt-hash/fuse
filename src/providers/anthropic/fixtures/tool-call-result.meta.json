@@ -1,0 +1,77 @@
+{
+  "scenario": "tool-call-result",
+  "description": "One tool call, then the answer from its result",
+  "provider": "anthropic",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request_headers": {
+    "anthropic-version": "2026-10-21"
+  },
+  "request_body": {
+    "model": "claude-haiku-5-5",
+    "max_tokens": 600,
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Read README.md and tell me the project's name in one word."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_01Gbjt4NHH84cb71qcWuUMfv",
+            "name": "read_file",
+            "input": {
+              "path": "README.md"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01Gbjt4NHH84cb71qcWuUMfv",
+            "content": "# Lighthouse\n\nA tiny command-line tool that prints the tide table.\n"
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "request-id": "req_011CgXezWSQv5Lru7VAkZ4gD",
+    "anthropic-ratelimit-requests-limit": "10000",
+    "anthropic-ratelimit-tokens-limit": "6000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1009
+}

@@ -295,6 +295,7 @@ This is the main change from M0, where history is plain text.
 - **A tool loop stays on one model.** Thinking and reasoning items can't move between providers, and on Anthropic not even between models safely. Routing inside a run (step 11) changes model only between loops: the plan and summaries are separate requests with plain-text handoffs.
 - **The adapters keep each turn's native items as an opaque, provider-tagged record** and replay it unchanged inside the loop. The chat history stays plain text as before.
 - **Tool errors:** Anthropic gets `is_error:true`; OpenAI gets the same text, starting `Error:`.
+- **Recorded 2026-10-30:** neither reasoning model (Sonnet 5.5, gpt-6.1-sol) thought before its tool call, so replay of thinking signatures and reasoning items is tested on the final answers of the error scenario instead. Anthropic's `tool_use` blocks carry `caller: {type: "direct"}`, replayed as is.
 - **Fixtures for step 2,** recorded with the same allowlist and key check as M0: a single call, the follow-up with its result, two calls in parallel, an error result, and a call on a reasoning model (Sonnet 5.5, gpt-6.1-sol) so thinking and reasoning replay is covered.
 
 Sources:

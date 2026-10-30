@@ -1,0 +1,65 @@
+{
+  "scenario": "tool-call-result",
+  "description": "One tool call, then the answer from its result",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read README.md and tell me the project's name in one word."
+      },
+      {
+        "id": "fc_0d52f79e58e27ebd016ae404edfa3c87d1921392b32ad96a15",
+        "type": "function_call",
+        "status": "completed",
+        "arguments": "{\"path\":\"README.md\"}",
+        "call_id": "call_a3BUgJE7ErTWJD9Q0xNOD8oZ",
+        "name": "read_file"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_a3BUgJE7ErTWJD9Q0xNOD8oZ",
+        "output": "# Lighthouse\n\nA tiny command-line tool that prints the tide table.\n"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 600,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_5d12643c4dc541b1be364bee2d26ba37",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1250
+}

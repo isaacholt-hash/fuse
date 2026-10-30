@@ -353,9 +353,9 @@ async function streamAnswer(
             lastSave = now();
             await updateMessageContent(db, tenant, assistantMessageId, answer);
           }
-        } else {
+        } else if (ev.type === "done") {
           done = ev;
-        }
+        } // tool calls only come when tools are offered, which chat doesn't do
       }
     } catch (e) {
       failure =

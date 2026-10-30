@@ -1,0 +1,72 @@
+event: message_start
+data: {"type":"message_start","message":{"model":"claude-haiku-5-5","id":"msg_011CgXeztsHTurQJNXMYdFia","type":"message","role":"assistant","content":[],"container":null,"stop_reason":null,"stop_sequence":null,"stop_details":null,"usage":{"input_tokens":510,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0},"output_tokens":9,"service_tier":"standard","inference_geo":"global","speed":"standard"},"diagnostics":null}        }
+
+event: content_block_start
+data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}               }
+
+event: ping
+data: {"type": "ping"}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}       }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"CAQSpAUKEAgTGAI4AUIIdGhpbmtpbmcSDAho/sttfzmU9bc+zxoMujdZhkvZlo9kPNzuIjD+W5bu6qo8B2tOcji1eR0iKbcie6W5jXGWifAXfkBz84jfphVD4DCrMy8kaaQjoxcqwQQld4zWOYS2+PW+cCsJr36KlepFD4zPqG7oM1q/sy5+xWiCuZfob4WiaGG8wmsSe9zpWdb9ezzLRnSpkrkQ6x7nd8Yvo1lbYmn+8/5lGRnRjlHIBGLyOkNdWAjKf8Hkxq50zYN+5soyhpe/8NhZoPInW9Z9eYI9PakiCXtnDfC1/u28OQji2J2B7lnWPGXtxfmoKnt9S2Tq9Z3GHr4KZ9Ngb+GFodadukgRBZE7h2OUAXTl9lHRwI/X+Jk2ryuofnF3JPah4MKq26as5dxCRjI3HdfNE7SugnsUjA7nsIvCCQNwoJj1eMvXgrVmbWqLJGkYW9SAyzNxkF3wASb9axiYsNSvtsG9DU0xC4mQTG1sY/0DHFwWeuP/BYQci9qRgOkWd9YYX+PT1rGkcNCNv2QyfQV8/BRCEttGRqqp957JxU/7Kk9B9fLilEpBL1ZIIXlADJqPUfgGYOhjDca0uT5T1RP3wbjzdwRiRKK9GKF+WGM0bqsxP6zFvwf+Qo4bpMBqM2H2X/lIro2glYCZsxRyMDNDfYNmllcwu2e18nL1vj+Ci5zhaSAiVsZ9b1DPgzT/+MyLEEyF872yRYdcrP9kN3uGLo5/93nKBXPtOU+G0pIG7LniTJLS5/Cmr99VT3LtDomnfa9FTTJ5za0tJylBJjV0mXyAZEkOSl7nDaseh5AR+qC7pt/k27y6tsjIqecjxDmMqH+/kh7LE2HA7pnrhpyi7pLsJycsK7nm8TzWHOn0YNaTn7b00aW9RCAJlMd3GAE="}          }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0       }
+
+event: content_block_start
+data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"I cou"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ldn't read"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" notes.txt because"}  }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" the file doesn't exist"}            }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" at the repository root. The read"}      }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" retur"}   }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ned \""}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"no such file: notes.tx"}              }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"t.\"\n\nIf it's"}     }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" in a sub"}    }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"directory, t"}        }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"ell me the path and"}          }
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" I'll try again"}}
+
+event: content_block_delta
+data: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"."} }
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1            }
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null,"stop_details":null,"container":null},"usage":{"input_tokens":510,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":93,"output_tokens_details":{"thinking_tokens":26}}    }
+
+event: message_stop
+data: {"type":"message_stop"   }
+
