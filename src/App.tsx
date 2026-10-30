@@ -1,3 +1,4 @@
+import { tauriLocalApi, type LocalApi } from "@/local/api";
 import { unavailableLocalAdapter } from "@/providers/local/adapter";
 import { useEffect, useState } from "react";
 import type { Catalog, ProviderId } from "@/catalog/catalog";
@@ -68,6 +69,8 @@ interface Props {
   /** git and gh there (CA-05). */
   git?: GitApi;
   backups?: BackupsApi;
+  /** The local model: hardware, install, run (M7). */
+  local?: LocalApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
   zoom?: ZoomApi;
@@ -95,6 +98,7 @@ export default function App({
   exec = tauriExec,
   git = tauriGit,
   backups = tauriBackupsApi,
+  local = tauriLocalApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
   hello = tauriHello,
@@ -161,6 +165,7 @@ export default function App({
       execApi={exec}
       gitApi={git}
       backups={backups}
+      localApi={local}
       quickCapture={quickCapture}
       zoom={zoom}
       hello={hello}

@@ -39,9 +39,10 @@
   - Stop, a time limit (2 min by default; cancel, then end the worker after 3 s), unload, and a worker that dies mid-answer all end with a clear error while the app keeps running.
   - llama.cpp is built with AVX2, FMA and F16C (`.cargo/config.toml`). The worker refuses a CPU without them, and llama.cpp is built without curl.
   - Checked on HULK with the real Qwen3 1.7B file (SHA-256 matched): it loaded, wrote a 7-word chat title using about 4 s of CPU, and peaked at 2.4 GB on a 585-token prompt. Building needs `cmake` and `clang` (both on HULK and the CI runners).
-- [ ] **5. Hardware detection (LL-03).**
-  - RAM, free memory, CPU features (AVX2 and others) and free disk, read without elevated rights.
-  - Picks the profile: 4B when there's enough memory for its peak plus the app, otherwise 1.7B, otherwise none. Settings → Local model shows why.
+- [x] **5. Hardware detection (LL-03).**
+  - `src-tauri/src/hardware.rs` (`sysinfo` 0.39.6) reads total and free memory, logical CPUs, AVX2, FMA and F16C, and free space on the disk holding the app's data, without elevated rights.
+  - `src/local/hardware.ts` picks the largest profile whose estimated peak memory is within 40% of RAM and whose file fits with 1 GB of disk to spare. It picks none without AVX2 or on a non-x86-64 CPU, and warns when less memory is free now than the model needs.
+  - Settings → Local model shows this computer, the choice and why, and the profile's size, memory, licence and source. On HULK (15.9 GB): Qwen3 4B.
 - [ ] **6. Install, update and remove (LL-03, LL-08).**
   - Before download, the screen shows size, memory needed, licence and source.
   - The download can be resumed and is checked against its SHA-256 before use. It is stored in app data, apart from the app.

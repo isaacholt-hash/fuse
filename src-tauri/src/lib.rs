@@ -5,6 +5,7 @@ mod exec;
 mod export;
 mod files;
 mod git;
+mod hardware;
 mod hello;
 mod keys;
 mod local;
@@ -78,6 +79,7 @@ pub fn run() {
             local::commands::local_cancel,
             local::commands::local_unload,
             local::commands::local_status,
+            hardware::commands::local_hardware,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

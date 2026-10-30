@@ -1,5 +1,9 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
+import type { LocalApi } from "@/local/api";
+import { gb, pickProfile, type Hardware } from "@/local/hardware";
+import { localModels } from "@/local/models";
+import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -418,6 +422,8 @@ export interface ChatAppProps {
   gitApi?: GitApi;
   /** Backup and restore of the database (PL-11). */
   backups?: BackupsApi;
+  /** The local model (M7): what this computer can run. */
+  localApi?: LocalApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   zoom?: ZoomApi;
@@ -515,6 +521,32 @@ const lastModelOf = (messages: Message[], catalog: Catalog) => {
     : undefined;
 };
 
+/** Settings → Local model (LL-03): this computer, and the profile it gets. */
+function localModelView(hw: Hardware | null): LocalModelView | null {
+  if (!hw) return null;
+  const choice = pickProfile(hw, localModels.profiles);
+  const p = choice.profile;
+  return {
+    computer: [
+      `${gb(hw.totalMemoryBytes)} memory (${gb(hw.availableMemoryBytes)} free)`,
+      `${String(hw.logicalCpus)} CPUs`,
+      hw.cpuSupported ? "AVX2" : "no AVX2",
+      hw.freeDiskBytes === null ? "free disk unknown" : `${gb(hw.freeDiskBytes)} free disk`,
+    ].join(" · "),
+    reason: choice.reason,
+    warning: choice.warning,
+    profile: p
+      ? {
+          name: p.displayName,
+          detail: `${p.quantization} · ${gb(p.sizeBytes)} download · about ${gb(p.peakMemoryBytes)} of memory`,
+          licence: p.licence,
+          licenceUrl: p.licenceUrl,
+          sourceUrl: p.sourceUrl,
+        }
+      : null,
+  };
+}
+
 export function ChatApp({
   db,
   tenant,
@@ -533,6 +565,7 @@ export function ChatApp({
   execApi,
   gitApi,
   backups,
+  localApi,
   quickCapture,
   zoom,
   hello,
@@ -692,6 +725,8 @@ export function ChatApp({
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   const [savings, setSavings] = useState<SavingsView | null>(null);
   const [economicsView, setEconomicsView] = useState<EconomicsView | null>(null);
+  const [localHardware, setLocalHardware] = useState<Hardware | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   // SE-03: the app lock. `hash` is the stored passcode hash (null = off, undefined = loading).
   const [lock, setLock] = useState<{
     hash: string | null | undefined;
@@ -2669,6 +2704,16 @@ export function ChatApp({
   useEffect(() => {
     if (view !== "settings") return;
     budgetStatesFor(budgets, null, true).then(setBudgetStates, report);
+    // LL-03: what this computer can run, read fresh each time Settings opens.
+    localApi?.hardware().then(
+      (hw) => {
+        setLocalHardware(hw);
+        setLocalError(null);
+      },
+      (e: unknown) => {
+        setLocalError(`Couldn't read this computer's hardware: ${String(e)}`);
+      },
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when Settings opens or budgets change
   }, [view, budgets]);
   const budgetViews: BudgetView[] = budgetStates.map((s) => ({
@@ -3546,6 +3591,11 @@ export function ChatApp({
                       void applyShortcut(value, true);
                     }}
                   />
+                )
+              }
+              local={
+                localApi && (
+                  <LocalModelSection view={localModelView(localHardware)} error={localError} />
                 )
               }
               keyCaps={

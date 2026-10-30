@@ -45,6 +45,10 @@ tauri-plugin-updater = "2"
 # Pinned: released 2026-10-15. Default features off (no Android bits); OpenMP for CPU threads.
 llama-cpp-2 = { version = "=0.1.160", default-features = false, features = ["openmp"] }
 
+# Hardware detection for the local model (M7 step 5, LL-03): memory and free disk, no privileges.
+# Pinned: 0.39.6 released 2026-07-09 (0.40.0 is days old).
+sysinfo = { version = "=0.39.6", default-features = false, features = ["system", "disk"] }
+
 # Ending a command's whole process group on the time limit or Stop (CA-03, src/exec.rs).
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
