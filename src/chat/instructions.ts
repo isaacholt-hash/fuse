@@ -1,39 +1,51 @@
 // Custom instructions (M1 step 5, CH-05). They live in FUSE, not at a provider, so they apply
 // the same way on every model. Projects (step 6) add a level between global and thread.
 import { textTokens } from "@/files/documents";
+import type { RepoInstruction } from "@/repo/instructions";
 import type { GlobalInstructions } from "@/storage/instructions";
 
 /** Each box is capped so an instruction set can't quietly cost a lot on every message. */
 export const MAX_INSTRUCTION_CHARS = 4000;
 
-export type InstructionSource = "about_you" | "how_to_answer" | "project" | "thread";
+/** `repo`: a CLAUDE.md or AGENTS.md from the project's linked repository (CA-06). */
+export type InstructionSource = "about_you" | "how_to_answer" | "project" | "repo" | "thread";
 
 export interface InstructionPart {
   source: InstructionSource;
   label: string;
   text: string;
+  /** For `repo`: the file, relative to the repository root. */
+  path?: string;
 }
 
 const PARTS: { source: InstructionSource; label: string; tag: string }[] = [
   { source: "about_you", label: "About you", tag: "about_the_user" },
   { source: "how_to_answer", label: "How to answer", tag: "how_to_answer" },
   { source: "project", label: "This project", tag: "project" },
+  { source: "repo", label: "Repository", tag: "repository_file" },
   { source: "thread", label: "This chat", tag: "this_chat" },
 ];
 
-/** The instructions in effect for a thread, broadest first; empty ones are left out. */
+/**
+ * The instructions in effect for a thread, broadest first; empty ones are left out. Repository
+ * files (CA-06) sit between the project's and the chat's, broadest file first.
+ */
 export function effectiveInstructions(
   global: GlobalInstructions,
   project: string,
   thread: string,
+  repo: RepoInstruction[] = [],
 ): InstructionPart[] {
-  const text: Record<InstructionSource, string> = {
+  const text: Record<Exclude<InstructionSource, "repo">, string> = {
     about_you: global.aboutYou,
     how_to_answer: global.howToAnswer,
     project,
     thread,
   };
-  return PARTS.flatMap(({ source, label }) => {
+  return PARTS.flatMap(({ source, label }): InstructionPart[] => {
+    if (source === "repo") {
+      return repo.map((f) => ({ source, label: f.path, text: f.text, path: f.path }));
+    }
     const t = text[source].trim();
     return t ? [{ source, label, text: t }] : [];
   });
@@ -75,10 +87,13 @@ export function systemPrompt(
   if (parts.length > 0) {
     const blocks = parts.map((p) => {
       const tag = PARTS.find((x) => x.source === p.source)?.tag ?? p.source;
-      return `<${tag}>\n${p.text}\n</${tag}>`;
+      const attr = p.path ? ` path="${p.path.replace(/"/g, "'")}"` : "";
+      return `<${tag}${attr}>\n${p.text}\n</${tag}>`;
     });
     sections.push(
-      "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
+      parts.some((p) => p.source === "repo")
+        ? "The user set these custom instructions, and the project's repository has instruction files (repository_file). Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the repository's files, a deeper folder's file over the root's, the repository's files over the project's, and the project's over the general ones."
+        : "The user set these custom instructions. Follow them unless they ask otherwise in the conversation. Narrower instructions take priority: this chat over the project, the project over the general ones.",
       ...blocks,
     );
   }

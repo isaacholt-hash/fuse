@@ -9,7 +9,8 @@ import { DEFAULT_TENANT } from "@/storage/defaults";
 import { setGlobalInstructions } from "@/storage/instructions";
 import { addDecision, addMemory, addTask } from "@/storage/memories";
 import { listPath } from "@/storage/messages";
-import { createProject, updateProject } from "@/storage/projects";
+import { createProject, setProjectRepo, updateProject } from "@/storage/projects";
+import type { RepoApi } from "@/repo/api";
 import { addSummary } from "@/storage/summaries";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, setThreadInstructions, setThreadProject } from "@/storage/threads";
@@ -165,4 +166,53 @@ test("decisions and constraints, then tasks, then memories, each part with its s
   expect(pkg.parts.find((p) => p.kind === "decisions")?.sources).toContain(oak);
   expect(pkg.parts.find((p) => p.kind === "tasks")?.sources).toEqual([order]);
   expect(pkg.picked.find((p) => p.memory.id === oak)?.reason).toBe("always");
+});
+
+test("CA-06: a linked repository's CLAUDE.md and AGENTS.md go in, between project and chat", async () => {
+  const { db, deps, project, thread, sent } = await richChat();
+  await setProjectRepo(db, t, project.id, { root: "/repo", readSecrets: false });
+  const files: Record<string, string> = {
+    "CLAUDE.md": "Use pnpm.",
+    "AGENTS.md": "Run pnpm check.",
+  };
+  const repo: RepoApi = {
+    pick: () => Promise.resolve(null),
+    check: () => Promise.reject(new Error("unused")),
+    list: () => Promise.resolve([]),
+    search: () => Promise.resolve([]),
+    read: (_p, path) => {
+      const content = files[path];
+      return content === undefined
+        ? Promise.reject(new Error("no such file"))
+        : Promise.resolve({
+            path,
+            content,
+            offset: 0,
+            totalBytes: content.length,
+            truncated: false,
+          });
+    },
+  };
+  await sendMessage({ ...deps, repo }, { threadId: thread.id, text: "Go on.", model: claude });
+  const system = sent.at(-1)?.options.system ?? "";
+  const at = (s: string) => system.indexOf(s);
+  expect(at('<repository_file path="CLAUDE.md">\nUse pnpm.\n</repository_file>')).toBeGreaterThan(
+    -1,
+  );
+  expect(at('<repository_file path="AGENTS.md">')).toBeGreaterThan(at('path="CLAUDE.md"'));
+  expect(at("Prices in GBP.")).toBeLessThan(at("Use pnpm."));
+  expect(at("Metric units.")).toBeGreaterThan(at("Run pnpm check."));
+  const ctx = await gatherContext(deps, thread.id, (await listPath(db, t, thread.id)).path, null);
+  const pkg = await assemble({ ...deps, repo }, thread.id, ctx, null);
+  expect(pkg.parts.find((p) => p.kind === "instructions")?.sources).toEqual([
+    "about_you",
+    "how_to_answer",
+    "project",
+    "repo:CLAUDE.md",
+    "repo:AGENTS.md",
+    "thread",
+  ]);
+  // Without the repository API (or a linked folder) nothing changes.
+  const plain = await assemble(deps, thread.id, ctx, null);
+  expect(plain.system).not.toContain("repository_file");
 });

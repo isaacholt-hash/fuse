@@ -40,6 +40,7 @@ import {
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
+import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -743,8 +744,8 @@ export function ChatApp({
   const keys = useKeys(keysApi, logKeyTest);
 
   const deps: ChatDeps = useMemo(
-    () => ({ db, tenant, catalog, adapterFor, files }),
-    [db, tenant, catalog, adapterFor, files],
+    () => ({ db, tenant, catalog, adapterFor, files, ...(repoApi ? { repo: repoApi } : {}) }),
+    [db, tenant, catalog, adapterFor, files, repoApi],
   );
   const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
@@ -761,6 +762,11 @@ export function ChatApp({
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
   // CA-01: a line under the linked folder (git or not, or why linking failed).
   const [repoNote, setRepoNote] = useState<string | null>(null);
+  // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
+  const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
+    projectId: "",
+    files: [],
+  });
   // PL-12: the export being restored, between its preview and the yes.
   const restoring = useRef<ParsedExport | null>(null);
   const refreshProjects = useCallback(async () => {
@@ -1887,7 +1893,22 @@ export function ChatApp({
     globalInstructions ?? NO_INSTRUCTIONS,
     activeProject?.instructions ?? "",
     chatInstructions,
+    activeProject?.id && repoFiles.projectId === activeProject.id ? repoFiles.files : [],
   );
+  const repoProjectId = activeProject?.repoRoot ? activeProject.id : null;
+  const repoRootNow = activeProject?.repoRoot ?? null;
+  useEffect(() => {
+    if (!repoProjectId || !repoApi) return;
+    let live = true;
+    loadRepoInstructions(repoApi, repoProjectId)
+      .then((files) => {
+        if (live) setRepoFiles({ projectId: repoProjectId, files });
+      })
+      .catch(report);
+    return () => {
+      live = false;
+    };
+  }, [repoProjectId, repoRootNow, repoApi]); // report changes every render, like the effects above
   const moveThread = (projectId: string | null) => {
     if (!thread) return;
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
