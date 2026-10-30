@@ -67,6 +67,15 @@
   - Automated: on the routing test set, with recorded cloud responses and the scripted local adapter, cost per successful task is below the step 1 baseline with no quality drop, and a Local only project makes no cloud call.
   - Plus `pnpm local:bench` for the live numbers on Isaac's PC.
 
+## Fixes found in use
+
+Done right after step 2 and before step 3. One small PR each.
+
+- [ ] **F1. The update notice shows up only after a restart (PL-06).** Isaac reported this on 2026-10-30.
+  - Cause: `useUpdate` checks once at startup and then every 6 hours. Releases ship several times a day, so the bar usually appears only on the next launch. Also, Dismiss hides every later release for the rest of the session.
+  - Fix: check every 30 minutes and whenever the window regains focus (at most once every 5 minutes). Dismiss hides only the version it was clicked on. If a newer release comes out after one was downloaded, download the newer one. Add a "Check for updates" button next to the version in Settings.
+  - Tests use a fake `UpdateApi` and fake timers. No real release is fetched.
+
 ## Notes
 
 - The usual rules apply to each step: one PR, tests, a screenshot for UI changes, the secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.
