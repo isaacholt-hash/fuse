@@ -9,6 +9,7 @@ import type { ProviderId } from "@/catalog/catalog";
 import type { RepoApi } from "@/repo/api";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { setEgressRule } from "@/storage/egress";
+import { grantFolder } from "@/storage/folders";
 import { createProject, setProjectPrivacy, setProjectRepo } from "@/storage/projects";
 import { getRun } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
@@ -176,4 +177,23 @@ test("every request a run makes carries the project's scope, for the Rust check"
   expect(
     sent.every((s) => s.options.scope?.kind === "project" && s.options.scope.id === project.id),
   ).toBe(true);
+});
+
+test("WF-08: a Work run outside any project keeps the global rules", async () => {
+  const { db, sent, deps } = await setup(() => Promise.resolve());
+  await setEgressRule(db, t, null, "anthropic", false);
+  const folder = await grantFolder(db, t, "/home/me/letters");
+  const run = await startRun(deps(), {
+    projectId: null,
+    folders: [folder],
+    threadId: null,
+    messageId: null,
+    task: "Summarise the letters",
+    model: claude,
+    kind: "work",
+    capMicroUsd: 10_000_000,
+  });
+  expect(sent).toEqual([]);
+  expect(run.status).toBe("error");
+  expect(run.note).toMatch(/Anthropic/);
 });
