@@ -134,6 +134,173 @@ export const EDIT_TOOLS: ToolSpec[] = [
 
 export const EDIT_TOOL_NAMES = new Set(EDIT_TOOLS.map((t) => t.name));
 
+const noInput = { type: "object", properties: {}, required: [], additionalProperties: false };
+
+/** CA-05: git tools that only look. Offered in every mode. */
+export const GIT_READ_TOOLS: ToolSpec[] = [
+  {
+    name: "git_status",
+    description: "Show the current branch and which files are changed, staged or untracked.",
+    schema: noInput,
+  },
+  {
+    name: "git_diff",
+    description:
+      "Show changes not yet committed (or, with staged true, those staged for the next commit), " +
+      "optionally for one path.",
+    schema: {
+      type: "object",
+      properties: {
+        staged: { type: "boolean", description: "Staged changes instead of unstaged ones." },
+        path: { type: ["string", "null"], description: "Only this file or folder; null for all." },
+      },
+      required: ["staged", "path"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "git_log",
+    description: "Recent commits, one line each.",
+    schema: {
+      type: "object",
+      properties: { count: { type: ["integer", "null"], description: "How many; null for 10." } },
+      required: ["count"],
+      additionalProperties: false,
+    },
+  },
+];
+
+/** CA-05: git tools that change things. Branch and commit work like edits; push and PR ask. */
+export const GIT_WRITE_TOOLS: ToolSpec[] = [
+  {
+    name: "git_branch",
+    description: "Create a new branch from the current commit and switch to it.",
+    schema: {
+      type: "object",
+      properties: { name: { type: "string", description: "e.g. fix/tide-rounding" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "git_commit",
+    description:
+      "Commit changes with a message. With all true, every changed and new file is added first; " +
+      "otherwise only what's already staged is committed. Write the message in the repository's style.",
+    schema: {
+      type: "object",
+      properties: {
+        message: { type: "string", description: "The commit message." },
+        all: { type: "boolean", description: "Add every change first." },
+      },
+      required: ["message", "all"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "git_push",
+    description:
+      "Push the current branch to origin (setting it as upstream). The user is always asked first.",
+    schema: noInput,
+  },
+  {
+    name: "open_pull_request",
+    description:
+      "Open a pull request on GitHub for the current branch (push it first). The user is always asked first.",
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        body: { type: "string", description: "What changed, why, and how to test it." },
+        draft: { type: "boolean" },
+      },
+      required: ["title", "body", "draft"],
+      additionalProperties: false,
+    },
+  },
+];
+
+export const GIT_READ_NAMES = new Set(GIT_READ_TOOLS.map((t) => t.name));
+/** Ask in Ask mode, go ahead in Auto-edit: local and undoable. */
+export const GIT_LOCAL_NAMES = new Set(["git_branch", "git_commit"]);
+/** Always ask: they leave this computer. */
+export const GIT_REMOTE_NAMES = new Set(["git_push", "open_pull_request"]);
+
+/** The git or gh arguments for a git tool call, or why it can't run. */
+export function gitArgs(
+  call: ToolCall,
+): { program: "git" | "gh"; steps: string[][] } | { error: string } {
+  const input = call.input;
+  switch (call.name) {
+    case "git_status":
+      return { program: "git", steps: [["status", "--short", "--branch"]] };
+    case "git_diff": {
+      const args = ["diff", ...(input.staged === true ? ["--staged"] : [])];
+      const path = str(input.path);
+      return { program: "git", steps: [path ? [...args, "--", path] : args] };
+    }
+    case "git_log": {
+      const n =
+        typeof input.count === "number" && input.count > 0 ? Math.min(input.count, 100) : 10;
+      return { program: "git", steps: [["log", "--oneline", "-n", String(n)]] };
+    }
+    case "git_branch": {
+      const name = str(input.name).trim();
+      if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.startsWith("-") || name.includes("..")) {
+        return { error: `Error: "${name}" isn't a usable branch name.` };
+      }
+      return { program: "git", steps: [["switch", "-c", name]] };
+    }
+    case "git_commit": {
+      const message = str(input.message).trim();
+      if (!message) return { error: "Error: a commit needs a message." };
+      return {
+        program: "git",
+        steps: [...(input.all === true ? [["add", "-A"]] : []), ["commit", "-m", message]],
+      };
+    }
+    case "git_push":
+      return { program: "git", steps: [["push", "-u", "origin", "HEAD"]] };
+    case "open_pull_request": {
+      const title = str(input.title).trim();
+      if (!title) return { error: "Error: a pull request needs a title." };
+      return {
+        program: "gh",
+        steps: [
+          [
+            "pr",
+            "create",
+            "--title",
+            title,
+            "--body",
+            str(input.body),
+            ...(input.draft === true ? ["--draft"] : []),
+          ],
+        ],
+      };
+    }
+    default:
+      return { error: `Error: there's no tool called ${call.name}.` };
+  }
+}
+
+/** What a git call would do, in words, for its approval box. */
+export function gitSummary(call: ToolCall): string {
+  const input = call.input;
+  switch (call.name) {
+    case "git_branch":
+      return `Create and switch to branch ${str(input.name)}`;
+    case "git_commit":
+      return `Commit${input.all === true ? " everything" : " what's staged"}: “${str(input.message).split("\n")[0] ?? ""}”`;
+    case "git_push":
+      return "Push this branch to origin";
+    case "open_pull_request":
+      return `Open a${input.draft === true ? " draft" : ""} pull request: “${str(input.title)}”`;
+    default:
+      return call.name;
+  }
+}
+
 /** CA-03: one shell command in the repository. Each one asks you first. */
 export const COMMAND_TOOL: ToolSpec = {
   name: "run_command",

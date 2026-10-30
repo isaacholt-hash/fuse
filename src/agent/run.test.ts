@@ -17,7 +17,7 @@ import { listRecentRequests } from "@/storage/requestLog";
 import { getRun, listSteps } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { continueRun, runAnswer, startRun, type RunDeps } from "./run";
-import { READ_ONLY_TOOLS } from "./tools";
+import { GIT_READ_TOOLS, READ_ONLY_TOOLS } from "./tools";
 
 const t = DEFAULT_TENANT;
 const catalog = parseCatalog({
@@ -166,7 +166,8 @@ test("a run: plan, tool calls, results replayed, answer; every turn priced and l
   expect(
     sent.every(
       (s) =>
-        s.options.tools?.map((x) => x.name).join() === READ_ONLY_TOOLS.map((x) => x.name).join(),
+        s.options.tools?.map((x) => x.name).join() ===
+        [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS].map((x) => x.name).join(),
     ),
   ).toBe(true);
   expect(sent[0]?.options.scope).toEqual({ kind: "project", id: run.projectId });

@@ -16,6 +16,7 @@ const run: Run = {
   note: null,
   summary: null,
   summaryUpto: null,
+  branch: null,
   createdAt: 1,
   updatedAt: 1,
 };
@@ -70,6 +71,7 @@ test("steps read as plain lines; the finished run's last turn is the answer, not
     note: null,
     streaming: "",
     modeLabel: "read-only",
+    branch: null,
     changes: [],
     steps: [
       { id: "s1", kind: "note", label: "1. Find the code.", error: null },

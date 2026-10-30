@@ -23,6 +23,7 @@ import { tauriPreviewApi, type PreviewApi } from "@/artifacts/preview";
 import { tauriExportApi, type ExportApi } from "@/artifacts/export";
 import { tauriRepo, type RepoApi } from "@/repo/api";
 import { tauriExec, type ExecApi } from "@/repo/exec";
+import { tauriGit, type GitApi } from "@/repo/git";
 import { tauriBackupsApi, type BackupsApi } from "@/data/backups";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
 import { tauriZoom, type ZoomApi } from "@/app/appearance";
@@ -62,6 +63,8 @@ interface Props {
   repo?: RepoApi;
   /** Commands in that repository (CA-03). */
   exec?: ExecApi;
+  /** git and gh there (CA-05). */
+  git?: GitApi;
   backups?: BackupsApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
@@ -88,6 +91,7 @@ export default function App({
   exporter = tauriExportApi,
   repo = tauriRepo,
   exec = tauriExec,
+  git = tauriGit,
   backups = tauriBackupsApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
@@ -153,6 +157,7 @@ export default function App({
       exporter={exporter}
       repoApi={repo}
       execApi={exec}
+      gitApi={git}
       backups={backups}
       quickCapture={quickCapture}
       zoom={zoom}

@@ -22,6 +22,20 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Moved ${str(input.from)} → ${str(input.to)}`;
     case "run_command":
       return `Ran ${str(input.command)}`;
+    case "git_status":
+      return "Checked git status";
+    case "git_diff":
+      return `Looked at the diff${str(input.path) ? ` of ${str(input.path)}` : ""}`;
+    case "git_log":
+      return "Looked at recent commits";
+    case "git_branch":
+      return `Made branch ${str(input.name)}`;
+    case "git_commit":
+      return `Committed “${str(input.message).split("\n")[0] ?? ""}”`;
+    case "git_push":
+      return "Pushed the branch";
+    case "open_pull_request":
+      return `Opened a pull request: “${str(input.title)}”`;
     case "list_files":
       return input.recursive === true
         ? `Listed everything under ${path || "the root"}`
@@ -50,6 +64,7 @@ export function changeView(c: RunChange): RunChangeView {
 
 /** What the run is asking you about, as the card shows it. */
 export function approvalView(req: ApprovalRequest): ApprovalView {
+  if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
   return req.kind === "command"
     ? { kind: "command", command: req.command, destructive: req.destructive ?? null }
     : {
@@ -134,6 +149,7 @@ export function runView(
     steps: views,
     streaming,
     modeLabel: MODE_LABELS[run.mode],
+    branch: run.branch,
     changes: changes.map(changeView),
   };
 }
