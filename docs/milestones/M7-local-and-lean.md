@@ -48,9 +48,10 @@
   - Free disk is checked first (the file plus 1 GB). A bad checksum or an oversized download deletes the partial file. A dropped connection or Pause keeps it for resuming.
   - Settings → Local model: Download and install, progress with Pause, Update when `data/local-models.json` names a newer build, Remove (which ends the worker first), and other model files on this computer.
   - Checked on HULK through the app: the 2.50 GB Qwen3 4B file downloaded, matched its SHA-256 and installed. Hugging Face's CDN answers Range requests with 206, so resuming works.
-- [ ] **7. Local adapter (LL-02).**
-  - The `ProviderAdapter` over the worker. Token counts are logged, with cost 0 and provider `local` in the request log.
-  - Malformed or empty output is an error, never shown as text.
+- [x] **7. Local adapter (LL-02).**
+  - `src/providers/local/adapter.ts`: `createLocalAdapter` is the `ProviderAdapter` over the worker (`tauri.ts` calls `local_generate` and `local_cancel`). Text only, output capped at 1,024 tokens, a 2-minute time limit.
+  - Token counts come from llama.cpp; the cost is zero, priced from the zero catalog price. A length stop reads as `max_tokens`. A stray thinking block is removed, and the answer is held back until the end so it never shows.
+  - Not installed, a worker error or crash, or an empty answer is a `ProviderError` (`unavailable` or `stream`), never shown as text. Stop cancels the worker and ends as `aborted`.
 - [ ] **8. Routing to local (LL-04).**
   - When a model is installed, local is first choice in the Cheap tier for each housekeeping job. One fallback to the cloud Cheap model, with no retry loops; both attempts are logged as one task.
   - Local only projects get titles, summaries and memory suggestions locally. Chat there is still refused, with a clearer message.

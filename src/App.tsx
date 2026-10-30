@@ -1,5 +1,7 @@
 import { tauriLocalApi, type LocalApi } from "@/local/api";
-import { unavailableLocalAdapter } from "@/providers/local/adapter";
+import { createLocalAdapter } from "@/providers/local/adapter";
+import { tauriLocalBackend } from "@/providers/local/tauri";
+import { localModels } from "@/local/models";
 import { useEffect, useState } from "react";
 import type { Catalog, ProviderId } from "@/catalog/catalog";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
@@ -35,7 +37,11 @@ import { tauriHello, type HelloApi } from "@/security/hello";
 const desktopAdapters: Record<ProviderId, ProviderAdapter> = {
   anthropic: createAnthropicAdapter({ fetch: providerFetch("anthropic") }),
   openai: createOpenAIAdapter({ fetch: providerFetch("openai") }),
-  local: unavailableLocalAdapter(),
+  // LL-02: the model file on this computer, run by FUSE's own worker; never a network call.
+  local: createLocalAdapter({
+    backend: tauriLocalBackend,
+    fileFor: (id) => localModels.profiles.find((p) => p.id === id)?.file ?? null,
+  }),
 };
 const desktopAdapterFor = (p: ProviderId) => desktopAdapters[p];
 const desktopUpdates = defaultUpdateApi();
