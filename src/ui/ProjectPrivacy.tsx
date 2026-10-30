@@ -17,6 +17,9 @@ export interface ProjectPrivacyProps {
   providers: ProviderRuleView[];
   onChange: (change: { mode: PrivacyModeView; allowEmbeddings: boolean }) => void;
   onProvider: (provider: ProviderRuleView["id"], allow: boolean | null) => void;
+  /** LL-01: sums, conversions and checks answered by a fixed rule, with no model. */
+  answerWithoutModel?: boolean;
+  onAnswerWithoutModel?: (on: boolean) => void;
 }
 
 const selectClass = "h-8 rounded-lg border border-input bg-background px-2 text-xs";
@@ -37,6 +40,8 @@ export function ProjectPrivacySection({
   providers,
   onChange,
   onProvider,
+  answerWithoutModel = true,
+  onAnswerWithoutModel,
 }: ProjectPrivacyProps) {
   return (
     <section aria-label="Project privacy">
@@ -97,6 +102,18 @@ export function ProjectPrivacySection({
           />
           Send content to a provider to search by meaning (embeddings)
         </label>
+        {onAnswerWithoutModel && (
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={answerWithoutModel}
+              onChange={(e) => {
+                onAnswerWithoutModel(e.target.checked);
+              }}
+            />
+            Answer sums, conversions, dates, counts and JSON or CSV checks without a model ($0)
+          </label>
+        )}
       </div>
     </section>
   );

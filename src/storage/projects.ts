@@ -22,6 +22,8 @@ export interface Project {
   repoReadSecrets: boolean;
   /** CA-04: the mode its coding runs start in. */
   runMode: "plan" | "ask" | "auto_edit";
+  /** LL-01: sums, conversions and checks are answered without a model, at $0. */
+  answerWithoutModel: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -40,6 +42,7 @@ interface ProjectRow {
   repo_root: string | null;
   repo_read_sensitive: number;
   run_mode: "plan" | "ask" | "auto_edit";
+  answer_without_model: number;
   created_at: number;
   updated_at: number;
 }
@@ -58,12 +61,13 @@ const toProject = (r: ProjectRow): Project => ({
   repoRoot: r.repo_root,
   repoReadSecrets: r.repo_read_sensitive === 1,
   runMode: r.run_mode,
+  answerWithoutModel: r.answer_without_model === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
 const COLUMNS =
-  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, run_mode, created_at, updated_at";
+  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, run_mode, answer_without_model, created_at, updated_at";
 
 /** SE-13: a project's privacy mode and whether it may be embedded. */
 export async function setProjectPrivacy(
@@ -106,6 +110,19 @@ export async function setProjectRunMode(
   await db.execute(
     "UPDATE projects SET run_mode = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
     [mode, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** LL-01: whether the project answers simple questions without a model. */
+export async function setProjectAnswerWithoutModel(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  on: boolean,
+): Promise<void> {
+  await db.execute(
+    "UPDATE projects SET answer_without_model = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
+    [on ? 1 : 0, Date.now(), tenant.workspaceId, id],
   );
 }
 

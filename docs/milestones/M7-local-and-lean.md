@@ -22,11 +22,12 @@
   - A task is a question with all its answers, retries, escalations and regenerates, counted once. It succeeds when its newest answer finished, wasn't marked bad, and the question wasn't edited.
   - The Usage screen shows cost per successful task over 30 days (all API spend, housekeeping included, over the tasks that succeeded) and cloud calls avoided (request log rows from `local` or `deterministic`). Context tokens avoided are added with token ceilings in step 10.
   - The baseline is frozen from the request log the first time a task has succeeded with every call in the cloud (setting `economics.baseline`), with a Freeze again button. The routing test set's baseline is part of step 13.
-- [ ] **2. Deterministic first (LL-01).**
-  - Allowlisted handlers, run before routing: arithmetic, unit conversion, date and time conversion, counting, and JSON or CSV validation.
-  - The answer is marked "answered without a model · $0" and logged with route `deterministic`.
-  - Handlers are pure TypeScript, time-limited and audited, with no shell. They can be turned off per project.
-  - A deterministic test suite passes with no model call.
+- [x] **2. Deterministic first (LL-01).**
+  - Fixed rules in `src/deterministic/handlers.ts` run before routing: arithmetic (with percentages), unit conversion (length, mass, volume, data, time, temperature), dates (weekday, days between, plus or minus days, a time between IANA zones), counting words, characters or lines, and JSON or CSV checks.
+  - Each rule matches the whole question strictly. Anything with more to it goes to a model.
+  - The answer shows "answered without a model · $0" and is logged with provider `deterministic` (migration 0036).
+  - Pure TypeScript with no shell: input is capped at 100,000 characters, nesting at 50 levels, and a rule that takes over 100 ms is ignored. Only Auto sends with nothing attached are eligible. Each project can turn it off under Privacy.
+  - A 29-question suite passes with no model call, plus 14 questions it must leave to a model.
 - [ ] **3. A local provider in the catalog (LL-02, LL-08).**
   - `ProviderId` gains `local`. `data/local-models.json` lists the two profiles: file size, peak memory, context limit, licence, source URL, SHA-256 and `verified_on`.
   - Price is zero. Egress treats local as never leaving the computer.

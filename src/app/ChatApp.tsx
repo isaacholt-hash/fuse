@@ -71,6 +71,7 @@ import {
   regenerate,
   retryLast,
   sendMessage,
+  sendWithoutModel,
   type ChatDeps,
 } from "@/chat/sendMessage";
 import { housekeepingModel } from "@/chat/housekeeping";
@@ -151,6 +152,7 @@ import {
   listProjects,
   updateProject,
   setProjectPrivacy,
+  setProjectAnswerWithoutModel,
   setProjectRepo,
   setProjectRunMode,
   disallowCommand,
@@ -313,6 +315,7 @@ import {
   type UsageRecord,
 } from "@/storage/usageReport";
 import { cacheSavings } from "@/cost/savings";
+import { answerWithoutModel } from "@/deterministic/handlers";
 import { againstBaseline, economics as taskEconomics, parseBaseline } from "@/cost/economics";
 import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
@@ -1502,6 +1505,28 @@ export function ChatApp({
     }
   };
 
+  /** The open chat, or a new one made from the draft's settings. */
+  const threadForSend = async (search: boolean): Promise<string> => {
+    if (selectedId !== null) return selectedId;
+    const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito);
+    const threadId = thread.id;
+    if (search) await setThreadWebSearch(db, tenant, threadId, true);
+    if (draftInstructions) {
+      await setThreadInstructions(db, tenant, threadId, draftInstructions);
+    }
+    if (draftMode.kind !== "auto") {
+      await setThreadPins(db, tenant, threadId, {
+        tier: draftMode.kind === "tier" ? draftMode.tier : null,
+        model:
+          draftMode.kind === "model" ? { provider: draftMode.provider, id: draftMode.id } : null,
+      });
+    }
+    setSelectedId(threadId);
+    selectedRef.current = threadId;
+    await refreshThreads();
+    return threadId;
+  };
+
   const send = async (
     text: string,
     thinkHarder = false,
@@ -1523,6 +1548,29 @@ export function ChatApp({
       return;
     }
     const search = searchOn;
+    // LL-01: a sum, conversion or check is answered by a fixed rule before anything is routed
+    // or spent. Only on Auto with nothing attached, outside coding runs and compare mode, and
+    // when the project hasn't turned it off.
+    const fixed =
+      mode.kind === "auto" &&
+      !thinkHarder &&
+      ready.length === 0 &&
+      compareKeys.length < 2 &&
+      !codeActive &&
+      projects.find((p) => p.id === activeProjectId)?.answerWithoutModel !== false
+        ? answerWithoutModel(text, Date.now())
+        : null;
+    if (fixed) {
+      try {
+        const threadId = await threadForSend(search);
+        await sendWithoutModel(deps, { threadId, text, answer: fixed });
+        await reload(threadId);
+        await refreshThreads();
+      } catch (e) {
+        report(e);
+      }
+      return;
+    }
     // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
     const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
     if (gate.over && !confirmed.over) {
@@ -1614,27 +1662,7 @@ export function ChatApp({
     setOnceArmed(false);
     if (confirmed.dropFiles) attachments.clear();
     try {
-      let threadId = selectedId;
-      if (threadId === null) {
-        const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito);
-        threadId = thread.id;
-        if (search) await setThreadWebSearch(db, tenant, threadId, true);
-        if (draftInstructions) {
-          await setThreadInstructions(db, tenant, threadId, draftInstructions);
-        }
-        if (draftMode.kind !== "auto") {
-          await setThreadPins(db, tenant, threadId, {
-            tier: draftMode.kind === "tier" ? draftMode.tier : null,
-            model:
-              draftMode.kind === "model"
-                ? { provider: draftMode.provider, id: draftMode.id }
-                : null,
-          });
-        }
-        setSelectedId(threadId);
-        selectedRef.current = threadId;
-        await refreshThreads();
-      }
+      const threadId = await threadForSend(search);
       await stream(
         threadId,
         routed,
@@ -4385,6 +4413,12 @@ export function ChatApp({
                   },
                   onProvider: (provider: ProviderId, allow: boolean | null) => {
                     setEgressRule(db, tenant, editedProject.id, provider, allow)
+                      .then(refreshProjects)
+                      .catch(report);
+                  },
+                  answerWithoutModel: editedProject.answerWithoutModel,
+                  onAnswerWithoutModel: (on: boolean) => {
+                    setProjectAnswerWithoutModel(db, tenant, editedProject.id, on)
                       .then(refreshProjects)
                       .catch(report);
                   },
