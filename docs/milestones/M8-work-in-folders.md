@@ -38,6 +38,11 @@
   - images as images, for models that take them (otherwise a clear note)
 
   Size limits and truncation follow M7's ceilings.
+
+  Part 1 done (documents):
+  - Rust `repo_read_bytes` reads whole files, up to 25 MB, with the same path, ignore and secret rules.
+  - `src/documents/read.ts` turns Word into text (headings, lists, tables) and Excel into a table per sheet (cell references, values and formulas, a named sheet and range, 200 rows by 30 columns at a time), using fflate and no new dependency. PDFs use the PDF.js reader.
+  - Work runs get a `read_document` tool that pages at 40,000 characters. Part 2 is images.
 - [ ] **5. Creating documents (WF-04).** A `write_document` tool takes structured content (headings, paragraphs, lists, tables; formulas for Excel) and writes .docx, .xlsx or .pdf. The libraries are chosen and pinned in this step.
   - Undo for binary files keeps the bytes it replaced in the file store, by hash.
 - [ ] **6. Previews (WF-05).** Files FUSE made or changed open in the side panel: documents rendered, sheets as tables, PDFs as pages, images as images. "Open in its app" and "Show in folder" are there too.

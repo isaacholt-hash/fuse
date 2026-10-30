@@ -59,6 +59,7 @@ import {
   GIT_WRITE_TOOLS,
   gitArgs,
   gitSummary,
+  READ_DOCUMENT_TOOL,
   READ_ONLY_TOOLS,
   readWhole,
   runTool,
@@ -82,7 +83,7 @@ const GUIDE_DATA =
  * not code: no git, and the end product is usually a file.
  */
 const WORK_START =
-  "You are working on the user's files in the folders they gave this chat, through tools: documents, notes, spreadsheets, PDFs and other files, not necessarily code. Start with a short plan (a few numbered lines), then use the tools. Read the files that matter before you write; say which files you used.";
+  "You are working on the user's files in the folders they gave this chat, through tools: documents, notes, spreadsheets, PDFs and other files, not necessarily code. Start with a short plan (a few numbered lines), then use the tools. Read the files that matter before you write, with read_document for Word, Excel and PDF files; say which files you used.";
 
 function workGuide(mode: RunMode): string {
   const lines =
@@ -130,8 +131,8 @@ export const AGENT_GUIDE = agentGuide("plan");
 export const toolsFor = (mode: RunMode, kind: RunKind = "code") =>
   kind === "work"
     ? mode === "plan"
-      ? [...READ_ONLY_TOOLS]
-      : [...READ_ONLY_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL]
+      ? [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL]
+      : [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL, ...EDIT_TOOLS, COMMAND_TOOL]
     : mode === "plan"
       ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
       : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];

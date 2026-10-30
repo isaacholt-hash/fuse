@@ -84,6 +84,16 @@ export function scopedRepo(base: RepoApi, folders: readonly RunFolder[]): RepoAp
       const { folder, rel } = resolvePath(folders, path);
       return entries(folder.label, await base.list(folder.folderId, rel, recursive));
     },
+    ...(base.readBytes
+      ? {
+          readBytes: (_id: string, path: string) => {
+            const { folder, rel } = resolvePath(folders, path);
+            return (
+              base.readBytes?.(folder.folderId, rel) ?? Promise.reject(new Error("unavailable"))
+            );
+          },
+        }
+      : {}),
     read: async (_id, path, offset) => {
       const { folder, rel } = resolvePath(folders, path);
       const f = await base.read(folder.folderId, rel, offset);
