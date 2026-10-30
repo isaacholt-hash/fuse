@@ -12,7 +12,7 @@ import { CLASSIFY_SYSTEM, parseClassifyReply } from "@/routing/classifyFallback"
 import { defaultPolicy } from "@/routing/defaultPolicy";
 import { parseGoldenSet } from "@/routing/golden";
 import { chooseTier, TIER_ORDER } from "@/routing/policy";
-import { findBinary, findModel, NodeWorker } from "./testing/nodeWorker";
+import { findBinary, findModel, modelsDir, NodeWorker } from "./testing/nodeWorker";
 
 const LIVE = import.meta.env.MODE === "localbench";
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -59,7 +59,7 @@ test.skipIf(!LIVE)(
     const model = findModel();
     if (!model) {
       throw new Error(
-        "No local model installed: install one in Settings → Local model, or set FUSE_LOCAL_MODEL to a .gguf file.",
+        `No local model found in ${modelsDir()}. That's where FUSE on this computer installs it (Settings → Local model); a model installed on another computer isn't here. Or set FUSE_LOCAL_MODEL to a .gguf file.`,
       );
     }
     const set = parseGoldenSet(

@@ -31,6 +31,9 @@ function appData(): string {
   );
 }
 
+/** Where FUSE on this computer keeps its model files. */
+export const modelsDir = () => join(appData(), "models");
+
 /** FUSE_LOCAL_MODEL, else the largest profile installed in the app. */
 export function findModel(): { path: string; profile: LocalProfile | null } | null {
   const forced = process.env.FUSE_LOCAL_MODEL;
