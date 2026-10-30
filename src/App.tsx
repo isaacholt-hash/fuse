@@ -20,6 +20,7 @@ import { defaultUpdateApi, type UpdateApi } from "@/update/api";
 import { tauriWebApi, type WebApi } from "@/web/api";
 import { tauriPreviewApi, type PreviewApi } from "@/artifacts/preview";
 import { tauriExportApi, type ExportApi } from "@/artifacts/export";
+import { tauriRepo, type RepoApi } from "@/repo/api";
 import { tauriBackupsApi, type BackupsApi } from "@/data/backups";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
 import { tauriZoom, type ZoomApi } from "@/app/appearance";
@@ -55,6 +56,8 @@ interface Props {
   web?: WebApi;
   preview?: PreviewApi;
   exporter?: ExportApi;
+  /** The coding agent's linked repository (CA-01). */
+  repo?: RepoApi;
   backups?: BackupsApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
@@ -79,6 +82,7 @@ export default function App({
   web = tauriWebApi,
   preview = tauriPreviewApi,
   exporter = tauriExportApi,
+  repo = tauriRepo,
   backups = tauriBackupsApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
@@ -141,6 +145,7 @@ export default function App({
       web={web}
       preview={preview}
       exporter={exporter}
+      repoApi={repo}
       backups={backups}
       quickCapture={quickCapture}
       zoom={zoom}

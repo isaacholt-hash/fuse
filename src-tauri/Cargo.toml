@@ -32,6 +32,8 @@ tauri-plugin-dialog = "=2.8.2"
 # Global quick-capture shortcut (CH-08, PL-07); pinned: released 2026-10-10.
 tauri-plugin-global-shortcut = "=2.4.1"
 sha2 = "0.11.1"
+# .gitignore rules for the coding agent's repository access (CA-01); pinned: released 2026-08-04.
+ignore = "=0.4.33"
 tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).
 tauri-plugin-updater = "2"

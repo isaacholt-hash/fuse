@@ -4,7 +4,14 @@ import { addMessage, finishMessage, listMessages, markInterruptedMessages } from
 import { listRecentRequests, logRequest } from "./requestLog";
 import { openTestDb } from "./testing/nodeDb";
 import { getGlobalInstructions, NO_INSTRUCTIONS, setGlobalInstructions } from "./instructions";
-import { createProject, deleteProject, getProject, listProjects, updateProject } from "./projects";
+import {
+  createProject,
+  deleteProject,
+  getProject,
+  listProjects,
+  setProjectRepo,
+  updateProject,
+} from "./projects";
 import {
   createThread,
   deleteThread,
@@ -276,4 +283,17 @@ describe("golden prompts", () => {
     };
     await expect(replaceGoldenPrompts(db, DEFAULT_TENANT, [cheap])).rejects.toThrow(/CHECK/);
   });
+});
+
+test("a project links a repository folder, and unlinking turns secret reading off", async () => {
+  const db = openTestDb();
+  const p = await createProject(db, t, "Lighthouse");
+  expect(p).toMatchObject({ repoRoot: null, repoReadSecrets: false });
+  await setProjectRepo(db, t, p.id, { root: "/home/me/lighthouse", readSecrets: true });
+  expect(await getProject(db, t, p.id)).toMatchObject({
+    repoRoot: "/home/me/lighthouse",
+    repoReadSecrets: true,
+  });
+  await setProjectRepo(db, t, p.id, { root: null, readSecrets: true });
+  expect(await getProject(db, t, p.id)).toMatchObject({ repoRoot: null, repoReadSecrets: false });
 });

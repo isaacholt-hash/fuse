@@ -16,6 +16,10 @@ export interface Project {
   privacyMode: PrivacyMode;
   /** SE-13: whether its content may go to a provider to be embedded for search. */
   allowEmbeddings: boolean;
+  /** CA-01: the linked repository folder for the coding agent; null when none. */
+  repoRoot: string | null;
+  /** CA-01: whether the agent may read secret-looking files (.env, keys) in it. */
+  repoReadSecrets: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -31,6 +35,8 @@ interface ProjectRow {
   default_tier: "balanced" | "best" | null;
   privacy_mode: PrivacyMode;
   allow_embeddings: number;
+  repo_root: string | null;
+  repo_read_sensitive: number;
   created_at: number;
   updated_at: number;
 }
@@ -46,12 +52,14 @@ const toProject = (r: ProjectRow): Project => ({
   defaultTier: r.default_tier,
   privacyMode: r.privacy_mode,
   allowEmbeddings: r.allow_embeddings === 1,
+  repoRoot: r.repo_root,
+  repoReadSecrets: r.repo_read_sensitive === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
 const COLUMNS =
-  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, created_at, updated_at";
+  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, created_at, updated_at";
 
 /** SE-13: a project's privacy mode and whether it may be embedded. */
 export async function setProjectPrivacy(
@@ -64,6 +72,23 @@ export async function setProjectPrivacy(
     `UPDATE projects SET privacy_mode = ?, allow_embeddings = ?, updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [privacy.mode, privacy.allowEmbeddings ? 1 : 0, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/**
+ * CA-01: link a folder (already resolved by Rust's `repo_check`), or unlink with null. Unlinking
+ * also turns secret reading back off.
+ */
+export async function setProjectRepo(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  repo: { root: string | null; readSecrets: boolean },
+): Promise<void> {
+  await db.execute(
+    `UPDATE projects SET repo_root = ?, repo_read_sensitive = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [repo.root, repo.root && repo.readSecrets ? 1 : 0, Date.now(), tenant.workspaceId, id],
   );
 }
 

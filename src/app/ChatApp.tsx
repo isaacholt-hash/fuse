@@ -39,6 +39,7 @@ import {
 } from "@/catalog/prices";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
+import type { RepoApi } from "@/repo/api";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -134,6 +135,7 @@ import {
   listProjects,
   updateProject,
   setProjectPrivacy,
+  setProjectRepo,
   type Project,
 } from "@/storage/projects";
 import { listRecentRequests, logRequest, medianFirstTokenMs } from "@/storage/requestLog";
@@ -377,6 +379,8 @@ export interface ChatAppProps {
   preview?: PreviewApi;
   /** "Save as…" for artifact exports (AR-04). */
   exporter?: ExportApi;
+  /** The coding agent's linked repository (CA-01). */
+  repoApi?: RepoApi;
   /** Backup and restore of the database (PL-11). */
   backups?: BackupsApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
@@ -490,6 +494,7 @@ export function ChatApp({
   web,
   preview,
   exporter,
+  repoApi,
   backups,
   quickCapture,
   zoom,
@@ -754,6 +759,8 @@ export function ChatApp({
   }, [db, tenant]);
   // SE-13: provider rules, global and per project (privacy modes live on the project).
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
+  // CA-01: a line under the linked folder (git or not, or why linking failed).
+  const [repoNote, setRepoNote] = useState<string | null>(null);
   // PL-12: the export being restored, between its preview and the yes.
   const restoring = useRef<ParsedExport | null>(null);
   const refreshProjects = useCallback(async () => {
@@ -4038,6 +4045,52 @@ export function ChatApp({
                         return saved
                           ? `Saved ${saved}: ${String(out.chats)} chats, ${String(out.files)} files.`
                           : null;
+                      },
+                    }
+                  : {}),
+                ...(repoApi
+                  ? {
+                      repo: {
+                        root: editedProject.repoRoot,
+                        readSecrets: editedProject.repoReadSecrets,
+                        note: repoNote,
+                        onLink: () => {
+                          repoApi
+                            .pick()
+                            .then(async (info) => {
+                              if (!info) return;
+                              await setProjectRepo(db, tenant, editedProject.id, {
+                                root: info.root,
+                                readSecrets: false,
+                              });
+                              setRepoNote(
+                                info.isGit
+                                  ? `${info.name}: a git repository.`
+                                  : `${info.name}: not a git repository, so git steps won't work here.`,
+                              );
+                              await refreshProjects();
+                            })
+                            .catch((e: unknown) => {
+                              setRepoNote(e instanceof Error ? e.message : String(e));
+                            });
+                        },
+                        onUnlink: () => {
+                          setRepoNote(null);
+                          setProjectRepo(db, tenant, editedProject.id, {
+                            root: null,
+                            readSecrets: false,
+                          })
+                            .then(refreshProjects)
+                            .catch(report);
+                        },
+                        onReadSecrets: (allow: boolean) => {
+                          setProjectRepo(db, tenant, editedProject.id, {
+                            root: editedProject.repoRoot,
+                            readSecrets: allow,
+                          })
+                            .then(refreshProjects)
+                            .catch(report);
+                        },
                       },
                     }
                   : {}),
