@@ -1,7 +1,8 @@
 // @vitest-environment node
 import type { RepoApi, RepoEntry } from "@/repo/api";
+import type { ExecApi } from "@/repo/exec";
 import type { Folder } from "@/storage/folders";
-import { labelFolders, resolvePath, scopedRepo } from "./folders";
+import { labelFolders, resolvePath, scopedExec, scopedRepo } from "./folders";
 
 const folder = (id: string, path: string): Folder => ({
   id,
@@ -110,4 +111,28 @@ test("the scoped repository routes each call to its folder and prefixes what com
   // One folder: nothing is prefixed, exactly as in M6.
   const single = scopedRepo(repo, labelFolders([folder("a", "/x/app")]));
   expect((await single.read("", "README.md", 0)).path).toBe("README.md");
+});
+
+test("WF-07: commands run sandboxed, writable in every folder of the run", async () => {
+  const calls: unknown[] = [];
+  const exec: ExecApi = {
+    run: (id, command, opts) => {
+      calls.push({ id, command, sandbox: opts.sandbox });
+      return Promise.resolve({
+        output: "",
+        exitCode: 0,
+        timedOut: false,
+        stopped: false,
+        truncated: false,
+        elapsedMs: 1,
+      });
+    },
+    sandboxKind: () => Promise.resolve("bubblewrap"),
+  };
+  const scoped = scopedExec(exec, labelFolders([folder("a", "/x/app"), folder("b", "/y/docs")]));
+  await scoped.run("", "ls", {});
+  expect(calls).toEqual([
+    { id: "a", command: "ls", sandbox: { folderIds: ["a", "b"], network: true } },
+  ]);
+  expect(await scoped.sandboxKind?.()).toBe("bubblewrap");
 });

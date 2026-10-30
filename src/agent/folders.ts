@@ -152,13 +152,22 @@ export function scopedRepo(base: RepoApi, folders: readonly RunFolder[]): RepoAp
   };
 }
 
-/** Commands run in the run's first folder. */
+/**
+ * Commands run in the run's first folder, sandboxed (WF-07): writable in every folder of the
+ * run and nowhere else. Network stays on until per-chat network allowing lands (M8 step 10).
+ */
 export function scopedExec(base: ExecApi, folders: readonly RunFolder[]): ExecApi {
   return {
+    ...(base.sandboxKind
+      ? { sandboxKind: () => base.sandboxKind?.() ?? Promise.resolve("none" as const) }
+      : {}),
     run: (_id, command, opts) => {
       const first = folders[0];
       if (!first) return Promise.reject(new Error("This chat has no folder to run commands in."));
-      return base.run(first.folderId, command, opts);
+      return base.run(first.folderId, command, {
+        ...opts,
+        sandbox: opts.sandbox ?? { folderIds: folders.map((f) => f.folderId), network: true },
+      });
     },
   };
 }

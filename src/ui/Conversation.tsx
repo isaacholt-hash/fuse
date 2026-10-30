@@ -1954,13 +1954,19 @@ function RunCard({
         >
           {run.approval.kind === "command" ? (
             <>
-              <p className="mb-1 font-medium">Run this command in the repository?</p>
+              <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
               <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
                 {run.approval.command}
               </pre>
               {run.approval.destructive && (
                 <p className="mb-2 text-destructive">
                   This {run.approval.destructive}, so it asks every time.
+                </p>
+              )}
+              {run.approval.unsandboxed && (
+                <p className="mb-2 text-amber-700 dark:text-amber-400">
+                  No sandbox on this computer: it runs with your full rights, and can change files
+                  outside this chat&apos;s folders.
                 </p>
               )}
             </>

@@ -80,6 +80,7 @@ pub fn run() {
             repo::commands::repo_move,
             exec::commands::repo_exec,
             exec::commands::repo_exec_stop,
+            exec::commands::sandbox_status,
             git::commands::repo_git,
             local::commands::local_generate,
             local::commands::local_cancel,

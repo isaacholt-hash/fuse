@@ -25,16 +25,28 @@ export interface ExecResult {
   elapsedMs: number;
 }
 
+/** WF-07: what sandboxes commands on this computer. */
+export type SandboxKind = "bubblewrap" | "none";
+
 export interface ExecApi {
   run(
     folderId: string,
     command: string,
-    opts: { timeoutSecs?: number; signal?: AbortSignal; onOutput?: (soFar: string) => void },
+    opts: {
+      timeoutSecs?: number;
+      signal?: AbortSignal;
+      onOutput?: (soFar: string) => void;
+      /** WF-07: run sandboxed: writable only in these folders (and a private /tmp). */
+      sandbox?: { folderIds: string[]; network: boolean };
+    },
   ): Promise<ExecResult>;
+  /** WF-07: whether commands can be sandboxed here. */
+  sandboxKind?(): Promise<SandboxKind>;
 }
 
 export const tauriExec: ExecApi = {
-  run: (folderId, command, { timeoutSecs, signal, onOutput }) =>
+  sandboxKind: () => invoke<SandboxKind>("sandbox_status"),
+  run: (folderId, command, { timeoutSecs, signal, onOutput, sandbox }) =>
     new Promise<ExecResult>((resolve, reject) => {
       let output = "";
       const channel = new Channel<ExecMsg>();
@@ -51,6 +63,7 @@ export const tauriExec: ExecApi = {
         folderId,
         command,
         timeoutSecs: timeoutSecs ?? null,
+        sandbox: sandbox ?? null,
         onEvent: channel,
       })
         .then((id) => {

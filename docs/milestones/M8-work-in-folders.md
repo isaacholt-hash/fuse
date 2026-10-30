@@ -62,10 +62,12 @@
   - It always asks, even in "Can edit files". The card lists every move with a box, all ticked, and the folders they go into, with Allow all, Allow N ticked, or Deny. Nothing is deleted.
   - The allowed moves run in order. If one fails, the ones already made are put back and nothing stays moved.
   - Migration 0044 adds `run_changes.batch_id`. The run card shows the plan as one row, "Organised N files", listing the moves, with one Undo that puts the whole plan back.
-- [ ] **8. Sandbox on Linux (WF-07, CA-11).**
-  - Commands run under bubblewrap. The system is read-only, the chat's folders are writable, and there's a private temporary folder and no network (`--unshare-net`) unless allowed.
-  - Without bubblewrap, a command asks with a plain warning that it will run unsandboxed.
-  - Tests: writing outside the folders fails, and reaching the network fails.
+- [x] **8. Sandbox on Linux (WF-07, CA-11).**
+  - Commands from Code and Work runs run under bubblewrap: the whole system read-only, a fresh `/dev`, `/proc` and `/tmp`, and the run's folders bound read-write (each looked up in the database, never sent in). There's no network when not allowed, and the sandbox dies with FUSE.
+  - FUSE checks once that bubblewrap can make its namespaces (Ubuntu's AppArmor can block it). Where it can't, or on Windows until step 9, the command's approval says it runs with your full rights.
+  - Tests on HULK, which also run in CI where bubblewrap works: a write outside the folder fails as read-only, `/etc` can't be written, a connection fails with no network, and the time limit still ends a sandboxed command.
+  - Network stays allowed for now, as in M6. Step 10 switches it off by default, with an allow per chat or folder.
+  - Known limit: tools that write outside the folder (npm's cache in `~/.npm`, `~/.cargo`) can fail in the sandbox.
 - [ ] **9. Sandbox on Windows (WF-07, CA-11).**
   - Commands run with a restricted token in an AppContainer. Write access is granted only on the chat's folders, there's no network capability unless allowed, and a job object ends the whole tree.
   - The same tests run in Windows CI; HULK can't run them.

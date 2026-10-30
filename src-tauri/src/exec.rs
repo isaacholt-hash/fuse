@@ -5,7 +5,7 @@
 //! that happen to be in FUSE's own environment are not passed on.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -106,18 +106,120 @@ async fn pump(mut from: impl AsyncRead + Unpin, to: mpsc::UnboundedSender<Vec<u8
     }
 }
 
+/// WF-07: where a sandboxed command may write (the chat's folders, plus a private /tmp), and
+/// whether it may use the network.
+#[derive(Debug, Clone)]
+pub struct Sandbox {
+    pub writable: Vec<PathBuf>,
+    pub network: bool,
+}
+
+/// What can sandbox commands on this computer.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxKind {
+    Bubblewrap,
+    None,
+}
+
+#[cfg(target_os = "linux")]
+fn bwrap_path() -> Option<PathBuf> {
+    ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"]
+        .iter()
+        .map(PathBuf::from)
+        .find(|p| p.exists())
+}
+
+/// Whether bubblewrap is here and allowed to make its namespaces (Ubuntu's AppArmor can stop
+/// it): it's tried once with a command that does nothing, and the answer kept.
+pub fn sandbox_kind() -> SandboxKind {
+    use std::sync::OnceLock;
+    static KIND: OnceLock<SandboxKind> = OnceLock::new();
+    *KIND.get_or_init(|| {
+        #[cfg(target_os = "linux")]
+        {
+            if let Some(bwrap) = bwrap_path() {
+                let ok = std::process::Command::new(bwrap)
+                    .args([
+                        "--ro-bind",
+                        "/",
+                        "/",
+                        "--unshare-net",
+                        "--die-with-parent",
+                        "--",
+                        "/bin/true",
+                    ])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success());
+                if ok {
+                    return SandboxKind::Bubblewrap;
+                }
+            }
+            SandboxKind::None
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            SandboxKind::None
+        }
+    })
+}
+
+/// The command to start: in bubblewrap when asked for and available, otherwise as it is.
+/// Bubblewrap: the whole system read-only, a fresh /dev, /proc and /tmp, the writable folders
+/// bound back read-write, no network unless allowed, and it dies with FUSE.
+fn command_for(root: &Path, command: &str, sandbox: Option<&Sandbox>) -> tokio::process::Command {
+    #[cfg(target_os = "linux")]
+    if let Some(sb) = sandbox
+        && sandbox_kind() == SandboxKind::Bubblewrap
+        && let Some(bwrap) = bwrap_path()
+    {
+        let sh = if Path::new("/bin/bash").exists() {
+            "/bin/bash"
+        } else {
+            "/bin/sh"
+        };
+        let mut c = tokio::process::Command::new(bwrap);
+        c.args([
+            "--ro-bind",
+            "/",
+            "/",
+            "--dev",
+            "/dev",
+            "--proc",
+            "/proc",
+            "--tmpfs",
+            "/tmp",
+        ]);
+        for w in &sb.writable {
+            c.arg("--bind").arg(w).arg(w);
+        }
+        if !sb.network {
+            c.arg("--unshare-net");
+        }
+        c.arg("--die-with-parent").arg("--chdir").arg(root);
+        c.args(["--", sh, "-c", command]);
+        return c;
+    }
+    let _ = (root, sandbox);
+    shell(command)
+}
+
 /// Runs `command` in `root`, sending output to `on` as it comes, then one `Done` (or `Error`).
-/// `stop` ends it early.
+/// `stop` ends it early. With `sandbox`, it runs sandboxed where this computer can (WF-07).
 pub async fn run(
     root: &Path,
     command: &str,
     timeout: Duration,
     mut stop: oneshot::Receiver<()>,
+    sandbox: Option<&Sandbox>,
     mut on: impl FnMut(ExecMsg),
 ) {
     let started = Instant::now();
     let timeout = timeout.min(MAX_TIMEOUT);
-    let mut cmd = shell(command);
+    let mut cmd = command_for(root, command, sandbox);
     cmd.current_dir(root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -235,6 +337,7 @@ pub mod commands {
         folder_id: String,
         command: String,
         timeout_secs: Option<u64>,
+        sandbox: Option<SandboxIn>,
         on_event: Channel<ExecMsg>,
     ) -> Result<u32, String> {
         if command.trim().is_empty() {
@@ -253,13 +356,45 @@ pub mod commands {
         let timeout = timeout_secs
             .map(Duration::from_secs)
             .unwrap_or(DEFAULT_TIMEOUT);
+        // WF-07: writable are the run's folders (each from the database), never a path sent in.
+        let sandbox = match sandbox {
+            Some(sb) => {
+                let mut writable = vec![root.clone()];
+                for f in sb.folder_ids {
+                    let (p, _) = crate::repo::folder_root(&db.pool()?, &f).await?;
+                    let p = std::fs::canonicalize(&p)
+                        .map_err(|e| format!("A folder of this chat is missing: {e}"))?;
+                    if !writable.contains(&p) {
+                        writable.push(p);
+                    }
+                }
+                Some(Sandbox {
+                    writable,
+                    network: sb.network,
+                })
+            }
+            None => None,
+        };
         tauri::async_runtime::spawn(async move {
-            run(&root, &command, timeout, stop_rx, |m| {
+            run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
                 let _ = on_event.send(m);
             })
             .await;
         });
         Ok(id)
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    pub struct SandboxIn {
+        folder_ids: Vec<String>,
+        network: bool,
+    }
+
+    /// WF-07: what sandboxes commands here ("bubblewrap", or "none" when it isn't available).
+    #[tauri::command]
+    pub fn sandbox_status() -> SandboxKind {
+        sandbox_kind()
     }
 
     #[tauri::command]
@@ -275,6 +410,105 @@ pub mod commands {
 mod tests {
     use super::*;
 
+    /// Runs `command` sandboxed in a fresh folder; None where bubblewrap can't run (it's skipped).
+    async fn sandboxed(command: &str, network: bool) -> Option<(PathBuf, String, ExecMsg)> {
+        if sandbox_kind() != SandboxKind::Bubblewrap {
+            eprintln!("bubblewrap isn't usable here; sandbox test skipped");
+            return None;
+        }
+        let dir = std::env::temp_dir().join(format!(
+            "fuse-sbx-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let dir = std::fs::canonicalize(&dir).unwrap();
+        let sb = Sandbox {
+            writable: vec![dir.clone()],
+            network,
+        };
+        let (_tx, rx) = oneshot::channel();
+        let mut out = String::new();
+        let mut done = None;
+        run(&dir, command, DEFAULT_TIMEOUT, rx, Some(&sb), |m| match m {
+            ExecMsg::Out { text } => out.push_str(&text),
+            other => done = Some(other),
+        })
+        .await;
+        std::mem::forget(_tx);
+        Some((dir, out, done.unwrap()))
+    }
+
+    #[tokio::test]
+    async fn sandboxed_commands_write_only_in_their_folders() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+        let outside = format!("{home}/.fuse-sandbox-escape-test");
+        let Some((dir, out, _)) = sandboxed(
+            &format!("echo inside > made.txt; echo x > '{outside}' 2>&1; echo x > /etc/fuse-escape 2>&1; cat made.txt"),
+            false,
+        )
+        .await
+        else {
+            return;
+        };
+        assert_eq!(
+            std::fs::read_to_string(dir.join("made.txt")).unwrap(),
+            "inside\n"
+        );
+        assert!(!Path::new(&outside).exists(), "wrote outside its folder");
+        assert!(out.contains("Read-only file system"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn sandboxed_commands_get_no_network() {
+        let probe = "(exec 3<>/dev/tcp/1.1.1.1/53) 2>&1 && echo connected || echo blocked";
+        let Some((_, out, _)) = sandboxed(probe, false).await else {
+            return;
+        };
+        assert!(out.contains("blocked"), "{out}");
+        assert!(!out.contains("connected"), "{out}");
+    }
+
+    #[tokio::test]
+    async fn a_sandboxed_command_is_still_ended_by_its_time_limit() {
+        if sandbox_kind() != SandboxKind::Bubblewrap {
+            return;
+        }
+        let dir = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        let sb = Sandbox {
+            writable: vec![dir.clone()],
+            network: false,
+        };
+        let (_tx, rx) = oneshot::channel();
+        let mut done = None;
+        let started = Instant::now();
+        run(
+            &dir,
+            "sleep 30",
+            Duration::from_millis(500),
+            rx,
+            Some(&sb),
+            |m| {
+                if !matches!(m, ExecMsg::Out { .. }) {
+                    done = Some(m);
+                }
+            },
+        )
+        .await;
+        std::mem::forget(_tx);
+        assert!(matches!(
+            done,
+            Some(ExecMsg::Done {
+                timed_out: true,
+                ..
+            })
+        ));
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
     async fn go(command: &str, timeout: Duration) -> (String, ExecMsg) {
         let dir = std::env::temp_dir().join(format!(
             "fuse-exec-test-{}-{}",
@@ -289,7 +523,7 @@ mod tests {
         let (_tx, rx) = oneshot::channel();
         let mut out = String::new();
         let mut done = None;
-        run(&dir, command, timeout, rx, |m| match m {
+        run(&dir, command, timeout, rx, None, |m| match m {
             ExecMsg::Out { text } => out.push_str(&text),
             other => done = Some(other),
         })
@@ -356,7 +590,7 @@ mod tests {
         let mut result = None;
         let handle = tokio::spawn(async move {
             let mut done = None;
-            run(&dir, "sleep 30", DEFAULT_TIMEOUT, rx, |m| {
+            run(&dir, "sleep 30", DEFAULT_TIMEOUT, rx, None, |m| {
                 if matches!(m, ExecMsg::Done { .. }) {
                     done = Some(m);
                 }
