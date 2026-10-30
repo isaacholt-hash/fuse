@@ -1,6 +1,6 @@
 # FUSE threat model (SE-14)
 
-What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the coding agent added in M6 (2026-10-30, section 5). **Review it when sync (PL-04), tools and agents (P2), or local models (M7) land.** Each of those adds a boundary.
+What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the coding agent added in M6 (2026-10-30, section 5), local models and the response cache in M7 (2026-10-30, section 6). **Review it when sync (PL-04) or tools and agents (P2) land.** Each of those adds a boundary.
 
 ## What's worth protecting
 
@@ -13,6 +13,8 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 | Exports | Zips you save; plain JSON and files (SE-07, PL-12) |
 | Linked repositories (M6) | Folders on this computer the coding agent may read, change and run commands in |
 | This computer itself (M6) | Commands a coding run runs execute as you, with your rights |
+| Local model files (M7) | GGUF files in the app's `models/` folder, run by FUSE's worker |
+| The response cache (M7) | Earlier answers kept for reuse, in the encrypted database |
 
 ## Trust boundaries
 
@@ -21,6 +23,7 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 3. **FUSE vs. what it reads.** Imported chats, pasted memories, files, web pages and model answers are data, never instructions to FUSE.
 4. **The coding agent vs. this computer (M6).** File access goes through Rust (`repo.rs`), which takes only a project id and a relative path and reads the folder from the database. Commands (`exec.rs`) and git (`git.rs`) run in that folder only, after the app asks you. The model can ask; only you can allow.
 5. **Artifact previews.** HTML and React previews run in a separate `preview://` origin with a no-network content security policy. A per-artifact switch allows only listed CDNs (AR-05).
+6. **The app vs. its local model worker (M7).** llama.cpp runs in a separate process, FUSE's own executable with `--local-worker`. It's started with an empty environment and spoken to only in JSON lines. It reads one model file that FUSE checked against its pinned SHA-256, and its replies are data that only does housekeeping.
 
 ## Threats and mitigations
 
@@ -94,6 +97,21 @@ Nothing syncs today. When PL-04 is built:
 | Losing work to an edit | Every change is recorded with what was there; Undo per file or per run, refused if the file changed since; runs can work on a branch of their own | Commands' effects (e.g. a build deleting files) aren't recorded or undoable |
 | A runaway run spending money | A cost cap per run ($1 by default) that pauses and asks; plans and summaries count against it; 60 turns at most | — |
 | Not knowing what happened | Every tool call is in Settings → Coding agent activity: what, who allowed it, the result, the model and the cost | Kept on this device only |
+
+### 6. Local models and the cache (M7)
+
+*A model file from the internet, run on this computer on your chats' text; and answers kept for reuse.*
+
+| Threat | Mitigation | Gap |
+| --- | --- | --- |
+| A tampered or swapped model file | Files come only from `https://huggingface.co/…/resolve/<40-hex revision>/<file>` (`model_files.rs`), over HTTPS only. Each is checked against the SHA-256 and size in `data/local-models.json` before it's renamed into place; a mismatch deletes it. The note beside each file records what was installed, and an outdated one is offered as an update | Trust rests on the pinned checksum in the repository; the files aren't signed |
+| A malicious GGUF exploiting llama.cpp | Only the two pinned official Qwen files are offered. llama.cpp runs in a separate worker process with an empty environment (no keys), and FUSE talks to it only through JSON lines | The worker runs with your rights, like the app; there's no OS sandbox |
+| The local path sending data out | llama.cpp is built without curl. The worker opens no sockets and gets no environment. The local adapter has no fetch. Tests run housekeeping with the cloud unreachable | Not enforced by the OS (no network namespace) |
+| Out of memory, a crash, a hang | The worker is its own process: a crash or the OOM killer ends it, the request fails with a plain message, and the next one starts a fresh worker. A 2-minute limit cancels, then ends it; Stop cancels. The model is picked to fit in 40% of RAM. Tested with a killed worker, unreadable output and a hang | — |
+| Prompt injection through chat text into the local model | Control tokens (`<\|im_start\|>` and similar) are stripped from content before it reaches the model. The local model only does housekeeping: it never answers you (RT-17), approves an action or lowers the tier of a request it reads. Malformed replies are ignored (the classifier keeps its heuristics) | A wrong title or summary is possible and visible |
+| Local only projects leaking through a fallback | When the local model fails in a Local only project, nothing goes to the cloud. Tested | — |
+| A cached answer reaching the wrong place or going stale | The key covers model, effort, system prompt (instructions, memories, decisions), messages, output format and project; the project is checked again on read. Only a chat's first question is cached, never with files, web search, memories, incognito, or time-sensitive, personal or high-stakes wording. Entries expire (24 h for chat). Regenerate always asks the model | The word lists for "personal" and "high-stakes" are heuristics |
+| Shadow checks leaking text | Shadow rows keep only timings, lengths and agreement, never text. They only run where the project allows the cloud | — |
 
 ## Out of scope for now
 
