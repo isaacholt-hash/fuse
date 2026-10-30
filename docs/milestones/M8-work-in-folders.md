@@ -31,7 +31,7 @@
   - The composer has Code and Work side by side; one at a time, per chat. Both use the same permission modes, approvals, diffs, undo, plan and cost cap.
   - Work runs (`runs.kind = 'work'`) get their own guide (`<work_agent>`): deliverables, say which files were used, prefer a new file over overwriting, never delete unless asked. Their planner has its own guide too.
   - Tools: list, read, search, write, edit, move, delete and commands, with no git and no branch. Document, preview and organise tools join in steps 4 to 7. The run card says "Work run".
-- [ ] **4. Reading documents (WF-03).** `read_file` returns:
+- [x] **4. Reading documents (WF-03).** `read_file` returns:
   - Word as text with headings and tables
   - Excel as sheets with cell ranges (capped, and searchable by range)
   - PDF text per page (the existing reader)
@@ -42,7 +42,12 @@
   Part 1 done (documents):
   - Rust `repo_read_bytes` reads whole files, up to 25 MB, with the same path, ignore and secret rules.
   - `src/documents/read.ts` turns Word into text (headings, lists, tables) and Excel into a table per sheet (cell references, values and formulas, a named sheet and range, 200 rows by 30 columns at a time), using fflate and no new dependency. PDFs use the PDF.js reader.
-  - Work runs get a `read_document` tool that pages at 40,000 characters. Part 2 is images.
+  - Work runs get a `read_document` tool that pages at 40,000 characters.
+
+  Part 2 done (images):
+  - `read_document` on a .png, .jpg, .gif or .webp up to 3.75 MB returns the image with its result. The bytes go into the encrypted attachment store, and migration 0042's `run_steps.images` records them, so every later turn of the run sends it again.
+  - Anthropic gets text then an image block inside `tool_result`; OpenAI gets `input_text` then `input_image` inside `function_call_output`. A model without vision gets a note instead.
+  - Not yet checked against the live APIs; `pnpm work:live` (step 13) covers that.
 - [ ] **5. Creating documents (WF-04).** A `write_document` tool takes structured content (headings, paragraphs, lists, tables; formulas for Excel) and writes .docx, .xlsx or .pdf. The libraries are chosen and pinned in this step.
   - Undo for binary files keeps the bytes it replaced in the file store, by hash.
 - [ ] **6. Previews (WF-05).** Files FUSE made or changed open in the side panel: documents rendered, sheets as tables, PDFs as pages, images as images. "Open in its app" and "Show in folder" are there too.

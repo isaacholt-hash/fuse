@@ -58,9 +58,17 @@ export type RunStep =
       isError: boolean;
       /** How it was allowed (AG-04 audit): needed nobody, you, always-allowed, or declined. */
       approval: Approval | null;
+      /** WF-03: images it showed the model, by attachment-store hash. */
+      images: StepImage[];
     };
 
 export type Approval = "auto" | "you" | "always" | "denied";
+
+/** An image a tool step showed the model; its bytes are in the attachment store. */
+export interface StepImage {
+  sha256: string;
+  mime: string;
+}
 
 interface RunRow {
   id: string;
@@ -98,6 +106,7 @@ interface StepRow {
   output: string | null;
   is_error: number;
   approval: Approval | null;
+  images: string | null;
   cost_micro_usd: number;
 }
 
@@ -147,6 +156,7 @@ const toStep = (r: StepRow): RunStep =>
         output: r.output ?? "",
         isError: r.is_error === 1,
         approval: r.approval,
+        images: r.images ? (JSON.parse(r.images) as StepImage[]) : [],
       };
 
 export async function createRun(
@@ -305,7 +315,7 @@ export async function raiseRunCap(
 export async function listSteps(db: SqlDb, tenant: Tenant, runId: string): Promise<RunStep[]> {
   const rows = await db.select<StepRow>(
     `SELECT id, seq, kind, text, native, request_id, tool_name, tool_call_id, input, output,
-       is_error, approval, cost_micro_usd
+       is_error, approval, images, cost_micro_usd
      FROM run_steps WHERE workspace_id = ? AND run_id = ? ORDER BY seq`,
     [tenant.workspaceId, runId],
   );
@@ -357,14 +367,20 @@ export async function addToolStep(
   db: SqlDb,
   tenant: Tenant,
   runId: string,
-  step: { call: ToolCall; output: string; isError: boolean; approval?: Approval },
+  step: {
+    call: ToolCall;
+    output: string;
+    isError: boolean;
+    approval?: Approval;
+    images?: StepImage[];
+  },
 ): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, tool_name, tool_call_id,
-       input, output, is_error, approval, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?)`,
+       input, output, is_error, approval, images, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -377,6 +393,7 @@ export async function addToolStep(
       step.output,
       step.isError ? 1 : 0,
       step.approval ?? null,
+      step.images?.length ? JSON.stringify(step.images) : null,
       now,
       now,
     ],

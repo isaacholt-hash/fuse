@@ -41,6 +41,7 @@ import {
   type Run,
   type RunChange,
   type RunKind,
+  type StepImage,
   type RunMode,
   type RunStep,
 } from "@/storage/runs";
@@ -415,6 +416,7 @@ async function work(
       await setRunSummary(db, tenant, runId, text, upto);
       history = historyFromSteps(run.task, steps, { text, upto }, run.plan);
     }
+    await withImages(deps, history, steps);
     const adapter = deps.adapterFor(model.provider);
 
     const started = (deps.now ?? Date.now)();
@@ -506,11 +508,13 @@ async function work(
     // Every call gets a result, in call order (docs/providers.md, M6).
     for (const call of calls) {
       const out = await handleCall(deps, run, call, input);
+      const kept = await keepImages(deps, run, out);
       const stepId = await addToolStep(db, tenant, runId, {
         call,
-        output: out.output,
+        output: kept.output,
         isError: out.isError,
         ...(out.approval ? { approval: out.approval } : {}),
+        ...(kept.images.length ? { images: kept.images } : {}),
       });
       if (out.change) await addChange(db, tenant, { runId, stepId, ...out.change });
     }
@@ -527,6 +531,7 @@ interface CallOutcome {
   isError: boolean;
   approval?: Approval;
   change?: FileChange | undefined;
+  images?: { mime: string; bytes: Uint8Array }[];
 }
 
 /**
@@ -605,7 +610,71 @@ async function handleCall(
     return { output: out.output, isError: out.isError, approval: "you", change: out.change };
   }
   const out = await runTool(deps.repo, HERE, call);
-  return { output: out.output, isError: out.isError, approval: "auto", change: out.change };
+  return {
+    output: out.output,
+    isError: out.isError,
+    approval: "auto",
+    change: out.change,
+    ...(out.images ? { images: out.images } : {}),
+  };
+}
+
+/**
+ * WF-03: an image a tool read is kept in the attachment store and sent with its result, when the
+ * run's model reads images; otherwise the result says it can't be shown.
+ */
+async function keepImages(
+  deps: RunDeps,
+  run: Run,
+  out: CallOutcome,
+): Promise<{ output: string; images: StepImage[] }> {
+  if (!out.images?.length) return { output: out.output, images: [] };
+  const model = findModel(deps.catalog, run.provider as CatalogModel["provider"], run.model);
+  if (!model?.capabilities.includes("vision")) {
+    return {
+      output: `${out.output}\n[This model can't read images, so it wasn't shown.]`,
+      images: [],
+    };
+  }
+  if (!deps.files) {
+    return {
+      output: `${out.output}\n[Images can't be kept here, so it wasn't shown.]`,
+      images: [],
+    };
+  }
+  const images: StepImage[] = [];
+  for (const i of out.images) {
+    const { sha256 } = await deps.files.put(i.bytes);
+    images.push({ sha256, mime: i.mime });
+  }
+  return { output: out.output, images };
+}
+
+/** Base64 of bytes, in chunks (no Buffer in the webview). */
+function base64(bytes: Uint8Array): string {
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(bin);
+}
+
+/** Puts each tool step's images back into its result, from the attachment store. */
+async function withImages(deps: RunDeps, history: ChatMessage[], steps: RunStep[]): Promise<void> {
+  const byCall = new Map<string, StepImage[]>();
+  for (const s of steps) if (s.kind === "tool" && s.images.length) byCall.set(s.call.id, s.images);
+  if (byCall.size === 0 || !deps.files) return;
+  for (const m of history) {
+    for (const r of m.toolResults ?? []) {
+      const refs = byCall.get(r.callId);
+      if (!refs) continue;
+      r.images = [];
+      for (const ref of refs) {
+        const bytes = await deps.files.get(ref.sha256).catch(() => null);
+        if (bytes) r.images.push({ mime: ref.mime, data: base64(bytes) });
+      }
+    }
+  }
 }
 
 /** CA-05: git tools. Looking goes ahead; branch and commit are like edits; push and PR ask. */

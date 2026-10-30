@@ -72,6 +72,8 @@ export interface ToolResult {
   callId: string;
   content: string;
   isError: boolean;
+  /** WF-03: images the tool shows the model (base64), for models that read images. */
+  images?: { mime: string; data: string }[];
 }
 
 /**
