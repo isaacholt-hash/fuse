@@ -3519,6 +3519,14 @@ export function ChatApp({
             <SettingsView
               keys={keys.keys}
               version={appUpdate.version}
+              onCheckUpdates={async () => {
+                const r = await appUpdate.checkNow();
+                return r.kind === "current"
+                  ? "FUSE is up to date."
+                  : r.kind === "ready"
+                    ? `FUSE ${r.version} is ready: restart from the bar at the top.`
+                    : `Couldn't check: ${r.message}`;
+              }}
               onRecoveryKey={recoveryKey}
               instructions={
                 globalInstructions && (

@@ -62,6 +62,11 @@
   - `pnpm local:bench` runs FUSE's real worker (the newest build) on the installed model, or `FUSE_LOCAL_MODEL`. It covers the shipped routing test set (`data/routing-test/prompts.jsonl`: 40 synthetic prompts, 35 standalone) and five chats to title. It reports parse rate, tier accuracy against the heuristics alone, false downgrades, p50/p95 latency and peak memory. No key, no network, $0.
   - HULK, Qwen3 1.7B (Q8_0), debug build: 97% of replies parsed; the tier was right 86% of the time with the local check, against 80% for the heuristics alone; 3% false downgrades; about 3.1 s per classification; 4 of 5 titles usable; 2.43 GB peak.
   - The bench caught the 1.7B model copying the title prompt's example ("Lisbon trip with kids") for unrelated chats. The example is gone from the prompt, and a title must now share a word with the question to count.
+- [x] **F1. The update notice shows up only after a restart (PL-06).** Isaac reported this on 2026-10-30. Do this before step 10.
+  - Cause: `useUpdate` checks once at startup and then every 6 hours. Releases ship several times a day, so the bar usually appears only on the next launch. Also, Dismiss hides every later release for the rest of the session.
+  - Fix: check every 30 minutes and whenever the window regains focus (at most once every 5 minutes). Dismiss hides only the version it was clicked on. If a newer release comes out after one was downloaded, download the newer one. Add a "Check for updates" button next to the version in Settings.
+  - Tests use a fake `UpdateApi` and fake timers. No real release is fetched.
+  - Done (2026-10-30). `useUpdate` checks every 30 minutes and on window focus (at most every 5 minutes), one check at a time. Dismiss hides only that version. A newer release replaces a downloaded one, and the same version isn't downloaded twice. Settings has a "Check for updates" link next to the version that says what it found, and it shows a dismissed release again.
 - [x] **10. Smaller context (LL-05).**
   - FTS5 over file chunks (migration 0038, kept up to date by triggers). Large attached files and project knowledge are searched by their words on this computer (BM25), so this works with no OpenAI key and in projects that don't allow embedding.
   - With an embedding model, the word and meaning rankings are merged (reciprocal rank fusion), and an embedding failure falls back to words. The send-time "needs an OpenAI key" block is gone, and knowledge files without embeddings read "Searchable by word".
@@ -77,15 +82,6 @@
 - [ ] **13. P1.5 gate test.**
   - Automated: on the routing test set, with recorded cloud responses and the scripted local adapter, cost per successful task is below the step 1 baseline with no quality drop, and a Local only project makes no cloud call.
   - Plus `pnpm local:bench` for the live numbers on Isaac's PC.
-
-## Fixes found in use
-
-Done right after step 2 and before step 3. One small PR each.
-
-- [ ] **F1. The update notice shows up only after a restart (PL-06).** Isaac reported this on 2026-10-30.
-  - Cause: `useUpdate` checks once at startup and then every 6 hours. Releases ship several times a day, so the bar usually appears only on the next launch. Also, Dismiss hides every later release for the rest of the session.
-  - Fix: check every 30 minutes and whenever the window regains focus (at most once every 5 minutes). Dismiss hides only the version it was clicked on. If a newer release comes out after one was downloaded, download the newer one. Add a "Check for updates" button next to the version in Settings.
-  - Tests use a fake `UpdateApi` and fake timers. No real release is fetched.
 
 ## Notes
 
