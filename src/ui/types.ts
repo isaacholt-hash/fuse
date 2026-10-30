@@ -153,6 +153,8 @@ export type ApprovalView =
       destructive: string | null;
     }
   | { kind: "edit"; change: RunChangeView }
+  /** WF-06: a reorganisation to allow in full, in part, or not at all. */
+  | { kind: "organise"; moves: { from: string; to: string }[]; reason: string | null }
   /** `remote`: it leaves this computer (push, pull request). */
   | { kind: "git"; summary: string; remote: boolean };
 

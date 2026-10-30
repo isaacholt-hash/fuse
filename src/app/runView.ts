@@ -70,9 +70,41 @@ export function changeView(c: RunChange): RunChangeView {
   };
 }
 
+/**
+ * WF-06: an organise plan's moves show as one row, "Organised N files", listing each move. Its
+ * Undo (by the first move's id) undoes the whole plan.
+ */
+export function groupBatches(changes: readonly RunChange[]): RunChangeView[] {
+  const out: RunChangeView[] = [];
+  const seen = new Set<string>();
+  for (const c of changes) {
+    if (!c.batchId) {
+      out.push(changeView(c));
+      continue;
+    }
+    if (seen.has(c.batchId)) continue;
+    seen.add(c.batchId);
+    const batch = changes.filter((x) => x.batchId === c.batchId);
+    out.push({
+      id: c.id,
+      label: `Organised ${String(batch.length)} file${batch.length === 1 ? "" : "s"}`,
+      added: 0,
+      removed: 0,
+      lines: batch.map((x) => ({
+        kind: "same" as const,
+        text: `${x.fromPath ?? "?"} → ${x.path}`,
+      })),
+      undone: batch.every((x) => x.status === "undone"),
+      previewable: false,
+    });
+  }
+  return out;
+}
+
 /** What the run is asking you about, as the card shows it. */
 export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
+  if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   return req.kind === "command"
     ? { kind: "command", command: req.command, destructive: req.destructive ?? null }
     : {
@@ -84,6 +116,7 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
           stepId: null,
           beforeSha: null,
           afterSha: null,
+          batchId: null,
           status: "applied",
           createdAt: 0,
         }),
@@ -170,6 +203,6 @@ export function runView(
     streaming,
     modeLabel: MODE_LABELS[run.mode],
     branch: run.branch,
-    changes: changes.map(changeView),
+    changes: groupBatches(changes),
   };
 }

@@ -437,6 +437,8 @@ export interface RunChange {
   /** WF-04: for a binary file, the bytes it replaced and wrote, by attachment-store hash. */
   beforeSha: string | null;
   afterSha: string | null;
+  /** WF-06: the organise plan it was part of; undoing one undoes them all. */
+  batchId: string | null;
   status: "applied" | "undone";
   createdAt: number;
 }
@@ -451,6 +453,7 @@ interface ChangeRow {
   after: string | null;
   before_sha: string | null;
   after_sha: string | null;
+  batch_id: string | null;
   status: "applied" | "undone";
   created_at: number;
 }
@@ -465,25 +468,26 @@ const toChange = (r: ChangeRow): RunChange => ({
   after: r.after,
   beforeSha: r.before_sha,
   afterSha: r.after_sha,
+  batchId: r.batch_id,
   status: r.status,
   createdAt: r.created_at,
 });
 
 const CHANGE_COLUMNS =
-  "id, run_id, step_id, path, from_path, before, after, before_sha, after_sha, status, created_at";
+  "id, run_id, step_id, path, from_path, before, after, before_sha, after_sha, batch_id, status, created_at";
 
 export async function addChange(
   db: SqlDb,
   tenant: Tenant,
-  c: Omit<RunChange, "id" | "status" | "createdAt" | "beforeSha" | "afterSha"> &
-    Partial<Pick<RunChange, "beforeSha" | "afterSha">>,
+  c: Omit<RunChange, "id" | "status" | "createdAt" | "beforeSha" | "afterSha" | "batchId"> &
+    Partial<Pick<RunChange, "beforeSha" | "afterSha" | "batchId">>,
 ): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_changes (id, workspace_id, user_id, run_id, step_id, path, from_path, before,
-       after, before_sha, after_sha, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       after, before_sha, after_sha, batch_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -496,6 +500,7 @@ export async function addChange(
       c.after,
       c.beforeSha ?? null,
       c.afterSha ?? null,
+      c.batchId ?? null,
       now,
       now,
     ],

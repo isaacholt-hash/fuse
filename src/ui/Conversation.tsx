@@ -383,7 +383,7 @@ export function Messages({
   /** WF-05: opens a file a run made or changed in the side panel. */
   onPreviewChange?: (changeId: string) => void;
   /** CA-03, CA-04: answers what a run asked for ("always": don't ask again for this command). */
-  onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
+  onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
   onContinueRun?: (runId: string, raise: boolean) => void;
   /** CA-02: puts one file a run changed back as it was. */
@@ -1775,6 +1775,90 @@ const RUN_STATUS: Record<RunView["status"], string> = {
 };
 
 /**
+ * WF-06: a reorganisation to approve: every move, each with a box (all ticked), the folders
+ * that result, and Allow all, Allow the ticked ones, or Deny. Nothing is deleted.
+ */
+function OrganisePlan({
+  plan,
+  onAnswer,
+}: {
+  plan: { moves: { from: string; to: string }[]; reason: string | null };
+  onAnswer: (a: "yes" | "no" | { keep: number[] }) => void;
+}) {
+  const [kept, setKept] = useState<boolean[]>(() => plan.moves.map(() => true));
+  const n = kept.filter(Boolean).length;
+  const folders = [
+    ...new Set(
+      plan.moves.map((m) => (m.to.includes("/") ? m.to.slice(0, m.to.lastIndexOf("/")) : "(top)")),
+    ),
+  ].sort();
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Reorganise these files?"
+      className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+    >
+      <p className="mb-1 font-medium">
+        Move {String(plan.moves.length)} file{plan.moves.length === 1 ? "" : "s"}? Nothing is
+        deleted, and Undo puts them all back.
+      </p>
+      {plan.reason && <p className="mb-1 text-muted-foreground">{plan.reason}</p>}
+      <p className="mb-1 text-muted-foreground">Into: {folders.join(", ")}</p>
+      <ul className="mb-2 max-h-64 space-y-0.5 overflow-auto rounded border bg-background p-1.5 font-mono">
+        {plan.moves.map((m, i) => (
+          <li key={`${m.from}>${m.to}`}>
+            <label className="flex items-start gap-1.5">
+              <input
+                type="checkbox"
+                checked={kept[i] ?? false}
+                aria-label={`Move ${m.from} to ${m.to}`}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setKept((k) => k.map((v, j) => (j === i ? on : v)));
+                }}
+              />
+              <span className="min-w-0 break-all">
+                {m.from} <span className="text-muted-foreground">→</span> {m.to}
+              </span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="flex gap-2">
+        <Button
+          size="xs"
+          onClick={() => {
+            onAnswer("yes");
+          }}
+        >
+          Allow all
+        </Button>
+        {n < plan.moves.length && n > 0 && (
+          <Button
+            variant="outline"
+            size="xs"
+            onClick={() => {
+              onAnswer({ keep: kept.flatMap((v, i) => (v ? [i] : [])) });
+            }}
+          >
+            Allow {String(n)} ticked
+          </Button>
+        )}
+        <Button
+          variant="outline"
+          size="xs"
+          onClick={() => {
+            onAnswer("no");
+          }}
+        >
+          Deny
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
  * A coding run on its answer (M6): what it did, step by step, and what it cost against its cap.
  * Paused at the cap or stopped, it can go on from where it was.
  */
@@ -1791,7 +1875,7 @@ function RunCard({
   busy: boolean;
   /** WF-05: opens a changed file in the side panel. */
   onPreviewChange?: (changeId: string) => void;
-  onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
+  onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
   onContinue?: (runId: string, raise: boolean) => void;
   onUndoChange?: (changeId: string) => void;
   onUndoRun?: (runId: string) => void;
@@ -1847,7 +1931,16 @@ function RunCard({
           )}
         </ol>
       )}
-      {run.approval && onApprove && (
+      {run.approval?.kind === "organise" && onApprove && (
+        <OrganisePlan
+          key={run.approval.moves.map((m) => m.from).join("|")}
+          plan={run.approval}
+          onAnswer={(a) => {
+            onApprove(run.id, a);
+          }}
+        />
+      )}
+      {run.approval && run.approval.kind !== "organise" && onApprove && (
         <div
           role="alertdialog"
           aria-label={

@@ -81,3 +81,48 @@ test("WF-05: each file a run made has Preview; a deleted or undone one doesn't",
   fireEvent.click(previews[0] as HTMLElement);
   expect(onPreviewChange).toHaveBeenCalledWith("c1");
 });
+
+test("WF-06: a plan to approve: every move ticked, allow all, allow some, or deny", () => {
+  const onApprove = vi.fn();
+  const run: RunView = {
+    id: "r2",
+    title: "Work run",
+    status: "running",
+    costLabel: "$0.01 of $1.00",
+    note: null,
+    steps: [],
+    streaming: "",
+    modeLabel: "can edit files",
+    branch: null,
+    changes: [],
+    approval: {
+      kind: "organise",
+      reason: "Photos together",
+      moves: [
+        { from: "IMG_1.jpg", to: "Photos/IMG_1.jpg" },
+        { from: "taxes.pdf", to: "Papers/taxes.pdf" },
+      ],
+    },
+  };
+  render(
+    <Tooltip.Provider>
+      <Messages
+        modelName="Auto"
+        startedAt={0}
+        onRetry={() => undefined}
+        onApprove={onApprove}
+        messages={[
+          { id: "q", role: "user", content: "Tidy", status: "complete" },
+          { id: "a", role: "assistant", content: "", status: "streaming", run },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  expect(screen.getByText(/Into: Papers, Photos/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /ticked/ })).toBeNull();
+  fireEvent.click(screen.getByLabelText("Move taxes.pdf to Papers/taxes.pdf"));
+  fireEvent.click(screen.getByRole("button", { name: "Allow 1 ticked" }));
+  expect(onApprove).toHaveBeenCalledWith("r2", { keep: [0] });
+  fireEvent.click(screen.getByRole("button", { name: "Allow all" }));
+  expect(onApprove).toHaveBeenLastCalledWith("r2", "yes");
+});

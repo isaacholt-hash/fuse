@@ -206,6 +206,68 @@ export const WRITE_DOCUMENT_TOOL: ToolSpec = {
   },
 };
 
+/**
+ * WF-06: moves, renames and new folders proposed together. The user sees the whole plan and
+ * allows all of it, some, or none; it runs as one change with one Undo; it never deletes.
+ */
+export const ORGANISE_TOOL: ToolSpec = {
+  name: "organise",
+  description:
+    "Propose a reorganisation as one plan: files to move or rename, each from its path to its " +
+    "new path (new folders are made as needed). The user sees the whole plan and may allow all " +
+    "of it, some moves, or none. Nothing is deleted, nothing is moved over an existing file, and " +
+    "it can be undone in one step. Use it instead of many move_file calls.",
+  schema: {
+    type: "object",
+    properties: {
+      moves: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: { from: { type: "string" }, to: { type: "string" } },
+          required: ["from", "to"],
+          additionalProperties: false,
+        },
+      },
+      reason: { type: ["string", "null"], description: "One line on the idea behind the plan." },
+    },
+    required: ["moves", "reason"],
+    additionalProperties: false,
+  },
+};
+
+export interface Move {
+  from: string;
+  to: string;
+}
+
+export const MAX_MOVES = 500;
+
+/** An organise call's moves, checked; a plain reason when the plan can't run as given. */
+export function checkMoves(input: Record<string, unknown>): { moves: Move[] } | { error: string } {
+  const raw = Array.isArray(input.moves) ? (input.moves as Record<string, unknown>[]) : [];
+  const moves = raw
+    .map((m) => ({ from: str(m.from).trim(), to: str(m.to).trim() }))
+    .filter((m) => m.from && m.to);
+  if (moves.length === 0) return { error: "Error: the plan has no moves." };
+  if (moves.length > MAX_MOVES)
+    return { error: `Error: at most ${String(MAX_MOVES)} moves in one plan.` };
+  const norm = (p: string) => p.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  const targets = new Set<string>();
+  const sources = new Set(moves.map((m) => norm(m.from)));
+  for (const m of moves) {
+    if (norm(m.from) === norm(m.to)) return { error: `Error: ${m.from} would move onto itself.` };
+    if (targets.has(norm(m.to))) return { error: `Error: two moves go to ${m.to}.` };
+    if (sources.has(norm(m.to))) {
+      return {
+        error: `Error: ${m.to} is also being moved; plan the moves so no file lands on another.`,
+      };
+    }
+    targets.add(norm(m.to));
+  }
+  return { moves };
+}
+
 export const EDIT_TOOL_NAMES = new Set([
   ...EDIT_TOOLS.map((t) => t.name),
   WRITE_DOCUMENT_TOOL.name,
