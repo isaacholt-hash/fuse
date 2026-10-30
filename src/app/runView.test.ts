@@ -69,6 +69,7 @@ const steps: RunStep[] = [
 test("steps read as plain lines; the finished run's last turn is the answer, not a step", () => {
   expect(runView(run, steps)).toEqual({
     id: "r1",
+    title: "Coding run",
     status: "done",
     costLabel: "$0.1234 of $1.00",
     note: null,
