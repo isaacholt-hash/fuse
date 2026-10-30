@@ -4,7 +4,7 @@
 
 **Done when:** the two-provider continuity test (PM-19) passes, and no content reaches a blocked provider in tests. Isaac then runs `pnpm continuity:live` with his own keys for the live 90% number.
 
-**Out of scope:** local inference and the rest of Local and lean (M6), sync (P2).
+**Out of scope:** local inference and the rest of Local and lean (M7), sync (P2).
 
 ## Steps (one PR each, in order)
 
