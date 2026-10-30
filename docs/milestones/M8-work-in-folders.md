@@ -68,11 +68,21 @@
   - Tests on HULK, which also run in CI where bubblewrap works: a write outside the folder fails as read-only, `/etc` can't be written, a connection fails with no network, and the time limit still ends a sandboxed command.
   - Network stays allowed for now, as in M6. Step 10 switches it off by default, with an allow per chat or folder.
   - Known limit: tools that write outside the folder (npm's cache in `~/.npm`, `~/.cargo`) can fail in the sandbox.
-- [ ] **9. Sandbox on Windows (WF-07, CA-11).**
-  - Commands run with a restricted token in an AppContainer. Write access is granted only on the chat's folders, there's no network capability unless allowed, and a job object ends the whole tree.
-  - The same tests run in Windows CI; HULK can't run them.
-  - This is the riskiest step. If it can't be made reliable, it stops and Isaac is asked.
-  - **Paused (2026-10-30), waiting on Isaac.** Rust's `raw_attribute` isn't stable, so this needs several hundred lines of hand-written `CreateProcessW`, pipes, job objects and AppContainer folder ACLs. It can only be tested in Windows CI, and it would change the permissions on Isaac's folders, which persist. Until a decision, commands on Windows ask first and say they run unsandboxed (step 8). Steps 10 to 13 went ahead, since they don't depend on it.
+- [x] **9. Sandbox on Windows (WF-07, CA-11).**
+  - Commands run in an AppContainer, Windows' app sandbox, inside a job object. The container can write only in the folders it was granted (the run's folders, each looked up in the database), has its own TEMP, and gets the network capabilities only when the network is allowed. The job ends the whole tree on the time limit or Stop, and when FUSE quits.
+  - To grant a folder, FUSE adds an entry for the container to the folder's permissions the first time a command runs there. Granted folders are listed in `sandbox-grants.txt` in the app's data folder. Settings → "Reset folder permissions" takes the entries off them all and deletes the container.
+  - The code is its own small crate, `src-tauri/sandbox-win`, so a new Windows CI job tests it in minutes. The tests check that a write inside works and outside fails, that there's no network without the capability, that killing ends the tree, that the exit code comes back and keys aren't passed on, and that revoke takes the access away. The same job runs clippy on the whole app for Windows.
+  - **Off by default** (Isaac's call, 2026-10-30): Settings → "Sandbox on Windows (testing)" switches it on. Until Isaac has tried it on his PC, Windows commands keep running unsandboxed, and each says so.
+  - Isaac's checklist, on a test folder such as `C:\fuse-sandbox-test`:
+    1. Settings → "Sandbox on Windows (testing)": tick "Run commands in the sandbox".
+    2. In a Work chat on that folder, ask it to run `echo hi> inside.txt`. The file appears, and the result says "[sandboxed, network off]".
+    3. Ask it to run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
+    4. Ask it to run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
+    5. Ask it to run `echo hidden>NUL && echo shown`. It prints "shown" (CI can't check this one: Windows Server denies the NUL device to every sandboxed app, Windows 10 and 11 don't).
+    6. Ask it to run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
+    7. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
+  - Also fixed: on Windows, commands started in `\\?\C:\…` (the form `canonicalize` gives), where cmd.exe can't start. They now get the plain path.
+  - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
 - [x] **10. Network per chat (WF-07).**
   - Sandboxed commands have **no network** unless the chat, or a folder of the run, was allowed it (migration 0045, `network_grants`).
   - When a sandboxed command fails with what looks like a network error (DNS or connect errors from common tools), the run asks: Allow for this chat, Allow for this folder, or No. Allowing runs it again, once. It's never allowed without asking.
@@ -93,7 +103,7 @@
   - **Gaps written down:**
     - Sandboxed commands can read what you can read, and their output reaches the model.
     - Once the network is allowed for a folder, every later command there has it.
-    - Windows has no sandbox yet.
+    - Windows has no sandbox yet (built in step 9, off until tried on a real PC).
 - [x] **13. Work benchmark.**
   - The fixture `data/work/fixture` has three reports (Markdown, text, and a Word file made by python-docx, not by FUSE), two CSVs whose rows are in different orders, and a messy folder of 8 files: PDFs, images, notes and a CSV.
   - The three tasks are in `data/work/tasks.json`:
@@ -107,6 +117,6 @@
 ## Notes
 
 - The usual rules apply to each step: one PR, tests, a screenshot for UI changes, the secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.
-- HULK has bubblewrap (`/usr/bin/bwrap`). The Windows sandbox is tested in CI and confirmed by the Release build.
+- HULK has bubblewrap (`/usr/bin/bwrap`). The Windows sandbox is tested in CI (`src-tauri/sandbox-win`) and then on Isaac's PC.
 - File access stays in Rust. The webview never gets a path outside the granted folders.
 - Document libraries, and any new crates, are pinned and at least two weeks old, with their licences checked when they're added.

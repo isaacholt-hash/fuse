@@ -55,7 +55,7 @@ import {
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
-import type { ExecApi } from "@/repo/exec";
+import { WINDOWS_SANDBOX_SETTING, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 import type { RepoInstruction } from "@/repo/instructions";
 import { instructionsIn } from "@/agent/folders";
@@ -280,6 +280,7 @@ import type { DecisionInputView, DecisionView } from "@/ui/Decisions";
 import type { TaskStatusView, TaskView } from "@/ui/Tasks";
 import type { PrivacyModeView } from "@/ui/ProjectPrivacy";
 import { PrivacySection } from "@/ui/PrivacySection";
+import { WindowsSandboxSection } from "@/ui/WindowsSandbox";
 import type { BackupsApi } from "@/data/backups";
 import { allowedEmbedding, egressRefusal, policyFor, projectPolicy } from "@/context/egress";
 import { listEgressRules, setEgressRule, setFileMaySend, type EgressRule } from "@/storage/egress";
@@ -946,6 +947,19 @@ export function ChatApp({
       setProblem(String(e));
     });
   }, [db, tenant]);
+  // M8 step 9: the Windows sandbox, off until switched on; null where there's none to offer.
+  const [windowsSandbox, setWindowsSandbox] = useState<{ on: boolean } | null>(null);
+  useEffect(() => {
+    const api = execApi?.windowsSandbox;
+    if (!api) return;
+    void (async () => {
+      // Can't tell (no Tauri, as in tests): nothing to offer.
+      if (!(await api.available().catch(() => false))) return;
+      const on = (await getSetting(db, tenant, WINDOWS_SANDBOX_SETTING)) === "on";
+      await api.set(on);
+      setWindowsSandbox({ on });
+    })().catch(report);
+  }, [db, tenant, execApi]);
   // SE-13: provider rules, global and per project (privacy modes live on the project).
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
   // CA-01: a line under the linked folder (git or not, or why linking failed).
@@ -3802,7 +3816,35 @@ export function ChatApp({
                   />
                 </ImportSection>
               }
-              agent={<AgentAuditSection rows={audit.map(auditRow)} />}
+              agent={
+                <>
+                  <AgentAuditSection rows={audit.map(auditRow)} />
+                  {windowsSandbox && execApi?.windowsSandbox && (
+                    <WindowsSandboxSection
+                      on={windowsSandbox.on}
+                      onToggle={(on) => {
+                        const api = execApi.windowsSandbox;
+                        if (!api) return;
+                        setWindowsSandbox({ on });
+                        api
+                          .set(on)
+                          .then(() =>
+                            setSetting(db, tenant, WINDOWS_SANDBOX_SETTING, on ? "on" : "off"),
+                          )
+                          .catch(report);
+                      }}
+                      onReset={async () => {
+                        try {
+                          const n = (await execApi.windowsSandbox?.reset()) ?? 0;
+                          return n === 1 ? "Put back 1 folder." : `Put back ${String(n)} folders.`;
+                        } catch (e) {
+                          return e instanceof Error ? e.message : String(e);
+                        }
+                      }}
+                    />
+                  )}
+                </>
+              }
               privacy={
                 <PrivacySection
                   providers={(["anthropic", "openai"] as const).map((id) => ({

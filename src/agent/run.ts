@@ -77,7 +77,7 @@ import {
   runTool,
   type FileChange,
 } from "./tools";
-import type { ExecApi } from "@/repo/exec";
+import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 
 /** AG-05's default cap per run. */
@@ -895,7 +895,7 @@ async function runCommand(
   let approval: Approval = "always";
   if (danger || !allowed.includes(command)) {
     await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
-    const unsandboxed = (await deps.exec.sandboxKind?.()) !== "bubblewrap";
+    const unsandboxed = !isSandboxed(await deps.exec.sandboxKind?.());
     const answer = await ask(
       deps,
       run,
@@ -917,7 +917,7 @@ async function runCommand(
   }
   try {
     // WF-07: no network for a sandboxed command unless its chat or a folder of it was allowed.
-    const sandboxed = (await deps.exec.sandboxKind?.()) === "bubblewrap";
+    const sandboxed = isSandboxed(await deps.exec.sandboxKind?.());
     const folders = await listRunFolders(deps.db, deps.tenant, run.id);
     const scopes: NetworkScope[] = [
       ...(run.threadId ? [{ kind: "thread" as const, id: run.threadId }] : []),

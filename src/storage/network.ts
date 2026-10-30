@@ -52,7 +52,8 @@ export async function networkFolders(db: SqlDb, tenant: Tenant): Promise<Set<str
 
 /**
  * Output that looks like a command was refused the network (DNS or connect errors from common
- * tools). Used only to offer to allow it; never to allow it by itself.
+ * tools; on Windows, the sandbox's refusal reads as an access error). Used only to offer to
+ * allow it; never to allow it by itself.
  */
 export const NETWORK_FAILURE =
-  /Network is unreachable|Temporary failure in name resolution|Could not resolve host|getaddrinfo (?:EAI_AGAIN|ENOTFOUND)|Name or service not known|network is unreachable|connect: (?:Network|Connection refused)|Failed to establish a new connection|ENETUNREACH|EAI_AGAIN|unable to access 'https?:\/\//;
+  /forbidden by its access permissions|connect EACCES|No such host is known|Failed to connect to \S+ port|Network is unreachable|Temporary failure in name resolution|Could not resolve host|getaddrinfo (?:EAI_AGAIN|ENOTFOUND)|Name or service not known|network is unreachable|connect: (?:Network|Connection refused)|Failed to establish a new connection|ENETUNREACH|EAI_AGAIN|unable to access 'https?:\/\//;

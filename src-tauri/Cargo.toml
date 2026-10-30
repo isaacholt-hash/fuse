@@ -63,6 +63,8 @@ windows = { version = "=0.62.2", features = [
   "Win32_System_WinRT",
 ] }
 windows-future = "=0.3.2"
+# The command sandbox (WF-07, M8 step 9): its own crate so Windows CI tests it quickly.
+fuse-sandbox-win = { path = "sandbox-win" }
 
 # https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

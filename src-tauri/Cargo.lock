@@ -1453,6 +1453,7 @@ checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 name = "fuse"
 version = "0.1.0"
 dependencies = [
+ "fuse-sandbox-win",
  "getrandom 0.3.4",
  "ignore",
  "keyring",
@@ -1475,6 +1476,13 @@ dependencies = [
  "tokio",
  "windows",
  "windows-future",
+]
+
+[[package]]
+name = "fuse-sandbox-win"
+version = "0.1.0"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
