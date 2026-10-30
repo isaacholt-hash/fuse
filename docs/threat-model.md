@@ -1,6 +1,6 @@
 # FUSE threat model (SE-14)
 
-What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5. **Review it when sync (PL-04), the coding agent (M6), tools and agents (P2), or local models (M7) land.** Each of those adds a boundary.
+What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the coding agent added in M6 (2026-10-30, section 5). **Review it when sync (PL-04), tools and agents (P2), or local models (M7) land.** Each of those adds a boundary.
 
 ## What's worth protecting
 
@@ -11,13 +11,16 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5. **R
 | Attached and knowledge files | `files/<sha256>` in the app data folder (not encrypted at rest; see below) |
 | Backups | `backups/*.db`, copies of the encrypted database (PL-11) |
 | Exports | Zips you save; plain JSON and files (SE-07, PL-12) |
+| Linked repositories (M6) | Folders on this computer the coding agent may read, change and run commands in |
+| This computer itself (M6) | Commands a coding run runs execute as you, with your rights |
 
 ## Trust boundaries
 
 1. **The webview vs. Rust.** The React app never sees a key. Requests leave only through `provider_fetch`. It allows one host per provider and a fixed list of paths and headers, adds the key itself, and checks the egress policy (SE-13).
 2. **This computer vs. providers.** Whatever a request carries reaches OpenAI or Anthropic. They are trusted to answer, not to keep secrets.
 3. **FUSE vs. what it reads.** Imported chats, pasted memories, files, web pages and model answers are data, never instructions to FUSE.
-4. **Artifact previews.** HTML and React previews run in a separate `preview://` origin with a no-network content security policy. A per-artifact switch allows only listed CDNs (AR-05).
+4. **The coding agent vs. this computer (M6).** File access goes through Rust (`repo.rs`), which takes only a project id and a relative path and reads the folder from the database. Commands (`exec.rs`) and git (`git.rs`) run in that folder only, after the app asks you. The model can ask; only you can allow.
+5. **Artifact previews.** HTML and React previews run in a separate `preview://` origin with a no-network content security policy. A per-artifact switch allows only listed CDNs (AR-05).
 
 ## Threats and mitigations
 
@@ -71,8 +74,26 @@ Nothing syncs today. When PL-04 is built:
 | Sensitive records leaving the device | A memory or knowledge file can be kept on this computer (`may_send = 0`); Local only projects send nothing |
 | Housekeeping leaks (titles, summaries, suggestions, embeddings) | The same policy applies to every housekeeping call and to embeddings; a project can turn embeddings off |
 | Provider retention | OpenAI requests set `store: false`. Anthropic and OpenAI keep data under their own API terms, outside FUSE's control. Settings → Privacy says what is sent (SE-15) |
-| A model answer that tries to exfiltrate | No tools that act or fetch on a model's say-so in P1; web search is the provider's own tool. **Revisit when tools and agents land (P2)** |
+| A model answer that tries to exfiltrate | In chat, no tools that act or fetch on a model's say-so; web search is the provider's own tool. Coding runs can run commands, which could send data anywhere; each one asks you (section 5). **Revisit when general tools and agents land (P2)** |
+| A coding run sending repository content to a blocked provider | Every send path of a run (its turns, the plan, summaries) carries the project's scope, so the Rust transport checks it; the run also checks the policy before each turn and refuses with the reason. A Local only project runs no cloud step. The planner and summarizer are skipped when their provider is blocked (M6 step 12) |
 | A key used outside FUSE's limits | Spend caps per key in FUSE (MM-09), and hard limits in the provider consoles (CO-07) |
+
+### 5. The coding agent (M6)
+
+*A model that reads your repository, changes files and runs commands, steered by your request and by whatever the repository says.*
+
+| Threat | Mitigation | Gap |
+| --- | --- | --- |
+| Reaching files outside the repository (`../`, absolute paths, symlinks) | Rust resolves every path against the root from the database: relative only, no `..`, and the real path (after symlinks) must be inside the root; writes check the deepest existing folder the same way. Tested per rule (CA-01, CA-02) | — |
+| Changing `.git` or committing secrets | `.git` is never read or written; `.env`, keys and similar are refused unless the project allows them; ignored files aren't read | Secrets in ordinary-looking files are not detected |
+| Prompt injection in repository files ("run this", "delete that") | The agent guide says tool results are data, not instructions. Every command asks you, with the exact command shown; destructive ones (force push, `rm -r`, hard reset, `sudo`, pipe-to-shell…) ask every time and can't be always-allowed. In Ask first (the default) every edit shows its diff first | A command you allow runs with your rights; there is no sandbox yet (CA-11, P2) |
+| A command that hangs or floods | No input; a time limit (2 min, at most 10) that ends the whole process tree; output capped at 1 MB; Stop ends it | — |
+| Provider keys reaching a command | `FUSE_*_API_KEY`, `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are removed from commands' and git's environment; FUSE's own keys never leave the keychain | Other secrets in your environment are passed on, as in any terminal |
+| Shell injection through git (a crafted commit message or branch name) | `git` and `gh` run with an argument list, never a shell; only the agent's subcommands; `-c`, `--exec-path`, `--upload-pack` and similar are refused; branch names are checked. Tested with `$(...)` in a message | — |
+| Work leaving the computer | `git push` and pull requests always ask and say they leave the computer; FUSE stores no GitHub token (`gh` uses yours) | — |
+| Losing work to an edit | Every change is recorded with what was there; Undo per file or per run, refused if the file changed since; runs can work on a branch of their own | Commands' effects (e.g. a build deleting files) aren't recorded or undoable |
+| A runaway run spending money | A cost cap per run ($1 by default) that pauses and asks; plans and summaries count against it; 60 turns at most | — |
+| Not knowing what happened | Every tool call is in Settings → Coding agent activity: what, who allowed it, the result, the model and the cost | Kept on this device only |
 
 ## Out of scope for now
 
