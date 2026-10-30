@@ -26,7 +26,22 @@ export interface ExecResult {
 }
 
 /** WF-07: what sandboxes commands on this computer. */
-export type SandboxKind = "bubblewrap" | "none";
+export type SandboxKind = "bubblewrap" | "app_container" | "none";
+
+/** WF-07: whether a command run here is sandboxed (no answer means it isn't). */
+export const isSandboxed = (kind: SandboxKind | undefined) => kind !== undefined && kind !== "none";
+
+/** The saved choice for the Windows sandbox: "on", or anything else for off. */
+export const WINDOWS_SANDBOX_SETTING = "sandbox.windows";
+
+/** M8 step 9: the Windows sandbox, off until switched on in Settings while it's tested. */
+export interface WindowsSandboxApi {
+  /** This is Windows, and commands can run in an AppContainer here. */
+  available(): Promise<boolean>;
+  set(on: boolean): Promise<void>;
+  /** Puts every folder the sandbox was given back as it was; resolves to how many. */
+  reset(): Promise<number>;
+}
 
 export interface ExecApi {
   run(
@@ -44,10 +59,16 @@ export interface ExecApi {
   ): Promise<ExecResult>;
   /** WF-07: whether commands can be sandboxed here. */
   sandboxKind?(): Promise<SandboxKind>;
+  windowsSandbox?: WindowsSandboxApi;
 }
 
 export const tauriExec: ExecApi = {
   sandboxKind: () => invoke<SandboxKind>("sandbox_status"),
+  windowsSandbox: {
+    available: () => invoke<boolean>("sandbox_windows_available"),
+    set: (on) => invoke("sandbox_windows_set", { on }),
+    reset: () => invoke<number>("sandbox_windows_reset"),
+  },
   run: (folderId, command, { timeoutSecs, signal, onOutput, sandbox }) =>
     new Promise<ExecResult>((resolve, reject) => {
       let output = "";

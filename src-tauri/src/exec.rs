@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -119,8 +119,15 @@ pub struct Sandbox {
 #[serde(rename_all = "snake_case")]
 pub enum SandboxKind {
     Bubblewrap,
+    /// Windows: an AppContainer and a job object (src-tauri/sandbox-win), while it's switched on.
+    #[cfg_attr(not(windows), allow(dead_code))]
+    AppContainer,
     None,
 }
+
+/// M8 step 9: the Windows sandbox is off until switched on in Settings, while it's being tested
+/// on a real PC. The app sets this at start from the saved setting.
+static WINDOWS_SANDBOX: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "linux")]
 fn bwrap_path() -> Option<PathBuf> {
@@ -131,9 +138,19 @@ fn bwrap_path() -> Option<PathBuf> {
 }
 
 /// Whether bubblewrap is here and allowed to make its namespaces (Ubuntu's AppArmor can stop
-/// it): it's tried once with a command that does nothing, and the answer kept.
+/// it): it's tried once with a command that does nothing, and the answer kept. On Windows, the
+/// AppContainer when it's switched on and can be made.
 pub fn sandbox_kind() -> SandboxKind {
     use std::sync::OnceLock;
+    #[cfg(windows)]
+    {
+        static AVAILABLE: OnceLock<bool> = OnceLock::new();
+        if WINDOWS_SANDBOX.load(Ordering::Relaxed)
+            && *AVAILABLE.get_or_init(fuse_sandbox_win::available)
+        {
+            return SandboxKind::AppContainer;
+        }
+    }
     static KIND: OnceLock<SandboxKind> = OnceLock::new();
     *KIND.get_or_init(|| {
         #[cfg(target_os = "linux")]
@@ -213,12 +230,61 @@ pub async fn run(
     root: &Path,
     command: &str,
     timeout: Duration,
-    mut stop: oneshot::Receiver<()>,
+    stop: oneshot::Receiver<()>,
     sandbox: Option<&Sandbox>,
     mut on: impl FnMut(ExecMsg),
 ) {
     let started = Instant::now();
     let timeout = timeout.min(MAX_TIMEOUT);
+    // `canonicalize` gives `\\?\C:\...`, where cmd.exe can't start.
+    #[cfg(windows)]
+    let root = &fuse_sandbox_win::plain(root);
+    #[cfg(windows)]
+    if let Some(sb) = sandbox
+        && sandbox_kind() == SandboxKind::AppContainer
+    {
+        let spawned = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
+            cwd: root,
+            command,
+            network: sb.network,
+            env_remove: SCRUBBED,
+        });
+        let mut child = match spawned {
+            Ok(c) => c,
+            Err(e) => {
+                on(ExecMsg::Error {
+                    message: format!("Couldn't start the command in the sandbox: {e}"),
+                });
+                return;
+            }
+        };
+        let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
+        if let Some(mut out) = child.take_output() {
+            std::thread::spawn(move || {
+                use std::io::Read;
+                let mut buf = [0u8; 8192];
+                loop {
+                    match out.read(&mut buf) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => {
+                            if tx.send(buf[..n].to_vec()).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        let killer = child.killer();
+        let wait = async move {
+            tokio::task::spawn_blocking(move || child.wait().ok().map(|c| c as i32))
+                .await
+                .ok()
+                .flatten()
+        };
+        supervise(started, timeout, stop, rx, wait, move || killer.kill(), on).await;
+        return;
+    }
     let mut cmd = command_for(root, command, sandbox);
     cmd.current_dir(root)
         .stdin(Stdio::null())
@@ -245,7 +311,7 @@ pub async fn run(
         }
     };
     let pid = child.id();
-    let (tx, mut rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
     if let Some(out) = child.stdout.take() {
         tokio::spawn(pump(out, tx.clone()));
     }
@@ -253,7 +319,27 @@ pub async fn run(
         tokio::spawn(pump(err, tx.clone()));
     }
     drop(tx);
+    let wait = async move { child.wait().await.ok().and_then(|s| s.code()) };
+    let kill = move || {
+        if let Some(pid) = pid {
+            kill_tree(pid);
+        }
+    };
+    supervise(started, timeout, stop, rx, wait, kill, on).await;
+}
 
+/// Collects a started command's output until it ends, the time limit passes or Stop is pressed,
+/// then sends `Done`. `wait` gives its exit code; `kill` ends it and everything it started.
+async fn supervise(
+    started: Instant,
+    timeout: Duration,
+    mut stop: oneshot::Receiver<()>,
+    mut rx: mpsc::UnboundedReceiver<Vec<u8>>,
+    wait: impl std::future::Future<Output = Option<i32>>,
+    kill: impl Fn(),
+    mut on: impl FnMut(ExecMsg),
+) {
+    tokio::pin!(wait);
     let mut kept = 0usize;
     let mut truncated = false;
     let mut pending: Vec<u8> = Vec::new();
@@ -262,7 +348,7 @@ pub async fn run(
     let deadline = tokio::time::sleep(timeout);
     tokio::pin!(deadline);
     let mut output_open = true;
-    let status = loop {
+    let code = loop {
         tokio::select! {
             chunk = rx.recv(), if output_open => match chunk {
                 Some(bytes) => {
@@ -284,16 +370,16 @@ pub async fn run(
                 }
                 None => output_open = false,
             },
-            s = child.wait(), if !output_open => break s.ok(),
+            c = &mut wait, if !output_open => break c,
             _ = &mut deadline => {
                 timed_out = true;
-                if let Some(pid) = pid { kill_tree(pid); }
-                break child.wait().await.ok();
+                kill();
+                break (&mut wait).await;
             }
             _ = &mut stop => {
                 stopped = true;
-                if let Some(pid) = pid { kill_tree(pid); }
-                break child.wait().await.ok();
+                kill();
+                break (&mut wait).await;
             }
         }
     };
@@ -303,16 +389,71 @@ pub async fn run(
         });
     }
     on(ExecMsg::Done {
-        exit_code: if timed_out || stopped {
-            None
-        } else {
-            status.and_then(|s| s.code())
-        },
+        exit_code: if timed_out || stopped { None } else { code },
         timed_out,
         stopped,
         truncated,
         elapsed_ms: started.elapsed().as_millis() as u64,
     });
+}
+
+/// M8 step 9: the folders given to the Windows sandbox, one per line, so "Reset folder
+/// permissions" can take its entries off them all, even folders FUSE no longer lists.
+#[cfg(windows)]
+const GRANTS_FILE: &str = "sandbox-grants.txt";
+
+/// Lets the sandbox write in each folder, noting the ones it's new on.
+#[cfg(windows)]
+fn grant_folders(data: &Path, folders: &[PathBuf]) -> Result<(), String> {
+    let record = data.join(GRANTS_FILE);
+    let mut known = std::fs::read_to_string(&record).unwrap_or_default();
+    for f in folders {
+        let f = fuse_sandbox_win::plain(f);
+        fuse_sandbox_win::grant(&f)
+            .map_err(|e| format!("Couldn't let the sandbox use {}: {e}", f.display()))?;
+        let line = f.to_string_lossy().into_owned();
+        if !known.lines().any(|l| l == line) {
+            known.push_str(&line);
+            known.push('\n');
+            std::fs::create_dir_all(data).map_err(|e| e.to_string())?;
+            std::fs::write(&record, &known).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+/// Takes the sandbox's entries off every folder it was given and deletes the container.
+/// Returns how many folders were put back; a folder that's gone is skipped.
+#[cfg(windows)]
+fn reset_folders(data: &Path) -> Result<u32, String> {
+    let record = data.join(GRANTS_FILE);
+    let known = std::fs::read_to_string(&record).unwrap_or_default();
+    let mut done = 0;
+    let mut left = String::new();
+    for line in known.lines().filter(|l| !l.is_empty()) {
+        let p = Path::new(line);
+        if !p.exists() {
+            continue;
+        }
+        match fuse_sandbox_win::revoke(p) {
+            Ok(()) => done += 1,
+            Err(_) => {
+                left.push_str(line);
+                left.push('\n');
+            }
+        }
+    }
+    if left.is_empty() {
+        let _ = std::fs::remove_file(&record);
+        let _ = fuse_sandbox_win::remove_profile();
+        Ok(done)
+    } else {
+        std::fs::write(&record, &left).map_err(|e| e.to_string())?;
+        Err(format!(
+            "Put back {done} folders; these couldn't be changed: {}",
+            left.lines().collect::<Vec<_>>().join(", ")
+        ))
+    }
 }
 
 /// Running commands, so Stop can end one.
@@ -330,8 +471,11 @@ pub mod commands {
 
     /// Starts `command` in the project's linked folder; returns an id for `repo_exec_stop`.
     /// Output and the result arrive on `on_event`.
+    // Each argument is one the frontend sends or a piece of state Tauri hands in.
+    #[allow(clippy::too_many_arguments)]
     #[tauri::command]
     pub async fn repo_exec(
+        app: tauri::AppHandle,
         db: State<'_, Database>,
         execs: State<'_, Execs>,
         folder_id: String,
@@ -375,7 +519,33 @@ pub mod commands {
             }
             None => None,
         };
+        #[cfg(windows)]
+        let data = {
+            use tauri::Manager;
+            app.path().app_data_dir().map_err(|e| e.to_string())?
+        };
+        #[cfg(not(windows))]
+        let _ = app;
         tauri::async_runtime::spawn(async move {
+            // The first command in a folder gives the sandbox its access there, which on a
+            // large folder takes a while.
+            #[cfg(windows)]
+            if let Some(sb) = &sandbox
+                && sandbox_kind() == SandboxKind::AppContainer
+            {
+                let folders = sb.writable.clone();
+                let granted =
+                    tokio::task::spawn_blocking(move || grant_folders(&data, &folders)).await;
+                let err = match granted {
+                    Ok(Ok(())) => None,
+                    Ok(Err(e)) => Some(e),
+                    Err(e) => Some(e.to_string()),
+                };
+                if let Some(message) = err {
+                    let _ = on_event.send(ExecMsg::Error { message });
+                    return;
+                }
+            }
             run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
                 let _ = on_event.send(m);
             })
@@ -391,10 +561,51 @@ pub mod commands {
         network: bool,
     }
 
-    /// WF-07: what sandboxes commands here ("bubblewrap", or "none" when it isn't available).
+    /// WF-07: what sandboxes commands here ("bubblewrap", "app_container", or "none").
     #[tauri::command]
     pub fn sandbox_status() -> SandboxKind {
         sandbox_kind()
+    }
+
+    /// M8 step 9: whether this is Windows with an AppContainer to run commands in, switched
+    /// on or not.
+    #[tauri::command]
+    pub async fn sandbox_windows_available() -> bool {
+        #[cfg(windows)]
+        {
+            tokio::task::spawn_blocking(fuse_sandbox_win::available)
+                .await
+                .unwrap_or(false)
+        }
+        #[cfg(not(windows))]
+        {
+            false
+        }
+    }
+
+    /// M8 step 9: switches the Windows sandbox on or off (the app saves the choice).
+    #[tauri::command]
+    pub fn sandbox_windows_set(on: bool) {
+        WINDOWS_SANDBOX.store(on, Ordering::Relaxed);
+    }
+
+    /// M8 step 9: "Reset folder permissions": every folder given to the sandbox is put back as
+    /// it was, and the container deleted. Returns how many folders were put back.
+    #[tauri::command]
+    pub async fn sandbox_windows_reset(app: tauri::AppHandle) -> Result<u32, String> {
+        #[cfg(windows)]
+        {
+            use tauri::Manager;
+            let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            tokio::task::spawn_blocking(move || reset_folders(&data))
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        #[cfg(not(windows))]
+        {
+            let _ = app;
+            Ok(0)
+        }
     }
 
     #[tauri::command]

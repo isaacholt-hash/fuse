@@ -1,0 +1,22 @@
+[package]
+name = "fuse-sandbox-win"
+version = "0.1.0"
+description = "FUSE's command sandbox on Windows: an AppContainer and a job object (M8 step 9)"
+edition = "2024"
+publish = false
+
+# Its own crate so Windows CI can test it in minutes without building the whole app
+# (.github/workflows/ci.yml). It compiles to nothing on other systems.
+[target.'cfg(windows)'.dependencies]
+# Already in the build (tokio, keyring). Raw bindings: the calls below are plain Win32.
+windows-sys = { version = "=0.61.2", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_Security_Authorization",
+  "Win32_Security_Isolation",
+  "Win32_Storage_FileSystem",
+  "Win32_System_JobObjects",
+  "Win32_System_Pipes",
+  "Win32_System_Threading",
+  "Win32_System_Com",
+] }
