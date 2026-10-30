@@ -10,8 +10,9 @@ import {
   type UsageRow,
 } from "./usage";
 
+/** `agent`: a model turn inside a coding run (M6). */
 export type RequestPurpose =
-  "chat" | "key_test" | "title" | "classify" | "memory" | "summary" | "embed";
+  "chat" | "key_test" | "title" | "classify" | "memory" | "summary" | "embed" | "agent";
 
 /** One provider HTTP call. Never put headers, bodies or keys in any field. */
 export interface RequestLogEntry {

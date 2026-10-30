@@ -180,6 +180,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "repo",
         sql: include_str!("../migrations/0029_repo.sql"),
     },
+    MigrationFile {
+        version: 30,
+        description: "runs",
+        sql: include_str!("../migrations/0030_runs.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -862,6 +867,14 @@ mod tests {
           SELECT 'm1', workspace_id, user_id, 't1', 'user', 'hello', 2, 2 FROM threads WHERE id = 't1';
         INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
           SELECT 'p1', workspace_id, user_id, 'Seeded project', 3, 3 FROM threads WHERE id = 't1';
+        INSERT INTO request_log (id, workspace_id, user_id, thread_id, message_id, purpose, provider,
+                                 model, cost_micro_usd, created_at, updated_at)
+          SELECT 'r1', workspace_id, user_id, 't1', 'm2', 'chat', 'anthropic', 'claude-haiku-5-5',
+                 1234, 3, 3 FROM threads WHERE id = 't1';
+        INSERT INTO messages (id, workspace_id, user_id, thread_id, role, content, request_id,
+                              created_at, updated_at)
+          SELECT 'm2', workspace_id, user_id, 't1', 'assistant', 'hi', 'r1', 3, 3
+          FROM threads WHERE id = 't1';
         INSERT INTO memories (id, workspace_id, user_id, text, category, scope, project_id,
                               source_thread_id, confidence, created_at, updated_at)
           SELECT 'mem-new', workspace_id, user_id, 'Prefers metric units', 'preference', 'global',
@@ -962,6 +975,16 @@ mod tests {
             .unwrap();
         assert_eq!(proposal[0]["kind"], "preference");
         assert_eq!(proposal[0]["origin"], "import");
+        // 0030: request_log rebuilt for the 'agent' purpose; the answer still points at its row.
+        let logged = select(
+            &pool,
+            "SELECT r.cost_micro_usd, r.purpose FROM messages m JOIN request_log r ON r.id = m.request_id WHERE m.id = 'm2'",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(logged[0]["cost_micro_usd"], 1234);
+        assert_eq!(logged[0]["purpose"], "chat");
         pool.close().await;
         if (MIGRATIONS.len() as i64) > SEEDED_FROM {
             assert!(
