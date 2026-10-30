@@ -297,14 +297,23 @@ import {
   sendGate,
   type BudgetState,
 } from "@/cost/budget";
-import { UsageScreen, type SavingsView, type UsagePeriod, type UsageScreenView } from "@/ui/Usage";
+import {
+  UsageScreen,
+  type EconomicsView,
+  type SavingsView,
+  type UsagePeriod,
+  type UsageScreenView,
+} from "@/ui/Usage";
 import {
   bestExtraSince,
   cacheTokensSince,
+  cloudCallsAvoidedSince,
+  listQuestionTasks,
   listUsage,
   type UsageRecord,
 } from "@/storage/usageReport";
 import { cacheSavings } from "@/cost/savings";
+import { againstBaseline, economics as taskEconomics, parseBaseline } from "@/cost/economics";
 import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
@@ -679,6 +688,7 @@ export function ChatApp({
   const [usagePeriod, setUsagePeriod] = useState<UsagePeriod>("week");
   const [usage, setUsage] = useState<{ rows: UsageRecord[]; at: number } | null>(null);
   const [savings, setSavings] = useState<SavingsView | null>(null);
+  const [economicsView, setEconomicsView] = useState<EconomicsView | null>(null);
   // SE-03: the app lock. `hash` is the stored passcode hash (null = off, undefined = loading).
   const [lock, setLock] = useState<{
     hash: string | null | undefined;
@@ -2662,6 +2672,35 @@ export function ChatApp({
       subscription: sub === null ? null : Number(sub),
     });
   };
+  /**
+   * LL-07: cost per successful task over 30 days. The first time a task has succeeded with every
+   * call in the cloud, that figure is frozen as the baseline later savings are measured against.
+   */
+  const loadEconomics = async (at: number, freeze = false) => {
+    const days = 30;
+    const since = at - days * 86_400_000;
+    const [tasks, spent, avoided, stored] = await Promise.all([
+      listQuestionTasks(db, tenant, since),
+      spentSince(db, tenant, since),
+      cloudCallsAvoidedSince(db, tenant, since),
+      getSetting(db, tenant, "economics.baseline"),
+    ]);
+    const e = taskEconomics(tasks, spent, avoided);
+    let baseline = parseBaseline(stored);
+    if (e.perSuccess !== null && (freeze || (!baseline && avoided === 0))) {
+      baseline = { at, days, tasks: e.tasks, succeeded: e.succeeded, perSuccess: e.perSuccess };
+      await setSetting(db, tenant, "economics.baseline", JSON.stringify(baseline));
+    }
+    setEconomicsView({
+      days,
+      tasks: e.tasks,
+      succeeded: e.succeeded,
+      perSuccess: e.perSuccess,
+      cloudCallsAvoided: e.cloudCallsAvoided,
+      baseline: baseline ? { at: baseline.at, perSuccess: baseline.perSuccess } : null,
+      change: againstBaseline(e.perSuccess, baseline),
+    });
+  };
   const openUsage = () => {
     setView("usage");
     const at = Date.now();
@@ -2671,6 +2710,7 @@ export function ChatApp({
       setUsage({ rows, at });
     }, report);
     loadSavings(at).catch(report);
+    loadEconomics(at).catch(report);
   };
   // Screenshots can open on the dashboard (FUSE_VIEW=usage): load it once at start.
   useEffect(() => {
@@ -2678,6 +2718,8 @@ export function ChatApp({
     listUsage(db, tenant, 0).then((rows) => {
       setUsage({ rows, at: Date.now() });
     }, report);
+    loadEconomics(Date.now()).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once at start, for screenshots
   }, [db, tenant]);
   const usageView = ((): UsageScreenView | null => {
     if (!usage) return null;
@@ -3264,6 +3306,10 @@ export function ChatApp({
             <UsageScreen
               view={usageView}
               savings={savings}
+              economics={economicsView}
+              onFreezeBaseline={() => {
+                loadEconomics(Date.now(), true).catch(report);
+              }}
               onSubscription={(usd) => {
                 const micro = usd === null ? null : Math.round(usd * 1_000_000);
                 setSetting(

@@ -32,6 +32,62 @@ export interface SavingsView {
   subscription: number | null;
 }
 
+/** Cost per successful task over the last 30 days, against the frozen baseline (LL-07). */
+export interface EconomicsView {
+  days: number;
+  tasks: number;
+  succeeded: number;
+  /** Micro-dollars; null until a task has succeeded. */
+  perSuccess: number | null;
+  cloudCallsAvoided: number;
+  baseline: { at: number; perSuccess: number } | null;
+  /** Percent against the baseline; null without one. */
+  change: number | null;
+}
+
+function EconomicsCard({
+  economics: e,
+  onFreeze,
+}: {
+  economics: EconomicsView;
+  onFreeze?: (() => void) | undefined;
+}) {
+  return (
+    <section className="mt-6 rounded-xl border p-5 text-xs" aria-label="Cost per successful task">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-[11px] text-muted-foreground">
+            Cost per successful task · last {e.days} days
+          </p>
+          <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">
+            {e.perSuccess === null ? "—" : money(e.perSuccess)}
+          </p>
+        </div>
+        {onFreeze && (
+          <Button variant="outline" size="sm" className="text-xs" onClick={onFreeze}>
+            {e.baseline ? "Freeze again" : "Freeze as baseline"}
+          </Button>
+        )}
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        {number(e.succeeded)} of {number(e.tasks)} task{e.tasks === 1 ? "" : "s"} succeeded
+        <span className="mx-1 opacity-40">·</span>
+        {number(e.cloudCallsAvoided)} cloud call{e.cloudCallsAvoided === 1 ? "" : "s"} avoided
+      </p>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        {e.baseline
+          ? `Baseline ${money(e.baseline.perSuccess)}, frozen ${new Date(e.baseline.at).toLocaleDateString()}${e.change === null ? "" : ` · ${e.change > 0 ? "+" : ""}${String(e.change)}%`}`
+          : "No baseline yet: it's frozen from your cloud-only use once a task has succeeded."}
+      </p>
+      <p className="mt-2 text-[10px] text-muted-foreground">
+        A task is one question with all its answers, retries and re-runs. It succeeds when its last
+        answer finished, wasn't marked bad and the question wasn't edited. All API spend,
+        housekeeping included, is divided by those.
+      </p>
+    </section>
+  );
+}
+
 /** Spent against Best, against your subscriptions, and what caching saved. */
 function SavingsCard({
   savings,
@@ -114,12 +170,16 @@ const PERIODS: { id: UsagePeriod; label: string; previous: string }[] = [
 export function UsageScreen({
   view,
   savings = null,
+  economics = null,
+  onFreezeBaseline,
   onPeriod,
   onSubscription,
   onBack,
 }: {
   view: UsageScreenView | null;
   savings?: SavingsView | null;
+  economics?: EconomicsView | null;
+  onFreezeBaseline?: () => void;
   onPeriod: (period: UsagePeriod) => void;
   onSubscription?: (usd: number | null) => void;
   onBack: () => void;
@@ -215,6 +275,7 @@ export function UsageScreen({
                 <span>{view.bars.at(-1)?.label}</span>
               </div>
             </section>
+            {economics && <EconomicsCard economics={economics} onFreeze={onFreezeBaseline} />}
             {savings && onSubscription && (
               <SavingsCard savings={savings} onSubscription={onSubscription} />
             )}

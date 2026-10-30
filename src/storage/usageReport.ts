@@ -1,4 +1,5 @@
 /** Every billed provider call since a time, with what the dashboard groups by (CO-02). */
+import type { TaskAnswer, TaskRecord } from "@/cost/economics";
 import type { Tenant } from "./defaults";
 import type { SqlDb } from "./sql";
 
@@ -79,4 +80,69 @@ export async function bestExtraSince(db: SqlDb, tenant: Tenant, since: number): 
     [tenant.workspaceId, since],
   );
   return rows[0]?.extra ?? 0;
+}
+
+/** Providers that aren't a cloud call: a local model, or an answer without a model (LL-07). */
+export const NOT_CLOUD = ["local", "deterministic"] as const;
+
+/**
+ * Every question asked since `since`, with its answers oldest first (LL-07). Deleted messages
+ * are left out; an edited question is one with a newer sibling question.
+ */
+export async function listQuestionTasks(
+  db: SqlDb,
+  tenant: Tenant,
+  since: number,
+): Promise<TaskRecord[]> {
+  const questions = await db.select<{
+    id: string;
+    thread_id: string;
+    parent_id: string | null;
+    created_at: number;
+  }>(
+    `SELECT id, thread_id, parent_id, created_at FROM messages
+     WHERE workspace_id = ? AND role = 'user' AND deleted_at IS NULL AND created_at >= ?
+     ORDER BY created_at, id`,
+    [tenant.workspaceId, since],
+  );
+  if (questions.length === 0) return [];
+  const answers = await db.select<{
+    parent_id: string;
+    status: TaskAnswer["status"];
+    feedback: TaskAnswer["feedback"];
+  }>(
+    `SELECT a.parent_id, a.status, a.feedback FROM messages a
+     JOIN messages q ON q.id = a.parent_id
+     WHERE a.workspace_id = ? AND a.role = 'assistant' AND a.deleted_at IS NULL
+       AND q.role = 'user' AND q.created_at >= ?
+     ORDER BY a.created_at, a.id`,
+    [tenant.workspaceId, since],
+  );
+  const byQuestion = new Map<string, TaskAnswer[]>();
+  for (const a of answers) {
+    const list = byQuestion.get(a.parent_id) ?? [];
+    list.push({ status: a.status, feedback: a.feedback });
+    byQuestion.set(a.parent_id, list);
+  }
+  // Siblings: same thread and parent. The newest is the live one; the others were edited.
+  const newest = new Map<string, string>();
+  for (const q of questions) newest.set(`${q.thread_id}/${q.parent_id ?? ""}`, q.id);
+  return questions.map((q) => ({
+    answers: byQuestion.get(q.id) ?? [],
+    edited: newest.get(`${q.thread_id}/${q.parent_id ?? ""}`) !== q.id,
+  }));
+}
+
+/** Requests since `since` that needed no cloud call (LL-07). */
+export async function cloudCallsAvoidedSince(
+  db: SqlDb,
+  tenant: Tenant,
+  since: number,
+): Promise<number> {
+  const rows = await db.select<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM request_log
+     WHERE workspace_id = ? AND created_at >= ? AND provider IN (${NOT_CLOUD.map(() => "?").join(", ")})`,
+    [tenant.workspaceId, since, ...NOT_CLOUD],
+  );
+  return rows[0]?.n ?? 0;
 }
