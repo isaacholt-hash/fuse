@@ -28,6 +28,8 @@ import {
   markUndone,
   raiseRunCap,
   setRunStatus,
+  setRunSummary,
+  addRunCost,
   type Approval,
   type Run,
   type RunChange,
@@ -86,6 +88,8 @@ export const toolsFor = (mode: RunMode) =>
 
 export interface RunDeps extends ChatDeps {
   repo: RepoApi;
+  /** CA-08: the Cheap-tier model that summarizes earlier steps; without it FUSE lists them. */
+  summarizer?: CatalogModel;
   /** Runs commands (CA-03); without it, run_command is refused. */
   exec?: ExecApi;
   /**
@@ -137,9 +141,24 @@ export interface RunInput {
   onProgress?: (p: RunProgress) => void;
 }
 
-/** The loop's history from the steps: the task, then each turn replayed and its results. */
-export function historyFromSteps(task: string, steps: RunStep[]): ChatMessage[] {
-  const history: ChatMessage[] = [{ role: "user", content: task }];
+/**
+ * The loop's history from the steps: the task (with the summary of earlier steps, once there is
+ * one), then each later turn replayed unchanged with its results.
+ */
+export function historyFromSteps(
+  task: string,
+  steps: RunStep[],
+  summary: { text: string; upto: number } | null = null,
+): ChatMessage[] {
+  const history: ChatMessage[] = [
+    {
+      role: "user",
+      content: summary
+        ? `${task}\n\n<progress_so_far>\nYou've been working on this. What you did and found so far:\n${summary.text}\n</progress_so_far>\n\nCarry on from there.`
+        : task,
+    },
+  ];
+  if (summary) steps = steps.filter((s) => s.seq > summary.upto);
   let results: ToolResult[] = [];
   const flush = () => {
     if (results.length) history.push({ role: "user", content: "", toolResults: results });
@@ -268,8 +287,29 @@ async function work(
       break;
     }
     const steps = await listSteps(db, tenant, runId);
-    const history = historyFromSteps(run.task, steps);
     const system = await systemFor(deps, run, steps);
+    const summaryOf = (r: Run) =>
+      r.summary !== null && r.summaryUpto !== null
+        ? { text: r.summary, upto: r.summaryUpto }
+        : null;
+    let history = historyFromSteps(run.task, steps, summaryOf(run));
+    // CA-08: past the budget, earlier steps are summarized and the loop starts again from there.
+    const lastModel = steps.findLast((s) => s.kind === "model");
+    if (
+      estimateTokens(system, history) > runBudget(model) &&
+      lastModel &&
+      lastModel.seq > (run.summaryUpto ?? 0)
+    ) {
+      // Only at a turn boundary: every call of the last turn has its result already.
+      const upto = steps.at(-1)?.seq ?? 0;
+      const text = await summarizeSteps(
+        deps,
+        run,
+        steps.filter((s) => s.seq > (run.summaryUpto ?? 0)),
+      );
+      await setRunSummary(db, tenant, runId, text, upto);
+      history = historyFromSteps(run.task, steps, { text, upto });
+    }
     const adapter = deps.adapterFor(model.provider);
 
     const started = (deps.now ?? Date.now)();
@@ -577,4 +617,98 @@ export async function undoRun(deps: RunDeps, runId: string): Promise<void> {
     (c: RunChange) => c.status === "applied",
   );
   for (const c of applied.reverse()) await undoChange(deps, c.id);
+}
+
+/** Rough tokens a request carries (the same 4-characters-a-token estimate as chat). */
+export function estimateTokens(system: string | undefined, history: ChatMessage[]): number {
+  let chars = system?.length ?? 0;
+  for (const m of history) {
+    chars += m.content.length;
+    if (m.native) chars += JSON.stringify(m.native.items).length;
+    for (const r of m.toolResults ?? []) chars += r.content.length;
+  }
+  return Math.ceil(chars / 4);
+}
+
+/** CA-08: a run's history is summarized past half its model's window (and never past 150k). */
+export const runBudget = (model: CatalogModel) =>
+  Math.min(Math.floor(model.contextWindow / 2), 150_000);
+
+/** Each step as one plain line, for the summary (and as the summary when there's no model). */
+function stepLines(steps: RunStep[]): string[] {
+  return steps.flatMap((s) => {
+    if (s.kind === "model")
+      return s.text.trim() ? [`You wrote: ${s.text.trim().slice(0, 600)}`] : [];
+    const first = s.output.split("\n").find((l) => l.trim() && !l.startsWith("$ ")) ?? "";
+    const input = JSON.stringify(s.call.input).slice(0, 300);
+    return [`${s.call.name} ${input} → ${s.isError ? "failed: " : ""}${first.slice(0, 300)}`];
+  });
+}
+
+const SUMMARY_SYSTEM =
+  "You summarize a coding agent's progress so it can carry on in a fresh context. Keep every fact it will need: files read and what they contain that matters, what was changed and where (paths, functions), commands run and their results (what passed, what failed and the error), decisions made, and what's left to do. Plain bullet points, no preamble. Under 400 words.";
+
+/** The Cheap tier summarizes the steps; without it (or if it fails) the steps are listed. */
+async function summarizeSteps(deps: RunDeps, run: Run, steps: RunStep[]): Promise<string> {
+  // A later summary carries the earlier one forward, so nothing done before it is lost.
+  const lines = [...(run.summary ? [run.summary] : []), ...stepLines(steps).slice(-80)];
+  const listed = lines.join("\n");
+  const model = deps.summarizer;
+  if (!model) return listed;
+  let text = "";
+  let done: StreamDone | null = null;
+  let failure: ProviderError | null = null;
+  const started = (deps.now ?? Date.now)();
+  try {
+    for await (const ev of deps
+      .adapterFor(model.provider)
+      .streamChat(
+        [{ role: "user", content: `The task: ${run.task}\n\nThe steps so far:\n${listed}` }],
+        model.id,
+        {
+          scope: run.threadId
+            ? { kind: "thread", id: run.threadId }
+            : { kind: "project", id: run.projectId },
+          system: SUMMARY_SYSTEM,
+          maxOutputTokens: 1200,
+        },
+      )) {
+      if (ev.type === "text") text += ev.text;
+      else if (ev.type === "done") done = ev;
+    }
+  } catch (e) {
+    failure = e instanceof ProviderError ? e : new ProviderError("stream", String(e));
+  }
+  const tokens = done?.usage;
+  const totalInput = tokens
+    ? tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens
+    : 0;
+  const costMicroUsd =
+    tokens && done?.usageReported
+      ? cost({ ...EMPTY_USAGE, ...tokens }, priceFor(model, totalInput))
+      : 0;
+  await logRequest(deps.db, deps.tenant, {
+    threadId: run.threadId,
+    messageId: run.messageId,
+    purpose: "summary",
+    provider: model.provider,
+    model: model.id,
+    attempt: done?.attempts ?? 1,
+    usage: tokens
+      ? {
+          ...EMPTY_USAGE,
+          ...tokens,
+          costMicroUsd,
+          priceVersion: deps.catalog.priceVersion,
+          latencyMs: (deps.now ?? Date.now)() - started,
+        }
+      : EMPTY_USAGE,
+    httpStatus: failure?.status ?? null,
+    errorCode: failure ? (failure.code ?? failure.kind) : null,
+    errorMessage: failure?.message ?? null,
+    providerRequestId: done?.providerRequestId ?? null,
+  });
+  // The summary's cost counts against the run's cap like any of its turns.
+  if (costMicroUsd) await addRunCost(deps.db, deps.tenant, run.id, costMicroUsd);
+  return text.trim() || listed;
 }

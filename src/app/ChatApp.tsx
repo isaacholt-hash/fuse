@@ -1969,6 +1969,11 @@ export function ChatApp({
   const runDeps = (repo: RepoApi) => ({
     ...deps,
     repo,
+    // CA-08: the Cheap tier summarizes a long run's earlier steps.
+    ...(() => {
+      const helper = housekeepingModel(policy, catalog, "summary", savedProviders, model.provider);
+      return helper ? { summarizer: helper } : {};
+    })(),
     ...(execApi ? { exec: execApi } : {}),
     approve: (req: ApprovalRequest) =>
       new Promise<ApprovalAnswer>((resolve) => {

@@ -14,6 +14,8 @@ const run: Run = {
   capMicroUsd: 1_000_000,
   spentMicroUsd: 123_400,
   note: null,
+  summary: null,
+  summaryUpto: null,
   createdAt: 1,
   updatedAt: 1,
 };
