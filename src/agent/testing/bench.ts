@@ -15,13 +15,16 @@ import {
   renameSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { docxText, xlsxSheets } from "@/documents/read";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 
 const ROOT = join(import.meta.dirname, "..", "..", "..");
 export const FIXTURE = join(ROOT, "data", "coding", "fixture");
+/** M8 step 13: the Work benchmark's folder of documents, CSVs and a messy folder. */
+export const WORK_FIXTURE = join(ROOT, "data", "work", "fixture");
 
 export type Check =
   | { kind: "file_contains"; path: string; text: string }
@@ -29,7 +32,16 @@ export type Check =
   | { kind: "command_passes"; command: string }
   | { kind: "branch_prefix"; prefix: string }
   | { kind: "last_commit_touches"; path: string }
-  | { kind: "clean_tree" };
+  | { kind: "clean_tree" }
+  // M8 step 13: Work checks. Paths are files in the folder; same_files compares with the fixture.
+  | { kind: "docx_table"; path: string }
+  | { kind: "docx_contains"; path: string; text: string }
+  | { kind: "xlsx_formula"; path: string; text: string }
+  | { kind: "xlsx_contains"; path: string; text: string }
+  | { kind: "no_loose_files"; path: string }
+  | { kind: "same_files"; path: string }
+  // Checked by the benchmark itself, from the run's approvals.
+  | { kind: "one_organise_plan" };
 
 export interface BenchTask {
   id: string;
@@ -65,6 +77,27 @@ export function freshRepo(): string {
   git(dir, ["add", "-A"]);
   git(dir, ["commit", "-q", "-m", "Start"]);
   return dir;
+}
+
+/** M8 step 13: a fresh copy of the Work fixture, a plain folder (no git). */
+export function freshFolder(): string {
+  const dir = mkdtempSync(join(tmpdir(), "fuse-work-"));
+  cpSync(WORK_FIXTURE, dir, { recursive: true });
+  return dir;
+}
+
+export interface WorkTask {
+  id: string;
+  task: string;
+  checks: Check[];
+}
+
+export function loadWorkTasks(): WorkTask[] {
+  return (
+    JSON.parse(readFileSync(join(ROOT, "data", "work", "tasks.json"), "utf8")) as {
+      tasks: WorkTask[];
+    }
+  ).tasks;
 }
 
 export const dropRepo = (dir: string) => {
@@ -157,6 +190,21 @@ export function nodeRepo(dir: string): RepoApi {
       const before = readFileSync(full, "utf8");
       rmSync(full);
       return Promise.resolve({ path: rel(full), before });
+    },
+    readBytes: (_p, path) => {
+      const full = inside(dir, path);
+      if (!existsSync(full)) return Promise.reject(new Error(`${path}: no such file.`));
+      return Promise.resolve(new Uint8Array(readFileSync(full)));
+    },
+    writeBytes: (_p, path, bytes) => {
+      const full = inside(dir, path);
+      mkdirSync(dirname(full), { recursive: true });
+      writeFileSync(full, bytes);
+      return Promise.resolve(rel(full));
+    },
+    removeBytes: (_p, path) => {
+      rmSync(inside(dir, path));
+      return Promise.resolve();
     },
     move: (_p, from, to) => {
       const a = inside(dir, from);
@@ -265,7 +313,62 @@ export function failedChecks(dir: string, checks: Check[]): string[] {
       case "clean_tree":
         if (git(dir, ["status", "--porcelain"]).trim()) fails.push("uncommitted changes are left");
         break;
+      case "docx_table":
+      case "docx_contains": {
+        const bytes = readBytes(dir, c.path);
+        const text = bytes ? docxText(bytes) : null;
+        if (text === null) fails.push(`${c.path} wasn't made`);
+        else if (c.kind === "docx_table" && !text.includes("| --- |"))
+          fails.push(`${c.path} has no table`);
+        else if (c.kind === "docx_contains" && !text.includes(c.text))
+          fails.push(`${c.path} doesn't mention “${c.text}”`);
+        break;
+      }
+      case "xlsx_formula":
+      case "xlsx_contains": {
+        const bytes = readBytes(dir, c.path);
+        const cells = bytes ? xlsxSheets(bytes).flatMap((sh) => [...sh.cells.values()]) : null;
+        if (cells === null) fails.push(`${c.path} wasn't made`);
+        else if (c.kind === "xlsx_formula" && !cells.some((x) => x.formula?.includes(c.text)))
+          fails.push(`${c.path} has no formula with “${c.text}”`);
+        else if (c.kind === "xlsx_contains" && !cells.some((x) => x.value.includes(c.text)))
+          fails.push(`${c.path} has no cell “${c.text}”`);
+        break;
+      }
+      case "no_loose_files": {
+        const loose = readdirSync(join(dir, c.path)).filter((n) =>
+          statSync(join(dir, c.path, n)).isFile(),
+        );
+        if (loose.length) fails.push(`still loose in ${c.path}: ${loose.join(", ")}`);
+        break;
+      }
+      case "same_files": {
+        const names = (base: string) =>
+          filesUnder(join(base, c.path))
+            .map((f) => basename(f))
+            .sort();
+        const now = names(dir);
+        const before = names(WORK_FIXTURE);
+        if (now.join("\n") !== before.join("\n"))
+          fails.push(`${c.path} now holds ${now.join(", ")} (was ${before.join(", ")})`);
+        break;
+      }
+      case "one_organise_plan":
+        break;
     }
   }
   return fails;
+}
+
+function readBytes(dir: string, path: string): Uint8Array | null {
+  const full = join(dir, path);
+  return existsSync(full) ? new Uint8Array(readFileSync(full)) : null;
+}
+
+/** Every file under a folder, at any depth. */
+function filesUnder(base: string): string[] {
+  return readdirSync(base).flatMap((name) => {
+    const full = join(base, name);
+    return statSync(full).isDirectory() ? filesUnder(full) : [full];
+  });
 }

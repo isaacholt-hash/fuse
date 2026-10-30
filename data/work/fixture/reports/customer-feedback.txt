@@ -1,0 +1,9 @@
+Customer feedback, September
+
+NPS this month: 41 (last month 37).
+Top requests:
+1. Export orders to CSV
+2. Dark mode in the app
+3. Faster refunds
+
+Complaints mostly about late deliveries in the north.
