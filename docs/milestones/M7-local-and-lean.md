@@ -18,10 +18,10 @@
 ## Steps (one PR each, in order)
 
 - [x] **0. M7 plan.** This file, the decisions in requirements §17, and CLAUDE.md pointed here.
-- [ ] **1. Cost per successful task (LL-07).**
-  - A task is a message's attempts, retries, escalations and regenerates counted once. It succeeds when it isn't redone or marked bad.
-  - Settings → Usage shows cost per successful task, cloud calls avoided and context tokens avoided. API spend is kept apart from local work, which costs $0 in API terms.
-  - A frozen cloud-only baseline is computed from the existing request log and the routing test set.
+- [x] **1. Cost per successful task (LL-07).**
+  - A task is a question with all its answers, retries, escalations and regenerates, counted once. It succeeds when its newest answer finished, wasn't marked bad, and the question wasn't edited.
+  - The Usage screen shows cost per successful task over 30 days (all API spend, housekeeping included, over the tasks that succeeded) and cloud calls avoided (request log rows from `local` or `deterministic`). Context tokens avoided are added with token ceilings in step 10.
+  - The baseline is frozen from the request log the first time a task has succeeded with every call in the cloud (setting `economics.baseline`), with a Freeze again button. The routing test set's baseline is part of step 13.
 - [ ] **2. Deterministic first (LL-01).**
   - Allowlisted handlers, run before routing: arithmetic, unit conversion, date and time conversion, counting, and JSON or CSV validation.
   - The answer is marked "answered without a model · $0" and logged with route `deterministic`.
