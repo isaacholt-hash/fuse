@@ -155,6 +155,8 @@ export type ApprovalView =
       unsandboxed?: boolean;
     }
   | { kind: "edit"; change: RunChangeView }
+  /** WF-07: a sandboxed command seems to need the network. */
+  | { kind: "network"; command: string }
   /** WF-06: a reorganisation to allow in full, in part, or not at all. */
   | { kind: "organise"; moves: { from: string; to: string }[]; reason: string | null }
   /** `remote`: it leaves this computer (push, pull request). */

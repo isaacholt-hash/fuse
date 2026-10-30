@@ -1940,75 +1940,37 @@ function RunCard({
           }}
         />
       )}
-      {run.approval && run.approval.kind !== "organise" && onApprove && (
+      {run.approval?.kind === "network" && onApprove && (
         <div
           role="alertdialog"
-          aria-label={
-            run.approval.kind === "command"
-              ? "Run this command?"
-              : run.approval.kind === "git"
-                ? "Go ahead with git?"
-                : "Make this change?"
-          }
+          aria-label="Allow the network?"
           className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
         >
-          {run.approval.kind === "command" ? (
-            <>
-              <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
-              <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
-                {run.approval.command}
-              </pre>
-              {run.approval.destructive && (
-                <p className="mb-2 text-destructive">
-                  This {run.approval.destructive}, so it asks every time.
-                </p>
-              )}
-              {run.approval.unsandboxed && (
-                <p className="mb-2 text-amber-700 dark:text-amber-400">
-                  No sandbox on this computer: it runs with your full rights, and can change files
-                  outside this chat&apos;s folders.
-                </p>
-              )}
-            </>
-          ) : run.approval.kind === "git" ? (
-            <>
-              <p className="mb-1 font-medium">{run.approval.summary}?</p>
-              {run.approval.remote && (
-                <p className="mb-2 text-amber-700 dark:text-amber-400">
-                  This goes to GitHub, outside this computer.
-                </p>
-              )}
-            </>
-          ) : (
-            <>
-              <p className="mb-1 font-medium">{run.approval.change.label}?</p>
-              {run.approval.change.lines.length > 0 && (
-                <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
-                  <DiffView lines={run.approval.change.lines} />
-                </div>
-              )}
-            </>
-          )}
-          <div className="flex gap-2">
+          <p className="mb-1 font-medium">This command seems to need the network:</p>
+          <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+            {run.approval.command}
+          </pre>
+          <p className="mb-2 text-muted-foreground">
+            Commands run sandboxed with no network unless you allow it. Allowing runs it again.
+          </p>
+          <div className="flex flex-wrap gap-2">
             <Button
               size="xs"
               onClick={() => {
                 onApprove(run.id, "yes");
               }}
             >
-              Allow
+              Allow for this chat
             </Button>
-            {run.approval.kind === "command" && !run.approval.destructive && (
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={() => {
-                  onApprove(run.id, "always");
-                }}
-              >
-                Always allow in this project
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                onApprove(run.id, "always");
+              }}
+            >
+              Allow for this folder
+            </Button>
             <Button
               variant="outline"
               size="xs"
@@ -2016,11 +1978,95 @@ function RunCard({
                 onApprove(run.id, "no");
               }}
             >
-              Deny
+              No
             </Button>
           </div>
         </div>
       )}
+      {run.approval &&
+        run.approval.kind !== "organise" &&
+        run.approval.kind !== "network" &&
+        onApprove && (
+          <div
+            role="alertdialog"
+            aria-label={
+              run.approval.kind === "command"
+                ? "Run this command?"
+                : run.approval.kind === "git"
+                  ? "Go ahead with git?"
+                  : "Make this change?"
+            }
+            className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+          >
+            {run.approval.kind === "command" ? (
+              <>
+                <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
+                <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+                  {run.approval.command}
+                </pre>
+                {run.approval.destructive && (
+                  <p className="mb-2 text-destructive">
+                    This {run.approval.destructive}, so it asks every time.
+                  </p>
+                )}
+                {run.approval.unsandboxed && (
+                  <p className="mb-2 text-amber-700 dark:text-amber-400">
+                    No sandbox on this computer: it runs with your full rights, and can change files
+                    outside this chat&apos;s folders.
+                  </p>
+                )}
+              </>
+            ) : run.approval.kind === "git" ? (
+              <>
+                <p className="mb-1 font-medium">{run.approval.summary}?</p>
+                {run.approval.remote && (
+                  <p className="mb-2 text-amber-700 dark:text-amber-400">
+                    This goes to GitHub, outside this computer.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="mb-1 font-medium">{run.approval.change.label}?</p>
+                {run.approval.change.lines.length > 0 && (
+                  <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
+                    <DiffView lines={run.approval.change.lines} />
+                  </div>
+                )}
+              </>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="xs"
+                onClick={() => {
+                  onApprove(run.id, "yes");
+                }}
+              >
+                Allow
+              </Button>
+              {run.approval.kind === "command" && !run.approval.destructive && (
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => {
+                    onApprove(run.id, "always");
+                  }}
+                >
+                  Always allow in this project
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  onApprove(run.id, "no");
+                }}
+              >
+                Deny
+              </Button>
+            </div>
+          </div>
+        )}
       {live && !run.streaming && (
         <p
           role="status"

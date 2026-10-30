@@ -1,5 +1,6 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
+import { allowNetwork, disallowNetwork, networkFolders } from "@/storage/network";
 import { resolvePath } from "@/agent/folders";
 import { docKind, docxText, xlsxText } from "@/documents/read";
 import { getChange, listRunFolders } from "@/storage/runs";
@@ -952,9 +953,12 @@ export function ChatApp({
   const [projectFolderMap, setProjectFolderMap] = useState<Record<string, FolderRecord[]>>({});
   const [chatFolderMap, setChatFolderMap] = useState<Record<string, FolderRecord[]>>({});
   const loadProjectFolders = (projectId: string) =>
-    listProjectFolders(db, tenant, projectId).then((fs) => {
+    listProjectFolders(db, tenant, projectId).then(async (fs) => {
       setProjectFolderMap((m) => ({ ...m, [projectId]: fs }));
+      setNetFolders(await networkFolders(db, tenant));
     });
+  /** WF-07: folders whose sandboxed commands may use the network. */
+  const [netFolders, setNetFolders] = useState<Set<string>>(new Set());
   const loadChatFolders = (threadId: string) =>
     listThreadFolders(db, tenant, threadId).then((fs) => {
       setChatFolderMap((m) => ({ ...m, [threadId]: fs }));
@@ -4703,7 +4707,17 @@ export function ChatApp({
                           id: f.id,
                           path: f.path,
                           readSecrets: f.readSecrets,
+                          network: netFolders.has(f.id),
                         })),
+                        onNetwork: (folderId: string, allow: boolean) => {
+                          (allow ? allowNetwork : disallowNetwork)(db, tenant, {
+                            kind: "folder",
+                            id: folderId,
+                          })
+                            .then(() => networkFolders(db, tenant))
+                            .then(setNetFolders)
+                            .catch(report);
+                        },
                         onRunMode: (mode: RunMode) => {
                           setProjectRunMode(db, tenant, editedProject.id, mode)
                             .then(refreshProjects)

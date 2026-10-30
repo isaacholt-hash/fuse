@@ -218,3 +218,5 @@ It also seeds the default workspace and user with fixed UUIDs. Before each migra
 **Document changes (M8 step 5, `0043_change_bytes.sql`, WF-04).** When a run writes a Word, Excel or PDF file, its `run_changes` row keeps readable text of the old and new document in `before` and `after`, for the diff. `before_sha` and `after_sha` name the bytes in the attachment store. Undo checks that the file still hashes to `after_sha`, then writes `before_sha`'s bytes back, or removes the file when `before_sha` is null.
 
 **Organise plans (M8 step 7, `0044_change_batch.sql`, WF-06).** Each move in an approved plan is its own `run_changes` row (`from_path` to `path`), and all of them share a `batch_id`. Undoing any one of them undoes the whole batch, newest move first.
+
+**Network grants (M8 step 10, `0045_network_grants.sql`, WF-07).** `network_grants` (scope `thread` or `folder`) say where sandboxed commands may use the network. A run gets the network when its chat or any of its folders is granted. The grants are added when you answer "Allow for this chat" or "Allow for this folder", or with the switch in Project settings → Folders, and removed with that switch.

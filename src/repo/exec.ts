@@ -38,6 +38,8 @@ export interface ExecApi {
       onOutput?: (soFar: string) => void;
       /** WF-07: run sandboxed: writable only in these folders (and a private /tmp). */
       sandbox?: { folderIds: string[]; network: boolean };
+      /** WF-07: with a run's sandbox, whether it may use the network (off unless allowed). */
+      network?: boolean;
     },
   ): Promise<ExecResult>;
   /** WF-07: whether commands can be sandboxed here. */

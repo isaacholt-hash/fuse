@@ -3111,7 +3111,7 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   expect(await screen.findByText("All 3 tests pass.")).toBeInTheDocument();
   expect(ran).toEqual(["pnpm test"]);
   expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
-    "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]",
+    "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]\n[not sandboxed: this computer can't sandbox commands]",
   );
   expect(screen.queryByRole("alertdialog", { name: "Run this command?" })).toBeNull();
 });

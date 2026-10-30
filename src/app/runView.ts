@@ -105,6 +105,7 @@ export function groupBatches(changes: readonly RunChange[]): RunChangeView[] {
 export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
+  if (req.kind === "network") return { kind: "network", command: req.command };
   return req.kind === "command"
     ? {
         kind: "command",
