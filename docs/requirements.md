@@ -365,7 +365,7 @@ Folded in on 2026-10-29 from `docs/specs/local-ai-cost-optimization.md` (v1.0, t
 | LL-06 | Exact-match response cache (merges RT-13): keyed by normalised input, context version, model or operation version, project scope and output format; TTLs and invalidation; never for personal, dynamic or high-stakes requests without a validity check, nor in incognito or for answers that used web search. Semantic caching stays off. | Should | P1.5 |
 | LL-07 | Economics: cost per successful task (a message's attempts, retries, escalations and regenerates counted as one task; success when it isn't redone or marked bad), cloud calls avoided, context tokens avoided, local latency, fallback rate. API spend is kept apart from subscriptions and local energy. No prompt text in telemetry by default. | Must | P1.5 |
 | LL-08 | Local-path security: model files treated as third-party dependencies (origin, checksum, licence, update provenance); out-of-memory and crash isolation; no network request from the local path; tests for offline use, local-only mode, cross-project isolation, malformed model output and resource exhaustion. | Must | P1.5 |
-| LL-09 | Evaluation and rollout: a cloud-only baseline on the routing test set and on real usage (quality, cost per successful task, p50/p95 latency, peak memory); shadow mode, where the local decision is recorded beside the cloud one but not used; a false-downgrade rate; local turned on by default only when thresholds Isaac sets are met, with one-click rollback. | Must | P1.5 |
+| LL-09 | Evaluation and rollout: a cloud-only baseline on the routing test set and on real usage (quality, cost per successful task, p50/p95 latency, peak memory); shadow mode, where the local decision is recorded beside the cloud one but not used; a false-downgrade rate; local on as soon as a model is installed (Isaac, 2026-10-30), with one-click rollback. | Must | P1.5 |
 | LL-10 | Later, only if measurements justify it: semantic response cache, local answers to simple chat (needs RT-17 changed), more local model profiles, batch APIs, offline-only modes. | Nice | P2 |
 
 **Where FUSE stands (traceability, 2026-10-29)**
@@ -444,11 +444,13 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 
 **Open decisions for P1.5 part 3 (Local and lean), with the recommendation**
 
-- [ ] Local runtime: embedded llama.cpp through Rust (`llama-cpp-2`), CPU build first, GPU (Vulkan) later; optional localhost adapter for Ollama or LM Studio
-- [ ] First model: Qwen3 1.7B, 4-bit GGUF, non-thinking mode; licence (expected Apache-2.0), source and checksum verified at implementation, downloaded only when you opt in
-- [ ] RT-17 kept: local does housekeeping only (titles, classification second opinion, memory suggestions, summaries, query rewriting)
-- [ ] Privacy modes per project: Normal, Local only, Cloud only
-- [ ] Benchmarks and shadow-mode results come from Isaac's PC; local stays opt-in until they're in
+Decided 2026-10-30:
+
+- [x] Local runtime: embedded llama.cpp through Rust (`llama-cpp-2`), in a worker process, CPU build first, GPU (Vulkan) later; no Ollama or LM Studio adapter in M7
+- [x] Models: Qwen3 1.7B and Qwen3 4B, 4-bit GGUF, non-thinking mode, chosen by hardware; licence, source and checksum verified at implementation, downloaded only when you opt in
+- [x] RT-17 kept: local does housekeeping only (titles, classification second opinion, memory suggestions, summaries, query rewriting)
+- [x] Privacy modes per project: Normal, Local only, Cloud only (built in M5)
+- [x] Local is on as soon as a model is installed, with one switch to turn it off; benchmarks and shadow results come from Isaac's PC but don't gate it (LL-09 changed)
 - [x] The app's name: FUSE
 
 ## 18. Next steps
@@ -465,8 +467,8 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
 - [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); live continuity benchmark passed 2026-10-30 (100% kept on claude-sonnet-5-5 and gpt-6.1-sol, gate 90%). Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
-- [x] P1.5 part 2, Coding agent (M6, section 11b, added 2026-10-30): built 2026-10-30 (`docs/milestones/M6-coding-agent.md`); live benchmark passed 3 of 3 on both providers (2026-10-30); the two-week gate is next. Tool calling on both providers, a linked repository read through Rust, CLAUDE.md and AGENTS.md, runs with plan, steps, cost cap and summaries, edits with diffs and undo, commands with approval, permission modes and always-allow, git with branch, commit, push and PR, egress on every send path, and the coding benchmark (CA-01 to CA-09)
-- [ ] P1.5 part 3, Local and lean (M7, section 16b): decide its open items in section 17 first
+- [x] P1.5 part 2, Coding agent (M6, section 11b, added 2026-10-30): built 2026-10-30 (`docs/milestones/M6-coding-agent.md`); live benchmark passed 3 of 3 on both providers (2026-10-30); Isaac skipped the two-week gate (2026-10-30). Tool calling on both providers, a linked repository read through Rust, CLAUDE.md and AGENTS.md, runs with plan, steps, cost cap and summaries, edits with diffs and undo, commands with approval, permission modes and always-allow, git with branch, commit, push and PR, egress on every send path, and the coding benchmark (CA-01 to CA-09)
+- [ ] P1.5 part 3, Local and lean (M7, section 16b): decisions made and plan written 2026-10-30 (`docs/milestones/M7-local-and-lean.md`); build waits on Isaac's go
 
 **Can wait**
 

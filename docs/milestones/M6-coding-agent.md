@@ -11,7 +11,7 @@
 | anthropic/claude-sonnet-5-5 | pass, 4 turns | pass, 5 turns | pass, 5 turns | $0.064 |
 | openai/gpt-6.1-sol | pass, 5 turns | pass, 6 turns | pass, 7 turns | $0.030 |
 
-Next: the phase gate, two weeks of Isaac's own edit, run, review and commit loop in FUSE.
+Isaac skipped the two-week trial on 2026-10-30; next is M7 (`docs/milestones/M7-local-and-lean.md`).
 
 **Out of scope:** sandboxing, code review, skills, hooks, subagents, background and remote runs (CA-10 to CA-19, P2 and later); MCP (AG-02); Local and lean (M7).
 

@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M6-coding-agent.md`** — work only on what it lists (M0–M5 are built). Build steps start once Isaac approves the plan
+- **Current milestone: `docs/milestones/M7-local-and-lean.md`** — work only on what it lists (M0–M6 are built). Build steps start once Isaac approves the plan
 
 ## The 5 things that matter
 
@@ -30,6 +30,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Sync storage | Deferred to P2 (logical records, never the database file; PL-04) |
 | Continuity (2026-10-29) | P1.5 part 1, Continuity core (M5); order since re-set by the Roadmap row below. Memory is provider-neutral typed records (decisions and tasks are types) with scope, provenance and authority; one context assembler; egress policy checked in the Rust transport; backup before every migration, migrations stay forward-only. Details: `docs/requirements.md` §3, §8, §15, §17 |
 | Roadmap (2026-10-30) | P1.5 is now three parts: Continuity core (M5, done), Coding agent (M6, §11b: Claude Code and Codex for the daily loop), Local and lean (M7). P2 follows. The coding agent's gate is Isaac's own edit, run, review and commit loop, not feature parity |
+| Local and lean (2026-10-30) | llama.cpp built in through Rust, in a worker process; Qwen3 1.7B or 4B picked by hardware, opt-in download; housekeeping only (RT-17 kept); on as soon as a model is installed, one switch to turn it off. Isaac skipped M6's two-week trial |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 
