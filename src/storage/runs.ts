@@ -21,6 +21,10 @@ export interface Run {
   capMicroUsd: number;
   spentMicroUsd: number;
   note: string | null;
+  /** CA-08: what earlier steps did, once the run outgrew its budget; steps up to `summaryUpto`
+   * aren't sent again. */
+  summary: string | null;
+  summaryUpto: number | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -61,6 +65,8 @@ interface RunRow {
   cap_micro_usd: number;
   spent_micro_usd: number;
   note: string | null;
+  summary: string | null;
+  summary_upto: number | null;
   created_at: number;
   updated_at: number;
 }
@@ -94,6 +100,8 @@ const toRun = (r: RunRow): Run => ({
   capMicroUsd: r.cap_micro_usd,
   spentMicroUsd: r.spent_micro_usd,
   note: r.note,
+  summary: r.summary,
+  summaryUpto: r.summary_upto,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -161,7 +169,7 @@ export async function createRun(
 export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run | null> {
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, thread_id, message_id, task, mode, provider, model, status,
-       cap_micro_usd, spent_micro_usd, note, created_at, updated_at
+       cap_micro_usd, spent_micro_usd, note, summary, summary_upto, created_at, updated_at
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
   );
@@ -192,6 +200,45 @@ export async function setRunStatus(
     "UPDATE runs SET status = ?, note = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
     [status, note, Date.now(), tenant.workspaceId, id],
   );
+}
+
+/** A cost outside the run's turns (its summaries), added to what it has spent. */
+export async function addRunCost(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  micro: number,
+): Promise<void> {
+  await db.execute(
+    `UPDATE runs SET spent_micro_usd = spent_micro_usd + ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [micro, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** CA-08: earlier steps, summarized; the loop goes on from here. */
+export async function setRunSummary(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  summary: string,
+  upto: number,
+): Promise<void> {
+  await db.execute(
+    `UPDATE runs SET summary = ?, summary_upto = ?, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [summary, upto, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** Runs left working when the app closed are stopped, so they can be continued. */
+export async function markInterruptedRuns(db: SqlDb, tenant: Tenant): Promise<number> {
+  const result = await db.execute(
+    `UPDATE runs SET status = 'stopped', note = 'FUSE closed while it was working.', updated_at = ?
+     WHERE workspace_id = ? AND status = 'running'`,
+    [Date.now(), tenant.workspaceId],
+  );
+  return result.rowsAffected;
 }
 
 /** Raises the cap (after a pause at the cap, with the user's say-so). */

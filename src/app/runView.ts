@@ -107,6 +107,14 @@ export function runView(
   const lastModel = steps.findLast((s) => s.kind === "model");
   const views: RunStepView[] = [];
   for (const s of steps) {
+    if (run.summaryUpto !== null && s.seq === run.summaryUpto + 1) {
+      views.push({
+        id: `summary-${String(run.summaryUpto)}`,
+        kind: "note",
+        label: "Earlier steps were summarized to save space.",
+        error: null,
+      });
+    }
     if (s.kind === "tool") {
       views.push({
         id: s.id,

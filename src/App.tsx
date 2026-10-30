@@ -12,6 +12,7 @@ import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import type { ProviderAdapter } from "@/providers/types";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { markInterruptedMessages } from "@/storage/messages";
+import { markInterruptedRuns } from "@/storage/runs";
 import type { SqlDb } from "@/storage/sql";
 import { DbLockedError, openTauriDb, tauriRecoveryKey, unlockTauriDb } from "@/storage/tauriDb";
 import { LockedScreen } from "@/ui/LockedScreen";
@@ -104,6 +105,7 @@ export default function App({
         const db = await openDb();
         // Answers that were streaming when the app last closed are marked as cut off.
         await markInterruptedMessages(db, DEFAULT_TENANT);
+        await markInterruptedRuns(db, DEFAULT_TENANT);
         if (alive.current) setStorage({ kind: "ready", db });
       } catch (e) {
         if (!alive.current) return;
