@@ -31,6 +31,7 @@ import type { SqlDb } from "@/storage/sql";
 import { getThread, renameThread, setActiveLeaf } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import type { RouteInfo } from "@/routing/route";
+import type { DeterministicAnswer } from "@/deterministic/handlers";
 import { assemble } from "@/context/assemble";
 import { gatherContext, type Context } from "@/context/gather";
 import { egressRefusal, threadPolicy } from "@/context/egress";
@@ -139,6 +140,64 @@ export async function sendMessage(deps: ChatDeps, input: SendInput): Promise<Sen
     userMessageId,
     await historyTo(deps, input.threadId, input.embedding),
   );
+}
+
+/**
+ * LL-01: a question a fixed rule answered (src/deterministic). Saved like any answer, from
+ * provider `deterministic`, with a $0 request log row naming the rule, so it's audited and
+ * counted as a cloud call avoided. No model is called.
+ */
+export async function sendWithoutModel(
+  deps: ChatDeps,
+  input: { threadId: string; text: string; answer: DeterministicAnswer },
+): Promise<SendResult> {
+  const { db, tenant } = deps;
+  const now = deps.now ?? Date.now;
+  const started = now();
+  const text = input.text.trim();
+  const { path: previous } = await listPath(db, tenant, input.threadId);
+  const userMessageId = await addQuestion(deps, input.threadId, previous.at(-1)?.id ?? null, text);
+  if (previous.length === 0) {
+    const thread = await getThread(db, tenant, input.threadId);
+    if (thread?.titleSource === "auto") {
+      await renameThread(db, tenant, input.threadId, titleFrom(text, false), "auto");
+    }
+  }
+  const assistantMessageId = await addMessage(db, tenant, {
+    threadId: input.threadId,
+    parentId: userMessageId,
+    role: "assistant",
+    content: "",
+    status: "streaming",
+    provider: "deterministic",
+    model: input.answer.handler,
+  });
+  await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
+  const usage: Usage = {
+    ...EMPTY_USAGE,
+    priceVersion: deps.catalog.priceVersion,
+    latencyMs: now() - started,
+  };
+  const requestId = await logRequest(db, tenant, {
+    threadId: input.threadId,
+    messageId: assistantMessageId,
+    purpose: "chat",
+    provider: "deterministic",
+    model: input.answer.handler,
+    attempt: 1,
+    usage,
+    httpStatus: null,
+    errorCode: null,
+    errorMessage: null,
+    providerRequestId: null,
+  });
+  await finishMessage(db, tenant, assistantMessageId, {
+    content: input.answer.answer,
+    status: "complete",
+    usage,
+    requestId,
+  });
+  return { userMessageId, assistantMessageId, status: "complete", costMicroUsd: 0 };
 }
 
 /** Saves a question under `parentId` and makes it the end of the thread's path. */

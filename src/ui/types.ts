@@ -75,6 +75,8 @@ export interface MessageView {
   providerName?: string;
   /** Model display name. */
   model?: string;
+  /** LL-01: answered by this fixed rule (e.g. "Arithmetic"), with no model, at $0. */
+  noModel?: string;
   usage?: UsageView;
   /** Divider shown above this answer when the model changed. */
   switchLabel?: string;

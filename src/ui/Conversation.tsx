@@ -101,6 +101,20 @@ const compact = (n: number) =>
 const tokensIn = (u: UsageView) => u.freshInput + u.cachedInput + u.cacheWrite;
 
 function CostBadge({ message }: { message: MessageView }) {
+  if (message.noModel) {
+    return (
+      <Tip label={`${message.noModel}: worked out by a fixed rule in FUSE, so no model was asked.`}>
+        <button
+          className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+          aria-label="Answered without a model"
+        >
+          <span>answered without a model</span>
+          <span>·</span>
+          <span className="text-foreground/70">$0</span>
+        </button>
+      </Tip>
+    );
+  }
   const usage = message.usage;
   if (!usage) return null;
   const parts = usage.parts;

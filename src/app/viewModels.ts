@@ -1,4 +1,5 @@
 // Pure mapping from storage records and the catalog to the UI's view models.
+import { HANDLER_LABELS } from "@/deterministic/handlers";
 import { explainPick, type PickReason } from "@/memory/inject";
 import { findModel, priceFor, toolPrice, type Catalog, type CatalogModel } from "@/catalog/catalog";
 import { PROVIDER_NAMES } from "@/chat/sendMessage";
@@ -151,6 +152,21 @@ export function messageViews(
       continue;
     }
     if (m.role !== "assistant") continue;
+    if (m.provider === "deterministic") {
+      // LL-01: no model, no tokens, no routing; the next model answer isn't a "switch".
+      const labels: Partial<Record<string, string>> = HANDLER_LABELS;
+      out.push({
+        id: m.id,
+        role: "assistant",
+        content: m.content,
+        status: m.status,
+        providerName: "",
+        model: "No model",
+        noModel: labels[m.model ?? ""] ?? "A fixed rule",
+        feedback: m.feedback,
+      });
+      continue;
+    }
     const provider = m.provider === "openai" || m.provider === "anthropic" ? m.provider : null;
     const model = provider && m.model ? findModel(catalog, provider, m.model) : undefined;
     const name = model?.displayName ?? m.model ?? "Unknown model";
