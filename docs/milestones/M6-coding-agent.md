@@ -9,7 +9,7 @@
 ## Steps (one PR each, in order)
 
 - [x] **0. M6 plan.** This file, CLAUDE.md pointed at it, the §17 decisions recorded.
-- [ ] **1. Provider notes for tool calling.** Extend `docs/providers.md` from the current official docs: function tools on the OpenAI Responses API and the Anthropic Messages API, streamed tool-call events, sending results back, parallel calls, and how tool tokens are counted and priced.
+- [x] **1. Provider notes for tool calling.** Extend `docs/providers.md` from the current official docs: function tools on the OpenAI Responses API and the Anthropic Messages API, streamed tool-call events, sending results back, parallel calls, and how tool tokens are counted and priced.
 - [ ] **2. Tool calling in both adapters.** `streamChat` takes tool definitions and yields tool calls; a follow-up request carries the results. Contract tests on recorded fixtures (Isaac runs the fixture recorder once with his shell keys). Chat is unchanged when no tools are passed.
 - [ ] **3. Link a repository (CA-01).** A project links one local folder. Rust `repo.rs` lists, reads and searches under the root only, skips ignored files, and refuses secret-looking files unless allowed. A test per path rule (outside the root, `..`, symlinks, ignored, secret).
 - [ ] **4. Instruction files (CA-06).** CLAUDE.md and AGENTS.md (root and nested) go into the context assembler as instructions with their file as the source, and show in the effective-instructions view.
