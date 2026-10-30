@@ -17,6 +17,7 @@ import {
   type PickedMemory,
 } from "@/memory/inject";
 import type { ChatMessage } from "@/providers/types";
+import { loadRepoInstructions } from "@/repo/instructions";
 import { listArtifacts } from "@/storage/artifacts";
 import { getGlobalInstructions } from "@/storage/instructions";
 import { listMemories } from "@/storage/memories";
@@ -89,10 +90,14 @@ export async function assemble(
   const embedding = allowedEmbedding(await threadPolicy(db, tenant, threadId), wanted);
   const thread = await getThread(db, tenant, threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
+  // CA-06: the linked repository's root CLAUDE.md and AGENTS.md (nested ones come with runs).
+  const repoFiles =
+    project?.repoRoot && deps.repo ? await loadRepoInstructions(deps.repo, project.id) : [];
   const instructions = effectiveInstructions(
     await getGlobalInstructions(db, tenant),
     project?.instructions ?? "",
     thread?.instructions ?? "",
+    repoFiles,
   );
 
   // PM-04: memories in scope, ranked by shared words and, with an embedding model, meaning.
@@ -144,7 +149,7 @@ export async function assemble(
       ? [
           {
             kind: "instructions" as const,
-            sources: instructions.map((i) => i.source),
+            sources: instructions.map((i) => (i.path ? `repo:${i.path}` : i.source)),
             tokens: instructions.reduce((sum, i) => sum + textTokens(i.text), 0),
           },
         ]

@@ -10,6 +10,7 @@ import { cost } from "@/cost/cost";
 import type { ModelDefaults } from "@/routing/modelDefaults";
 import { ProviderError, userMessage } from "@/providers/errors";
 import type { FilesApi } from "@/files/api";
+import type { RepoApi } from "@/repo/api";
 import type { ProviderAdapter, StreamDone } from "@/providers/types";
 import type { Tenant } from "@/storage/defaults";
 import {
@@ -49,6 +50,8 @@ export interface ChatDeps {
   adapterFor: (provider: ProviderId) => ProviderAdapter;
   /** Where attachment bytes live; needed once a thread has attachments. */
   files?: FilesApi;
+  /** The linked repository (CA-01); its CLAUDE.md and AGENTS.md join the instructions (CA-06). */
+  repo?: RepoApi;
   /** How often streamed text is saved while the answer is still coming in. */
   saveEveryMs?: number;
   now?: () => number;
