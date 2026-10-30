@@ -4,6 +4,7 @@
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import type { ChatMessage, ProviderAdapter, StreamEvent, ToolCall } from "@/providers/types";
 import type { RepoApi } from "@/repo/api";
+import type { ExecApi } from "@/repo/exec";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { grantFolder, linkThreadFolder } from "@/storage/folders";
 import { listChanges, listRunFolders, listSteps } from "@/storage/runs";
@@ -549,4 +550,116 @@ test("WF-06: an organise plan asks once, runs the moves allowed, and comes back 
   const step = steps.find((s) => s.kind === "tool");
   expect(step?.kind === "tool" ? step.output : "").toMatch(/nothing was moved/);
   expect([...disk.keys()].sort()).toEqual(["IMG_1.jpg", "IMG_2.jpg", "taxes.pdf"]);
+});
+
+test("WF-07: no network until allowed; a command that needed it asks, and runs again once", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const app = await grantFolder(db, t, "/home/me/app");
+  await linkThreadFolder(db, t, thread.id, app.id);
+  const ran: boolean[] = [];
+  const exec: ExecApi = {
+    sandboxKind: () => Promise.resolve("bubblewrap"),
+    run: (_id, _command, opts) => {
+      const net = opts.sandbox?.network ?? false;
+      ran.push(net);
+      return Promise.resolve(
+        net
+          ? {
+              output: "added 3 packages",
+              exitCode: 0,
+              timedOut: false,
+              stopped: false,
+              truncated: false,
+              elapsedMs: 5,
+            }
+          : {
+              output: "npm ERR! getaddrinfo EAI_AGAIN registry.npmjs.org",
+              exitCode: 1,
+              timedOut: false,
+              stopped: false,
+              truncated: false,
+              elapsedMs: 5,
+            },
+      );
+    },
+  };
+  const asked: string[] = [];
+  const runOnce = async () => {
+    const turns = [
+      {
+        text: "",
+        calls: [
+          {
+            id: "c",
+            name: "run_command",
+            input: { command: "npm install", timeout_seconds: null },
+          },
+        ],
+      },
+      { text: "Installed." },
+    ];
+    let n = 0;
+    const adapter: ProviderAdapter = {
+      provider: "anthropic",
+      listModels: () => Promise.resolve([]),
+      async *streamChat(_h, m): AsyncGenerator<StreamEvent> {
+        const turn = turns[n++];
+        await Promise.resolve();
+        yield { type: "text", text: turn?.text ?? "" };
+        for (const call of turn?.calls ?? []) yield { type: "tool_call", call };
+        yield {
+          type: "done",
+          usage: {
+            inputTokens: 1,
+            outputTokens: 1,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            webSearchCalls: 0,
+          },
+          usageReported: true,
+          stopReason: turn?.calls?.length ? "tool_use" : "end_turn",
+          providerRequestId: null,
+          attempts: 1,
+          turn: { provider: "anthropic", model: m, items: [{ n }] },
+        };
+      },
+    };
+    const deps: RunDeps = {
+      db,
+      tenant: t,
+      catalog,
+      repo: filesRepo({}),
+      exec,
+      adapterFor: () => adapter,
+      approve: (req) => {
+        asked.push(req.kind);
+        return Promise.resolve(req.kind === "network" ? "always" : "yes");
+      },
+    };
+    const r = await startRun(deps, {
+      projectId: null,
+      threadId: thread.id,
+      messageId: null,
+      task: "Install",
+      model,
+      mode: "auto_edit",
+    });
+    return listSteps(db, t, r.id);
+  };
+  const steps = await runOnce();
+  // Off, refused, asked, allowed for the folder, run again with the network.
+  expect(ran).toEqual([false, true]);
+  expect(asked).toEqual(["command", "network"]);
+  const out = steps.find((s) => s.kind === "tool");
+  expect(out?.kind === "tool" ? out.output : "").toMatch(
+    /added 3 packages[\s\S]*\[sandboxed, network on\]/,
+  );
+  // The folder keeps it: the next run has the network from the start, and doesn't ask again.
+  ran.length = 0;
+  asked.length = 0;
+  await runOnce();
+  expect(ran).toEqual([true]);
+  expect(asked).toEqual(["command"]);
 });

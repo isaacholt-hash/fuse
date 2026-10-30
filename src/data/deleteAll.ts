@@ -21,6 +21,7 @@ export const DELETE_ORDER = [
   "folders",
   // M7: shadow checks and the response cache.
   "local_shadow",
+  "network_grants",
   "response_cache",
   "chunk_vectors",
   "chunks",

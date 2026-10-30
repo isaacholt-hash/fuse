@@ -3,6 +3,12 @@
 // a step with its cost; the run pauses at its cost cap and asks before going on. Every call goes
 // through the adapters (so the Rust egress check applies) and is logged as purpose "agent".
 // A tool loop stays on one model (docs/providers.md, M6); routing inside runs is step 11.
+import {
+  allowNetwork,
+  NETWORK_FAILURE,
+  networkAllowed,
+  type NetworkScope,
+} from "@/storage/network";
 import { uuidv7 } from "@/storage/ids";
 import { foldersFor, labelFolders, scopedExec, scopedGit, scopedRepo } from "./folders";
 import type { Folder } from "@/storage/folders";
@@ -186,7 +192,12 @@ export type ApprovalAsk =
   /** CA-05: a commit, branch, push or pull request, in words. `remote`: it leaves this computer. */
   | { kind: "git"; summary: string; remote: boolean }
   /** WF-06: a whole reorganisation; the answer may keep only some moves. */
-  | { kind: "organise"; moves: Move[]; reason: string | null };
+  | { kind: "organise"; moves: Move[]; reason: string | null }
+  /**
+   * WF-07: a sandboxed command seems to have needed the network. "yes" allows it for this chat,
+   * "always" for the folder it ran in; either way it runs again, once.
+   */
+  | { kind: "network"; command: string };
 
 export type ApprovalRequest = ApprovalAsk & {
   runId: string;
@@ -905,15 +916,52 @@ async function runCommand(
     approval = "you";
   }
   try {
-    const result = await deps.exec.run(HERE, command, {
-      timeoutSecs,
-      ...(input.signal ? { signal: input.signal } : {}),
-      onOutput: (soFar) => {
-        void progress(deps, run.id, input, `$ ${command}\n${soFar.slice(-4000)}`);
-      },
-    });
+    // WF-07: no network for a sandboxed command unless its chat or a folder of it was allowed.
+    const sandboxed = (await deps.exec.sandboxKind?.()) === "bubblewrap";
+    const folders = await listRunFolders(deps.db, deps.tenant, run.id);
+    const scopes: NetworkScope[] = [
+      ...(run.threadId ? [{ kind: "thread" as const, id: run.threadId }] : []),
+      ...folders.map((f) => ({ kind: "folder" as const, id: f.folderId })),
+    ];
+    let network = await networkAllowed(deps.db, deps.tenant, scopes);
+    const once = (net: boolean) =>
+      deps.exec?.run(HERE, command, {
+        timeoutSecs,
+        network: net,
+        ...(input.signal ? { signal: input.signal } : {}),
+        onOutput: (soFar) => {
+          void progress(deps, run.id, input, `$ ${command}\n${soFar.slice(-4000)}`);
+        },
+      }) ?? Promise.reject(new Error("Commands aren't available here."));
+    let result = await once(network);
+    if (
+      sandboxed &&
+      !network &&
+      result.exitCode !== 0 &&
+      !result.stopped &&
+      NETWORK_FAILURE.test(result.output)
+    ) {
+      await progress(deps, run.id, input, `\`${command}\` seems to need the network`);
+      const allow = await ask(deps, run, { kind: "network", command }, input);
+      if (allow === "stopped") return STOPPED;
+      if (allow === "yes" || allow === "always") {
+        const first = folders[0];
+        const scope: NetworkScope =
+          allow === "always" && first
+            ? { kind: "folder", id: first.folderId }
+            : run.threadId
+              ? { kind: "thread", id: run.threadId }
+              : { kind: "folder", id: first?.folderId ?? "" };
+        await allowNetwork(deps.db, deps.tenant, scope);
+        network = true;
+        result = await once(true);
+      }
+    }
+    const where = sandboxed
+      ? `[sandboxed, network ${network ? "on" : "off"}]`
+      : "[not sandboxed: this computer can't sandbox commands]";
     return {
-      output: commandOutput(command, result, timeoutSecs),
+      output: `${commandOutput(command, result, timeoutSecs)}\n${where}`,
       isError: result.timedOut || result.stopped || result.exitCode !== 0,
       approval,
     };

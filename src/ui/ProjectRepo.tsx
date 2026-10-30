@@ -4,6 +4,8 @@ export interface ProjectFolderView {
   id: string;
   path: string;
   readSecrets: boolean;
+  /** WF-07: sandboxed commands here may use the network. */
+  network?: boolean;
 }
 
 export interface ProjectRepoProps {
@@ -14,6 +16,7 @@ export interface ProjectRepoProps {
   onAdd: () => void;
   onRemove: (id: string) => void;
   onReadSecrets: (id: string, allow: boolean) => void;
+  onNetwork?: (id: string, allow: boolean) => void;
   /** CA-04: the mode its coding runs start in. */
   runMode?: "plan" | "ask" | "auto_edit";
   onRunMode?: (mode: "plan" | "ask" | "auto_edit") => void;
@@ -41,6 +44,7 @@ export function ProjectRepoSection({
   onAdd,
   onRemove,
   onReadSecrets,
+  onNetwork,
   runMode = "ask",
   onRunMode,
   commands = [],
@@ -89,6 +93,18 @@ export function ProjectRepoSection({
                   />
                   Let it read files that look like secrets (.env, keys) here
                 </label>
+                {onNetwork && (
+                  <label className="flex items-center gap-2 text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={f.network ?? false}
+                      onChange={(e) => {
+                        onNetwork(f.id, e.target.checked);
+                      }}
+                    />
+                    Let commands here use the network (they run sandboxed without it otherwise)
+                  </label>
+                )}
               </li>
             ))}
           </ul>

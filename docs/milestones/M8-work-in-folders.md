@@ -72,7 +72,12 @@
   - Commands run with a restricted token in an AppContainer. Write access is granted only on the chat's folders, there's no network capability unless allowed, and a job object ends the whole tree.
   - The same tests run in Windows CI; HULK can't run them.
   - This is the riskiest step. If it can't be made reliable, it stops and Isaac is asked.
-- [ ] **10. Network per chat (WF-07).** "Allow network for this chat" or "for this folder", asked the first time a sandboxed command needs it. Destructive commands still ask every time. The activity log records which commands had network access.
+  - **Paused (2026-10-30), waiting on Isaac.** Rust's `raw_attribute` isn't stable, so this needs several hundred lines of hand-written `CreateProcessW`, pipes, job objects and AppContainer folder ACLs. It can only be tested in Windows CI, and it would change the permissions on Isaac's folders, which persist. Until a decision, commands on Windows ask first and say they run unsandboxed (step 8). Steps 10 to 13 went ahead, since they don't depend on it.
+- [x] **10. Network per chat (WF-07).**
+  - Sandboxed commands have **no network** unless the chat, or a folder of the run, was allowed it (migration 0045, `network_grants`).
+  - When a sandboxed command fails with what looks like a network error (DNS or connect errors from common tools), the run asks: Allow for this chat, Allow for this folder, or No. Allowing runs it again, once. It's never allowed without asking.
+  - Project settings → Folders has a switch per folder. Each command's result in the activity log says "[sandboxed, network on]", "[sandboxed, network off]", or that it wasn't sandboxed.
+  - This applies to Code runs too, since M6 commands had the network: the first `pnpm install` in a folder now asks once.
 - [ ] **11. Knowledge that follows a folder (FK-07).** A project folder's documents are indexed (M7's word search, plus embeddings when allowed). They're re-indexed when they change: watched while FUSE runs, and checked against their content hash at start. Ignored and secret files are skipped.
 - [ ] **12. Security and privacy.** The threat model gets a section on Work and the sandbox. Every send path keeps the egress policy (Local only projects can still use fixed rules and local housekeeping). The privacy wording says what leaves the computer when a model reads your documents.
 - [ ] **13. Work benchmark.** A fixture folder (`data/work/fixture`: documents, CSVs, a messy folder) and three recorded tasks, checked on both providers with no API calls:

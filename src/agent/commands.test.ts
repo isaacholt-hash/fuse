@@ -139,7 +139,8 @@ test("allowed: it runs in the repo, and the model gets the output and exit code"
   expect(ran).toEqual([{ command: "pnpm test", timeoutSecs: 120 }]);
   expect(tool).toMatchObject({
     isError: false,
-    output: "$ pnpm test\n3 passed\n[exit code 0, 1.5 s]",
+    output:
+      "$ pnpm test\n3 passed\n[exit code 0, 1.5 s]\n[not sandboxed: this computer can't sandbox commands]",
   });
 });
 
@@ -168,7 +169,8 @@ test("a failing command is an error result the model can act on", async () => {
   });
   expect(tool).toMatchObject({
     isError: true,
-    output: "$ pnpm test\n1 failed\n[exit code 1, 1.5 s]",
+    output:
+      "$ pnpm test\n1 failed\n[exit code 1, 1.5 s]\n[not sandboxed: this computer can't sandbox commands]",
   });
   expect(run.status).toBe("done");
 });

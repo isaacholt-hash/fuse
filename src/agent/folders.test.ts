@@ -131,8 +131,10 @@ test("WF-07: commands run sandboxed, writable in every folder of the run", async
   };
   const scoped = scopedExec(exec, labelFolders([folder("a", "/x/app"), folder("b", "/y/docs")]));
   await scoped.run("", "ls", {});
+  await scoped.run("", "npm install", { network: true });
   expect(calls).toEqual([
-    { id: "a", command: "ls", sandbox: { folderIds: ["a", "b"], network: true } },
+    { id: "a", command: "ls", sandbox: { folderIds: ["a", "b"], network: false } },
+    { id: "a", command: "npm install", sandbox: { folderIds: ["a", "b"], network: true } },
   ]);
   expect(await scoped.sandboxKind?.()).toBe("bubblewrap");
 });
