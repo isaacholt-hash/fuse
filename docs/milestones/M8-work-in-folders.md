@@ -75,11 +75,11 @@
   - **Off by default** (Isaac's call, 2026-10-30): Settings → "Sandbox on Windows (testing)" switches it on. Until Isaac has tried it on his PC, Windows commands keep running unsandboxed, and each says so.
   - Isaac's checklist, on a test folder such as `C:\fuse-sandbox-test`:
     1. Settings → "Sandbox on Windows (testing)": tick "Run commands in the sandbox".
-    2. In a Work chat on that folder, ask it to run `echo hi> inside.txt`. The file appears, and the result says "[sandboxed, network off]".
-    3. Ask it to run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
-    4. Ask it to run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
-    5. Ask it to run `echo hidden>NUL && echo shown`. It prints "shown" (CI can't check this one: Windows Server denies the NUL device to every sandboxed app, Windows 10 and 11 don't).
-    6. Ask it to run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
+    2. In a Work chat on that folder (Work on, and still on for each message), send: Run this exact command with run_command, and don't use any other tool: `echo hi> inside.txt`. It asks to run it; allow it. The file appears, and the result says "[sandboxed, network off]".
+    3. The same way, run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
+    4. The same way, run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
+    5. The same way, run `echo hidden>NUL && echo shown`. It prints "shown" (CI can't check this one: Windows Server denies the NUL device to every sandboxed app, Windows 10 and 11 don't).
+    6. The same way, run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
     7. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
   - Also fixed: on Windows, commands started in `\\?\C:\…` (the form `canonicalize` gives), where cmd.exe can't start. They now get the plain path.
   - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
@@ -121,6 +121,10 @@
 
     None of the tasks reads a picture, so images in tool results (step 4) are still unchecked against the live APIs.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
+
+## Fixes
+
+- [x] **F1. Work and Code stayed on for one message only in a new chat.** The switch, run mode and branch choice were kept under the draft. After the first message saved the chat, the next one went out as plain chat (found by Isaac running the step 9 checklist). They now carry over to the saved chat, as its folders already did. Also, an answer from a Code or Work run is marked as one in the history sent to the model, so a later answer without tools doesn't claim the run's changes never happened.
 
 ## Notes
 

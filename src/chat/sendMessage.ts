@@ -39,7 +39,7 @@ import { gatherContext, type Context } from "@/context/gather";
 import { egressRefusal, threadPolicy } from "@/context/egress";
 
 /** The history sent to a model (PM-18 gathers it in `src/context/gather.ts`). */
-export { historyFor } from "@/context/gather";
+export { historyFor, runNote } from "@/context/gather";
 
 export const PROVIDER_NAMES: Record<ProviderId, string> = {
   anthropic: "Anthropic",

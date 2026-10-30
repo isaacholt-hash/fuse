@@ -3030,6 +3030,12 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   // The edit tools went with the request.
   const sentTools = (options.at(-1) as { tools?: { name: string }[] }).tools?.map((x) => x.name);
   expect(sentTools).toContain("edit_file");
+  // The chat was new: saving it keeps Code on and its mode, so the next message is a run too.
+  expect(screen.getByRole("button", { name: "Coding run" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(screen.getByLabelText("What the coding run may do")).toHaveValue("auto_edit");
 
   await user.click(card.getByRole("button", { name: "Edited src/tide.ts" }));
   expect(card.getByText("export const tide = 4;")).toBeInTheDocument();

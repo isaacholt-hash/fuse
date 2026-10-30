@@ -23,6 +23,7 @@ import { allowedEmbedding, threadPolicy } from "./egress";
 export function historyFor(
   messages: Message[],
   attachments: ReadonlyMap<string, Attachment[]> = new Map(),
+  runs: ReadonlyMap<string, "code" | "work"> = new Map(),
 ): ChatMessage[] {
   const superseded = new Set(messages.map((m) => m.escalatedFromId).filter(Boolean));
   return messages
@@ -34,12 +35,28 @@ export function historyFor(
     )
     .map((m) => {
       const files = attachments.get(m.id);
+      const run = runs.get(m.id);
       return {
         role: m.role as "user" | "assistant",
-        content: m.content,
+        // A model without tools, answering later, would otherwise doubt what a run did.
+        content: run ? `${m.content}\n\n${runNote(run)}` : m.content,
         ...(files ? { attachments: files } : {}),
       };
     });
+}
+
+/** Added to an answer a run gave, in the history only (the saved answer is unchanged). */
+export const runNote = (kind: "code" | "work") =>
+  `[FUSE: this answer came from a ${kind === "work" ? "Work" : "Code"} run that used tools in the chat's folders. The changes it describes were made and are shown in the app.]`;
+
+/** Which answers in a thread came from a Code or Work run. */
+async function runKinds(deps: ChatDeps, threadId: string): Promise<Map<string, "code" | "work">> {
+  const rows = await deps.db.select<{ message_id: string; kind: string }>(
+    `SELECT message_id, kind FROM runs
+     WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL`,
+    [deps.tenant.workspaceId, threadId],
+  );
+  return new Map(rows.map((r) => [r.message_id, r.kind === "work" ? "work" : "code"]));
 }
 
 /** Loads the bytes of every file attached to these messages (resent each turn). */
@@ -103,7 +120,11 @@ export async function gatherContext(
   const policy = await threadPolicy(deps.db, deps.tenant, threadId);
   const embedding = allowedEmbedding(policy, wanted);
   const { earlier, kept } = await summarizedPath(deps, threadId, path);
-  const history = historyFor(kept, await attachmentsFor(deps, kept));
+  const history = historyFor(
+    kept,
+    await attachmentsFor(deps, kept),
+    await runKinds(deps, threadId),
+  );
   const files = await filesForMessages(
     deps.db,
     deps.tenant,
