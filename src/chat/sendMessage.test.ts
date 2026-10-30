@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { unavailableLocalAdapter } from "@/providers/local/adapter";
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import { memoryFilesApi, toBase64 } from "@/files/api";
 import { ProviderError } from "@/providers/errors";
@@ -113,7 +114,7 @@ function setup(scripts: Partial<Record<"anthropic" | "openai", Script>>) {
     db,
     tenant: t,
     catalog,
-    adapterFor: (p) => fakes[p].adapter,
+    adapterFor: (p) => (p === "local" ? unavailableLocalAdapter() : fakes[p].adapter),
     now: () => (clock += 100),
     saveEveryMs: 250,
   };

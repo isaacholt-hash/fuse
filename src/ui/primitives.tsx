@@ -1,3 +1,4 @@
+import type { ProviderId } from "@/catalog/catalog";
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
 import {
   Anchor,
@@ -118,7 +119,7 @@ export function ThreadMenu({
   /** CH-11: copy or save this chat. */
   onExport?: (format: "copy" | "md" | "pdf" | "json") => void;
   /** RT-06: keep Auto on one provider in this chat; `provider` is the one it would stay on. */
-  stay?: { provider: "anthropic" | "openai" | null; on: boolean; onToggle: () => void };
+  stay?: { provider: ProviderId | null; on: boolean; onToggle: () => void };
   /** CH-02 */
   pinned: boolean;
   archived: boolean;

@@ -18,7 +18,7 @@ import {
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { ProviderId } from "@/catalog/catalog";
+import type { CloudProviderId } from "@/catalog/catalog";
 import { openExternal } from "./openExternal";
 import { Modal } from "./primitives";
 import type { KeyView, Motion, RequestRow, TextSize, Theme } from "./types";
@@ -291,9 +291,9 @@ export function SettingsView({
   motion: Motion;
   onMotion: (motion: Motion) => void;
   onBack: () => void;
-  onSaveKey: (provider: ProviderId, key: string) => void;
-  onTestKey: (provider: ProviderId) => void;
-  onDeleteKey: (provider: ProviderId) => void;
+  onSaveKey: (provider: CloudProviderId, key: string) => void;
+  onTestKey: (provider: CloudProviderId) => void;
+  onDeleteKey: (provider: CloudProviderId) => void;
   onShowLog: () => void;
 }) {
   return (

@@ -2,7 +2,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
-import { parseCatalog } from "@/catalog/catalog";
+import { parseCatalog, type CloudProviderId, type ProviderId } from "@/catalog/catalog";
+import { unavailableLocalAdapter } from "@/providers/local/adapter";
 import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
@@ -170,7 +171,9 @@ function setup(
     anthropic: [],
     openai: [],
   };
-  const adapterFor = (provider: "anthropic" | "openai"): ProviderAdapter => ({
+  const adapterFor = (provider: ProviderId): ProviderAdapter =>
+    provider === "local" ? unavailableLocalAdapter() : cloudAdapter(provider);
+  const cloudAdapter = (provider: CloudProviderId): ProviderAdapter => ({
     provider,
     listModels: () => Promise.resolve(remote[provider]),
     // A toy embedding for retrieval tests: how often "apple", "boat" and "cloud" appear.

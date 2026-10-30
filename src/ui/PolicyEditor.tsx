@@ -1,3 +1,4 @@
+import type { ProviderId } from "@/catalog/catalog";
 import { ArrowDown, ArrowUp, Download, Plus, Route, Trash2, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ export interface PolicyScoreView {
 export interface PolicyModelOption {
   key: string;
   name: string;
-  provider: "anthropic" | "openai";
+  provider: ProviderId;
   id: string;
 }
 

@@ -1,5 +1,5 @@
 // View models for the presentational components. Built from storage/catalog in src/app/viewModels.ts.
-import type { ProviderId } from "@/catalog/catalog";
+import type { CloudProviderId, ProviderId } from "@/catalog/catalog";
 
 export type Theme = "light" | "dark" | "system";
 export type ThreadGroup = "Today" | "Yesterday" | "Previous 7 days" | "Older";
@@ -219,7 +219,7 @@ export interface ThreadView {
 export type KeyBusy = null | "loading" | "saving" | "testing" | "deleting";
 
 export interface KeyView {
-  provider: ProviderId;
+  provider: CloudProviderId;
   name: string;
   consoleUrl: string;
   saved: boolean;

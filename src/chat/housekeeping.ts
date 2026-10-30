@@ -12,7 +12,11 @@ import { logRequest, type RequestPurpose } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 
-const PROVIDER_NAMES: Record<ProviderId, string> = { anthropic: "Anthropic", openai: "OpenAI" };
+const PROVIDER_NAMES: Record<ProviderId, string> = {
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  local: "the local model",
+};
 
 /**
  * The model that does housekeeping: the cheapest model in the purpose's tier (Cheap in

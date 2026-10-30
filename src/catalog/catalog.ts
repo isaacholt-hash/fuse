@@ -1,5 +1,10 @@
 /** Model catalog loaded from data/models.json. Prices are data, never code constants. */
-export type ProviderId = "openai" | "anthropic";
+/** `local` is a model on this computer (M7, LL-02): never a cloud call, priced at zero. */
+export type ProviderId = "openai" | "anthropic" | "local";
+/** The providers reached over the network, with keys. */
+export type CloudProviderId = Exclude<ProviderId, "local">;
+export const CLOUD_PROVIDERS: readonly CloudProviderId[] = ["openai", "anthropic"];
+export const isCloud = (p: ProviderId): p is CloudProviderId => p !== "local";
 
 export type Capability = "vision" | "reasoning" | "tools" | "json" | "streaming" | "web_search";
 

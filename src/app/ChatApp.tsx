@@ -1162,7 +1162,7 @@ export function ChatApp({
     keyedProviders.length > 0 && keyedProviders.every((p) => egressRefusal(egress, p, "chat"))
       ? egressRefusal(egress, keyedProviders[0] ?? "anthropic", "chat")
       : null;
-  const savedProviders = keyedProviders.filter(
+  const savedProviders: ProviderId[] = keyedProviders.filter(
     (p) => !stoppedProviders.includes(p) && egressRefusal(egress, p, "chat") === null,
   );
   const raiseCap = (p: ProviderId) => {

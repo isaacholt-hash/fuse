@@ -1,3 +1,4 @@
+import type { ProviderId } from "@/catalog/catalog";
 import { Gauge } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { money } from "./format";
 
 export interface KeyCapView {
-  provider: "anthropic" | "openai";
+  provider: ProviderId;
   name: string;
   /** Dollars; null = no cap. */
   daily: number | null;

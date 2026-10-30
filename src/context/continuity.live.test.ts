@@ -10,7 +10,12 @@
 // FUSE_CONTINUITY_ANTHROPIC_MODEL. Cost: about 30 short requests, a few cents in all.
 // Gate: each provider keeps at least 90% of the critical decisions and constraints.
 import { defaultCatalog } from "@/catalog/defaultCatalog";
-import { findModel, type CatalogModel, type ProviderId } from "@/catalog/catalog";
+import {
+  findModel,
+  type CatalogModel,
+  type CloudProviderId,
+  type ProviderId,
+} from "@/catalog/catalog";
 import { sendMessage } from "@/chat/sendMessage";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
@@ -23,7 +28,7 @@ import { openTestDb } from "@/storage/testing/nodeDb";
 import { answerPasses, buildScenario, loadScenarios } from "./testing/continuity";
 
 const LIVE = import.meta.env.MODE === "continuity";
-const KEYS: Record<ProviderId, string | undefined> = {
+const KEYS: Record<CloudProviderId, string | undefined> = {
   openai: process.env.FUSE_OPENAI_API_KEY,
   anthropic: process.env.FUSE_ANTHROPIC_API_KEY,
 };

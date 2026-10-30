@@ -11,7 +11,12 @@
 // Balanced model, or FUSE_CODING_OPENAI_MODEL / FUSE_CODING_ANTHROPIC_MODEL. Cost: a few cents a
 // task; each run is capped at $1. Gate: each provider passes at least 2 of the 3 tasks.
 import { defaultCatalog } from "@/catalog/defaultCatalog";
-import { findModel, type CatalogModel, type ProviderId } from "@/catalog/catalog";
+import {
+  findModel,
+  type CatalogModel,
+  type CloudProviderId,
+  type ProviderId,
+} from "@/catalog/catalog";
 import { formatUsd } from "@/cost/cost";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
@@ -34,7 +39,7 @@ import {
 } from "./testing/bench";
 
 const LIVE = import.meta.env.MODE === "coding";
-const KEYS: Record<ProviderId, string | undefined> = {
+const KEYS: Record<CloudProviderId, string | undefined> = {
   openai: process.env.FUSE_OPENAI_API_KEY,
   anthropic: process.env.FUSE_ANTHROPIC_API_KEY,
 };
