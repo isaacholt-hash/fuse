@@ -5,6 +5,7 @@ import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { parseCatalog } from "@/catalog/catalog";
 import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
+import type { RepoApi } from "@/repo/api";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -151,7 +152,7 @@ function setup(
   scripts: Partial<Record<"anthropic" | "openai", Script[]>> = {},
   savedKeys: ("anthropic" | "openai")[] = ["anthropic", "openai"],
   chores: Chores = {},
-  { helloAvailable = false }: { helloAvailable?: boolean } = {},
+  { helloAvailable = false, repo = noRepo }: { helloAvailable?: boolean; repo?: RepoApi } = {},
 ) {
   const db = openTestDb();
   const keys = fakeKeysApi();
@@ -291,6 +292,7 @@ function setup(
         restarts.push(Date.now());
       }}
       backups={backups.api}
+      repo={repo}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -328,6 +330,15 @@ function setup(
 }
 
 const composer = () => screen.findByRole("textbox", { name: "Message" });
+
+/** No repository: every call fails, as Rust's would without a linked folder. */
+const noRepo: RepoApi = {
+  pick: () => Promise.resolve(null),
+  check: () => Promise.reject(new Error("unused")),
+  list: () => Promise.reject(new Error("This project has no linked folder.")),
+  read: () => Promise.reject(new Error("This project has no linked folder.")),
+  search: () => Promise.reject(new Error("This project has no linked folder.")),
+};
 const sidebar = () => within(screen.getByRole("navigation", { name: "Conversations" }));
 
 beforeEach(() => {
@@ -2847,4 +2858,75 @@ test("Settings imports the routing test set; a bad file changes nothing", async 
   expect(alert).toHaveTextContent("Line 3: not valid JSON");
   const rows = await db.select<{ n: number }>("SELECT COUNT(*) AS n FROM golden_prompts");
   expect(rows[0]?.n).toBe(3);
+});
+
+test("M6: a linked project's chat runs a coding task: steps, cost and the answer", async () => {
+  const repo: RepoApi = {
+    ...noRepo,
+    pick: () => Promise.resolve({ root: "/home/me/lighthouse", name: "lighthouse", isGit: true }),
+    read: (_p, path) =>
+      path === "README.md"
+        ? Promise.resolve({
+            path,
+            content: "# Lighthouse\n",
+            offset: 0,
+            totalBytes: 13,
+            truncated: false,
+          })
+        : Promise.reject(new Error(`${path}: no such file or folder.`)),
+  };
+  async function* lookFirst(_h: ChatMessage[]): AsyncGenerator<StreamEvent> {
+    await Promise.resolve();
+    yield { type: "text", text: "1. Read the README." };
+    yield {
+      type: "tool_call",
+      call: { id: "c1", name: "read_file", input: { path: "README.md", offset: null } },
+    };
+    yield {
+      type: "done",
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 400,
+        cachedInputTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        webSearchCalls: 0,
+      },
+      usageReported: true,
+      stopReason: "tool_use",
+      providerRequestId: "req_t",
+      attempts: 1,
+      turn: { provider: "anthropic", model: "x", items: [] },
+    };
+  }
+  const { user, calls } = setup(
+    { anthropic: [lookFirst, () => answer("It's called Lighthouse.")] },
+    undefined,
+    {},
+    { repo },
+  );
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await screen.findByRole("button", { name: "Project: Lighthouse" });
+  // No folder yet: no Code toggle.
+  expect(screen.queryByRole("button", { name: "Coding run" })).toBeNull();
+
+  await user.click(screen.getByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  expect(await settings.findByText("/home/me/lighthouse")).toBeInTheDocument();
+  expect(settings.getByText("lighthouse: a git repository.")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+
+  await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  await user.type(await composer(), "What is this project called?{Enter}");
+  const card = within(await screen.findByRole("region", { name: "Coding run" }));
+  expect(await card.findByText("Done")).toBeInTheDocument();
+  expect(card.getByText("Read README.md")).toBeInTheDocument();
+  expect(card.getByText("1. Read the README.")).toBeInTheDocument();
+  expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
+  // The tool result went back to the model with the turn.
+  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe("# Lighthouse\n");
 });

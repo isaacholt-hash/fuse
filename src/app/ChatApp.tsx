@@ -41,6 +41,10 @@ import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
+import { continueChatRun, startChatRun } from "@/agent/chatRun";
+import { DEFAULT_RUN_CAP_MICRO_USD, type RunProgress } from "@/agent/run";
+import { runsForThread } from "@/storage/runs";
+import { runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -762,6 +766,9 @@ export function ChatApp({
   const [egressRules, setEgressRules] = useState<EgressRule[]>([]);
   // CA-01: a line under the linked folder (git or not, or why linking failed).
   const [repoNote, setRepoNote] = useState<string | null>(null);
+  // M6: Code on per chat ("draft" before the chat exists), and each answer's coding run.
+  const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
+  const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
     projectId: "",
@@ -872,7 +879,13 @@ export function ChatApp({
     async (threadId: string) => {
       const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
         await loadThread(threadId);
+      const runs: Awaited<ReturnType<typeof runsForThread>> = repoApi
+        ? await runsForThread(db, tenant, threadId)
+        : new Map<string, never>();
       if (selectedRef.current === threadId) {
+        setThreadRuns(
+          new Map([...runs].map(([id, r]) => [id, { run: r.run, steps: r.steps, streaming: "" }])),
+        );
         setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
         setMessages(rows);
@@ -885,7 +898,7 @@ export function ChatApp({
       }
       return rows;
     },
-    [loadThread],
+    [loadThread, repoApi, db, tenant],
   );
 
   useEffect(() => {
@@ -1309,6 +1322,7 @@ export function ChatApp({
     routed: NonNullable<ReturnType<typeof routeFor>>,
     job: Job,
     webSearch = false,
+    runIn: string | null = null,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
@@ -1371,20 +1385,42 @@ export function ChatApp({
       },
     };
     try {
-      const result = await (job.kind === "send"
-        ? sendMessage(deps, {
-            ...input,
-            text: job.text,
-            fileIds: job.files.map((f) => f.id),
-            fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
-          })
-        : job.kind === "retry"
-          ? retryLast(deps, input)
-          : job.kind === "escalate"
-            ? escalateLast(deps, input)
-            : job.kind === "regenerate"
-              ? regenerate(deps, { ...input, answerId: job.answerId })
-              : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
+      const result = await (runIn && repoApi && job.kind === "send"
+        ? startChatRun(
+            { ...deps, repo: repoApi },
+            {
+              threadId,
+              projectId: runIn,
+              task: job.text,
+              model: routed.model,
+              signal: controller.signal,
+              onProgress: (answerId, p) => {
+                setThreadRuns((m) => new Map(m).set(answerId, p));
+                if (!loaded) {
+                  loaded = true;
+                  void reload(threadId);
+                  void refreshThreads();
+                }
+              },
+            },
+          ).then((run) => ({
+            status: run.status === "done" ? ("complete" as const) : ("stopped" as const),
+            failedOverFrom: undefined,
+          }))
+        : job.kind === "send"
+          ? sendMessage(deps, {
+              ...input,
+              text: job.text,
+              fileIds: job.files.map((f) => f.id),
+              fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
+            })
+          : job.kind === "retry"
+            ? retryLast(deps, input)
+            : job.kind === "escalate"
+              ? escalateLast(deps, input)
+              : job.kind === "regenerate"
+                ? regenerate(deps, { ...input, answerId: job.answerId })
+                : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
       if (result.failedOverFrom) {
         setTrouble({ provider: result.failedOverFrom, at: Date.now() });
       } else if (result.status === "complete" && trouble?.provider === routed.model.provider) {
@@ -1547,7 +1583,13 @@ export function ChatApp({
         selectedRef.current = threadId;
         await refreshThreads();
       }
-      await stream(threadId, routed, { kind: "send", text, files: sent }, search);
+      await stream(
+        threadId,
+        routed,
+        { kind: "send", text, files: sent },
+        search,
+        codeActive && activeProjectId ? activeProjectId : null,
+      );
       if (compareMode) {
         setCompareKeys([]);
         await compareRest(threadId, comparing.slice(1), local, search);
@@ -1889,6 +1931,30 @@ export function ChatApp({
   const chatInstructions = thread ? thread.instructions : draftInstructions;
   const activeProjectId = thread ? thread.projectId : draftProject;
   const activeProject = projects.find((p) => p.id === activeProjectId);
+  const codeAvailable = Boolean(activeProject?.repoRoot && repoApi);
+  const codeKey = selectedId ?? "draft";
+  const codeActive = codeAvailable && (codeOn[codeKey] ?? false);
+  /** M6: goes on with a paused or stopped run in the open chat. */
+  const continueRunHere = (runId: string, raise: boolean) => {
+    if (!repoApi || !selectedId) return;
+    const threadId = selectedId;
+    const controller = new AbortController();
+    controllers.current.set(threadId, controller);
+    continueChatRun({ ...deps, repo: repoApi }, runId, {
+      ...(raise ? { raiseCapBy: DEFAULT_RUN_CAP_MICRO_USD } : {}),
+      signal: controller.signal,
+      onProgress: (answerId, p) => {
+        setThreadRuns((m) => new Map(m).set(answerId, p));
+      },
+    })
+      .catch(report)
+      .finally(() => {
+        controllers.current.delete(threadId);
+        void reload(threadId).catch(report);
+        void refreshThreads().catch(report);
+      });
+    void reload(threadId).catch(report);
+  };
   const instructionParts = effectiveInstructions(
     globalInstructions ?? NO_INSTRUCTIONS,
     activeProject?.instructions ?? "",
@@ -2148,6 +2214,8 @@ export function ChatApp({
       if (liveHere.sources?.length) streamingAnswer.sources = liveHere.sources;
     }
     for (const v of views) {
+      const r = threadRuns.get(v.id);
+      if (r) v.run = runView(r.run, r.steps, r.streaming);
       const fromFiles = threadFileSources.get(v.id);
       if (fromFiles?.length) v.fileSources = fromFiles;
       const info = threadBranches.get(v.id);
@@ -2168,6 +2236,7 @@ export function ChatApp({
     summaryUpto,
     fileUrls,
     catalog,
+    threadRuns,
   ]);
   // "Try a stronger model" goes on the latest answer only: earlier ones would need branching.
   const stronger = liveHere ? null : escalation(messages.findLast((m) => m.role === "assistant"));
@@ -3828,6 +3897,7 @@ export function ChatApp({
                     onOpenSource={(chunkId) => {
                       openSource(chunkId).catch(report);
                     }}
+                    onContinueRun={continueRunHere}
                     busy={streaming}
                     focusId={focusId}
                     openArtifact={openArtifact}
@@ -3932,6 +4002,14 @@ export function ChatApp({
                     {...(web ? { onAddLink: attachments.addLink } : {})}
                     webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                     onToggleWebSearch={toggleSearch}
+                    {...(codeAvailable
+                      ? {
+                          code: codeActive,
+                          onToggleCode: () => {
+                            setCodeOn((all) => ({ ...all, [codeKey]: !codeActive }));
+                          },
+                        }
+                      : {})}
                   />
                 </div>
                 {viewer && (

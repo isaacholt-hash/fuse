@@ -278,3 +278,21 @@ export async function addToolStep(
     ],
   );
 }
+
+/** The runs shown in a chat's answers, with their steps, by answer id. */
+export async function runsForThread(
+  db: SqlDb,
+  tenant: Tenant,
+  threadId: string,
+): Promise<Map<string, { run: Run; steps: RunStep[] }>> {
+  const rows = await db.select<{ id: string }>(
+    "SELECT id FROM runs WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL",
+    [tenant.workspaceId, threadId],
+  );
+  const out = new Map<string, { run: Run; steps: RunStep[] }>();
+  for (const { id } of rows) {
+    const run = await getRun(db, tenant, id);
+    if (run?.messageId) out.set(run.messageId, { run, steps: await listSteps(db, tenant, id) });
+  }
+  return out;
+}
