@@ -1,0 +1,65 @@
+{
+  "scenario": "tool-reasoning-result",
+  "description": "A tool call on a reasoning model; thinking or reasoning items replayed",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6.1-sol",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read README.md and tell me the project's name in one word."
+      },
+      {
+        "id": "fc_0bd42de3a136a07d016ae404f6677887d198de3d3316527b2b",
+        "type": "function_call",
+        "status": "completed",
+        "arguments": "{\"path\":\"README.md\"}",
+        "call_id": "call_8qWZwIh2NdBuuEniVEq0rIJe",
+        "name": "read_file"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_8qWZwIh2NdBuuEniVEq0rIJe",
+        "output": "# Lighthouse\n\nA tiny command-line tool that prints the tide table.\n"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 3000,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_e123c9bf489a44559ee157b3195c6322",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "1000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1452
+}

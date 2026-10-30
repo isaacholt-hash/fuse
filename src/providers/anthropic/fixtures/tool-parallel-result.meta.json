@@ -1,0 +1,93 @@
+{
+  "scenario": "tool-parallel-result",
+  "description": "Two tool calls in one turn",
+  "provider": "anthropic",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.anthropic.com/v1/messages",
+  "request_headers": {
+    "anthropic-version": "2026-10-21"
+  },
+  "request_body": {
+    "model": "claude-haiku-5-5",
+    "max_tokens": 600,
+    "stream": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Read a.txt and b.txt (both at once), then reply with only the sum of the two numbers."
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "toolu_01V3yUxNgebSAUFfEthDgTvz",
+            "name": "read_file",
+            "input": {
+              "path": "a.txt"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          },
+          {
+            "type": "tool_use",
+            "id": "toolu_0179ZfxsYiDpQ4G9M8AE6teT",
+            "name": "read_file",
+            "input": {
+              "path": "b.txt"
+            },
+            "caller": {
+              "type": "direct"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_01V3yUxNgebSAUFfEthDgTvz",
+            "content": "17\n"
+          },
+          {
+            "type": "tool_result",
+            "tool_use_id": "toolu_0179ZfxsYiDpQ4G9M8AE6teT",
+            "content": "25\n"
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "request-id": "req_011CgXezfVcuyUDtz2cUVgrs",
+    "anthropic-ratelimit-requests-limit": "10000",
+    "anthropic-ratelimit-tokens-limit": "6000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 883
+}

@@ -10,9 +10,9 @@
 
 - [x] **0. M6 plan.** This file, CLAUDE.md pointed at it, the §17 decisions recorded.
 - [x] **1. Provider notes for tool calling.** Extend `docs/providers.md` from the current official docs: function tools on the OpenAI Responses API and the Anthropic Messages API, streamed tool-call events, sending results back, parallel calls, and how tool tokens are counted and priced.
-- [ ] **2. Tool calling in both adapters.** `streamChat` takes tool definitions and yields tool calls; a follow-up request carries the results. Contract tests on recorded fixtures (Isaac runs the fixture recorder once with his shell keys). Chat is unchanged when no tools are passed.
+- [x] **2. Tool calling in both adapters.** `streamChat` takes tool definitions and yields tool calls; a follow-up request carries the results. Contract tests on recorded fixtures (Isaac runs the fixture recorder once with his shell keys). Chat is unchanged when no tools are passed.
   - [x] 2a. Recorder: `pnpm record-fixtures --only tool` records four tool scenarios per provider (one call, two in parallel, an error result, a reasoning model), each with its follow-up request, without touching the other fixtures.
-  - [ ] 2b. Isaac records them; then the adapters and their contract tests.
+  - [x] 2b. Isaac recorded them (2026-10-30); the adapters and their contract tests.
 - [ ] **3. Link a repository (CA-01).** A project links one local folder. Rust `repo.rs` lists, reads and searches under the root only, skips ignored files, and refuses secret-looking files unless allowed. A test per path rule (outside the root, `..`, symlinks, ignored, secret).
 - [ ] **4. Instruction files (CA-06).** CLAUDE.md and AGENTS.md (root and nested) go into the context assembler as instructions with their file as the source, and show in the effective-instructions view.
 - [ ] **5. Coding runs, read-only (CA-07 part 1, CA-04 Plan only, CA-09).** A run record with steps; the agent loop with the read, list and search tools; a run view with plan, steps, cost per step, stop, and a cost cap that pauses for approval. Every model call goes through routing, the egress check and `request_log`.

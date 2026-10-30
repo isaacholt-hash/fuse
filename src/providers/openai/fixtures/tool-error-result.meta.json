@@ -1,0 +1,65 @@
+{
+  "scenario": "tool-error-result",
+  "description": "A tool result that is an error",
+  "provider": "openai",
+  "recorded_on": "2026-10-30",
+  "endpoint": "https://api.openai.com/v1/responses",
+  "request_headers": {},
+  "request_body": {
+    "model": "gpt-6-luna",
+    "input": [
+      {
+        "role": "user",
+        "content": "Read notes.txt and tell me what it says."
+      },
+      {
+        "id": "fc_0f9e5b9415b77a7b016ae404f39eac87d19541048c46063597",
+        "type": "function_call",
+        "status": "completed",
+        "arguments": "{\"path\":\"notes.txt\"}",
+        "call_id": "call_I0Db43VFkRydjTwWzR9W6JNm",
+        "name": "read_file"
+      },
+      {
+        "type": "function_call_output",
+        "call_id": "call_I0Db43VFkRydjTwWzR9W6JNm",
+        "output": "Error: no such file: notes.txt"
+      }
+    ],
+    "stream": true,
+    "store": false,
+    "service_tier": "default",
+    "max_output_tokens": 600,
+    "tools": [
+      {
+        "type": "function",
+        "name": "read_file",
+        "description": "Read a text file from the repository and return its contents. Use it whenever you need to know what a file says. The path is relative to the repository root.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "path": {
+              "type": "string",
+              "description": "Path relative to the repository root."
+            }
+          },
+          "required": [
+            "path"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      }
+    ]
+  },
+  "used_invalid_key": false,
+  "status": 200,
+  "response_headers": {
+    "content-type": "text/event-stream; charset=utf-8",
+    "x-request-id": "req_d0e79557370347429c0bdcfd45c342bb",
+    "x-ratelimit-limit-requests": "5000",
+    "x-ratelimit-limit-tokens": "2000000"
+  },
+  "aborted_by_client": false,
+  "elapsed_ms": 1209
+}

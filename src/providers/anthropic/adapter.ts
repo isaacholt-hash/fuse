@@ -15,6 +15,8 @@ import {
   type RemoteModel,
   type StreamEvent,
   type TokenUsage,
+  type ToolCall,
+  type ToolSpec,
 } from "../types";
 
 export const ANTHROPIC_API = "https://api.anthropic.com";
@@ -127,6 +129,37 @@ function anthropicContent(m: ChatMessage): string | Record<string, unknown>[] {
   ];
 }
 
+/** A tool sent to Claude: strict, so `input` always matches the schema (docs/providers.md, M6). */
+export function anthropicTool(t: ToolSpec): Record<string, unknown> {
+  return { name: t.name, description: t.description, input_schema: t.schema, strict: true };
+}
+
+function anthropicMessage(m: ChatMessage, model: string): Record<string, unknown> {
+  if (m.native) {
+    // Replayed byte for byte: thinking signatures are checked against everything before them.
+    if (m.native.provider !== "anthropic" || m.native.model !== model) {
+      throw new ProviderError("invalid_request", "A tool loop can't move to another model.");
+    }
+    return { role: "assistant", content: m.native.items };
+  }
+  if (m.toolResults?.length) {
+    // Every result in one user message, before any text (docs/providers.md, M6).
+    return {
+      role: "user",
+      content: [
+        ...m.toolResults.map((r) => ({
+          type: "tool_result",
+          tool_use_id: r.callId,
+          content: r.content,
+          ...(r.isError ? { is_error: true } : {}),
+        })),
+        ...(m.content ? [{ type: "text", text: m.content }] : []),
+      ],
+    };
+  }
+  return { role: m.role, content: anthropicContent(m) };
+}
+
 export function buildRequestBody(
   messages: ChatMessage[],
   model: string,
@@ -143,15 +176,18 @@ export function buildRequestBody(
     // Automatic prompt caching (RT-07): the cache breakpoint sits on the last cacheable block and
     // moves forward as the thread grows. Prompts under the minimum (512 tokens) just aren't cached.
     cache_control: { type: "ephemeral" },
-    messages: messages.map((m) => ({ role: m.role, content: anthropicContent(m) })),
+    messages: messages.map((m) => anthropicMessage(m, model)),
   };
   if (options.system) body.system = options.system;
   // Effort only; never `thinking` (Opus 5.5 rejects "disabled", Sonnet 5.5 too).
   if (options.effort) body.output_config = { effort: options.effort };
+  const tools: Record<string, unknown>[] = (options.tools ?? []).map(anthropicTool);
   if (options.webSearch) {
     // Basic version: ZDR-eligible and no code execution (docs/providers.md, M1).
-    body.tools = [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }];
+    tools.push({ type: "web_search_20250305", name: "web_search", max_uses: 5 });
   }
+  // tool_choice stays auto: Opus 5.5 and Sonnet 5.5 reject forced tools (docs/providers.md, M6).
+  if (tools.length) body.tools = tools;
   // Never temperature/top_p/top_k: rejected under anthropic-version 2026-10-21.
   return body;
 }
@@ -216,6 +252,9 @@ export function createAnthropicAdapter(deps: {
       let stopped = false;
       let searched = false;
       let wroteText = false;
+      // The turn's content blocks, rebuilt from the stream, for replay inside a tool loop.
+      const blocks: (Block | undefined)[] = [];
+      const toolJson: (string | undefined)[] = [];
       try {
         for await (const ev of readSse(res.body)) {
           if (signal?.aborted) throw new ProviderError("aborted", "Aborted");
@@ -233,7 +272,11 @@ export function createAnthropicAdapter(deps: {
               break;
             }
             case "content_block_start": {
-              const block = data.content_block as { type?: string } | undefined;
+              const block = data.content_block as Block | undefined;
+              if (block && typeof data.index === "number") {
+                blocks[data.index] = { ...block };
+                toolJson[data.index] = "";
+              }
               if (block?.type === "server_tool_use") {
                 searched = true;
                 yield { type: "status", status: "searching" };
@@ -251,9 +294,14 @@ export function createAnthropicAdapter(deps: {
                 | {
                     type?: string;
                     text?: string;
+                    thinking?: string;
+                    signature?: string;
+                    partial_json?: string;
                     citation?: { url?: string; title?: string | null };
                   }
                 | undefined;
+              const b = typeof data.index === "number" ? blocks[data.index] : undefined;
+              if (b && d) appendDelta(b, d, toolJson, data.index as number);
               if (d?.type === "text_delta" && d.text) {
                 wroteText = true;
                 yield { type: "text", text: d.text };
@@ -281,8 +329,24 @@ export function createAnthropicAdapter(deps: {
                 code: err?.type ?? null,
               });
             }
+            case "content_block_stop": {
+              const i = data.index;
+              const b = typeof i === "number" ? blocks[i] : undefined;
+              if (b?.type === "tool_use" && typeof i === "number") {
+                const raw = toolJson[i] ?? "";
+                b.input = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+                const call: ToolCall = {
+                  id: String(b.id),
+                  name: String(b.name),
+                  input: b.input as Record<string, unknown>,
+                };
+                yield { type: "tool_call", call };
+              }
+              if (b?.citations === null) delete b.citations;
+              break;
+            }
             default:
-              break; // ping, content_block_stop, unknown future events
+              break; // ping, unknown future events
           }
         }
       } catch (e) {
@@ -304,7 +368,59 @@ export function createAnthropicAdapter(deps: {
         stopReason,
         providerRequestId: requestId,
         attempts,
+        ...(options.tools?.length
+          ? {
+              turn: {
+                provider: "anthropic" as const,
+                model,
+                items: blocks.filter((x): x is Block => x !== undefined),
+              },
+            }
+          : {}),
       };
     },
   };
+}
+
+/** A content block as streamed; only the fields the adapter fills in are named. */
+interface Block {
+  type?: string;
+  text?: string;
+  thinking?: string;
+  signature?: string;
+  input?: unknown;
+  citations?: unknown;
+  [key: string]: unknown;
+}
+
+function appendDelta(
+  b: Block,
+  d: {
+    type?: string;
+    text?: string;
+    thinking?: string;
+    signature?: string;
+    partial_json?: string;
+    citation?: unknown;
+  },
+  toolJson: (string | undefined)[],
+  i: number,
+): void {
+  switch (d.type) {
+    case "text_delta":
+      b.text = (b.text ?? "") + (d.text ?? "");
+      break;
+    case "thinking_delta":
+      b.thinking = (b.thinking ?? "") + (d.thinking ?? "");
+      break;
+    case "signature_delta":
+      b.signature = (b.signature ?? "") + (d.signature ?? "");
+      break;
+    case "input_json_delta":
+      toolJson[i] = (toolJson[i] ?? "") + (d.partial_json ?? "");
+      break;
+    case "citations_delta":
+      b.citations = [...(Array.isArray(b.citations) ? (b.citations as unknown[]) : []), d.citation];
+      break;
+  }
 }

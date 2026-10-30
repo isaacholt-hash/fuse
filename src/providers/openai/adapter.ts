@@ -16,6 +16,8 @@ import {
   type ProviderAdapter,
   type RemoteModel,
   type StreamEvent,
+  type ToolCall,
+  type ToolSpec,
   type TokenUsage,
 } from "../types";
 
@@ -132,6 +134,40 @@ function openaiContent(m: ChatMessage): string | Record<string, unknown>[] {
   ];
 }
 
+/** A tool sent to OpenAI: strict, with the shared schema (docs/providers.md, M6). */
+export function openaiTool(t: ToolSpec): Record<string, unknown> {
+  return {
+    type: "function",
+    name: t.name,
+    description: t.description,
+    parameters: t.schema,
+    strict: true,
+  };
+}
+
+/** Input items for one message: a tool loop's turn and results are items, not messages. */
+function openaiItems(m: ChatMessage, model: string): unknown[] {
+  if (m.native) {
+    // Reasoning (with encrypted_content), function calls and messages (with phase), unchanged.
+    if (m.native.provider !== "openai" || m.native.model !== model) {
+      throw new ProviderError("invalid_request", "A tool loop can't move to another model.");
+    }
+    return m.native.items;
+  }
+  if (m.toolResults?.length) {
+    return [
+      ...m.toolResults.map((r) => ({
+        type: "function_call_output",
+        call_id: r.callId,
+        // No error flag on OpenAI: the text says so (docs/providers.md, M6).
+        output: r.isError && !r.content.startsWith("Error:") ? `Error: ${r.content}` : r.content,
+      })),
+      ...(m.content ? [{ role: "user", content: m.content }] : []),
+    ];
+  }
+  return [{ role: m.role, content: openaiContent(m) }];
+}
+
 export function buildRequestBody(
   messages: ChatMessage[],
   model: string,
@@ -139,7 +175,7 @@ export function buildRequestBody(
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
-    input: messages.map((m) => ({ role: m.role, content: openaiContent(m) })),
+    input: messages.flatMap((m) => openaiItems(m, model)),
     stream: true,
     store: false, // defaults to true (30-day retention) if omitted
     service_tier: "default", // Standard pricing, whatever the project setting
@@ -147,10 +183,12 @@ export function buildRequestBody(
   };
   if (options.system) body.instructions = options.system;
   if (options.effort) body.reasoning = { effort: options.effort };
+  const tools: Record<string, unknown>[] = (options.tools ?? []).map(openaiTool);
   if (options.webSearch) {
     // An empty approximate location stops OpenAI defaulting results to the US.
-    body.tools = [{ type: "web_search", user_location: { type: "approximate" } }];
+    tools.push({ type: "web_search", user_location: { type: "approximate" } });
   }
+  if (tools.length) body.tools = tools;
   // Never temperature/top_p: rejected on GPT-6 models unless reasoning effort is "none".
   return body;
 }
@@ -245,6 +283,9 @@ export function createOpenAIAdapter(deps: {
         throw new ProviderError("stream", "Empty response body", { status: res.status });
 
       let final: { response: ResponseObject; stopReason: string } | null = null;
+      // Finished output items, for replay inside a tool loop. Taken from output_item.done:
+      // a reasoning item's encrypted_content can be incomplete in output_item.added.
+      const items: Record<string, unknown>[] = [];
       try {
         for await (const ev of readSse(res.body)) {
           if (signal?.aborted) throw new ProviderError("aborted", "Aborted");
@@ -272,6 +313,21 @@ export function createOpenAIAdapter(deps: {
                 { type?: string; url?: string; title?: string } | undefined;
               if (a?.type === "url_citation" && a.url) {
                 yield { type: "citation", url: a.url, title: a.title ?? null };
+              }
+              break;
+            }
+            case "response.output_item.done": {
+              const item = data.item as Record<string, unknown> | undefined;
+              if (!item) break;
+              items.push(item);
+              if (item.type === "function_call") {
+                const args = typeof item.arguments === "string" ? item.arguments : "";
+                const call: ToolCall = {
+                  id: String(item.call_id),
+                  name: String(item.name),
+                  input: args ? (JSON.parse(args) as Record<string, unknown>) : {},
+                };
+                yield { type: "tool_call", call };
               }
               break;
             }
@@ -323,9 +379,11 @@ export function createOpenAIAdapter(deps: {
         type: "done",
         usage: normaliseUsage(usage ?? {}, countSearches(final.response.output)),
         usageReported: Boolean(usage),
-        stopReason: final.stopReason,
+        // OpenAI has no "tool_use" stop reason: calls in the output mean the loop goes on.
+        stopReason: items.some((i) => i.type === "function_call") ? "tool_use" : final.stopReason,
         providerRequestId: requestId,
         attempts,
+        ...(options.tools?.length ? { turn: { provider: "openai" as const, model, items } } : {}),
       };
     },
   };

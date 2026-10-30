@@ -41,6 +41,48 @@ export interface ChatMessage {
   content: string;
   /** User messages only; resent with every turn (both APIs are stateless here). */
   attachments?: Attachment[];
+  /**
+   * Assistant messages inside a tool loop: the turn exactly as the provider sent it, replayed
+   * unchanged in place of `content` (docs/providers.md, M6).
+   */
+  native?: NativeTurn;
+  /** User messages inside a tool loop: the results of the previous turn's tool calls. */
+  toolResults?: ToolResult[];
+}
+
+/**
+ * A function the model may call (M6). `schema` is a JSON Schema written to OpenAI's strict rules
+ * (every property required, optional ones nullable, `additionalProperties: false`), so the same
+ * definition is sent with `strict: true` to both providers.
+ */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  schema: Record<string, unknown>;
+}
+
+/** A call the model made, with its input parsed. `id` links the result back to it. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  callId: string;
+  content: string;
+  isError: boolean;
+}
+
+/**
+ * One assistant turn of a tool loop in the provider's own shape (Anthropic content blocks with
+ * thinking signatures; OpenAI output items with reasoning and phase). Opaque outside the adapter;
+ * a loop stays on one provider and model, so it is only ever sent back where it came from.
+ */
+export interface NativeTurn {
+  provider: ProviderId;
+  model: string;
+  items: unknown[];
 }
 
 /**
@@ -74,6 +116,8 @@ export interface ChatOptions {
    * default (docs/providers.md, M2).
    */
   effort?: Effort;
+  /** Functions the model may call (M6). `tool_choice` is always auto. */
+  tools?: ToolSpec[];
 }
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
@@ -90,6 +134,8 @@ export interface StreamDone {
   providerRequestId: string | null;
   /** HTTP attempts made, 1 = no retries. */
   attempts: number;
+  /** When tools were offered: this turn as the provider sent it, to replay inside the loop. */
+  turn?: NativeTurn;
 }
 
 export type StreamEvent =
@@ -98,6 +144,8 @@ export type StreamEvent =
   | { type: "status"; status: "searching" | null }
   /** A source the answer cites. */
   | { type: "citation"; url: string; title: string | null }
+  /** A complete tool call; the caller runs it and sends the result in the next request. */
+  | { type: "tool_call"; call: ToolCall }
   | StreamDone;
 
 export interface RemoteModel {
