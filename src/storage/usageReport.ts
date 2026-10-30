@@ -82,8 +82,8 @@ export async function bestExtraSince(db: SqlDb, tenant: Tenant, since: number): 
   return rows[0]?.extra ?? 0;
 }
 
-/** Providers that aren't a cloud call: a local model, or an answer without a model (LL-07). */
-export const NOT_CLOUD = ["local", "deterministic"] as const;
+/** Providers that aren't a cloud call: a local model, no model, or the response cache (LL-07). */
+export const NOT_CLOUD = ["local", "deterministic", "cache"] as const;
 
 /**
  * Every question asked since `since`, with its answers oldest first (LL-07). Deleted messages

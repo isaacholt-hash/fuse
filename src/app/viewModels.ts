@@ -152,6 +152,26 @@ export function messageViews(
       continue;
     }
     if (m.role !== "assistant") continue;
+    if (m.provider === "cache") {
+      // LL-06: an earlier answer to the same request, reused; the model named is its author.
+      const [p, ...rest] = (m.model ?? "").split("/");
+      const author =
+        (p === "openai" || p === "anthropic"
+          ? findModel(catalog, p, rest.join("/"))?.displayName
+          : undefined) ??
+        (m.model || "a model");
+      out.push({
+        id: m.id,
+        role: "assistant",
+        content: m.content,
+        status: m.status,
+        providerName: "",
+        model: author,
+        cachedFrom: author,
+        feedback: m.feedback,
+      });
+      continue;
+    }
     if (m.provider === "deterministic") {
       // LL-01: no model, no tokens, no routing; the next model answer isn't a "switch".
       const labels: Partial<Record<string, string>> = HANDLER_LABELS;

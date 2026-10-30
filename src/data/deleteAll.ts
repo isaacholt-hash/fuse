@@ -9,6 +9,14 @@ import type { SqlDb } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  // Coding runs (M6): changes and steps before their run, runs before their messages.
+  "run_changes",
+  "run_steps",
+  "runs",
+  "project_commands",
+  // M7: shadow checks and the response cache.
+  "local_shadow",
+  "response_cache",
   "chunk_vectors",
   "chunks",
   "message_citations",

@@ -205,8 +205,12 @@ test("streamed text is saved while it arrives (nothing lost if the app dies)", a
   });
   const thread = await createThread(db, t);
   const pending = sendMessage(deps, { threadId: thread.id, model: claude, text: "count" });
-  await new Promise((r) => setTimeout(r, 0));
-  const mid = (await listMessages(db, t, thread.id))[1];
+  // Mid-answer (the provider is held at `gate`): wait for the first saved text.
+  let mid = (await listMessages(db, t, thread.id))[1];
+  for (let i = 0; i < 100 && !mid?.content; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+    mid = (await listMessages(db, t, thread.id))[1];
+  }
   expect(mid?.status).toBe("streaming");
   expect(mid?.content.length).toBeGreaterThan(0);
   release();

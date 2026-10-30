@@ -101,6 +101,22 @@ const compact = (n: number) =>
 const tokensIn = (u: UsageView) => u.freshInput + u.cachedInput + u.cacheWrite;
 
 function CostBadge({ message }: { message: MessageView }) {
+  if (message.cachedFrom) {
+    return (
+      <Tip
+        label={`${message.cachedFrom} answered the same first question, in the same context, earlier; FUSE reused that answer at no cost. Regenerate asks the model again.`}
+      >
+        <button
+          className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+          aria-label="Answered from the cache"
+        >
+          <span>from cache · {message.cachedFrom}</span>
+          <span>·</span>
+          <span className="text-foreground/70">$0</span>
+        </button>
+      </Tip>
+    );
+  }
   if (message.noModel) {
     return (
       <Tip label={`${message.noModel}: worked out by a fixed rule in FUSE, so no model was asked.`}>
