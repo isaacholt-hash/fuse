@@ -57,10 +57,11 @@
   - Local only projects do housekeeping locally, and nothing goes to the cloud if it fails. Cloud only projects never use it. Chat in Local only projects is still refused, with a message saying the local model only does housekeeping (fixed-rule answers still work). The privacy wording is updated.
   - Settings → Local model has one switch, "Use the local model for housekeeping" (setting `local.enabled`, on by default), that sends everything back to the cloud at once.
   - A failed local attempt doesn't count as a cloud call avoided. Coding-run summaries stay on the cloud Cheap model.
-- [ ] **9. Shadow and evaluation (LL-09).**
-  - Some housekeeping jobs also run on the cloud model, sampled and off by default after a week, and both results are recorded.
-  - A false-downgrade rate for the classifier's second opinion on the routing test set, plus p50/p95 latency and peak memory.
-  - `pnpm local:bench` for Isaac's PC.
+- [x] **9. Shadow and evaluation (LL-09).**
+  - Shadow checks (migration 0037): for 7 days after install, about 1 in 10 housekeeping jobs the local model finished also runs, in the background, on the cloud Cheap model. Only timings, lengths and agreement are kept, never the text. Nothing is checked when the project blocks the cloud. Settings → Local model shows the results.
+  - `pnpm local:bench` runs FUSE's real worker (the newest build) on the installed model, or `FUSE_LOCAL_MODEL`. It covers the shipped routing test set (`data/routing-test/prompts.jsonl`: 40 synthetic prompts, 35 standalone) and five chats to title. It reports parse rate, tier accuracy against the heuristics alone, false downgrades, p50/p95 latency and peak memory. No key, no network, $0.
+  - HULK, Qwen3 1.7B (Q8_0), debug build: 97% of replies parsed; the tier was right 86% of the time with the local check, against 80% for the heuristics alone; 3% false downgrades; about 3.1 s per classification; 4 of 5 titles usable; 2.43 GB peak.
+  - The bench caught the 1.7B model copying the title prompt's example ("Lisbon trip with kids") for unrelated chats. The example is gone from the prompt, and a title must now share a word with the question to count.
 - [ ] **10. Smaller context (LL-05).**
   - FTS5 lexical search over file chunks and knowledge, as the default and the fallback, so search works without an OpenAI key. Embeddings are added when available.
   - Token ceilings per model and request type, with explicit truncation and the source recorded. The coding agent's tool outputs are capped the same way.

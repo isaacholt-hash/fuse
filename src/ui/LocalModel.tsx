@@ -39,6 +39,7 @@ export function LocalModelSection({
   onRemove,
   enabled = true,
   onEnabled,
+  shadow = null,
 }: {
   view: LocalModelView | null;
   error?: string | null;
@@ -48,6 +49,8 @@ export function LocalModelSection({
   /** LL-04: whether housekeeping uses it; off sends everything back to the cloud at once. */
   enabled?: boolean;
   onEnabled?: (on: boolean) => void;
+  /** LL-09: what the shadow checks found, or that they're on. */
+  shadow?: string | null;
 }) {
   const job = view?.install;
   return (
@@ -180,6 +183,9 @@ export function LocalModelSection({
                       />
                       Use the local model for housekeeping
                     </label>
+                  )}
+                  {job.status === "installed" && shadow && (
+                    <p className="text-muted-foreground">{shadow}</p>
                   )}
                   {job.error && <p className="text-destructive">{job.error}</p>}
                 </div>

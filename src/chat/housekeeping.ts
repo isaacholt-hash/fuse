@@ -12,6 +12,7 @@ import { tierModels, type HousekeepingPurpose, type RoutingPolicy } from "@/rout
 import type { Tenant } from "@/storage/defaults";
 import { logRequest, type RequestPurpose } from "@/storage/requestLog";
 import type { SqlDb } from "@/storage/sql";
+import type { ShadowRecord } from "@/storage/localShadow";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 
 const PROVIDER_NAMES: Record<ProviderId, string> = {
@@ -43,6 +44,11 @@ export interface HousekeepingDeps {
   adapterFor: (provider: ProviderId) => ProviderAdapter;
   /** LL-04: the installed local model, tried before the request's cloud model; null when off. */
   local?: CatalogModel | null;
+  /**
+   * LL-09: shadow checks. With probability `rate`, a job the local model did also runs on the
+   * cloud model, and `record` keeps the timings and whether they agreed (never the text).
+   */
+  shadow?: { rate: number; record: (r: ShadowRecord) => Promise<void>; random?: () => number };
   now?: () => number;
 }
 
@@ -58,7 +64,10 @@ export interface HousekeepingRequest {
 }
 
 export type HousekeepingResult =
-  { ok: true; text: string; costMicroUsd: number } | { ok: false; error: string };
+  { ok: true; text: string; costMicroUsd: number; ms?: number } | { ok: false; error: string };
+
+/** Replies compared for a shadow check: spacing and case don't count. */
+const normal = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
 
 /**
  * One housekeeping request (LL-04): on the local model first when it's installed and the
@@ -75,7 +84,30 @@ export async function housekeepingCall(
   const policy = await threadPolicy(deps.db, deps.tenant, req.threadId);
   if (egressRefusal(policy, "local", "housekeeping")) return attempt(deps, catalog, req);
   const first = await attempt(deps, catalog, { ...req, model: local });
-  if (first.ok || req.signal?.aborted) return first;
+  if (first.ok) {
+    const shadow = deps.shadow;
+    if (shadow && shadow.rate > 0 && (shadow.random ?? Math.random)() < shadow.rate) {
+      // In the background: the job is done, this only measures it.
+      void attempt(deps, catalog, req)
+        .then((cloud) =>
+          cloud.ok
+            ? shadow.record({
+                purpose: req.purpose,
+                localModel: local.id,
+                cloudModel: `${req.model.provider}/${req.model.id}`,
+                localMs: first.ms ?? 0,
+                cloudMs: cloud.ms ?? 0,
+                localChars: first.text.length,
+                cloudChars: cloud.text.length,
+                same: normal(first.text) === normal(cloud.text),
+              })
+            : undefined,
+        )
+        .catch(() => undefined);
+    }
+    return first;
+  }
+  if (req.signal?.aborted) return first;
   return attempt(deps, catalog, req);
 }
 
@@ -153,5 +185,5 @@ async function attempt(
         : "No reply from the model",
     };
   }
-  return { ok: true, text, costMicroUsd: usage.costMicroUsd };
+  return { ok: true, text, costMicroUsd: usage.costMicroUsd, ms: usage.latencyMs ?? 0 };
 }

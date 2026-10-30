@@ -12,7 +12,7 @@ const MAX_OUTPUT_TOKENS = 1_000;
 
 export const TITLE_SYSTEM = [
   "Write a short title for this conversation, as a chat app would show it in a sidebar.",
-  '3 to 6 words, in the language of the user\'s message. Name the topic, not the request: "Lisbon trip with kids", not "User asks about Lisbon".',
+  '3 to 6 words, in the language of the user\'s message, made from the words of this conversation. Name its topic, not the request (not "User asks about…").',
   "Sentence case. No quotes, no emoji, no full stop at the end.",
   "Reply with the title only.",
 ].join("\n");

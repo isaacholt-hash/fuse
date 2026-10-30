@@ -1,0 +1,40 @@
+{"prompt": "hey, how's it going?", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": ""}
+{"prompt": "What's a good name for a grey cat?", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": ""}
+{"prompt": "Recommend three podcasts about history.", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": ""}
+{"prompt": "What time zone is Lisbon in?", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": ""}
+{"prompt": "Thanks, that helped!", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": ""}
+{"prompt": "Write a friendly two-line reminder to my team about Friday's demo.", "expected_tier": "balanced", "intent": "writing", "complexity": "low", "notes": ""}
+{"prompt": "Rewrite this sentence to sound more formal: we can't make it tomorrow, sorry.", "expected_tier": "balanced", "intent": "writing", "complexity": "low", "notes": ""}
+{"prompt": "Draft a polite email declining a meeting invite.", "expected_tier": "balanced", "intent": "writing", "complexity": "low", "notes": ""}
+{"prompt": "Proofread: Their going to the store tomorow to by bread.", "expected_tier": "balanced", "intent": "writing", "complexity": "low", "notes": ""}
+{"prompt": "Write a 300-word product description for a reusable water bottle.", "expected_tier": "balanced", "intent": "writing", "complexity": "medium", "notes": ""}
+{"prompt": "Write a short poem about autumn rain.", "expected_tier": "balanced", "intent": "creative", "complexity": "low", "notes": ""}
+{"prompt": "Give me five fantasy town names.", "expected_tier": "balanced", "intent": "creative", "complexity": "low", "notes": ""}
+{"prompt": "Write a bedtime story about a brave snail, about 400 words.", "expected_tier": "balanced", "intent": "creative", "complexity": "medium", "notes": ""}
+{"prompt": "How do I reverse a list in Python?", "expected_tier": "balanced", "intent": "coding", "complexity": "low", "notes": ""}
+{"prompt": "What does git rebase -i do?", "expected_tier": "balanced", "intent": "coding", "complexity": "low", "notes": ""}
+{"prompt": "Write a bash one-liner that counts lines in all .ts files.", "expected_tier": "balanced", "intent": "coding", "complexity": "low", "notes": ""}
+{"prompt": "Fix this: TypeError: Cannot read properties of undefined (reading 'map') in my React list component.", "expected_tier": "balanced", "intent": "coding", "complexity": "medium", "notes": ""}
+{"prompt": "Write a TypeScript function that debounces another function.", "expected_tier": "balanced", "intent": "coding", "complexity": "medium", "notes": ""}
+{"prompt": "Explain the difference between a mutex and a semaphore.", "expected_tier": "balanced", "intent": "coding", "complexity": "medium", "notes": ""}
+{"prompt": "Design the architecture for a multi-tenant SaaS billing system with usage metering, proration, invoices and webhooks, including the data model and failure handling.", "expected_tier": "best", "intent": "coding", "complexity": "high", "notes": ""}
+{"prompt": "Refactor a 3,000-line legacy payment module into testable services: propose the module boundaries, migration plan and how to keep it running during the change.", "expected_tier": "best", "intent": "coding", "complexity": "high", "notes": ""}
+{"prompt": "Design a lock-free concurrent queue in Rust and prove it's free of the ABA problem.", "expected_tier": "best", "intent": "coding", "complexity": "high", "notes": ""}
+{"prompt": "Summarise the pros and cons of remote work in a few bullets.", "expected_tier": "balanced", "intent": "analysis", "complexity": "low", "notes": ""}
+{"prompt": "Compare PostgreSQL and SQLite for a small desktop app.", "expected_tier": "balanced", "intent": "analysis", "complexity": "medium", "notes": ""}
+{"prompt": "What are the main risks of a 20% price increase for a subscription app?", "expected_tier": "balanced", "intent": "analysis", "complexity": "medium", "notes": ""}
+{"prompt": "Analyse our three-year revenue, churn and cohort data to find what's driving the slowdown, test competing explanations, and recommend actions with expected impact.", "expected_tier": "best", "intent": "analysis", "complexity": "high", "notes": ""}
+{"prompt": "Do a full competitive analysis of five note-taking apps across pricing, features, positioning and likely strategy over the next two years.", "expected_tier": "best", "intent": "analysis", "complexity": "high", "notes": ""}
+{"prompt": "Evaluate whether we should build or buy an analytics platform: costs over five years, risks, staffing and a recommendation with the trade-offs.", "expected_tier": "best", "intent": "analysis", "complexity": "high", "notes": ""}
+{"prompt": "What's 15% of 240 and how did you get it?", "expected_tier": "balanced", "intent": "reasoning", "complexity": "low", "notes": ""}
+{"prompt": "If a train leaves at 3pm going 60 mph, when does it cover 150 miles?", "expected_tier": "balanced", "intent": "reasoning", "complexity": "low", "notes": ""}
+{"prompt": "Is it faster to drive 100 km at 50 km/h or walk half and drive half at 100 km/h?", "expected_tier": "balanced", "intent": "reasoning", "complexity": "medium", "notes": ""}
+{"prompt": "Prove that there are infinitely many primes of the form 4k+3.", "expected_tier": "best", "intent": "reasoning", "complexity": "high", "notes": ""}
+{"prompt": "Plan a 12-month schedule for a 6-person team shipping three dependent projects with shared specialists, minimising idle time; show the reasoning.", "expected_tier": "best", "intent": "reasoning", "complexity": "high", "notes": ""}
+{"prompt": "Solve this logic puzzle step by step: five houses, five owners, each with a different pet, drink and car, and fifteen clues.", "expected_tier": "best", "intent": "reasoning", "complexity": "high", "notes": ""}
+{"prompt": "Find the flaw in this argument: every event has a cause, so there must be a first cause.", "expected_tier": "balanced", "intent": "reasoning", "complexity": "medium", "notes": ""}
+{"prompt": "What did the second paragraph mean by that?", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": "The missing context is the document from earlier in the chat."}
+{"prompt": "Can you make it shorter?", "expected_tier": "balanced", "intent": "writing", "complexity": "low", "notes": "The missing context is the text written in the previous answer."}
+{"prompt": "Same again but for the other dataset.", "expected_tier": "balanced", "intent": "analysis", "complexity": "medium", "notes": "The missing context is the earlier analysis and both datasets."}
+{"prompt": "Why did that test fail?", "expected_tier": "balanced", "intent": "coding", "complexity": "medium", "notes": "The missing context is the test output pasted earlier."}
+{"prompt": "Keep going.", "expected_tier": "balanced", "intent": "chat", "complexity": "low", "notes": "The missing context is the answer being continued."}

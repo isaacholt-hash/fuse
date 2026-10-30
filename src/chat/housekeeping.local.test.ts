@@ -10,6 +10,7 @@ import { createProject, setProjectPrivacy, type PrivacyMode } from "@/storage/pr
 import { listRecentRequests } from "@/storage/requestLog";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread } from "@/storage/threads";
+import { recordShadow, shadowSummary, type ShadowRecord } from "@/storage/localShadow";
 import { cloudCallsAvoidedSince } from "@/storage/usageReport";
 import { defaultPolicy } from "@/routing/defaultPolicy";
 import { housekeepingCall, housekeepingModel } from "./housekeeping";
@@ -111,4 +112,60 @@ test("with no cloud key, the local model does housekeeping alone", () => {
     housekeepingModel(defaultPolicy, defaultCatalog, "title", ["anthropic"], undefined, local)
       ?.provider,
   ).toBe("anthropic");
+});
+
+describe("shadow checks (LL-09)", () => {
+  async function shadowed(
+    localText: string,
+    cloudText: string,
+    random: number,
+    mode: PrivacyMode = "normal",
+  ) {
+    const db = openTestDb();
+    const project = await createProject(db, t, "P");
+    await setProjectPrivacy(db, t, project.id, { mode, allowEmbeddings: true });
+    const thread = await createThread(db, t, "x", project.id);
+    const l = scriptedLocal([localText]);
+    const c = scriptedLocal([cloudText]);
+    const deps = {
+      db,
+      tenant: t,
+      adapterFor: (p: string) => (p === "local" ? l.adapter : c.adapter),
+      local,
+      shadow: {
+        rate: 0.1,
+        random: () => random,
+        record: (r: ShadowRecord) => recordShadow(db, t, r),
+      },
+    };
+    const result = await housekeepingCall(deps, defaultCatalog, {
+      purpose: "classify",
+      threadId: thread.id,
+      model: cloud,
+      system: "s",
+      input: "q",
+      maxOutputTokens: 20,
+    });
+    // The cloud check runs in the background; let it finish.
+    await new Promise((r) => setTimeout(r, 20));
+    return { result, summary: await shadowSummary(db, t, 0), cloudCalls: c.calls.length };
+  }
+
+  test("a sampled job also runs on the cloud; only agreement and timings are kept", async () => {
+    const s = await shadowed('{"intent": "chat"}', '{"intent":  "Chat"}', 0.05);
+    expect(s.result).toMatchObject({ ok: true, text: '{"intent": "chat"}' });
+    expect(s.cloudCalls).toBe(1);
+    expect(s.summary).toMatchObject({ checks: 1, same: 1 });
+    const differ = await shadowed("Lisbon trip", "Family trip to Lisbon", 0.05);
+    expect(differ.summary).toMatchObject({ checks: 1, same: 0 });
+  });
+
+  test("not sampled, or Local only: no cloud call and nothing recorded", async () => {
+    const skipped = await shadowed("a", "b", 0.5);
+    expect(skipped.cloudCalls).toBe(0);
+    expect(skipped.summary.checks).toBe(0);
+    const localOnly = await shadowed("a", "b", 0.05, "local_only");
+    expect(localOnly.cloudCalls).toBe(0);
+    expect(localOnly.summary.checks).toBe(0);
+  });
 });
