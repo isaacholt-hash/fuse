@@ -22,6 +22,8 @@ export function tauriUpdateApi(): UpdateApi {
     async prepare() {
       const update = await check();
       if (!update) return null;
+      // Already downloaded: nothing to fetch again. A newer one replaces it (F1).
+      if (ready?.version === update.version) return update.version;
       await update.download();
       ready = update;
       return update.version;
