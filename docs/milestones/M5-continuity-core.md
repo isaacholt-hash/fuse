@@ -28,7 +28,7 @@
 - [x] **12. Restore from an export (PL-12, part 2).** Everything or one project, a preview first, ids kept, duplicates skipped; a round-trip test.
 - [x] **13. Two-provider continuity test (PM-19).** Recorded project histories whose decisions and constraints must reach both providers' requests (automated, no API calls), plus `pnpm continuity:live` for Isaac.
 
-**All build steps done (2026-10-29).** The automated gate passes: every critical decision and constraint in the three recorded scenarios reaches both providers' requests, with the history summarized and the memory budget crowded, and the egress tests show nothing reaches a blocked provider. Next: Isaac runs `pnpm continuity:live` with his own keys for the live 90% number, then tests M5.
+**All build steps done (2026-10-29).** The automated gate passes: every critical decision and constraint in the three recorded scenarios reaches both providers' requests, with the history summarized and the memory budget crowded, and the egress tests show nothing reaches a blocked provider. **Live benchmark passed (2026-10-30):** Isaac ran `pnpm continuity:live` with his own keys; claude-sonnet-5-5 and gpt-6.1-sol each kept 100% of critical items (14 of 14 each, gate 90%). Next: Isaac tests M5.
 
 ## Notes
 
