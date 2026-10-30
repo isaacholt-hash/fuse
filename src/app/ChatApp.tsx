@@ -42,7 +42,7 @@ import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
-import { DEFAULT_RUN_CAP_MICRO_USD, type RunProgress } from "@/agent/run";
+import { DEFAULT_RUN_CAP_MICRO_USD, undoChange, undoRun, type RunProgress } from "@/agent/run";
 import { runsForThread } from "@/storage/runs";
 import { runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -768,6 +768,8 @@ export function ChatApp({
   const [repoNote, setRepoNote] = useState<string | null>(null);
   // M6: Code on per chat ("draft" before the chat exists), and each answer's coding run.
   const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
+  // CA-04: what a run may do, per chat ("draft" before it exists); read-only by default.
+  const [codeMode, setCodeMode] = useState<Record<string, "plan" | "auto_edit">>({});
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
@@ -884,7 +886,12 @@ export function ChatApp({
         : new Map<string, never>();
       if (selectedRef.current === threadId) {
         setThreadRuns(
-          new Map([...runs].map(([id, r]) => [id, { run: r.run, steps: r.steps, streaming: "" }])),
+          new Map(
+            [...runs].map(([id, r]) => [
+              id,
+              { run: r.run, steps: r.steps, changes: r.changes, streaming: "" },
+            ]),
+          ),
         );
         setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
@@ -1393,6 +1400,7 @@ export function ChatApp({
               projectId: runIn,
               task: job.text,
               model: routed.model,
+              mode: codeMode[threadId] ?? codeMode.draft ?? "plan",
               signal: controller.signal,
               onProgress: (answerId, p) => {
                 setThreadRuns((m) => new Map(m).set(answerId, p));
@@ -2215,7 +2223,7 @@ export function ChatApp({
     }
     for (const v of views) {
       const r = threadRuns.get(v.id);
-      if (r) v.run = runView(r.run, r.steps, r.streaming);
+      if (r) v.run = runView(r.run, r.steps, r.streaming, r.changes);
       const fromFiles = threadFileSources.get(v.id);
       if (fromFiles?.length) v.fileSources = fromFiles;
       const info = threadBranches.get(v.id);
@@ -3898,6 +3906,24 @@ export function ChatApp({
                       openSource(chunkId).catch(report);
                     }}
                     onContinueRun={continueRunHere}
+                    onUndoChange={(changeId) => {
+                      if (!repoApi || !selectedId) return;
+                      const threadId = selectedId;
+                      undoChange({ ...deps, repo: repoApi }, changeId)
+                        .catch((e: unknown) => {
+                          setProblem(e instanceof Error ? e.message : String(e));
+                        })
+                        .finally(() => void reload(threadId).catch(report));
+                    }}
+                    onUndoRun={(runId) => {
+                      if (!repoApi || !selectedId) return;
+                      const threadId = selectedId;
+                      undoRun({ ...deps, repo: repoApi }, runId)
+                        .catch((e: unknown) => {
+                          setProblem(e instanceof Error ? e.message : String(e));
+                        })
+                        .finally(() => void reload(threadId).catch(report));
+                    }}
                     busy={streaming}
                     focusId={focusId}
                     openArtifact={openArtifact}
@@ -4005,6 +4031,10 @@ export function ChatApp({
                     {...(codeAvailable
                       ? {
                           code: codeActive,
+                          codeMode: codeMode[codeKey] ?? "plan",
+                          onCodeMode: (m: "plan" | "auto_edit") => {
+                            setCodeMode((all) => ({ ...all, [codeKey]: m }));
+                          },
                           onToggleCode: () => {
                             setCodeOn((all) => ({ ...all, [codeKey]: !codeActive }));
                           },

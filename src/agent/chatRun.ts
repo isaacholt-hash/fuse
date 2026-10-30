@@ -4,7 +4,7 @@
 import type { CatalogModel } from "@/catalog/catalog";
 import { addMessage, finishMessage, listPath, markStreaming } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
-import { getRun, listSteps, type Run } from "@/storage/runs";
+import { getRun, listSteps, type Run, type RunMode } from "@/storage/runs";
 import { setActiveLeaf } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import { continueRun, runAnswer, startRun, type RunDeps, type RunProgress } from "./run";
@@ -14,6 +14,8 @@ export interface ChatRunInput {
   projectId: string;
   task: string;
   model: CatalogModel;
+  /** CA-04; read-only when omitted. */
+  mode?: RunMode;
   capMicroUsd?: number;
   signal?: AbortSignal;
   /** Called first with the answer's id (before any step), then as the run goes. */
@@ -79,6 +81,7 @@ export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<
     messageId: answerId,
     task: input.task,
     model: input.model,
+    ...(input.mode ? { mode: input.mode } : {}),
     ...(input.capMicroUsd !== undefined ? { capMicroUsd: input.capMicroUsd } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     onProgress: (p) => input.onProgress?.(answerId, p),

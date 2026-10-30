@@ -96,6 +96,158 @@ pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
     Ok(real)
 }
 
+fn check_components(rel: &str) -> Result<(), String> {
+    if rel.trim().is_empty() {
+        return Err("Name a file.".into());
+    }
+    for c in Path::new(rel).components() {
+        match c {
+            Component::Normal(n) if n == ".git" => {
+                return Err(format!("{rel}: the .git folder can't be changed."));
+            }
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => return Err(format!("{rel}: `..` isn't allowed.")),
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("{rel}: use a path relative to the repository."));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Where a write, delete or move may go: like `resolve`, but the file needn't exist yet. Its
+/// deepest existing folder must be inside the root (after symlinks), and so must the file if it
+/// exists. Never inside `.git`; secret-looking names only when allowed.
+pub fn resolve_target(root: &Path, rel: &str, allow_secrets: bool) -> Result<PathBuf, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    check_components(rel)?;
+    let joined = root.join(rel);
+    let name = joined
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .ok_or_else(|| format!("{rel}: name a file."))?;
+    if !allow_secrets && is_secret(&name) {
+        return Err(format!(
+            "{rel} looks like it holds secrets, so it isn't changed. You can allow this in the \
+             project's settings."
+        ));
+    }
+    if joined.exists() || joined.is_symlink() {
+        let real = fs::canonicalize(&joined).map_err(|e| format!("{rel}: {e}"))?;
+        if !real.starts_with(&root) || real.components().any(|c| c.as_os_str() == ".git") {
+            return Err(format!("{rel} is outside the repository."));
+        }
+        return Ok(real);
+    }
+    let mut existing = joined
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or(root.clone());
+    let mut rest = vec![name];
+    while !existing.exists() {
+        let Some(n) = existing.file_name() else { break };
+        rest.push(n.to_string_lossy().into_owned());
+        existing = existing
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or(root.clone());
+    }
+    let base = fs::canonicalize(&existing).map_err(|e| format!("{rel}: {e}"))?;
+    if !base.starts_with(&root) {
+        return Err(format!("{rel} is outside the repository."));
+    }
+    let mut out = base;
+    for part in rest.iter().rev() {
+        out = out.join(part);
+    }
+    Ok(out)
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Change {
+    pub path: String,
+    /// What the file held before; None when it didn't exist. Kept so the change can be undone.
+    pub before: Option<String>,
+}
+
+fn text_of(path: &Path, rel: &str) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|e| format!("{rel}: {e}"))?;
+    if bytes.iter().take(8192).any(|b| *b == 0) {
+        return Err(format!("{rel} is a binary file, so it isn't changed."));
+    }
+    String::from_utf8(bytes).map_err(|_| format!("{rel} isn't UTF-8 text, so it isn't changed."))
+}
+
+/// Writes a text file (creating folders as needed), all at once: a temporary file in the same
+/// folder, then a rename, so a crash never leaves half a file.
+pub fn write(root: &Path, rel: &str, content: &str, allow_secrets: bool) -> Result<Change, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve_target(&root, rel, allow_secrets)?;
+    if path.is_dir() {
+        return Err(format!("{rel} is a folder."));
+    }
+    let before = if path.exists() {
+        Some(text_of(&path, rel)?)
+    } else {
+        None
+    };
+    let dir = path.parent().ok_or_else(|| format!("{rel}: no folder"))?;
+    fs::create_dir_all(dir).map_err(|e| format!("{rel}: {e}"))?;
+    let tmp = dir.join(format!(
+        ".fuse-write-{}-{}",
+        std::process::id(),
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    ));
+    fs::write(&tmp, content).map_err(|e| format!("{rel}: {e}"))?;
+    if let Err(e) = fs::rename(&tmp, &path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("{rel}: {e}"));
+    }
+    Ok(Change {
+        path: rel_string(&root, &path),
+        before,
+    })
+}
+
+/// Deletes a text file; returns what it held.
+pub fn delete(root: &Path, rel: &str, allow_secrets: bool) -> Result<Change, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve_target(&root, rel, allow_secrets)?;
+    if !path.is_file() {
+        return Err(format!("{rel}: no such file."));
+    }
+    let before = text_of(&path, rel)?;
+    fs::remove_file(&path).map_err(|e| format!("{rel}: {e}"))?;
+    Ok(Change {
+        path: rel_string(&root, &path),
+        before: Some(before),
+    })
+}
+
+/// Moves or renames a file inside the repository; never over an existing one.
+pub fn rename(root: &Path, from: &str, to: &str, allow_secrets: bool) -> Result<Change, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let src = resolve_target(&root, from, allow_secrets)?;
+    if !src.is_file() {
+        return Err(format!("{from}: no such file."));
+    }
+    let dst = resolve_target(&root, to, allow_secrets)?;
+    if dst.exists() {
+        return Err(format!("{to} already exists."));
+    }
+    if let Some(dir) = dst.parent() {
+        fs::create_dir_all(dir).map_err(|e| format!("{to}: {e}"))?;
+    }
+    fs::rename(&src, &dst).map_err(|e| format!("{from} → {to}: {e}"))?;
+    Ok(Change {
+        path: rel_string(&root, &dst),
+        before: None,
+    })
+}
+
 /// Names that usually hold credentials. The agent doesn't read them unless the project says so.
 pub fn is_secret(name: &str) -> bool {
     let n = name.to_ascii_lowercase();
@@ -373,6 +525,38 @@ pub mod commands {
     }
 
     #[tauri::command]
+    pub async fn repo_write(
+        db: State<'_, Database>,
+        project_id: String,
+        path: String,
+        content: String,
+    ) -> Result<Change, String> {
+        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        write(&root, &path, &content, secrets)
+    }
+
+    #[tauri::command]
+    pub async fn repo_delete(
+        db: State<'_, Database>,
+        project_id: String,
+        path: String,
+    ) -> Result<Change, String> {
+        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        delete(&root, &path, secrets)
+    }
+
+    #[tauri::command]
+    pub async fn repo_move(
+        db: State<'_, Database>,
+        project_id: String,
+        from: String,
+        to: String,
+    ) -> Result<Change, String> {
+        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        rename(&root, &from, &to, secrets)
+    }
+
+    #[tauri::command]
     pub async fn repo_search(
         db: State<'_, Database>,
         project_id: String,
@@ -566,6 +750,105 @@ mod tests {
         ] {
             assert!(!is_secret(n), "{n}");
         }
+    }
+
+    #[test]
+    fn writes_create_replace_and_report_what_was_there() {
+        let r = repo();
+        let made = write(&r, "src/new/mod.rs", "pub fn x() {}\n", false).unwrap();
+        assert_eq!(
+            made,
+            Change {
+                path: "src/new/mod.rs".into(),
+                before: None
+            }
+        );
+        assert_eq!(
+            fs::read_to_string(r.join("src/new/mod.rs")).unwrap(),
+            "pub fn x() {}\n"
+        );
+        let changed = write(&r, "README.md", "# Tide\n", false).unwrap();
+        assert_eq!(
+            changed.before.as_deref(),
+            Some("# Lighthouse\nPrints the tide table.\n")
+        );
+        assert!(!fs::read_dir(r.join("src/new")).unwrap().any(|e| {
+            e.unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".fuse-write")
+        }));
+    }
+
+    #[test]
+    fn writes_are_refused_outside_the_root_in_git_and_on_secrets() {
+        let r = repo();
+        assert!(
+            write(&r, "../x.txt", "x", false)
+                .unwrap_err()
+                .contains("..")
+        );
+        assert!(
+            write(&r, ".git/config", "x", false)
+                .unwrap_err()
+                .contains(".git")
+        );
+        assert!(
+            write(&r, "src/.git/hooks/pre-commit", "x", false)
+                .unwrap_err()
+                .contains(".git")
+        );
+        assert!(
+            write(&r, ".env", "x", false)
+                .unwrap_err()
+                .contains("secrets")
+        );
+        assert!(write(&r, ".env", "x", true).is_ok());
+        assert!(write(&r, "src", "x", false).unwrap_err().contains("folder"));
+        assert!(
+            write(&r, "logo.bin", "x", false)
+                .unwrap_err()
+                .contains("binary")
+        );
+        assert!(write(&r, "", "x", false).is_err());
+        let abs = r.join("y.txt").to_string_lossy().into_owned();
+        assert!(
+            write(&r, &abs, "x", false)
+                .unwrap_err()
+                .contains("relative")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_through_a_symlink_out_of_the_root_are_refused() {
+        let r = repo();
+        let outside = r.with_extension("outside-w");
+        fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, r.join("out")).unwrap();
+        assert!(
+            write(&r, "out/new.txt", "x", false)
+                .unwrap_err()
+                .contains("outside")
+        );
+        assert!(!outside.join("new.txt").exists());
+    }
+
+    #[test]
+    fn delete_and_move() {
+        let r = repo();
+        let gone = delete(&r, "src/main.rs", false).unwrap();
+        assert!(gone.before.unwrap().contains("println"));
+        assert!(!r.join("src/main.rs").exists());
+        assert!(delete(&r, "src/main.rs", false).is_err());
+        rename(&r, "README.md", "docs/README.md", false).unwrap();
+        assert!(r.join("docs/README.md").exists() && !r.join("README.md").exists());
+        assert!(
+            rename(&r, "docs/README.md", ".gitignore", false)
+                .unwrap_err()
+                .contains("exists")
+        );
+        assert!(rename(&r, "docs/README.md", "../README.md", false).is_err());
     }
 
     #[tokio::test]

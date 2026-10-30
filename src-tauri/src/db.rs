@@ -185,6 +185,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "runs",
         sql: include_str!("../migrations/0030_runs.sql"),
     },
+    MigrationFile {
+        version: 31,
+        description: "run_changes",
+        sql: include_str!("../migrations/0031_run_changes.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -994,6 +999,51 @@ mod tests {
                 "backed up before migrating"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn runs_made_before_0031_keep_their_steps() {
+        let dir = temp_dir("runs31");
+        let store = MemoryStore::default();
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(30).run(&pool).await.unwrap();
+        sqlx::raw_sql(
+            "INSERT INTO projects (id, workspace_id, user_id, name, created_at, updated_at)
+               SELECT 'p1', workspace_id, id, 'P', 1, 1 FROM users LIMIT 1;
+             INSERT INTO runs (id, workspace_id, user_id, project_id, task, provider, model, status,
+                               cap_micro_usd, spent_micro_usd, created_at, updated_at)
+               SELECT 'run1', workspace_id, user_id, 'p1', 'Look', 'anthropic', 'm', 'done',
+                      1000000, 1234, 2, 2 FROM projects WHERE id = 'p1';
+             INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, text, created_at,
+                                    updated_at)
+               SELECT 's1', workspace_id, user_id, 'run1', 1, 'model', 'Found it.', 3, 3
+               FROM projects WHERE id = 'p1';",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), "30").unwrap();
+
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let rows = select(
+            &pool,
+            "SELECT r.mode, r.spent_micro_usd, s.text FROM runs r JOIN run_steps s ON s.run_id = r.id",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(rows[0]["mode"], "plan");
+        assert_eq!(rows[0]["spent_micro_usd"], 1234);
+        assert_eq!(rows[0]["text"], "Found it.");
+        let broken: Vec<SqliteRow> = sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(broken.is_empty(), "foreign keys still hold");
+        pool.close().await;
     }
 
     #[test]

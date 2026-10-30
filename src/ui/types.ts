@@ -129,6 +129,20 @@ export interface RunView {
   steps: RunStepView[];
   /** The turn still being written. */
   streaming: string;
+  /** "read-only" or "can edit files". */
+  modeLabel: string;
+  /** Files the run changed (CA-02), oldest first. */
+  changes: RunChangeView[];
+}
+
+export interface RunChangeView {
+  id: string;
+  /** "Edited src/a.ts", "Created …", "Deleted …", "Moved a → b". */
+  label: string;
+  added: number;
+  removed: number;
+  lines: { kind: "same" | "add" | "del"; text: string }[];
+  undone: boolean;
 }
 
 export interface RunStepView {

@@ -11,6 +11,9 @@ function fakeRepo(
     reads,
     pick: () => Promise.resolve(null),
     check: () => Promise.reject(new Error("unused")),
+    write: () => Promise.reject(new Error("read-only in this test")),
+    remove: () => Promise.reject(new Error("read-only in this test")),
+    move: () => Promise.reject(new Error("read-only in this test")),
     list: () => Promise.resolve([]),
     search: () => Promise.resolve([]),
     read: (_projectId, path) => {

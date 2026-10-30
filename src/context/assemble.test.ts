@@ -178,6 +178,9 @@ test("CA-06: a linked repository's CLAUDE.md and AGENTS.md go in, between projec
   const repo: RepoApi = {
     pick: () => Promise.resolve(null),
     check: () => Promise.reject(new Error("unused")),
+    write: () => Promise.reject(new Error("read-only in this test")),
+    remove: () => Promise.reject(new Error("read-only in this test")),
+    move: () => Promise.reject(new Error("read-only in this test")),
     list: () => Promise.resolve([]),
     search: () => Promise.resolve([]),
     read: (_p, path) => {

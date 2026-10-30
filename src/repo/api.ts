@@ -29,6 +29,12 @@ export interface RepoHit {
   text: string;
 }
 
+/** A file written, deleted or moved; `before` is what it held (null: it didn't exist). */
+export interface RepoChange {
+  path: string;
+  before: string | null;
+}
+
 export interface RepoApi {
   /** The folder picker; null when cancelled. */
   pick(): Promise<RepoInfo | null>;
@@ -36,6 +42,9 @@ export interface RepoApi {
   list(projectId: string, path: string, recursive: boolean): Promise<RepoEntry[]>;
   read(projectId: string, path: string, offset: number): Promise<RepoFileText>;
   search(projectId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
+  write(projectId: string, path: string, content: string): Promise<RepoChange>;
+  remove(projectId: string, path: string): Promise<RepoChange>;
+  move(projectId: string, from: string, to: string): Promise<RepoChange>;
 }
 
 export const tauriRepo: RepoApi = {
@@ -46,4 +55,8 @@ export const tauriRepo: RepoApi = {
   read: (projectId, path, offset) => invoke<RepoFileText>("repo_read", { projectId, path, offset }),
   search: (projectId, path, query, ignoreCase) =>
     invoke<RepoHit[]>("repo_search", { projectId, path, query, ignoreCase }),
+  write: (projectId, path, content) =>
+    invoke<RepoChange>("repo_write", { projectId, path, content }),
+  remove: (projectId, path) => invoke<RepoChange>("repo_delete", { projectId, path }),
+  move: (projectId, from, to) => invoke<RepoChange>("repo_move", { projectId, from, to }),
 };
