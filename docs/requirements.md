@@ -420,7 +420,7 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Add the second provider, tiers, Auto routing and escalation; then memory, projects and artifacts
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
-- [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); the live continuity number waits on `pnpm continuity:live` with your keys. Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
+- [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); live continuity benchmark passed 2026-10-30 (100% kept on claude-sonnet-5-5 and gpt-6.1-sol, gate 90%). Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
 - [ ] P1.5 part 2, Local and lean (M6, section 16b): decide its open items in section 17 first; trial fixes go first
 
 **Can wait**
