@@ -4,7 +4,14 @@
 
 **Done when:** the recorded coding benchmark (step 13) passes on both providers, and no repository content reaches a blocked provider in tests. Isaac then runs `pnpm coding:live` with his own keys, and the phase gate is his: two weeks of his edit, run, review and commit loop in FUSE.
 
-**All build steps done (2026-10-30).** The automated benchmark passes: three tasks on a fresh copy of `data/coding/fixture` (add a test and make it pass, fix a bug across two files, commit on a branch) through the real Anthropic and OpenAI adapters, with real files, `node --test` and git; and the egress tests show nothing reaches a blocked provider. Next: Isaac runs `pnpm coding:live` with his own keys (gate: each provider passes 2 of 3 tasks), then the two-week trial.
+**All build steps done (2026-10-30).** The automated benchmark passes: three tasks on a fresh copy of `data/coding/fixture` (add a test and make it pass, fix a bug across two files, commit on a branch) through the real Anthropic and OpenAI adapters, with real files, `node --test` and git; and the egress tests show nothing reaches a blocked provider. **Live benchmark passed (2026-10-30, Isaac's keys):** both providers passed 3 of 3 tasks (gate 2), in 89 s, for $0.09 in all.
+
+| Model | add-test | fix-across-files | commit-on-branch | Cost |
+| --- | --- | --- | --- | --- |
+| anthropic/claude-sonnet-5-5 | pass, 4 turns | pass, 5 turns | pass, 5 turns | $0.064 |
+| openai/gpt-6.1-sol | pass, 5 turns | pass, 6 turns | pass, 7 turns | $0.030 |
+
+Next: the phase gate, two weeks of Isaac's own edit, run, review and commit loop in FUSE.
 
 **Out of scope:** sandboxing, code review, skills, hooks, subagents, background and remote runs (CA-10 to CA-19, P2 and later); MCP (AG-02); Local and lean (M7).
 
