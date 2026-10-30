@@ -133,7 +133,7 @@ export async function listQuestionTasks(
   }));
 }
 
-/** Requests since `since` that needed no cloud call (LL-07). */
+/** Requests since `since` answered with no cloud call (LL-07); a failed local try doesn't count. */
 export async function cloudCallsAvoidedSince(
   db: SqlDb,
   tenant: Tenant,
@@ -141,7 +141,8 @@ export async function cloudCallsAvoidedSince(
 ): Promise<number> {
   const rows = await db.select<{ n: number }>(
     `SELECT COUNT(*) AS n FROM request_log
-     WHERE workspace_id = ? AND created_at >= ? AND provider IN (${NOT_CLOUD.map(() => "?").join(", ")})`,
+     WHERE workspace_id = ? AND created_at >= ? AND error_code IS NULL
+       AND provider IN (${NOT_CLOUD.map(() => "?").join(", ")})`,
     [tenant.workspaceId, since, ...NOT_CLOUD],
   );
   return rows[0]?.n ?? 0;

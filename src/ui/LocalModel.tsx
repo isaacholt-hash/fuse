@@ -37,12 +37,17 @@ export function LocalModelSection({
   onInstall,
   onPause,
   onRemove,
+  enabled = true,
+  onEnabled,
 }: {
   view: LocalModelView | null;
   error?: string | null;
   onInstall?: () => void;
   onPause?: () => void;
   onRemove?: (file: string) => void;
+  /** LL-04: whether housekeeping uses it; off sends everything back to the cloud at once. */
+  enabled?: boolean;
+  onEnabled?: (on: boolean) => void;
 }) {
   const job = view?.install;
   return (
@@ -132,7 +137,11 @@ export function LocalModelSection({
                     </>
                   ) : job.status === "installed" ? (
                     <div className="flex items-center justify-between gap-2">
-                      <span>Installed and checked.</span>
+                      <span>
+                        {enabled
+                          ? "Installed and checked. FUSE uses it first for titles, summaries, memory suggestions and second opinions on routing, and falls back to a cheap cloud model if it fails."
+                          : "Installed and checked, but turned off: housekeeping goes to a cheap cloud model."}
+                      </span>
                       {onRemove && (
                         <Button
                           variant="outline"
@@ -159,6 +168,18 @@ export function LocalModelSection({
                         </Button>
                       )}
                     </div>
+                  )}
+                  {job.status === "installed" && onEnabled && (
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => {
+                          onEnabled(e.target.checked);
+                        }}
+                      />
+                      Use the local model for housekeeping
+                    </label>
                   )}
                   {job.error && <p className="text-destructive">{job.error}</p>}
                 </div>

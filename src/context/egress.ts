@@ -67,7 +67,7 @@ export function egressRefusal(
       : null;
   }
   if (policy.mode === "local_only") {
-    return `${where} is set to Local only, so nothing is sent to a cloud model. FUSE has no local model yet, so it can't answer here; change the privacy mode in the project's settings to send.`;
+    return `${where} is set to Local only, so nothing is sent to a cloud model. The local model only does housekeeping (titles, summaries, memory suggestions), so it can't answer here; sums, conversions and checks still work, or change the privacy mode in the project's settings to send.`;
   }
   if (policy.blocked.includes(provider)) {
     return `${where} blocks ${NAMES[provider]}, so nothing was sent to it. Pick a model from another provider, or allow ${NAMES[provider]} in privacy settings.`;

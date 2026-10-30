@@ -2,8 +2,8 @@
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
 import type { LocalApi } from "@/local/api";
 import { gb, pickProfile, type Hardware } from "@/local/hardware";
-import { statusFor, type InstalledFile } from "@/local/install";
-import { localModels, type LocalProfile } from "@/local/models";
+import { statusFor, usableProfile, type InstalledFile } from "@/local/install";
+import { localCatalogModel, localModels, type LocalProfile } from "@/local/models";
 import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
@@ -760,6 +760,20 @@ export function ChatApp({
   const [localJob, setLocalJob] = useState<LocalJob | null>(null);
   const [localInstallError, setLocalInstallError] = useState<string | null>(null);
   const refreshLocalInstalled = () => localApi?.installed().then(setLocalInstalled, report);
+  /** LL-04: one switch for the local model; on unless turned off (Isaac, 2026-10-30). */
+  const [localOn, setLocalOn] = useState(true);
+  const usableLocal = usableProfile(localInstalled, localModels.profiles);
+  const localHelper = useMemo(
+    () => (localOn && usableLocal ? localCatalogModel(usableLocal, localModels.verifiedOn) : null),
+    [localOn, usableLocal],
+  );
+  useEffect(() => {
+    getSetting(db, tenant, "local.enabled").then((v) => {
+      setLocalOn(v !== "off");
+    }, report);
+    localApi?.installed().then(setLocalInstalled, () => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once at start
+  }, [db, tenant]);
   /** LL-03: downloads, checks and installs the profile this computer gets. */
   const installLocal = (profile: LocalProfile) => {
     if (!localApi) return;
@@ -874,8 +888,17 @@ export function ChatApp({
   const keys = useKeys(keysApi, logKeyTest);
 
   const deps: ChatDeps = useMemo(
-    () => ({ db, tenant, catalog, adapterFor, files, ...(repoApi ? { repo: repoApi } : {}) }),
-    [db, tenant, catalog, adapterFor, files, repoApi],
+    () => ({
+      db,
+      tenant,
+      catalog,
+      adapterFor,
+      files,
+      // LL-04: housekeeping tries the local model first when it's installed and on.
+      local: localHelper,
+      ...(repoApi ? { repo: repoApi } : {}),
+    }),
+    [db, tenant, catalog, adapterFor, files, repoApi, localHelper],
   );
   const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
@@ -1422,7 +1445,14 @@ export function ChatApp({
     const current = threads.find((t) => t.id === threadId);
     if (current?.incognito) return; // nothing about an incognito chat is kept, its title included
     if (!wantsAutoTitle(current?.titleSource ?? "auto", rows)) return;
-    const helper = housekeepingModel(policy, catalog, "title", savedProviders, model.provider);
+    const helper = housekeepingModel(
+      policy,
+      catalog,
+      "title",
+      savedProviders,
+      model.provider,
+      localHelper,
+    );
     if (!helper) return;
     autoTitle(deps, catalog, threadId, helper)
       .then(async (r) => {
@@ -1450,6 +1480,7 @@ export function ChatApp({
       "summary",
       savedProviders,
       answeredBy.provider,
+      localHelper,
     );
     if (!helper) return;
     maybeSummarize(deps, catalog, threadId, helper, summaryThreshold(answeredBy))
@@ -1683,7 +1714,14 @@ export function ChatApp({
     const local = classify(classifyInput(text, ready, messages, search));
     const checker =
       mode.kind === "auto" && !compareMode && local.unsure && !incognito
-        ? housekeepingModel(policy, catalog, "classify", savedProviders, model.provider)
+        ? housekeepingModel(
+            policy,
+            catalog,
+            "classify",
+            savedProviders,
+            model.provider,
+            localHelper,
+          )
         : null;
     const checked = checker
       ? await checkClassification(deps, catalog, checker, local, text, selectedId)
@@ -1937,6 +1975,7 @@ export function ChatApp({
       "memory",
       savedProviders,
       last?.provider ?? model.provider,
+      localHelper,
     );
     if (!helper) {
       if (asked) setProblem("Add an API key in Settings to get memory suggestions.");
@@ -3669,6 +3708,11 @@ export function ChatApp({
                     }}
                     onPause={() => {
                       localApi.cancelInstall().catch(report);
+                    }}
+                    enabled={localOn}
+                    onEnabled={(on) => {
+                      setLocalOn(on);
+                      setSetting(db, tenant, "local.enabled", on ? "on" : "off").catch(report);
                     }}
                     onRemove={(file) => {
                       setLocalInstallError(null);

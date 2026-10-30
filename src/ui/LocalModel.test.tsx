@@ -94,3 +94,26 @@ test("no AVX2: the reason, and nothing to install", () => {
   expect(screen.getByText(/lacks AVX2/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Download and install" })).toBeNull();
 });
+
+test("installed: one switch turns housekeeping on the local model off and on", () => {
+  const onEnabled = vi.fn();
+  render(
+    <LocalModelSection
+      view={{ ...base, install: { status: "installed", progress: null, error: null } }}
+      enabled
+      onEnabled={onEnabled}
+    />,
+  );
+  expect(screen.getByText(/FUSE uses it first for titles/)).toBeTruthy();
+  fireEvent.click(screen.getByLabelText("Use the local model for housekeeping"));
+  expect(onEnabled).toHaveBeenCalledWith(false);
+  cleanup();
+  render(
+    <LocalModelSection
+      view={{ ...base, install: { status: "installed", progress: null, error: null } }}
+      enabled={false}
+      onEnabled={onEnabled}
+    />,
+  );
+  expect(screen.getByText(/turned off: housekeeping goes to a cheap cloud model/)).toBeTruthy();
+});
