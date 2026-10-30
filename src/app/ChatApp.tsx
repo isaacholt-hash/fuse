@@ -2540,6 +2540,7 @@ export function ChatApp({
       key_test: "Key tests",
       classify: "Classification",
       embed: "Embeddings",
+      agent: "Coding runs",
     };
     const label: Record<Dimension, (key: string) => string> = {
       provider: (k) => (k === "openai" || k === "anthropic" ? PROVIDER_NAMES[k] : k),
