@@ -346,8 +346,8 @@ export function Messages({
   onUndoRun,
   onApprove,
 }: {
-  /** CA-03: answers a run's request to run a command. */
-  onApprove?: (runId: string, yes: boolean) => void;
+  /** CA-03, CA-04: answers what a run asked for ("always": don't ask again for this command). */
+  onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
   onContinueRun?: (runId: string, raise: boolean) => void;
   /** CA-02: puts one file a run changed back as it was. */
@@ -927,7 +927,7 @@ export function Composer({
   onToggleWebSearch,
   code = false,
   onToggleCode,
-  codeMode = "plan",
+  codeMode = "ask",
   onCodeMode,
   routing,
   insert,
@@ -966,9 +966,9 @@ export function Composer({
   /** M6: the next message starts a coding run in the project's repository. */
   code?: boolean;
   onToggleCode?: () => void;
-  /** CA-04: whether that run may edit files. */
-  codeMode?: "plan" | "auto_edit";
-  onCodeMode?: (mode: "plan" | "auto_edit") => void;
+  /** CA-04: what that run may do. */
+  codeMode?: "plan" | "ask" | "auto_edit";
+  onCodeMode?: (mode: "plan" | "ask" | "auto_edit") => void;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
@@ -1476,10 +1476,12 @@ export function Composer({
                 className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
                 value={codeMode}
                 onChange={(e) => {
-                  onCodeMode(e.target.value === "auto_edit" ? "auto_edit" : "plan");
+                  const v = e.target.value;
+                  onCodeMode(v === "auto_edit" ? "auto_edit" : v === "plan" ? "plan" : "ask");
                 }}
               >
                 <option value="plan">Read-only</option>
+                <option value="ask">Ask first</option>
                 <option value="auto_edit">Can edit files</option>
               </select>
             )}
@@ -1658,7 +1660,7 @@ function RunCard({
 }: {
   run: RunView;
   busy: boolean;
-  onApprove?: (runId: string, yes: boolean) => void;
+  onApprove?: (runId: string, answer: "yes" | "always" | "no") => void;
   onContinue?: (runId: string, raise: boolean) => void;
   onUndoChange?: (changeId: string) => void;
   onUndoRun?: (runId: string) => void;
@@ -1712,27 +1714,56 @@ function RunCard({
       {run.approval && onApprove && (
         <div
           role="alertdialog"
-          aria-label="Run this command?"
+          aria-label={run.approval.kind === "command" ? "Run this command?" : "Make this change?"}
           className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
         >
-          <p className="mb-1 font-medium">Run this command in the repository?</p>
-          <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
-            {run.approval.command}
-          </pre>
+          {run.approval.kind === "command" ? (
+            <>
+              <p className="mb-1 font-medium">Run this command in the repository?</p>
+              <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+                {run.approval.command}
+              </pre>
+              {run.approval.destructive && (
+                <p className="mb-2 text-destructive">
+                  This {run.approval.destructive}, so it asks every time.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mb-1 font-medium">{run.approval.change.label}?</p>
+              {run.approval.change.lines.length > 0 && (
+                <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
+                  <DiffView lines={run.approval.change.lines} />
+                </div>
+              )}
+            </>
+          )}
           <div className="flex gap-2">
             <Button
               size="xs"
               onClick={() => {
-                onApprove(run.id, true);
+                onApprove(run.id, "yes");
               }}
             >
               Allow
             </Button>
+            {run.approval.kind === "command" && !run.approval.destructive && (
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  onApprove(run.id, "always");
+                }}
+              >
+                Always allow in this project
+              </Button>
+            )}
             <Button
               variant="outline"
               size="xs"
               onClick={() => {
-                onApprove(run.id, false);
+                onApprove(run.id, "no");
               }}
             >
               Deny

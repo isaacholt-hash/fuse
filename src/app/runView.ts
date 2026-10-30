@@ -2,14 +2,26 @@
 // turn's note, the cost against the cap. The last turn of a finished run is the answer itself.
 import { diffLines, diffStats } from "@/artifacts/diff";
 import { formatUsd } from "@/cost/cost";
-import type { Run, RunChange, RunStep } from "@/storage/runs";
-import type { RunChangeView, RunStepView, RunView } from "@/ui/types";
+import type { Approval, AuditEntry, Run, RunChange, RunStep } from "@/storage/runs";
+import type { AuditRowView } from "@/ui/AgentAudit";
+import type { ApprovalRequest } from "@/agent/run";
+import type { ApprovalView, RunChangeView, RunStepView, RunView } from "@/ui/types";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
 export function toolLabel(name: string, input: Record<string, unknown>): string {
   const path = str(input.path);
   switch (name) {
+    case "edit_file":
+      return `Edited ${path}`;
+    case "write_file":
+      return `Wrote ${path}`;
+    case "delete_file":
+      return `Deleted ${path}`;
+    case "move_file":
+      return `Moved ${str(input.from)} → ${str(input.to)}`;
+    case "run_command":
+      return `Ran ${str(input.command)}`;
     case "list_files":
       return input.recursive === true
         ? `Listed everything under ${path || "the root"}`
@@ -34,6 +46,50 @@ export function changeView(c: RunChange): RunChangeView {
         ? `Deleted ${c.path}`
         : `Edited ${c.path}`;
   return { id: c.id, label, added, removed, lines, undone: c.status === "undone" };
+}
+
+/** What the run is asking you about, as the card shows it. */
+export function approvalView(req: ApprovalRequest): ApprovalView {
+  return req.kind === "command"
+    ? { kind: "command", command: req.command, destructive: req.destructive ?? null }
+    : {
+        kind: "edit",
+        change: changeView({
+          ...req.change,
+          id: "pending",
+          runId: req.runId,
+          stepId: null,
+          status: "applied",
+          createdAt: 0,
+        }),
+      };
+}
+
+const ALLOWED: Record<Approval, string> = {
+  auto: "needed nobody",
+  you: "you",
+  always: "always allowed",
+  denied: "declined",
+};
+
+/** One audit row (AG-04). */
+export function auditRow(e: AuditEntry): AuditRowView {
+  return {
+    id: e.id,
+    when: new Date(e.at).toLocaleString([], {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    project: e.project,
+    model: e.model,
+    action: toolLabel(e.tool, e.input),
+    allowed: e.approval ? ALLOWED[e.approval] : "—",
+    result: e.output.split("\n").find((l) => l.trim() && !l.startsWith("$ ")) ?? "",
+    failed: e.isError,
+    runCost: formatUsd(e.runCostMicroUsd),
+  };
 }
 
 const MODE_LABELS: Record<Run["mode"], string> = {

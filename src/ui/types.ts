@@ -133,9 +133,18 @@ export interface RunView {
   modeLabel: string;
   /** Files the run changed (CA-02), oldest first. */
   changes: RunChangeView[];
-  /** A command waiting for your OK (CA-03). */
-  approval?: { command: string };
+  /** What the run is waiting for your OK on (CA-03, CA-04). */
+  approval?: ApprovalView;
 }
+
+export type ApprovalView =
+  | {
+      kind: "command";
+      command: string;
+      /** Why it always asks; such commands can't be always-allowed. */
+      destructive: string | null;
+    }
+  | { kind: "edit"; change: RunChangeView };
 
 export interface RunChangeView {
   id: string;

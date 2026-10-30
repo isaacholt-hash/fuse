@@ -38,6 +38,7 @@ const steps: RunStep[] = [
     },
     output: "x",
     isError: false,
+    approval: "auto",
   },
   {
     kind: "tool",
@@ -46,6 +47,7 @@ const steps: RunStep[] = [
     call: { id: "d", name: "read_file", input: { path: "nope.ts", offset: null } },
     output: "Error: nope.ts: no such file or folder.",
     isError: true,
+    approval: "auto",
   },
   {
     kind: "model",

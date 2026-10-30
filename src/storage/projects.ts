@@ -20,6 +20,8 @@ export interface Project {
   repoRoot: string | null;
   /** CA-01: whether the agent may read secret-looking files (.env, keys) in it. */
   repoReadSecrets: boolean;
+  /** CA-04: the mode its coding runs start in. */
+  runMode: "plan" | "ask" | "auto_edit";
   createdAt: number;
   updatedAt: number;
 }
@@ -37,6 +39,7 @@ interface ProjectRow {
   allow_embeddings: number;
   repo_root: string | null;
   repo_read_sensitive: number;
+  run_mode: "plan" | "ask" | "auto_edit";
   created_at: number;
   updated_at: number;
 }
@@ -54,12 +57,13 @@ const toProject = (r: ProjectRow): Project => ({
   allowEmbeddings: r.allow_embeddings === 1,
   repoRoot: r.repo_root,
   repoReadSecrets: r.repo_read_sensitive === 1,
+  runMode: r.run_mode,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
 
 const COLUMNS =
-  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, created_at, updated_at";
+  "id, name, instructions, default_provider, default_model, default_tier, privacy_mode, allow_embeddings, repo_root, repo_read_sensitive, run_mode, created_at, updated_at";
 
 /** SE-13: a project's privacy mode and whether it may be embedded. */
 export async function setProjectPrivacy(
@@ -89,6 +93,61 @@ export async function setProjectRepo(
     `UPDATE projects SET repo_root = ?, repo_read_sensitive = ?, updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [repo.root, repo.root && repo.readSecrets ? 1 : 0, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** CA-04: the mode the project's coding runs start in. */
+export async function setProjectRunMode(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  mode: Project["runMode"],
+): Promise<void> {
+  await db.execute(
+    "UPDATE projects SET run_mode = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
+    [mode, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/** Commands the project's runs may run without asking (exact match; destructive ones still ask). */
+export async function listAllowedCommands(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+): Promise<string[]> {
+  const rows = await db.select<{ command: string }>(
+    `SELECT command FROM project_commands WHERE workspace_id = ? AND project_id = ?
+     ORDER BY command`,
+    [tenant.workspaceId, projectId],
+  );
+  return rows.map((r) => r.command);
+}
+
+export async function allowCommand(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+  command: string,
+): Promise<void> {
+  const now = Date.now();
+  await db.execute(
+    `INSERT INTO project_commands (id, workspace_id, user_id, project_id, command, created_at,
+       updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (project_id, command) DO NOTHING`,
+    [uuidv7(now), tenant.workspaceId, tenant.userId, projectId, command.trim(), now, now],
+  );
+}
+
+export async function disallowCommand(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+  command: string,
+): Promise<void> {
+  await db.execute(
+    "DELETE FROM project_commands WHERE workspace_id = ? AND project_id = ? AND command = ?",
+    [tenant.workspaceId, projectId, command],
   );
 }
 

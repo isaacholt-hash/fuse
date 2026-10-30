@@ -3102,3 +3102,85 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   );
   expect(screen.queryByRole("alertdialog", { name: "Run this command?" })).toBeNull();
 });
+
+test("M6: Ask first (the project's default) shows an edit's diff and waits for Allow", async () => {
+  const files = new Map([["a.ts", "const a = 1;\n"]]);
+  const repo: RepoApi = {
+    ...noRepo,
+    pick: () => Promise.resolve({ root: "/home/me/lighthouse", name: "lighthouse", isGit: true }),
+    read: (_p, path) => {
+      const content = files.get(path);
+      return content === undefined
+        ? Promise.reject(new Error(`${path}: no such file or folder.`))
+        : Promise.resolve({
+            path,
+            content,
+            offset: 0,
+            totalBytes: content.length,
+            truncated: false,
+          });
+    },
+    write: (_p, path, content) => {
+      const before = files.get(path) ?? null;
+      files.set(path, content);
+      return Promise.resolve({ path, before });
+    },
+  };
+  async function* edit(_h: ChatMessage[]): AsyncGenerator<StreamEvent> {
+    await Promise.resolve();
+    yield {
+      type: "tool_call",
+      call: {
+        id: "e1",
+        name: "edit_file",
+        input: { path: "a.ts", old_text: "= 1", new_text: "= 2" },
+      },
+    };
+    yield {
+      type: "done",
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 400,
+        cachedInputTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        webSearchCalls: 0,
+      },
+      usageReported: true,
+      stopReason: "tool_use",
+      providerRequestId: "req_a",
+      attempts: 1,
+      turn: { provider: "anthropic", model: "x", items: [] },
+    };
+  }
+  const { user } = setup(
+    { anthropic: [edit, () => answer("Set a to 2.")] },
+    undefined,
+    {},
+    { repo },
+  );
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  expect(settings.getByLabelText("Coding runs start as")).toHaveValue("ask");
+  await user.keyboard("{Escape}");
+
+  await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  expect(screen.getByLabelText("What the coding run may do")).toHaveValue("ask");
+  await user.type(await composer(), "Set a to 2{Enter}");
+  const ask = within(await screen.findByRole("alertdialog", { name: "Make this change?" }));
+  expect(ask.getByText("Edited a.ts?")).toBeInTheDocument();
+  expect(ask.getByText("const a = 2;")).toBeInTheDocument();
+  expect(files.get("a.ts")).toBe("const a = 1;\n");
+  await user.click(ask.getByRole("button", { name: "Allow" }));
+  expect(await screen.findByText("Set a to 2.")).toBeInTheDocument();
+  expect(files.get("a.ts")).toBe("const a = 2;\n");
+  expect(
+    within(screen.getByRole("region", { name: "Coding run" })).getByText("asks first"),
+  ).toBeInTheDocument();
+});
