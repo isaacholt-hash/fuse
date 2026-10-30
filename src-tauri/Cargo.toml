@@ -41,6 +41,10 @@ tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).
 tauri-plugin-updater = "2"
 
+# Ending a command's whole process group on the time limit or Stop (CA-03, src/exec.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Windows Hello for the app lock (SE-03, src/hello.rs): the windows crates Tauri already uses.
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [

@@ -78,14 +78,17 @@ fn kill_tree(pid: u32) {
             .stderr(Stdio::null())
             .status();
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     {
-        // The command runs in its own process group (see `run`), so -pid is all of it.
-        let _ = std::process::Command::new("kill")
-            .args(["-KILL", &format!("-{pid}")])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        // The command runs in its own process group (see `run`), whose id is its pid, so this
+        // ends it and everything it started. Called directly: `kill -KILL -pid` means different
+        // things to different `kill` binaries.
+        if let Ok(pgid) = libc::pid_t::try_from(pid) {
+            // SAFETY: killpg only sends a signal; a stale group id fails with ESRCH, harmlessly.
+            unsafe {
+                libc::killpg(pgid, libc::SIGKILL);
+            }
+        }
     }
 }
 
