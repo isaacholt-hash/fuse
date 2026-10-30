@@ -1,0 +1,37 @@
+{
+  "about": "Coding benchmark tasks (M6 step 13). Each runs on a fresh copy of data/coding/fixture in a new git repository; the checks decide whether it passed. Synthetic, so no personal data.",
+  "tasks": [
+    {
+      "id": "add-test",
+      "task": "Add a test file test/clamp.test.js for clamp() in src/clamp.js, covering a value below, inside and above the range. Run just that test file to make sure it passes.",
+      "mode": "auto_edit",
+      "newBranch": false,
+      "checks": [
+        { "kind": "file_contains", "path": "test/clamp.test.js", "text": "clamp" },
+        { "kind": "command_passes", "command": "node --test test/clamp.test.js" }
+      ]
+    },
+    {
+      "id": "fix-across-files",
+      "task": "The tide report test fails: test/report.test.js. Find out why and fix the code (not the test) so all tests pass.",
+      "mode": "auto_edit",
+      "newBranch": false,
+      "checks": [
+        { "kind": "command_passes", "command": "node --test" },
+        { "kind": "file_unchanged", "path": "test/report.test.js" }
+      ]
+    },
+    {
+      "id": "commit-on-branch",
+      "task": "Fix the typo in the README's title (it should say Lighthouse) and commit just that change with a short message.",
+      "mode": "auto_edit",
+      "newBranch": true,
+      "checks": [
+        { "kind": "file_contains", "path": "README.md", "text": "# Lighthouse" },
+        { "kind": "branch_prefix", "prefix": "fuse/" },
+        { "kind": "last_commit_touches", "path": "README.md" },
+        { "kind": "clean_tree" }
+      ]
+    }
+  ]
+}

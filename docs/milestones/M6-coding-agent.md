@@ -4,6 +4,8 @@
 
 **Done when:** the recorded coding benchmark (step 13) passes on both providers, and no repository content reaches a blocked provider in tests. Isaac then runs `pnpm coding:live` with his own keys, and the phase gate is his: two weeks of his edit, run, review and commit loop in FUSE.
 
+**All build steps done (2026-10-30).** The automated benchmark passes: three tasks on a fresh copy of `data/coding/fixture` (add a test and make it pass, fix a bug across two files, commit on a branch) through the real Anthropic and OpenAI adapters, with real files, `node --test` and git; and the egress tests show nothing reaches a blocked provider. Next: Isaac runs `pnpm coding:live` with his own keys (gate: each provider passes 2 of 3 tasks), then the two-week trial.
+
 **Out of scope:** sandboxing, code review, skills, hooks, subagents, background and remote runs (CA-10 to CA-19, P2 and later); MCP (AG-02); Local and lean (M7).
 
 ## Steps (one PR each, in order)
@@ -25,7 +27,7 @@
 - [x] **10. Git (CA-05).** Status, diff, branch and commit with a message; a run can work on its own branch or worktree; push and open a pull request through `gh`, and a push always asks. Built with a branch per run; a worktree per run needs the root to move with it and comes with parallel runs (CA-14).
 - [x] **11. Routing inside runs (CA-07 part 2, RT-14).** Planning on Best, steps on Balanced, summaries on Cheap, never below the quality floor; one-click override per run; the run's total against its cap.
 - [x] **12. Egress and threat model for the agent (CA-09, SE-13).** A test per new send path; a Local only project runs no cloud step; `docs/threat-model.md` covers file and command tools on the host.
-- [ ] **13. Coding benchmark.** Recorded tasks on a small fixture repository (add a test and make it pass, fix a bug across two files, commit on a branch), checked on both providers with recorded responses and no API calls, plus `pnpm coding:live` for Isaac.
+- [x] **13. Coding benchmark.** Recorded tasks on a small fixture repository (add a test and make it pass, fix a bug across two files, commit on a branch), checked on both providers with recorded responses and no API calls, plus `pnpm coding:live` for Isaac.
 
 ## Notes
 
