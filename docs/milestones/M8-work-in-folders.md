@@ -86,7 +86,14 @@
   - A folder that's missing, like an unplugged drive, keeps what was indexed. Unlinking a folder takes its documents out of the project.
   - In Project settings → Knowledge they show "In folder" instead of Remove (migration 0046, `folder_files`).
   - **Deviation:** the folder is polled once a minute instead of using a file watcher. That avoids a new dependency and works the same on every platform and drive. A change can take up to a minute to show.
-- [ ] **12. Security and privacy.** The threat model gets a section on Work and the sandbox. Every send path keeps the egress policy (Local only projects can still use fixed rules and local housekeeping). The privacy wording says what leaves the computer when a model reads your documents.
+- [x] **12. Security and privacy.**
+  - The threat model has a new §7, Work in folders and the sandbox. §5's "no sandbox" gap is updated.
+  - Each send path was checked: run turns, plans, summaries, folder knowledge and images from tools. They all keep the egress policy in the app and again in the Rust transport. A Work run outside any project keeps the global rules (new test).
+  - Settings → Privacy says what leaves the computer when a model reads your documents.
+  - **Gaps written down:**
+    - Sandboxed commands can read what you can read, and their output reaches the model.
+    - Once the network is allowed for a folder, every later command there has it.
+    - Windows has no sandbox yet.
 - [ ] **13. Work benchmark.** A fixture folder (`data/work/fixture`: documents, CSVs, a messy folder) and three recorded tasks, checked on both providers with no API calls:
   - summarise the documents into a .docx with a table
   - build an .xlsx with a formula from two CSVs

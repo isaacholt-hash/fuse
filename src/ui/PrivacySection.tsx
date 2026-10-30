@@ -49,6 +49,15 @@ export function PrivacySection({
           what it receives under its own terms.
         </p>
         <p>
+          <span className="font-medium text-foreground">When a model reads your documents</span>{" "}
+          (Code and Work in a folder), what it reads goes to the provider running the task: the text
+          of each file it opens, a Word, Excel or PDF file&apos;s text, pictures it looks at, and
+          what commands print. It can only open files inside the folders you added. Files it
+          doesn&apos;t open stay here. A project&apos;s folder documents are its knowledge, so only
+          the parts that match a question are sent. Commands run on this computer, sandboxed where
+          the system allows, with no network unless you allow it.
+        </p>
+        <p>
           <span className="font-medium text-foreground">What never leaves:</span> memories and
           knowledge files you mark to keep on this computer, anything in a project set to Local
           only, and anything for a provider blocked below or in a project. FUSE checks this twice,
