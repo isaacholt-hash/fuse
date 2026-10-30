@@ -4,7 +4,7 @@ Oct 25, 2026 · @Isaac
 
 ## 1. Summary
 
-One app, desktop and web, that replaces the Claude and ChatGPT apps with your own API keys and matches each request to the model tier its task needs, and only then picks the cheaper option among models that clear that bar. It is built for you first, with the data model and hooks needed to sell it later.
+One app, desktop and web, that replaces the Claude, ChatGPT, Claude Code and Codex apps with your own API keys and matches each request to the model tier its task needs, and only then picks the cheaper option among models that clear that bar. It is built for you first, with the data model and hooks needed to sell it later.
 
 **The 5 things that matter most**
 
@@ -22,7 +22,8 @@ One app, desktop and web, that replaces the Claude and ChatGPT apps with your ow
 | What does "optimize credits" mean? | My own API keys, cut my spend | Cost = token spend on your keys; the router picks the tier the task needs first and the cheapest model that clears it second; it never starts cheap and works up (sections 6 and 13) |
 | V1 scope? | Everything incl. voice and images | Written in full, but phased: P1 chat + memory + artifacts + routing, P2 agents and tools, P3 voice and images (section 3) |
 | Relation to your existing assistant? | Separate app | Requirements written from scratch; no dependency on existing code |
-| Platforms | Desktop and web (from your brief) | Single codebase, feature parity except OS-only features; mobile out of scope |
+| Platforms | Desktop and web (from your brief) | Single codebase, feature parity except OS-only features; mobile apps later (PL-14, P3) |
+| Coding tools too? (asked 2026-10-30) | Yes: Claude Code and Codex, not only the chat apps | A coding agent that works in a local repository (section 11b), built next in P1.5; picks from the feature inventory of all four products |
 
 **How to read the requirements.** Each requirement has an ID (e.g. RT-04), a priority and a phase. **Must** = the phase cannot ship without it. **Should** = planned for the phase, can slip. **Nice** = do only if cheap. Phases P1, P2, P3 are defined in section 3.
 
@@ -33,7 +34,7 @@ One app, desktop and web, that replaces the Claude and ChatGPT apps with your ow
 | Goal | Target | How it is measured |
 | --- | --- | --- |
 | Lower cost | Monthly API spend at least 50% below the two subscriptions it replaces, at the same usage | Savings report (CO-04), 30-day comparison after launch |
-| No feature regression | Your top 10 daily tasks work in the app without opening Claude or ChatGPT | Use-case checklist in section 4, run weekly during P1 |
+| No feature regression | Your top 10 daily tasks work in the app without opening Claude, ChatGPT, Claude Code or Codex | Use-case checklist in section 4, run weekly during P1 |
 | Model freedom | Switch model mid-thread with full context carried; add a new provider without code changes to chat or memory | CH-03, MM-01 adapter test |
 | Cost transparency | Every answer shows model, tokens and cost within 1 second of completion | RT-09, CO-01 |
 | Quality safety net | A weak answer can be escalated to a stronger model in one click, with context intact | RT-04 |
@@ -43,8 +44,8 @@ One app, desktop and web, that replaces the Claude and ChatGPT apps with your ow
 
 - Hosting or fine-tuning models; the app only calls provider APIs and optional local models.
 - Selling credits or holding other people's API keys on a server you run.
-- Mobile apps (a responsive web layout is enough).
-- Team collaboration (shared projects, comments, roles).
+- Mobile apps in v1 (a responsive web layout is enough until PL-14 in P3).
+- Team collaboration (shared projects, comments, roles); sharing a single chat or artifact by link is PL-13, P3.
 - Matching every Claude or ChatGPT feature; the goal is your daily workflow, not parity.
 
 ## 3. Scope and phasing
@@ -57,10 +58,11 @@ P1 is the whole product in miniature; P2 and P3 only add reach, and each waits f
 
 Each phase ships only when its gate passes. P1's gate is the one that matters: if you are not using the app instead of Claude and ChatGPT for two straight weeks, fix P1 before adding anything.
 
-**P1.5 (added 2026-10-29) sits between P1 and P2 and is built while the P1 trial runs; anything the trial turns up is fixed first.** It has two parts, in this order:
+**P1.5 (added 2026-10-29, re-ordered 2026-10-30) sits between P1 and P2 and is built while the P1 trial runs; anything the trial turns up is fixed first.** It has three parts, in this order:
 
 1. **Continuity core** (from `docs/specs/fuse-requirements-v0.1.md`): FUSE owns your context in a provider-neutral form, so a project moves between models without losing decisions or constraints. Typed memory with scope, provenance and authority, decisions and tasks, one context assembler, an egress policy every send obeys, backup before migrations, and a documented export with restore (PM-12 to PM-19, SE-13 to SE-15, PL-11, PL-12). Gate: the two-provider continuity test (PM-19) passes, and no content reaches a blocked provider in tests.
-2. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
+2. **Coding agent** (added 2026-10-30, section 11b): what Claude Code and Codex do for your daily work. A project linked to a local repository; the agent reads, searches and edits files, runs commands with your approval, shows every change as a diff, works with git, reads CLAUDE.md and AGENTS.md, and does long runs with a plan and a cost cap, each step routed and priced like chat. It brings forward the parts of P2 agents it needs (AG-04, AG-05, AG-06). **Gate:** for two weeks you do your edit, run, review and commit loop in FUSE rather than in Claude Code or Codex, and no repo content reaches a blocked provider in tests.
+3. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
 
 ## 4. Users and key use cases
 
@@ -71,7 +73,8 @@ V1 has one user: you, a technical power user who pays for two AI subscriptions, 
 | Quick question | "What's the difference between X and Y?" | Balanced | Highest volume; savings come from not using Best here and from caching, not from a cheaper tier |
 | Writing and editing | Draft an email, tighten a memo, rewrite in your voice | Balanced | Daily; needs your style instructions and memory |
 | Long document work | Summarize a 60-page PDF, answer questions on it | Balanced, large context | Drives file handling and RAG requirements |
-| Coding | Write or debug a script, review a diff | Balanced, escalate to Best | Needs code artifacts, run/copy, tool use later |
+| Coding (chat) | Write or debug a snippet, explain an error | Balanced, escalate to Best | Code artifacts, run/copy |
+| Coding (agent) | "Add a test for this and make it pass", fix a bug across files, commit and open a PR | Planner on Best, steps on Balanced | Replaces Claude Code and Codex: repo, commands, diffs, git (section 11b) |
 | Analysis and data | Explore a CSV, build a chart, check numbers | Best + code execution (P2) | Needs sandbox and artifacts |
 | Hard reasoning | Architecture decision, multi-step math, tricky tradeoff | Best, reasoning on | Where the strong model earns its price |
 | Research | Find current info, compare sources, cite them | Balanced + web search | Needs search and fetch with citations |
@@ -80,7 +83,7 @@ V1 has one user: you, a technical power user who pays for two AI subscriptions, 
 | Voice (P3) | Dictate a thought while walking; have an answer read aloud | Cheap STT/TTS, LLM by content | Low-friction capture |
 | Image generation (P3) | Product mockup, social graphic | Image model | Occasional; cost shown per image |
 
-The top 10 daily tasks for the no-regression goal (section 2) are the first 8 rows above plus "continue yesterday's thread" and "find that thing we discussed last week."
+The top 10 daily tasks for the no-regression goal (section 2) are the first 9 rows above plus "continue yesterday's thread" and "find that thing we discussed last week."
 
 ## 5. Model management (bring your own model)
 
@@ -152,6 +155,7 @@ Chat must feel at least as fast and polished as the two apps it replaces, with t
 | CH-15 | Incognito thread: no memory read or write, not saved to history, clearly marked. | Must | P1 |
 | CH-16 | Share link for a thread (read-only, revocable) on web. | Nice | P3 |
 | CH-17 | Side-by-side view of two answers (from branches or compare mode) with a diff for code and text. | Should | P1 |
+| CH-18 | Custom assistants: a saved persona with instructions, files and tools, started like a chat; built on projects and the prompt library. | Nice | P2 |
 
 ## 8. Projects, memory and context
 
@@ -196,6 +200,7 @@ Small files go into the prompt whole; large ones are indexed and retrieved with 
 | FK-09 | OCR for scanned PDFs and images with text, using a local engine or a vision model, chosen by cost. | Nice | P2 |
 | FK-10 | File viewer: open any attached file in the side panel with the cited page or chunk highlighted. | Should | P1 |
 | FK-11 | Secrets warning: before a file is sent to a provider, scan for API keys, passwords and card numbers and ask to redact or continue. | Should | P1 |
+| FK-12 | Deep research: a long, cited report built from many sources over several minutes, with a cost estimate first and a cap. | Should | P2 |
 
 ## 10. Artifacts and canvas
 
@@ -229,6 +234,33 @@ Tools are opt-in per project, side effects need approval, and every run has a co
 | AG-08 | Browser automation through a browser extension or an embedded browser, limited to sites the user allows; computer use on desktop, opt-in, screenshots shown before each action. | Nice | P3 |
 | AG-09 | Parallel steps and sub-runs with a combined cost cap. | Nice | P3 |
 | AG-10 | Prompt-injection guard: content fetched by tools is treated as data; instructions found inside it are shown to the user and never executed without confirmation. | Must | P2 |
+| AG-11 | Built-in connectors (Drive, Gmail, Calendar, GitHub and similar) through MCP (AG-02), set up from settings. | Should | P2 |
+
+## 11b. Coding agent (P1.5)
+
+Added 2026-10-30. The first requirements missed that Claude Code and Codex are part of the daily workflow FUSE replaces; these come from the feature inventory of all four products, with Isaac's picks (Must = this phase, the rest later). Writes and commands ask first by default, every run has a cost cap, and repository content is project content for the egress policy (SE-13).
+
+| ID | Requirement | Priority | Phase |
+| --- | --- | --- | --- |
+| CA-01 | Repo-linked project: a project links to one local folder, usually a git repository. The agent lists, reads and searches files under it. The Rust side refuses any path outside the root, and skips ignored files and secret-looking files (`.env`, key files) unless you allow them. | Must | P1.5 |
+| CA-02 | File edits: create, edit, move and delete files under the root. Every change is shown as a diff you can accept, reject or undo, per file or per run. | Must | P1.5 |
+| CA-03 | Commands: run shell commands in the repository with output streamed into the run, a time limit, an output cap and the exit code shown. Starts on the host; sandboxing is CA-11. | Must | P1.5 |
+| CA-04 | Permission modes per project: Ask (every edit and command), Auto-edit (edits run, commands ask), Plan only (read-only, proposes a plan). Commands can be always-allowed per project; destructive ones (force push, hard reset, recursive delete) always ask. Builds the coding part of AG-04, with the audit log. | Must | P1.5 |
+| CA-05 | Git: status, diff, branch, commit with a message, push and open a pull request; a push always asks. A run can work on its own branch or worktree. | Must | P1.5 |
+| CA-06 | Instruction files: CLAUDE.md and AGENTS.md (root and nested) go into the context assembler (PM-18) as instructions, each with its file as the source, and show in the effective-instructions view. | Must | P1.5 |
+| CA-07 | Coding runs: a request starts a run with a plan, steps, live progress, pause and stop, and a cost cap that pauses for approval. Planning on Best, steps on Balanced, summaries on Cheap (RT-14), cost shown per step. Builds AG-05 and AG-06 for coding. | Must | P1.5 |
+| CA-08 | Context budget for tools: file reads and command output are capped with a pointer to the rest, older tool results are summarized, and a run can be resumed from its record. Never whole repositories or logs (LL-05). | Must | P1.5 |
+| CA-09 | Same rules as chat: every model call in a run goes through routing, the egress check in Rust and `request_log`. A Local only project runs no cloud step. | Must | P1.5 |
+| CA-10 | Code review: review a diff, branch or pull request and report findings by severity. | Should | P2 |
+| CA-11 | Sandboxed commands: an OS sandbox for commands, no network unless allowed. | Should | P2 |
+| CA-12 | Skills: packaged instructions with files and scripts, called by name; extends the prompt library (CH-12). | Should | P2 |
+| CA-13 | Hooks: your own commands at points in a run (before a tool, after a stop). | Nice | P2 |
+| CA-14 | Subagents and parallel runs, each in its own worktree, with a combined cost cap (AG-09). | Should | P2 |
+| CA-15 | Background runs on the HULK server (P2 web), handed over from the desktop, that keep going with the laptop closed. | Should | P2 |
+| CA-16 | Remote control: follow and steer a run from another device through the web app. | Nice | P2 |
+| CA-17 | Plugins: packs of skills, hooks and MCP servers. | Nice | P3 |
+| CA-18 | Entry points outside the app: a `fuse` terminal command and an IDE extension. | Nice | P3 |
+| CA-19 | Security scanning on a schedule (AG-07), with proposed fixes. | Nice | P3 |
 
 ## 12. Voice and images (P3, dictation earlier)
 
@@ -276,6 +308,8 @@ One codebase serves both; the desktop app adds OS features (hotkey, local files,
 | PL-10 | Theme: light, dark and system; font size setting; reduced motion. | Must | P1 |
 | PL-11 | Backup and restore: an automatic encrypted backup before every database migration (the rollback path; migrations stay forward-only), backup and restore on demand, and an integrity check of stored files against the database. | Must | P1.5 |
 | PL-12 | Portable export and restore: a documented, versioned format (`docs/export-format.md`; JSON plus files named by hash) another program could read, and restore of a project or everything, with duplicates removed and ids kept stable. Extends SE-07. | Must | P1.5 |
+| PL-13 | Share a chat or artifact by link, served from your own server, read-only. | Nice | P3 |
+| PL-14 | Mobile apps (iOS and Android) over the self-hosted server. | Nice | P3 |
 
 ## 15. Accounts, security and privacy
 
@@ -368,7 +402,9 @@ The biggest risk is scope: a solo build of "everything" at a few hours a week do
 | Holding keys on a server | If web is hosted for others, you hold their keys and liability | Web v1 is self-hosted single-user (PL-03); hosted multi-user is a P3 decision with its own security review |
 | Prompt caching differences | Each provider caches differently; a wrong prompt order loses the savings | Adapter owns prompt ordering (RT-07); cache hit rate is visible |
 | Local-first versus sync | Sync adds conflict handling and an encryption design | Local only in P1, encrypted sync in P2 (PL-04) |
-| Agent cost runaway | A looping run can spend fast | Per-run cost cap (AG-05), approvals (AG-04), budget stops (RT-10) |
+| Agent cost runaway | A looping run can spend fast | Per-run cost cap (AG-05, CA-07), approvals (AG-04, CA-04), budget stops (RT-10) |
+| Coding agent on the host | Commands run with your user's rights before sandboxing (CA-11) | Ask by default (CA-04), destructive commands always ask, paths checked in Rust (CA-01), no secret files read by default |
+| Matching Claude Code and Codex | Both are mature and change weekly | Gate on your own edit-run-review-commit loop, not feature parity; the inventory is revisited each phase |
 | Native local runtime | A C++ runtime adds build time, app size and crash risk on two OSes | Behind the adapter (LL-02), crash and memory isolation (LL-08), built in CI on Windows and Linux, opt-in |
 | Model licence and provenance | A downloaded model is third-party code with its own licence | Pinned source, checksum and licence in `data/`, checked before download (LL-03, LL-08) |
 | False downgrades | A small local model misjudges a hard request and the answer suffers | Local only for housekeeping (RT-17 kept), shadow mode and false-downgrade rate before enabling (LL-09), one fallback to the cloud |
@@ -398,7 +434,15 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [x] Rollback: an automatic encrypted backup before every migration, built first; no reverse migrations
 - [x] Egress is checked in the Rust transport as well as the router
 
-**Open decisions for P1.5 part 2 (Local and lean), with the recommendation**
+**Open decisions for P1.5 part 2 (Coding agent), with the recommendation**
+
+- [ ] Where tools run: file and command tools in Rust, behind the same transport as provider calls, with the path check there
+- [ ] First version: one repository per project, desktop only, commands on the host with Ask as the default mode
+- [ ] Tool calling: through each provider adapter's native tool interface (both providers at once), not a text protocol
+- [ ] Git hosting: GitHub through the `gh` command already on the machine; no GitHub token stored by FUSE in this phase
+- [ ] Gate: two weeks of your edit, run, review and commit loop in FUSE (section 3)
+
+**Open decisions for P1.5 part 3 (Local and lean), with the recommendation**
 
 - [ ] Local runtime: embedded llama.cpp through Rust (`llama-cpp-2`), CPU build first, GPU (Vulkan) later; optional localhost adapter for Ollama or LM Studio
 - [ ] First model: Qwen3 1.7B, 4-bit GGUF, non-thinking mode; licence (expected Apache-2.0), source and checksum verified at implementation, downloaded only when you opt in
@@ -421,7 +465,8 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [ ] Run the no-regression checklist (section 4) weekly; P1 ships when you have not opened Claude or ChatGPT for two weeks
 
 - [x] P1.5 part 1, Continuity core (M5): built 2026-10-29 (`docs/milestones/M5-continuity-core.md`); live continuity benchmark passed 2026-10-30 (100% kept on claude-sonnet-5-5 and gpt-6.1-sol, gate 90%). Backup before migrations first (PL-11), then typed memory (PM-12 to PM-14), decisions and tasks (PM-15, PM-16), exclude and explain (PM-17), the context assembler (PM-18), the egress policy (SE-13), export and restore (PL-12), the continuity test (PM-19), privacy wording and threat model (SE-14, SE-15)
-- [ ] P1.5 part 2, Local and lean (M6, section 16b): decide its open items in section 17 first; trial fixes go first
+- [ ] P1.5 part 2, Coding agent (M6, section 11b, added 2026-10-30): decide its open items in section 17 first; trial fixes go first
+- [ ] P1.5 part 3, Local and lean (M7, section 16b): decide its open items in section 17 first
 
 **Can wait**
 

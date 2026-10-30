@@ -2,10 +2,10 @@
 
 **F**rontier models, **U**nified, **S**pend-**E**fficient. Owner: Isaac. Codename was JARVIS.
 
-One desktop app (web in P2) that replaces the Claude and ChatGPT apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
+One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M5-continuity-core.md`** — work only on what it lists (M0–M4 are built; P1 is feature-complete, and its trial runs alongside M5)
+- **Current milestone: none open.** M5 (Continuity core) is done. Next is M6, Coding agent (`docs/requirements.md` §11b); its plan file comes first and Isaac approves it before any build step
 
 ## The 5 things that matter
 
@@ -28,7 +28,8 @@ One desktop app (web in P2) that replaces the Claude and ChatGPT apps, runs on *
 | Routing rule | Quality floor first (RT-17), cost second. Cheap tier never answers the user |
 | Budget | No app budget in month one; provider-console hard limits + anomaly alert (CO-07) |
 | Sync storage | Deferred to P2 (logical records, never the database file; PL-04) |
-| Continuity (2026-10-29) | Next is P1.5 part 1, Continuity core (M5), then Local and lean (M6), then P2. Memory is provider-neutral typed records (decisions and tasks are types) with scope, provenance and authority; one context assembler; egress policy checked in the Rust transport; backup before every migration, migrations stay forward-only. Details: `docs/requirements.md` §3, §8, §15, §17 |
+| Continuity (2026-10-29) | P1.5 part 1, Continuity core (M5); order since re-set by the Roadmap row below. Memory is provider-neutral typed records (decisions and tasks are types) with scope, provenance and authority; one context assembler; egress policy checked in the Rust transport; backup before every migration, migrations stay forward-only. Details: `docs/requirements.md` §3, §8, §15, §17 |
+| Roadmap (2026-10-30) | P1.5 is now three parts: Continuity core (M5, done), Coding agent (M6, §11b: Claude Code and Codex for the daily loop), Local and lean (M7). P2 follows. The coding agent's gate is Isaac's own edit, run, review and commit loop, not feature parity |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 

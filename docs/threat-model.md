@@ -1,6 +1,6 @@
 # FUSE threat model (SE-14)
 
-What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5. **Review it when sync (PL-04), tools and agents (P2), or local models (M6) land.** Each of those adds a boundary.
+What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5. **Review it when sync (PL-04), the coding agent (M6), tools and agents (P2), or local models (M7) land.** Each of those adds a boundary.
 
 ## What's worth protecting
 
