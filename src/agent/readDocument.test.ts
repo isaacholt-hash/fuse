@@ -39,7 +39,7 @@ const call = (input: Record<string, unknown>) => ({
   input: { offset: null, sheet: null, range: null, ...input },
 });
 
-test("read_document: Word as text, PDF page by page, plain files as text, images refused plainly", async () => {
+test("read_document: Word as text, PDF page by page, plain files as text, images as images", async () => {
   const r = repo({
     "notes/plan.docx": DOCX,
     "report.pdf": new Uint8Array([1]),
@@ -56,7 +56,9 @@ test("read_document: Word as text, PDF page by page, plain files as text, images
   );
   expect(pdf.output).toBe("--- page 1 ---\nPage one text\n\n--- page 2 ---\nPage two text");
   expect((await runTool(r, "", call({ path: "todo.md" }))).output).toBe("- ship");
-  expect(await runTool(r, "", call({ path: "photo.jpg" }))).toMatchObject({ isError: true });
+  const photo = await runTool(r, "", call({ path: "photo.jpg" }));
+  expect(photo).toMatchObject({ isError: false, images: [{ mime: "image/jpeg" }] });
+  expect(photo.output).toMatch(/an image \(image\/jpeg/);
   expect((await runTool(r, "", call({ path: "missing.docx" }))).output).toMatch(
     /^Error: .*no such file/,
   );

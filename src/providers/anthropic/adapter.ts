@@ -150,7 +150,16 @@ function anthropicMessage(m: ChatMessage, model: string): Record<string, unknown
         ...m.toolResults.map((r) => ({
           type: "tool_result",
           tool_use_id: r.callId,
-          content: r.content,
+          // WF-03: with images, the result is text then image blocks.
+          content: r.images?.length
+            ? [
+                { type: "text", text: r.content },
+                ...r.images.map((i) => ({
+                  type: "image",
+                  source: { type: "base64", media_type: i.mime, data: i.data },
+                })),
+              ]
+            : r.content,
           ...(r.isError ? { is_error: true } : {}),
         })),
         ...(m.content ? [{ type: "text", text: m.content }] : []),

@@ -45,6 +45,7 @@ const steps: RunStep[] = [
     output: "x",
     isError: false,
     approval: "auto",
+    images: [],
   },
   {
     kind: "tool",
@@ -54,6 +55,7 @@ const steps: RunStep[] = [
     output: "Error: nope.ts: no such file or folder.",
     isError: true,
     approval: "auto",
+    images: [],
   },
   {
     kind: "model",

@@ -156,12 +156,25 @@ function openaiItems(m: ChatMessage, model: string): unknown[] {
   }
   if (m.toolResults?.length) {
     return [
-      ...m.toolResults.map((r) => ({
-        type: "function_call_output",
-        call_id: r.callId,
+      ...m.toolResults.map((r) => {
         // No error flag on OpenAI: the text says so (docs/providers.md, M6).
-        output: r.isError && !r.content.startsWith("Error:") ? `Error: ${r.content}` : r.content,
-      })),
+        const text =
+          r.isError && !r.content.startsWith("Error:") ? `Error: ${r.content}` : r.content;
+        return {
+          type: "function_call_output",
+          call_id: r.callId,
+          // WF-03: with images, the output is a list of input_text and input_image items.
+          output: r.images?.length
+            ? [
+                { type: "input_text", text },
+                ...r.images.map((i) => ({
+                  type: "input_image",
+                  image_url: `data:${i.mime};base64,${i.data}`,
+                })),
+              ]
+            : text,
+        };
+      }),
       ...(m.content ? [{ role: "user", content: m.content }] : []),
     ];
   }

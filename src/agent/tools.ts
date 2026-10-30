@@ -390,7 +390,20 @@ export interface ToolOutcome {
   /** The folder the call worked in, so that folder's CLAUDE.md and AGENTS.md apply (CA-06). */
   folder: string | null;
   change?: FileChange;
+  /** WF-03: an image to show the model with the result. */
+  images?: { mime: string; bytes: Uint8Array }[];
 }
+
+/** Anthropic takes images up to 5 MB once base64-encoded: about 3.75 MB of file. */
+export const MAX_IMAGE_BYTES = 3_750_000;
+
+const IMAGE_MIME: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+};
 
 /** A whole text file, reading every part. */
 export async function readWhole(repo: RepoApi, projectId: string, path: string): Promise<string> {
@@ -435,10 +448,28 @@ export async function runTool(
           return { output: partOf(f.content, offset), isError: false, folder: parent(f.path) };
         }
         if (kind === "image") {
+          if (!repo.readBytes) {
+            return {
+              output: "Error: images can't be read here.",
+              isError: true,
+              folder: parent(path),
+            };
+          }
+          const bytes = await repo.readBytes(projectId, path);
+          if (bytes.length > MAX_IMAGE_BYTES) {
+            return {
+              output: `Error: ${path} is ${(bytes.length / 1e6).toFixed(1)} MB; images over 3.75 MB can't be shown. Ask the user for a smaller copy.`,
+              isError: true,
+              folder: parent(path),
+            };
+          }
+          const ext = /\.([a-z0-9]+)$/i.exec(path)?.[1]?.toLowerCase() ?? "";
+          const mime = IMAGE_MIME[ext] ?? "image/png";
           return {
-            output: `Error: ${path} is an image; FUSE can't show images to the model in a run yet.`,
-            isError: true,
+            output: `${path}: an image (${mime}, ${String(Math.round(bytes.length / 1024))} KB), shown below.`,
+            isError: false,
             folder: parent(path),
+            images: [{ mime, bytes }],
           };
         }
         if (!repo.readBytes)
