@@ -6,7 +6,8 @@ import globals from "globals";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "coverage", "src-tauri/target", "src-tauri/gen"] },
+  // data/coding/fixture: the coding benchmark's sample project, plain JS outside the TS project.
+  { ignores: ["dist", "coverage", "src-tauri/target", "src-tauri/gen", "data/coding/fixture"] },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.strictTypeChecked, prettier],
