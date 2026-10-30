@@ -17,7 +17,7 @@ export interface KnowledgeFileView {
   id: string;
   name: string;
   tokens: number;
-  /** "Searchable", "Indexing…", "Needs an OpenAI key", or an error. */
+  /** "Searchable", "Searchable by word", "Indexing…", or an error. */
   status: string;
   ready: boolean;
   /** What sending it whole with every message would cost, for comparison. */

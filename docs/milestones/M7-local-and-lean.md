@@ -67,10 +67,12 @@
   - Fix: check every 30 minutes and whenever the window regains focus (at most once every 5 minutes). Dismiss hides only the version it was clicked on. If a newer release comes out after one was downloaded, download the newer one. Add a "Check for updates" button next to the version in Settings.
   - Tests use a fake `UpdateApi` and fake timers. No real release is fetched.
   - Done (2026-10-30). `useUpdate` checks every 30 minutes and on window focus (at most every 5 minutes), one check at a time. Dismiss hides only that version. A newer release replaces a downloaded one, and the same version isn't downloaded twice. Settings has a "Check for updates" link next to the version that says what it found, and it shows a dismissed release again.
-- [ ] **10. Smaller context (LL-05).**
-  - FTS5 lexical search over file chunks and knowledge, as the default and the fallback, so search works without an OpenAI key. Embeddings are added when available.
-  - Token ceilings per model and request type, with explicit truncation and the source recorded. The coding agent's tool outputs are capped the same way.
-  - Large-document and repository tests show bounded input.
+- [x] **10. Smaller context (LL-05).**
+  - FTS5 over file chunks (migration 0038, kept up to date by triggers). Large attached files and project knowledge are searched by their words on this computer (BM25), so this works with no OpenAI key and in projects that don't allow embedding.
+  - With an embedding model, the word and meaning rankings are merged (reciprocal rank fusion), and an embedding failure falls back to words. The send-time "needs an OpenAI key" block is gone, and knowledge files without embeddings read "Searchable by word".
+  - Token ceilings as data (`data/context.json`). A chat request stays under the smaller of 400K tokens and 75% of the model's context. Past it, the oldest messages are left out, the request says so, and the context package records a `trimmed` part. Housekeeping input is capped at 8K tokens, and the local model's at 2.5K, each with a marker.
+  - Coding-run tool outputs were already capped at 40,000 characters (M6).
+  - Tests: a 1,200-section manual (about 27K tokens) gets about 3K tokens of on-topic, cited excerpts with no key.
 - [ ] **11. Exact-match cache (LL-06, RT-13).**
   - Keyed by normalised input, context version, model or operation version, project and output format, with TTLs and invalidation.
   - Never used in incognito, for answers that used web search, or for personal, dynamic or high-stakes requests. Tested for stale and cross-project hits.
