@@ -84,6 +84,23 @@ export function scopedRepo(base: RepoApi, folders: readonly RunFolder[]): RepoAp
       const { folder, rel } = resolvePath(folders, path);
       return entries(folder.label, await base.list(folder.folderId, rel, recursive));
     },
+    ...(base.writeBytes
+      ? {
+          writeBytes: async (_id: string, path: string, bytes: Uint8Array) => {
+            const { folder, rel } = resolvePath(folders, path);
+            const p = (await base.writeBytes?.(folder.folderId, rel, bytes)) ?? rel;
+            return prefix(folder.label, p);
+          },
+        }
+      : {}),
+    ...(base.removeBytes
+      ? {
+          removeBytes: (_id: string, path: string) => {
+            const { folder, rel } = resolvePath(folders, path);
+            return base.removeBytes?.(folder.folderId, rel) ?? Promise.resolve();
+          },
+        }
+      : {}),
     ...(base.readBytes
       ? {
           readBytes: (_id: string, path: string) => {

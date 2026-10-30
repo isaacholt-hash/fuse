@@ -61,6 +61,7 @@ import {
   gitArgs,
   gitSummary,
   READ_DOCUMENT_TOOL,
+  WRITE_DOCUMENT_TOOL,
   READ_ONLY_TOOLS,
   readWhole,
   runTool,
@@ -94,7 +95,7 @@ function workGuide(mode: RunMode): string {
           "End with a clear answer: what you found, and for a deliverable the user wants, exactly what you'd write and where. Don't claim to have changed anything.",
         ]
       : [
-          "You can list, read and search files, create and change them with write_file and edit_file, rename and move them with move_file, delete them with delete_file, and run commands with run_command. The user approves each command and may decline.",
+          "You can list, read and search files, create and change text files with write_file and edit_file, make Word, Excel and PDF files with write_document, rename and move them with move_file, delete them with delete_file, and run commands with run_command. The user approves each command and may decline.",
           "Do what was asked and nothing more. Prefer writing a new file over overwriting one the user made; never delete a file unless asked to.",
           mode === "ask"
             ? "The user approves each change before it happens, and may decline; if they do, take that into account. End with what you made or changed (each file and why)."
@@ -133,7 +134,7 @@ export const toolsFor = (mode: RunMode, kind: RunKind = "code") =>
   kind === "work"
     ? mode === "plan"
       ? [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL]
-      : [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL, ...EDIT_TOOLS, COMMAND_TOOL]
+      : [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL, ...EDIT_TOOLS, WRITE_DOCUMENT_TOOL, COMMAND_TOOL]
     : mode === "plan"
       ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
       : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];
@@ -516,7 +517,7 @@ async function work(
         ...(out.approval ? { approval: out.approval } : {}),
         ...(kept.images.length ? { images: kept.images } : {}),
       });
-      if (out.change) await addChange(db, tenant, { runId, stepId, ...out.change });
+      if (out.change) await recordChange(deps, runId, stepId, out.change);
     }
     await progress(deps, runId, input);
   }
@@ -648,6 +649,33 @@ async function keepImages(
     images.push({ sha256, mime: i.mime });
   }
   return { output: out.output, images };
+}
+
+/**
+ * A file change for the diff and undo. A document's bytes (WF-04) go into the attachment store,
+ * by hash, so undo can put the old ones back.
+ */
+async function recordChange(
+  deps: RunDeps,
+  runId: string,
+  stepId: string,
+  change: FileChange,
+): Promise<void> {
+  const { binary, ...text } = change;
+  let beforeSha: string | null = null;
+  let afterSha: string | null = null;
+  if (binary && deps.files) {
+    afterSha = (await deps.files.put(binary.after)).sha256;
+    if (binary.before) beforeSha = (await deps.files.put(binary.before)).sha256;
+  }
+  await addChange(deps.db, deps.tenant, { runId, stepId, ...text, beforeSha, afterSha });
+}
+
+/** SHA-256 hex of bytes, as the attachment store names them. */
+async function sha256(bytes: Uint8Array): Promise<string> {
+  // A copy, so the digest gets a plain ArrayBuffer whatever backs `bytes`.
+  const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /** Base64 of bytes, in chunks (no Buffer in the webview). */
@@ -982,6 +1010,24 @@ export async function undoChange(base: RunDeps, changeId: string): Promise<void>
   const run = await getRun(db, tenant, c.runId);
   if (!run) throw new Error("Run not found");
   const { repo } = await forRun(base, run.id);
+  if (c.afterSha) {
+    // WF-04: a document. Refused if it's changed since; otherwise the old bytes go back.
+    const now = repo.readBytes ? await repo.readBytes(HERE, c.path).catch(() => null) : null;
+    if (!now || (await sha256(now)) !== c.afterSha) {
+      throw new Error(`${c.path} has changed since the run wrote it, so it wasn't undone.`);
+    }
+    if (c.beforeSha) {
+      const before = await base.files?.get(c.beforeSha);
+      if (!before || !repo.writeBytes)
+        throw new Error(`The earlier ${c.path} isn't kept any more.`);
+      await repo.writeBytes(HERE, c.path, before);
+    } else {
+      if (!repo.removeBytes) throw new Error(`${c.path} can't be removed here.`);
+      await repo.removeBytes(HERE, c.path);
+    }
+    await markUndone(db, tenant, changeId);
+    return;
+  }
   const now = await readWhole(repo, HERE, c.path).catch(() => null);
   if (c.fromPath) {
     if (now === null) throw new Error(`${c.path} isn't there any more, so the move wasn't undone.`);

@@ -9,6 +9,7 @@ import { grantFolder, linkThreadFolder } from "@/storage/folders";
 import { listChanges, listRunFolders, listSteps } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread } from "@/storage/threads";
+import { docxText } from "@/documents/read";
 import { startRun, undoChange, type RunDeps } from "./run";
 
 const t = DEFAULT_TENANT;
@@ -330,4 +331,104 @@ test("WF-03: an image read in a run is kept and sent with its result to a vision
   const blind = await run([]);
   expect(result(blind.sent[1])?.images).toBeUndefined();
   expect(result(blind.sent[1])?.content).toMatch(/can't read images/);
+});
+
+test("WF-04: a Work run writes a Word file; undo removes it, or puts the old one back", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const docs = await grantFolder(db, t, "/home/me/docs");
+  await linkThreadFolder(db, t, thread.id, docs.id);
+  const disk = new Map<string, Uint8Array>();
+  const stored = new Map<string, Uint8Array>();
+  const sha = async (b: Uint8Array) =>
+    [...new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(b)))]
+      .map((x) => x.toString(16).padStart(2, "0"))
+      .join("");
+  const files = {
+    put: async (bytes: Uint8Array) => {
+      const sha256 = await sha(bytes);
+      stored.set(sha256, bytes);
+      return { sha256, size: bytes.length };
+    },
+    get: (s: string) => Promise.resolve(stored.get(s) ?? new Uint8Array()),
+  };
+  const repo: RepoApi = {
+    ...filesRepo({}),
+    readBytes: (_id, path) => {
+      const b = disk.get(path);
+      return b ? Promise.resolve(b) : Promise.reject(new Error(`${path}: no such file`));
+    },
+    writeBytes: (_id, path, bytes) => {
+      disk.set(path, bytes);
+      return Promise.resolve(path);
+    },
+    removeBytes: (_id, path) => {
+      disk.delete(path);
+      return Promise.resolve();
+    },
+  };
+  const write = (text: string) => ({
+    id: `w-${text}`,
+    name: "write_document",
+    input: {
+      path: "summary.docx",
+      title: "Summary",
+      blocks: [{ kind: "paragraph", text, level: null, rows: null }],
+      sheets: null,
+    },
+  });
+  const turns = [
+    { text: "", calls: [write("First draft.")] },
+    { text: "", calls: [write("Second draft.")] },
+    { text: "Wrote summary.docx." },
+  ];
+  let n = 0;
+  const adapter: ProviderAdapter = {
+    provider: "anthropic",
+    listModels: () => Promise.resolve([]),
+    async *streamChat(_h, m): AsyncGenerator<StreamEvent> {
+      const turn = turns[n++];
+      await Promise.resolve();
+      yield { type: "text", text: turn?.text ?? "" };
+      for (const call of turn?.calls ?? []) yield { type: "tool_call", call };
+      yield {
+        type: "done",
+        usage: {
+          inputTokens: 1,
+          outputTokens: 1,
+          cachedInputTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          webSearchCalls: 0,
+        },
+        usageReported: true,
+        stopReason: turn?.calls?.length ? "tool_use" : "end_turn",
+        providerRequestId: null,
+        attempts: 1,
+        turn: { provider: "anthropic", model: m, items: [{ n }] },
+      };
+    },
+  };
+  const deps: RunDeps = { db, tenant: t, catalog, repo, files, adapterFor: () => adapter };
+  const run = await startRun(deps, {
+    projectId: null,
+    threadId: thread.id,
+    messageId: null,
+    task: "Write a summary",
+    model,
+    mode: "auto_edit",
+    kind: "work",
+  });
+  expect(run.status).toBe("done");
+  const changes = await listChanges(db, t, run.id);
+  expect(changes.map((c) => [c.before !== null, c.after])).toEqual([
+    [false, "# Summary\n\nFirst draft."],
+    [true, "# Summary\n\nSecond draft."],
+  ]);
+  expect(changes[1]?.beforeSha).toBe(changes[0]?.afterSha);
+  // Undo the second: the first draft is back. Undo the first: the file is gone.
+  await undoChange(deps, changes[1]?.id ?? "");
+  expect(docxText(disk.get("summary.docx") ?? new Uint8Array())).toBe("# Summary\n\nFirst draft.");
+  await undoChange(deps, changes[0]?.id ?? "");
+  expect(disk.has("summary.docx")).toBe(false);
 });
