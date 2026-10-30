@@ -25,6 +25,8 @@ import {
   Sparkles,
   X,
   Columns2,
+  FolderTree,
+  SquareTerminal,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useRef, useState } from "react";
@@ -37,6 +39,7 @@ import { openExternal } from "./openExternal";
 import { Hint, Mark, Tip } from "./primitives";
 import type {
   MessageView,
+  RunView,
   ModeChoice,
   ModelOption,
   PendingAttachment,
@@ -338,7 +341,10 @@ export function Messages({
   onSideBySide,
   onOpenFile,
   onOpenSource,
+  onContinueRun,
 }: {
+  /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
+  onContinueRun?: (runId: string, raise: boolean) => void;
   /** FK-10: opens an attached file in the side panel. */
   onOpenFile?: (fileId: string) => void;
   /** FK-10: opens a cited file at the cited place (a chunk). */
@@ -588,6 +594,13 @@ export function Messages({
                       <span className="text-xs font-semibold">{message.providerName}</span>
                       <span className="text-[10px] text-muted-foreground">{message.model}</span>
                     </div>
+                    {message.run && (
+                      <RunCard
+                        run={message.run}
+                        busy={busy}
+                        {...(onContinueRun ? { onContinue: onContinueRun } : {})}
+                      />
+                    )}
                     {message.content && (
                       <div
                         data-answer={message.id}
@@ -900,6 +913,8 @@ export function Composer({
   onAddLink,
   webSearch = null,
   onToggleWebSearch,
+  code = false,
+  onToggleCode,
   routing,
   insert,
   status = null,
@@ -934,6 +949,9 @@ export function Composer({
   /** On / off, or null when the selected model can't search. */
   webSearch?: boolean | null;
   onToggleWebSearch?: () => void;
+  /** M6: the next message starts a coding run in the project's repository. */
+  code?: boolean;
+  onToggleCode?: () => void;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
@@ -1414,6 +1432,27 @@ export function Composer({
                 </Button>
               </Tip>
             )}
+            {onToggleCode && (
+              <Tip
+                label={
+                  code
+                    ? "Code on: the next message starts a coding run that reads this project's repository"
+                    : "Code off"
+                }
+              >
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Coding run"
+                  aria-pressed={code}
+                  className={`gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                  onClick={onToggleCode}
+                >
+                  <SquareTerminal className="size-3.5" />
+                  <span className="hidden min-[900px]:inline">Code</span>
+                </Button>
+              </Tip>
+            )}
             <Tip
               label={
                 thinkHarder
@@ -1564,5 +1603,100 @@ export function Composer({
         </span>
       </div>
     </footer>
+  );
+}
+
+const RUN_STATUS: Record<RunView["status"], string> = {
+  running: "Working",
+  paused: "Paused",
+  done: "Done",
+  stopped: "Stopped",
+  error: "Failed",
+};
+
+/**
+ * A coding run on its answer (M6): what it did, step by step, and what it cost against its cap.
+ * Paused at the cap or stopped, it can go on from where it was.
+ */
+function RunCard({
+  run,
+  busy,
+  onContinue,
+}: {
+  run: RunView;
+  busy: boolean;
+  onContinue?: (runId: string, raise: boolean) => void;
+}) {
+  const live = run.status === "running";
+  return (
+    <section aria-label="Coding run" className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
+      <div className="flex items-center gap-2 text-[11px]">
+        <SquareTerminal className="size-3.5 text-muted-foreground" />
+        <span className="font-medium">Coding run</span>
+        <span className="text-muted-foreground">read-only</span>
+        <span
+          className={`rounded px-1.5 py-0.5 text-[10px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
+        >
+          {RUN_STATUS[run.status]}
+        </span>
+        <span className="ml-auto font-mono text-[10px] text-muted-foreground tabular-nums">
+          {run.costLabel}
+        </span>
+      </div>
+      {(run.steps.length > 0 || run.streaming) && (
+        <ol className="mt-2 space-y-1 border-l pl-3 text-[11px]">
+          {run.steps.map((s) =>
+            s.kind === "tool" ? (
+              <li key={s.id} className="flex items-start gap-1.5">
+                {s.label.startsWith("Searched") ? (
+                  <Search className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                ) : s.label.startsWith("Listed") ? (
+                  <FolderTree className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                ) : (
+                  <FileText className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0">
+                  <span className="font-mono break-all">{s.label}</span>
+                  {s.error && <span className="ml-1.5 text-destructive">{s.error}</span>}
+                </span>
+              </li>
+            ) : (
+              <li key={s.id} className="whitespace-pre-wrap text-muted-foreground">
+                {s.label}
+              </li>
+            ),
+          )}
+          {run.streaming && (
+            <li className="whitespace-pre-wrap text-muted-foreground">{run.streaming}</li>
+          )}
+        </ol>
+      )}
+      {live && !run.streaming && (
+        <p
+          role="status"
+          className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+        >
+          <LoaderCircle className="size-3 animate-spin" />
+          Working…
+        </p>
+      )}
+      {(run.status === "paused" || run.status === "stopped") && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+          {run.note && <span className="text-muted-foreground">{run.note}</span>}
+          {onContinue && (
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={busy}
+              onClick={() => {
+                onContinue(run.id, run.status === "paused");
+              }}
+            >
+              {run.status === "paused" ? "Continue (+$1.00)" : "Continue"}
+            </Button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }

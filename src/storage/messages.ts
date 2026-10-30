@@ -192,6 +192,15 @@ export async function finishMessage(
 }
 
 /** Saves streamed text so far (no message loss on crash: the row stays `streaming`). */
+/** An answer being worked on again (a coding run continued, M6). */
+export async function markStreaming(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  await db.execute(
+    `UPDATE messages SET status = 'streaming', error_code = NULL, error_message = NULL,
+       updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [Date.now(), tenant.workspaceId, id],
+  );
+}
+
 export async function updateMessageContent(
   db: SqlDb,
   tenant: Tenant,

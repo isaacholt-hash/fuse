@@ -102,6 +102,8 @@ export interface MessageView {
   summaryAbove?: boolean;
   /** Parts of attached files this answer was given, e.g. "book.txt, lines 120–140" (FK-02). */
   fileSources?: { label: string; chunkId: string | null }[];
+  /** The coding run this answer is (M6). */
+  run?: RunView;
   /** The answer split around its artifacts (AR-01); absent when it has none. */
   parts?: (
     | { kind: "text"; text: string }
@@ -114,6 +116,28 @@ export interface MessageView {
         complete: boolean;
       }
   )[];
+}
+
+/** A coding run shown on its answer (M6 step 5b). */
+export interface RunView {
+  id: string;
+  status: "running" | "paused" | "done" | "stopped" | "error";
+  /** e.g. "$0.12 of $1.00". */
+  costLabel: string;
+  /** Why it paused, stopped or failed. */
+  note: string | null;
+  steps: RunStepView[];
+  /** The turn still being written. */
+  streaming: string;
+}
+
+export interface RunStepView {
+  id: string;
+  kind: "note" | "tool";
+  /** "Read src/app/tide.ts", or the model's note for a turn. */
+  label: string;
+  /** A tool's error, first line. */
+  error: string | null;
 }
 
 /** The routing badge on an answer. */
