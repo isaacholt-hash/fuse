@@ -1,6 +1,8 @@
 // The coding agent's read-only tools (M6 step 5, CA-01). One strict schema each, written to
 // OpenAI's rules so both providers get the same definition (docs/providers.md, M6). The list is
 // fixed for a whole run, in this order, so the prompt cache holds.
+import { docKind, docxText, partOf, xlsxText } from "@/documents/read";
+import { pageMarker } from "@/files/pdfText";
 import type { RepoApi } from "@/repo/api";
 import type { ToolCall, ToolSpec } from "@/providers/types";
 
@@ -69,6 +71,27 @@ export const READ_ONLY_TOOLS: ToolSpec[] = [
 
 /** CA-02: the tools that change files, offered only when the run may edit (after the read-only
  * ones, in this order, for the whole run). */
+/** WF-03: Word, Excel and PDF files as text, for Work runs. */
+export const READ_DOCUMENT_TOOL: ToolSpec = {
+  name: "read_document",
+  description:
+    "Read a document: Word (.docx) as text with headings, lists and tables; Excel (.xlsx) as a " +
+    "table per sheet with cell references, values and formulas; PDF as text page by page; other " +
+    "files as text. Long documents come in parts: call again with the offset the result gives. " +
+    'For a big workbook, name a sheet and a range (e.g. "A1:F40").',
+  schema: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "The file, from the folder's root." },
+      offset: { type: ["integer", "null"], description: "Character offset; null for the start." },
+      sheet: { type: ["string", "null"], description: "Excel only: one sheet; null for all." },
+      range: { type: ["string", "null"], description: 'Excel only: e.g. "B2:D20"; null for all.' },
+    },
+    required: ["path", "offset", "sheet", "range"],
+    additionalProperties: false,
+  },
+};
+
 export const EDIT_TOOLS: ToolSpec[] = [
   {
     name: "edit_file",
@@ -396,10 +419,53 @@ export async function runTool(
   repo: RepoApi,
   projectId: string,
   call: ToolCall,
+  /** WF-03: PDF text; the app's PDF.js reader unless a test gives one. */
+  pdfText: (bytes: Uint8Array) => Promise<string[]> = async (b) =>
+    (await import("@/files/pdfText")).readPdfText(b),
 ): Promise<ToolOutcome> {
   const input = call.input;
   try {
     switch (call.name) {
+      case "read_document": {
+        const path = str(input.path);
+        const offset = typeof input.offset === "number" && input.offset > 0 ? input.offset : 0;
+        const kind = docKind(path);
+        if (kind === "other") {
+          const f = await repo.read(projectId, path, 0);
+          return { output: partOf(f.content, offset), isError: false, folder: parent(f.path) };
+        }
+        if (kind === "image") {
+          return {
+            output: `Error: ${path} is an image; FUSE can't show images to the model in a run yet.`,
+            isError: true,
+            folder: parent(path),
+          };
+        }
+        if (!repo.readBytes)
+          return {
+            output: "Error: documents can't be read here.",
+            isError: true,
+            folder: parent(path),
+          };
+        const bytes = await repo.readBytes(projectId, path);
+        const full =
+          kind === "word"
+            ? docxText(bytes)
+            : kind === "excel"
+              ? xlsxText(
+                  bytes,
+                  typeof input.sheet === "string" && input.sheet ? input.sheet : null,
+                  typeof input.range === "string" && input.range ? input.range : null,
+                )
+              : (await pdfText(bytes))
+                  .map((page, i) => `${pageMarker(i + 1)}\n${page}`)
+                  .join("\n\n");
+        return {
+          output: partOf(full || "(no text in this document)", offset),
+          isError: false,
+          folder: parent(path),
+        };
+      }
       case "list_files": {
         const path = str(input.path);
         const entries = await repo.list(projectId, path, input.recursive === true);

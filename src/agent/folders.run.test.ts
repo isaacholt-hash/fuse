@@ -221,7 +221,13 @@ test("WF-01: a Work run has its own guide and no git tools, and is recorded as w
   expect(seen[0]?.system).toContain("<work_agent>");
   expect(seen[0]?.system).not.toContain("<coding_agent>");
   expect(seen[0]?.tools).toEqual(
-    expect.arrayContaining(["read_file", "write_file", "move_file", "run_command"]),
+    expect.arrayContaining([
+      "read_file",
+      "read_document",
+      "write_file",
+      "move_file",
+      "run_command",
+    ]),
   );
   expect(seen[0]?.tools.some((n) => n.startsWith("git_") || n === "open_pull_request")).toBe(false);
 });

@@ -41,6 +41,8 @@ export interface RepoApi {
   check(path: string): Promise<RepoInfo>;
   list(folderId: string, path: string, recursive: boolean): Promise<RepoEntry[]>;
   read(folderId: string, path: string, offset: number): Promise<RepoFileText>;
+  /** WF-03: a whole file's bytes (documents, images), up to 25 MB. */
+  readBytes?(folderId: string, path: string): Promise<Uint8Array>;
   search(folderId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
   write(folderId: string, path: string, content: string): Promise<RepoChange>;
   remove(folderId: string, path: string): Promise<RepoChange>;
@@ -53,6 +55,8 @@ export const tauriRepo: RepoApi = {
   list: (folderId, path, recursive) =>
     invoke<RepoEntry[]>("repo_list", { folderId, path, recursive }),
   read: (folderId, path, offset) => invoke<RepoFileText>("repo_read", { folderId, path, offset }),
+  readBytes: async (folderId, path) =>
+    new Uint8Array(await invoke<ArrayBuffer>("repo_read_bytes", { folderId, path })),
   search: (folderId, path, query, ignoreCase) =>
     invoke<RepoHit[]>("repo_search", { folderId, path, query, ignoreCase }),
   write: (folderId, path, content) => invoke<RepoChange>("repo_write", { folderId, path, content }),

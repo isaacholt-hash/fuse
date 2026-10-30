@@ -407,6 +407,28 @@ pub fn read(root: &Path, rel: &str, offset: u64, allow_secrets: bool) -> Result<
     })
 }
 
+/// The most a document read (WF-03) takes in one go: Word, Excel and PDF files are read whole.
+pub const MAX_BYTES: u64 = 25 * 1024 * 1024;
+
+/// A whole file's bytes (WF-03: documents and images), with the same path, ignore and secret
+/// rules as `read`.
+pub fn read_bytes(root: &Path, rel: &str, allow_secrets: bool) -> Result<Vec<u8>, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve(&root, rel)?;
+    readable(&root, &path, rel, allow_secrets)?;
+    let size = fs::metadata(&path)
+        .map_err(|e| format!("{rel}: {e}"))?
+        .len();
+    if size > MAX_BYTES {
+        return Err(format!(
+            "{rel} is {:.0} MB; documents over {} MB aren't read.",
+            size as f64 / 1e6,
+            MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    fs::read(&path).map_err(|e| format!("{rel}: {e}"))
+}
+
 /// Lines containing `query`, in text files under `rel`, ignored and secret files left out.
 pub fn search(
     root: &Path,
@@ -520,6 +542,17 @@ pub mod commands {
     ) -> Result<FileText, String> {
         let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         read(&root, &path, offset, secrets)
+    }
+
+    /// WF-03: a whole file's raw bytes, for documents and images.
+    #[tauri::command]
+    pub async fn repo_read_bytes(
+        db: State<'_, Database>,
+        folder_id: String,
+        path: String,
+    ) -> Result<tauri::ipc::Response, String> {
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
+        read_bytes(&root, &path, secrets).map(tauri::ipc::Response::new)
     }
 
     #[tauri::command]
@@ -877,6 +910,21 @@ mod tests {
                 .unwrap_err()
                 .contains("isn't granted")
         );
+    }
+
+    #[test]
+    fn whole_files_as_bytes_keep_the_path_rules() {
+        let r = repo();
+        fs::write(r.join("report.docx"), [0x50, 0x4b, 0x03, 0x04, 0, 1, 2]).unwrap();
+        assert_eq!(
+            read_bytes(&r, "report.docx", false).unwrap()[..4],
+            [0x50, 0x4b, 0x03, 0x04]
+        );
+        assert!(read_bytes(&r, "../outside.docx", false).is_err());
+        assert!(read_bytes(&r, ".git/config", false).is_err());
+        fs::write(r.join(".env"), "KEY=1").unwrap();
+        assert!(read_bytes(&r, ".env", false).is_err());
+        assert!(read_bytes(&r, ".env", true).is_ok());
     }
 
     #[test]
