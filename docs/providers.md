@@ -249,3 +249,54 @@ Unchanged from M0 (see "Errors and retries"), with these additions from the 2026
 Sources:
 - Anthropic: [prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching), [effort](https://platform.claude.com/docs/en/build-with-claude/effort), [embeddings](https://platform.claude.com/docs/en/build-with-claude/embeddings), [errors](https://platform.claude.com/docs/en/api/errors)
 - OpenAI: [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [embeddings](https://developers.openai.com/api/docs/guides/embeddings), [pricing](https://developers.openai.com/api/docs/pricing), model pages for [gpt-6-astra](https://developers.openai.com/api/docs/models/gpt-6-astra), [gpt-6.1-sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol), [gpt-6-luna](https://developers.openai.com/api/docs/models/gpt-6-luna)
+
+## M6: tool calling for the coding agent (verified 2026-10-30)
+
+Checked against the live docs on 2026-10-30. Decisions for FUSE are in bold. Where a page didn't say, it's marked unverified.
+
+### Request and response shapes
+
+| Topic | Anthropic (Messages) | OpenAI (Responses) |
+| --- | --- | --- |
+| Tool definition | `{name, description, input_schema, strict?}`; name matches `^[a-zA-Z0-9_-]{1,128}$` | `{type:"function", name, description, parameters, strict}`; name rules not on the page (unverified) |
+| Strict schemas | `strict:true` constrains sampling, so `input` always matches; a JSON Schema subset; optional fields allowed | `strict:true` needs `additionalProperties:false` and every property in `required` (optional = `["type","null"]`); a bad schema is a 400. Omitting `strict` tries strict and silently falls back |
+| `tool_choice` | `auto` (default), `any`, `tool`, `none`. **Opus 5.5 and Sonnet 5.5 reject `any` and `tool` (400)**; Haiku 5.5 accepts them but then skips thinking | `auto` (default), `required`, `none`, `{type:"function", name}`, `{type:"allowed_tools", …}`. No model restriction documented |
+| Parallel calls | On by default; off with `tool_choice:{type:"auto", disable_parallel_tool_use:true}` | On by default; off with `parallel_tool_calls:false` |
+| Model wants tools | `stop_reason:"tool_use"`; done is `"end_turn"` | No stop reason: `output` has `function_call` items; done when it has none. Check `status` and `incomplete_details.reason` |
+| Sending results | Next `user` message: one `{type:"tool_result", tool_use_id, content, is_error?}` per call, **all in one message, before any text**. Content can be text, images or documents | Append `{type:"function_call_output", call_id, output}` to `input`; `output` is a string or an array of image/file parts. **No error flag**: the error goes in the text |
+| Every call answered | Yes, required | Not stated on the page (unverified); FUSE answers every call anyway |
+
+### Streaming
+
+- **Anthropic:** `content_block_start` with `{type:"tool_use", id, name, input:{}}`, then `content_block_delta` with `input_json_delta.partial_json` (the first can be `""`), then `content_block_stop`. Join the fragments and parse there. Then `message_delta` carries `stop_reason`. Thinking blocks end with a `signature_delta` before their `content_block_stop`. A dropped stream can't resume a partial `tool_use` or thinking block.
+- **OpenAI:** `response.output_item.added` with `{type:"function_call", id:"fc_…", call_id:"call_…", name, arguments:""}`, then `response.function_call_arguments.delta` (`item_id`, `output_index`, `delta`), then `.done` with the full `arguments` string, then `response.output_item.done` with the whole item. Accumulate by `output_index`. **Take reasoning items from `output_item.done`**: `encrypted_content` can be incomplete in `added`.
+
+### Replaying a tool loop
+
+This is the main change from M0, where history is plain text.
+
+- **Anthropic:** echo the assistant `content` unchanged, `thinking` and `redacted_thinking` blocks included, in order and with their signatures. On 5.1+ models the signature is checked against everything before it, so the history must stay append-only. Don't change thinking or effort settings inside one tool loop. Sonnet 5.5 and Haiku 5.5 thinking blocks only work in the account that made them. If the model changes, the API drops blocks the new model can't read, silently and unbilled.
+- **OpenAI:** with `store:false`, replay every `reasoning`, `function_call` and `function_call_output` item since the last user message, untouched. Reasoning items carry `encrypted_content` by default; `include:["reasoning.encrypted_content"]` is legacy. Round-trip the assistant `phase` (`commentary` / `final_answer`), or a preamble can be taken as the final answer. `reasoning.context:"all_turns"` is supported on gpt-6.1-sol; unverified for gpt-6-astra and gpt-6-luna.
+
+### Cost and caching
+
+- Tool definitions, calls and results are billed as input tokens on both.
+- **Anthropic adds a fixed tool system prompt: 286 tokens with `auto` or `none`, 406 with `any` or `tool`,** on all three 5.5 models.
+- OpenAI publishes no fixed overhead (unverified).
+- Tools sit at the front of the cached prefix on both: tools → system → messages (Anthropic); system → tools → developer → history (OpenAI). Changing a tool's name, description, schema or order invalidates everything after it.
+- Changing `tool_choice` or the parallel setting invalidates Anthropic's messages cache; on OpenAI, `parallel_tool_calls` is part of the prefix.
+
+### Decisions for FUSE
+
+- **One tool schema for both providers, written to OpenAI's stricter rules** (every field required, optional ones nullable, `additionalProperties:false`), sent with `strict:true` on both.
+- **`tool_choice` is always `auto`.** Forcing a tool is rejected on Opus and Sonnet 5.5, and the agent doesn't need it.
+- **Parallel calls stay on.** Anthropic results all go in one user message, in call order.
+- **The tool list is fixed for a whole run, in a fixed order,** so the cache prefix holds. Permission modes change what a call is allowed to do, not which tools are sent.
+- **A tool loop stays on one model.** Thinking and reasoning items can't move between providers, and on Anthropic not even between models safely. Routing inside a run (step 11) changes model only between loops: the plan and summaries are separate requests with plain-text handoffs.
+- **The adapters keep each turn's native items as an opaque, provider-tagged record** and replay it unchanged inside the loop. The chat history stays plain text as before.
+- **Tool errors:** Anthropic gets `is_error:true`; OpenAI gets the same text, starting `Error:`.
+- **Fixtures for step 2,** recorded with the same allowlist and key check as M0: a single call, the follow-up with its result, two calls in parallel, an error result, and a call on a reasoning model (Sonnet 5.5, gpt-6.1-sol) so thinking and reasoning replay is covered.
+
+Sources:
+- Anthropic: [define tools](https://platform.claude.com/docs/en/agents-and-tools/tool-use/define-tools), [handle tool calls](https://platform.claude.com/docs/en/agents-and-tools/tool-use/handle-tool-calls), [overview and pricing](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview), [parallel tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/parallel-tool-use), [strict tool use](https://platform.claude.com/docs/en/agents-and-tools/tool-use/strict-tool-use), [tool use with prompt caching](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-use-with-prompt-caching), [streaming](https://platform.claude.com/docs/en/build-with-claude/streaming), [thinking](https://platform.claude.com/docs/en/build-with-claude/thinking)
+- OpenAI: [function calling](https://developers.openai.com/api/docs/guides/function-calling), [reasoning](https://developers.openai.com/api/docs/guides/reasoning), [prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching), [streaming events](https://developers.openai.com/api/reference/resources/responses/streaming-events)
