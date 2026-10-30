@@ -5,7 +5,8 @@ import { uuidv7 } from "./ids";
 import type { SqlDb } from "./sql";
 
 export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
-export type RunMode = "plan";
+/** CA-04: read-only, ask before each edit and command (step 8), or edits go ahead. */
+export type RunMode = "plan" | "ask" | "auto_edit";
 
 export interface Run {
   id: string;
@@ -122,14 +123,14 @@ export async function createRun(
   run: Pick<
     Run,
     "projectId" | "threadId" | "messageId" | "task" | "provider" | "model" | "capMicroUsd"
-  >,
+  > & { mode?: RunMode },
 ): Promise<Run> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO runs (id, workspace_id, user_id, project_id, thread_id, message_id, task, mode,
        provider, model, status, cap_micro_usd, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'plan', ?, ?, 'running', ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -138,6 +139,7 @@ export async function createRun(
       run.threadId,
       run.messageId,
       run.task,
+      run.mode ?? "plan",
       run.provider,
       run.model,
       run.capMicroUsd,
@@ -256,14 +258,15 @@ export async function addToolStep(
   tenant: Tenant,
   runId: string,
   step: { call: ToolCall; output: string; isError: boolean },
-): Promise<void> {
+): Promise<string> {
   const now = Date.now();
+  const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, tool_name, tool_call_id,
        input, output, is_error, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?)`,
     [
-      uuidv7(now),
+      id,
       tenant.workspaceId,
       tenant.userId,
       runId,
@@ -277,6 +280,7 @@ export async function addToolStep(
       now,
     ],
   );
+  return id;
 }
 
 /** The runs shown in a chat's answers, with their steps, by answer id. */
@@ -284,15 +288,112 @@ export async function runsForThread(
   db: SqlDb,
   tenant: Tenant,
   threadId: string,
-): Promise<Map<string, { run: Run; steps: RunStep[] }>> {
+): Promise<Map<string, { run: Run; steps: RunStep[]; changes: RunChange[] }>> {
   const rows = await db.select<{ id: string }>(
     "SELECT id FROM runs WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL",
     [tenant.workspaceId, threadId],
   );
-  const out = new Map<string, { run: Run; steps: RunStep[] }>();
+  const out = new Map<string, { run: Run; steps: RunStep[]; changes: RunChange[] }>();
   for (const { id } of rows) {
     const run = await getRun(db, tenant, id);
-    if (run?.messageId) out.set(run.messageId, { run, steps: await listSteps(db, tenant, id) });
+    if (run?.messageId) {
+      out.set(run.messageId, {
+        run,
+        steps: await listSteps(db, tenant, id),
+        changes: await listChanges(db, tenant, id),
+      });
+    }
   }
   return out;
+}
+
+/** A file a run changed (CA-02). `before` null: it was created; `after` null: deleted. */
+export interface RunChange {
+  id: string;
+  runId: string;
+  stepId: string | null;
+  path: string;
+  fromPath: string | null;
+  before: string | null;
+  after: string | null;
+  status: "applied" | "undone";
+  createdAt: number;
+}
+
+interface ChangeRow {
+  id: string;
+  run_id: string;
+  step_id: string | null;
+  path: string;
+  from_path: string | null;
+  before: string | null;
+  after: string | null;
+  status: "applied" | "undone";
+  created_at: number;
+}
+
+const toChange = (r: ChangeRow): RunChange => ({
+  id: r.id,
+  runId: r.run_id,
+  stepId: r.step_id,
+  path: r.path,
+  fromPath: r.from_path,
+  before: r.before,
+  after: r.after,
+  status: r.status,
+  createdAt: r.created_at,
+});
+
+const CHANGE_COLUMNS = "id, run_id, step_id, path, from_path, before, after, status, created_at";
+
+export async function addChange(
+  db: SqlDb,
+  tenant: Tenant,
+  c: Omit<RunChange, "id" | "status" | "createdAt">,
+): Promise<string> {
+  const now = Date.now();
+  const id = uuidv7(now);
+  await db.execute(
+    `INSERT INTO run_changes (id, workspace_id, user_id, run_id, step_id, path, from_path, before,
+       after, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      tenant.workspaceId,
+      tenant.userId,
+      c.runId,
+      c.stepId,
+      c.path,
+      c.fromPath,
+      c.before,
+      c.after,
+      now,
+      now,
+    ],
+  );
+  return id;
+}
+
+export async function listChanges(db: SqlDb, tenant: Tenant, runId: string): Promise<RunChange[]> {
+  const rows = await db.select<ChangeRow>(
+    `SELECT ${CHANGE_COLUMNS} FROM run_changes WHERE workspace_id = ? AND run_id = ?
+     ORDER BY created_at, id`,
+    [tenant.workspaceId, runId],
+  );
+  return rows.map(toChange);
+}
+
+export async function getChange(db: SqlDb, tenant: Tenant, id: string): Promise<RunChange | null> {
+  const rows = await db.select<ChangeRow>(
+    `SELECT ${CHANGE_COLUMNS} FROM run_changes WHERE workspace_id = ? AND id = ?`,
+    [tenant.workspaceId, id],
+  );
+  return rows[0] ? toChange(rows[0]) : null;
+}
+
+export async function markUndone(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  await db.execute(
+    "UPDATE run_changes SET status = 'undone', updated_at = ? WHERE workspace_id = ? AND id = ?",
+    [Date.now(), tenant.workspaceId, id],
+  );
 }

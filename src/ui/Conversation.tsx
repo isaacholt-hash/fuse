@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { fuzzyScore } from "./fuzzy";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
-import { ArtifactCard } from "./Artifacts";
+import { ArtifactCard, DiffView } from "./Artifacts";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Tip } from "./primitives";
 import type {
@@ -342,9 +342,15 @@ export function Messages({
   onOpenFile,
   onOpenSource,
   onContinueRun,
+  onUndoChange,
+  onUndoRun,
 }: {
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
   onContinueRun?: (runId: string, raise: boolean) => void;
+  /** CA-02: puts one file a run changed back as it was. */
+  onUndoChange?: (changeId: string) => void;
+  /** CA-02: undoes everything a run changed. */
+  onUndoRun?: (runId: string) => void;
   /** FK-10: opens an attached file in the side panel. */
   onOpenFile?: (fileId: string) => void;
   /** FK-10: opens a cited file at the cited place (a chunk). */
@@ -599,6 +605,8 @@ export function Messages({
                         run={message.run}
                         busy={busy}
                         {...(onContinueRun ? { onContinue: onContinueRun } : {})}
+                        {...(onUndoChange ? { onUndoChange } : {})}
+                        {...(onUndoRun ? { onUndoRun } : {})}
                       />
                     )}
                     {message.content && (
@@ -915,6 +923,8 @@ export function Composer({
   onToggleWebSearch,
   code = false,
   onToggleCode,
+  codeMode = "plan",
+  onCodeMode,
   routing,
   insert,
   status = null,
@@ -952,6 +962,9 @@ export function Composer({
   /** M6: the next message starts a coding run in the project's repository. */
   code?: boolean;
   onToggleCode?: () => void;
+  /** CA-04: whether that run may edit files. */
+  codeMode?: "plan" | "auto_edit";
+  onCodeMode?: (mode: "plan" | "auto_edit") => void;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
@@ -1453,6 +1466,19 @@ export function Composer({
                 </Button>
               </Tip>
             )}
+            {onToggleCode && code && onCodeMode && (
+              <select
+                aria-label="What the coding run may do"
+                className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
+                value={codeMode}
+                onChange={(e) => {
+                  onCodeMode(e.target.value === "auto_edit" ? "auto_edit" : "plan");
+                }}
+              >
+                <option value="plan">Read-only</option>
+                <option value="auto_edit">Can edit files</option>
+              </select>
+            )}
             <Tip
               label={
                 thinkHarder
@@ -1622,18 +1648,24 @@ function RunCard({
   run,
   busy,
   onContinue,
+  onUndoChange,
+  onUndoRun,
 }: {
   run: RunView;
   busy: boolean;
   onContinue?: (runId: string, raise: boolean) => void;
+  onUndoChange?: (changeId: string) => void;
+  onUndoRun?: (runId: string) => void;
 }) {
   const live = run.status === "running";
+  const [shown, setShown] = useState<string | null>(null);
+  const applied = run.changes.filter((c) => !c.undone);
   return (
     <section aria-label="Coding run" className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
       <div className="flex items-center gap-2 text-[11px]">
         <SquareTerminal className="size-3.5 text-muted-foreground" />
         <span className="font-medium">Coding run</span>
-        <span className="text-muted-foreground">read-only</span>
+        <span className="text-muted-foreground">{run.modeLabel}</span>
         <span
           className={`rounded px-1.5 py-0.5 text-[10px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
         >
@@ -1679,6 +1711,73 @@ function RunCard({
           <LoaderCircle className="size-3 animate-spin" />
           Working…
         </p>
+      )}
+      {run.changes.length > 0 && (
+        <div className="mt-2 border-t pt-2" aria-label="Files changed">
+          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+            Files changed
+            {onUndoRun && applied.length > 1 && !live && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="ml-auto normal-case"
+                disabled={busy}
+                onClick={() => {
+                  onUndoRun(run.id);
+                }}
+              >
+                Undo all
+              </Button>
+            )}
+          </div>
+          <ul className="space-y-1 text-[11px]">
+            {run.changes.map((c) => (
+              <li key={c.id}>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className={`min-w-0 truncate text-left font-mono hover:underline ${c.undone ? "text-muted-foreground line-through" : ""}`}
+                    aria-expanded={shown === c.id}
+                    onClick={() => {
+                      setShown((s) => (s === c.id ? null : c.id));
+                    }}
+                  >
+                    {c.label}
+                  </button>
+                  {c.lines.length > 0 && (
+                    <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                      <span className="text-emerald-600 dark:text-emerald-400">+{c.added}</span>{" "}
+                      <span className="text-destructive">−{c.removed}</span>
+                    </span>
+                  )}
+                  {c.undone ? (
+                    <span className="ml-auto text-[10px] text-muted-foreground">Undone</span>
+                  ) : (
+                    onUndoChange &&
+                    !live && (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="ml-auto"
+                        disabled={busy}
+                        onClick={() => {
+                          onUndoChange(c.id);
+                        }}
+                      >
+                        Undo
+                      </Button>
+                    )
+                  )}
+                </div>
+                {shown === c.id && c.lines.length > 0 && (
+                  <div className="mt-1 max-h-80 overflow-auto rounded border bg-background">
+                    <DiffView lines={c.lines} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {(run.status === "paused" || run.status === "stopped") && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">

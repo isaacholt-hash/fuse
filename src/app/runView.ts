@@ -1,8 +1,9 @@
 // A coding run as it shows on its answer (M6 step 5b): each tool call as one plain line, each
 // turn's note, the cost against the cap. The last turn of a finished run is the answer itself.
+import { diffLines, diffStats } from "@/artifacts/diff";
 import { formatUsd } from "@/cost/cost";
-import type { Run, RunStep } from "@/storage/runs";
-import type { RunStepView, RunView } from "@/ui/types";
+import type { Run, RunChange, RunStep } from "@/storage/runs";
+import type { RunChangeView, RunStepView, RunView } from "@/ui/types";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
@@ -22,7 +23,31 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
   }
 }
 
-export function runView(run: Run, steps: RunStep[], streaming = ""): RunView {
+export function changeView(c: RunChange): RunChangeView {
+  const lines = c.fromPath ? [] : diffLines(c.before ?? "", c.after ?? "");
+  const { added, removed } = diffStats(lines);
+  const label = c.fromPath
+    ? `Moved ${c.fromPath} → ${c.path}`
+    : c.before === null
+      ? `Created ${c.path}`
+      : c.after === null
+        ? `Deleted ${c.path}`
+        : `Edited ${c.path}`;
+  return { id: c.id, label, added, removed, lines, undone: c.status === "undone" };
+}
+
+const MODE_LABELS: Record<Run["mode"], string> = {
+  plan: "read-only",
+  ask: "asks first",
+  auto_edit: "can edit files",
+};
+
+export function runView(
+  run: Run,
+  steps: RunStep[],
+  streaming = "",
+  changes: RunChange[] = [],
+): RunView {
   const lastModel = steps.findLast((s) => s.kind === "model");
   const views: RunStepView[] = [];
   for (const s of steps) {
@@ -44,5 +69,7 @@ export function runView(run: Run, steps: RunStep[], streaming = ""): RunView {
     note: run.note,
     steps: views,
     streaming,
+    modeLabel: MODE_LABELS[run.mode],
+    changes: changes.map(changeView),
   };
 }

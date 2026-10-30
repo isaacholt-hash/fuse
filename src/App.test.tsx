@@ -335,6 +335,9 @@ const composer = () => screen.findByRole("textbox", { name: "Message" });
 const noRepo: RepoApi = {
   pick: () => Promise.resolve(null),
   check: () => Promise.reject(new Error("unused")),
+  write: () => Promise.reject(new Error("read-only in this test")),
+  remove: () => Promise.reject(new Error("read-only in this test")),
+  move: () => Promise.reject(new Error("read-only in this test")),
   list: () => Promise.reject(new Error("This project has no linked folder.")),
   read: () => Promise.reject(new Error("This project has no linked folder.")),
   search: () => Promise.reject(new Error("This project has no linked folder.")),
@@ -2929,4 +2932,89 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
   // The tool result went back to the model with the turn.
   expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe("# Lighthouse\n");
+});
+
+test("M6: a run that can edit shows each change as a diff, and Undo puts the file back", async () => {
+  const files = new Map([["src/tide.ts", "export const tide = 3;\n"]]);
+  const repo: RepoApi = {
+    ...noRepo,
+    pick: () => Promise.resolve({ root: "/home/me/lighthouse", name: "lighthouse", isGit: true }),
+    read: (_p, path) => {
+      const content = files.get(path);
+      return content === undefined
+        ? Promise.reject(new Error(`${path}: no such file or folder.`))
+        : Promise.resolve({
+            path,
+            content,
+            offset: 0,
+            totalBytes: content.length,
+            truncated: false,
+          });
+    },
+    write: (_p, path, content) => {
+      const before = files.get(path) ?? null;
+      files.set(path, content);
+      return Promise.resolve({ path, before });
+    },
+  };
+  async function* edit(_h: ChatMessage[]): AsyncGenerator<StreamEvent> {
+    await Promise.resolve();
+    yield { type: "text", text: "1. Change the tide." };
+    yield {
+      type: "tool_call",
+      call: {
+        id: "e1",
+        name: "edit_file",
+        input: { path: "src/tide.ts", old_text: "= 3", new_text: "= 4" },
+      },
+    };
+    yield {
+      type: "done",
+      usage: {
+        inputTokens: 1200,
+        outputTokens: 400,
+        cachedInputTokens: 0,
+        cacheWriteTokens: 0,
+        reasoningTokens: 0,
+        webSearchCalls: 0,
+      },
+      usageReported: true,
+      stopReason: "tool_use",
+      providerRequestId: "req_e",
+      attempts: 1,
+      turn: { provider: "anthropic", model: "x", items: [] },
+    };
+  }
+  const { user, options } = setup(
+    { anthropic: [edit, () => answer("Changed the tide to 4.")] },
+    undefined,
+    {},
+    { repo },
+  );
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  await user.keyboard("{Escape}");
+
+  await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
+  await user.type(await composer(), "Make the tide 4{Enter}");
+  expect(await screen.findByText("Changed the tide to 4.")).toBeInTheDocument();
+  const card = within(screen.getByRole("region", { name: "Coding run" }));
+  expect(card.getByText("can edit files")).toBeInTheDocument();
+  expect(files.get("src/tide.ts")).toBe("export const tide = 4;\n");
+  // The edit tools went with the request.
+  const sentTools = (options.at(-1) as { tools?: { name: string }[] }).tools?.map((x) => x.name);
+  expect(sentTools).toContain("edit_file");
+
+  await user.click(card.getByRole("button", { name: "Edited src/tide.ts" }));
+  expect(card.getByText("export const tide = 4;")).toBeInTheDocument();
+  await user.click(card.getByRole("button", { name: "Undo" }));
+  expect(await card.findByText("Undone")).toBeInTheDocument();
+  expect(files.get("src/tide.ts")).toBe("export const tide = 3;\n");
 });
