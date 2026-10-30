@@ -82,9 +82,14 @@
   - Rust (`local.rs`), with a stand-in worker: a crash mid-answer, a SIGKILL like the OOM killer (then a fresh worker on the next request), unreadable output, a hang past the time limit, and no environment. `model_files.rs`: URL pinning, a bad checksum, a full disk, resume.
   - TypeScript (`src/local/security.test.ts`): offline, where housekeeping runs locally with the cloud unreachable and no cloud call made. Also Local only with no key, where it never falls back to the cloud. A junk second opinion keeps the heuristics. Oversized input is cut to the local ceiling with a marker. One project's file chunks never answer another's search.
   - Threat model: trust boundary 6 (the worker) and section 6 (local models and the cache), including their gaps: files aren't signed, and the worker and the network aren't sandboxed by the OS.
-- [ ] **13. P1.5 gate test.**
-  - Automated: on the routing test set, with recorded cloud responses and the scripted local adapter, cost per successful task is below the step 1 baseline with no quality drop, and a Local only project makes no cloud call.
-  - Plus `pnpm local:bench` for the live numbers on Isaac's PC.
+- [x] **13. P1.5 gate test.**
+  - `src/gate/p15.test.ts` runs one workload twice through the real send, routing, housekeeping and cache code: the 35 standalone prompts of the shipped routing test set, 5 sums and conversions, and 5 questions asked again in a new chat. The first run is cloud only, as before M7; the second has M7. Cloud models are fakes with fixed token counts priced from `data/models.json`, giving the test set's labels as second opinions. The scripted local model gives the same labels, but one reply in ten is unreadable.
+  - Result: cost per successful task fell from $0.0066 to $0.0052 (−21%), with 45 of 45 tasks succeeding in both runs. The tier was right for 28 of 35 prompts in both, and every routed prompt got the same tier, so answers came from the same models. 52 cloud calls were avoided.
+  - A Local only project ran the same workload with no cloud call: fixed-rule answers worked, local housekeeping ran, and every other answer was refused before anything was sent.
+  - Found while building it: an unreadable second opinion from the local model now counts as a failure, so the cloud model is asked once, as for any local failure.
+  - Live numbers: `pnpm local:bench` (step 9) on Isaac's computer with the installed model.
+
+**All build steps done (2026-10-30).** The automated P1.5 gate passes. Next: Isaac installs the local model (Settings → Local model) and uses FUSE. Shadow checks run for its first week, and `pnpm local:bench` gives the live numbers.
 
 ## Notes
 

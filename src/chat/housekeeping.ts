@@ -65,7 +65,8 @@ export interface HousekeepingRequest {
 }
 
 export type HousekeepingResult =
-  { ok: true; text: string; costMicroUsd: number; ms?: number } | { ok: false; error: string };
+  | { ok: true; text: string; costMicroUsd: number; ms?: number; provider?: ProviderId }
+  | { ok: false; error: string };
 
 /** Replies compared for a shadow check: spacing and case don't count. */
 const normal = (s: string) => s.replace(/\s+/g, " ").trim().toLowerCase();
@@ -191,5 +192,11 @@ async function attempt(
         : "No reply from the model",
     };
   }
-  return { ok: true, text, costMicroUsd: usage.costMicroUsd, ms: usage.latencyMs ?? 0 };
+  return {
+    ok: true,
+    text,
+    costMicroUsd: usage.costMicroUsd,
+    ms: usage.latencyMs ?? 0,
+    provider: model.provider,
+  };
 }

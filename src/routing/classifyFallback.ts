@@ -82,14 +82,27 @@ export async function checkClassification(
       maxOutputTokens: 60,
     });
     read = call.ok ? parseClassifyReply(call.text) : null;
-    if (read && key && call.ok) {
+    let answered = call;
+    if (!read && call.ok && call.provider === "local" && model.provider !== "local") {
+      // LL-04: an unreadable local reply counts as a failure: the cloud model, once.
+      answered = await housekeepingCall({ ...deps, local: null }, catalog, {
+        purpose: "classify",
+        threadId,
+        model,
+        system: CLASSIFY_SYSTEM,
+        input,
+        maxOutputTokens: 60,
+      });
+      read = answered.ok ? parseClassifyReply(answered.text) : null;
+    }
+    if (read && key && answered.ok) {
       await cachePut(deps.db, deps.tenant, {
         key,
         kind: "classify",
         scope,
         model: `${model.provider}/${model.id}`,
         response: JSON.stringify(read),
-        costMicroUsd: call.costMicroUsd,
+        costMicroUsd: answered.costMicroUsd,
       });
     }
   }
