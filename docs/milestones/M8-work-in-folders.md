@@ -20,12 +20,13 @@
   - Migration 0040: `folders` (path, read-secrets; one row per path), `project_folders` and `thread_folders`. Every project's `repo_root` became a folder linked to it; projects sharing a path share one folder, and deleted projects are skipped. Proven by an upgrade test from 0039. `projects.repo_root` is no longer read.
   - Rust's `project_root` reads the project's first linked folder. `src/storage/folders.ts` grants folders and links them to projects and chats, and the M6 setter is now backed by it. Delete everything covers the three tables.
   - No behaviour change yet. The commands take a folder id in step 2.
-- [ ] **2. Pick folders for a chat, and several for a project (WF-02).**
+- [x] **2. Pick folders for a chat, and several for a project (WF-02).**
   - The composer gets a folder button, and Project settings lists folders with Add and Remove. Only granted folders are reachable.
   - The tools name paths as `<folder>/<path>` when a chat has more than one folder.
   - Part 1 done (engine): the Rust file, command and git calls take a folder id. Migration 0041 makes `runs.project_id` optional, adds `runs.kind`, and adds `run_folders`, the folders a run works in and their labels. Old runs got their project's folder.
   - `src/agent/folders.ts` scopes a run to its folders. One folder works as in M6. With several, paths start with the folder's label, the root lists them, and search covers all of them. Commands and git run in the first folder.
   - A run takes the chat's folders, then the project's. CLAUDE.md and AGENTS.md are read from each folder's root. Part 2 is the pickers.
+  - Part 2 done (pickers): the composer shows the chat's folders as chips, with an X on the chat's own and the project's shown without one, plus a Folder button that picks one. A new chat's folders are kept until it's saved. Code works in any chat with a folder, in a project or not. Project settings → Folders lists several, each with Remove and its own secrets switch.
 - [ ] **3. Work mode (WF-01).**
   - Off / Code / Work in the composer. Work has its own guide: deliverables, citing which files it used, no git. Tools: list, read, search, write, move, organise, documents and commands.
   - Runs, plan, cost cap, approvals and undo work as in Code.
