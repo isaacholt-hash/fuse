@@ -26,6 +26,7 @@ import {
   editQuestion,
   escalateLast,
   historyFor,
+  runNote,
   regenerate,
   retryLast,
   sendMessage,
@@ -480,6 +481,19 @@ test("history skips empty failed answers but keeps partial ones", () => {
     { role: "user", content: "b" },
     { role: "assistant", content: "part" },
   ]);
+});
+
+test("an answer a run gave says so in the history, so a later model doesn't doubt it", () => {
+  const m = (id: string, role: "user" | "assistant", content: string) =>
+    ({ id, role, content }) as Parameters<typeof historyFor>[0][number];
+  const history = historyFor(
+    [m("u1", "user", "make inside.txt"), m("a1", "assistant", "Created inside.txt.")],
+    new Map(),
+    new Map([["a1", "work"]]),
+  );
+  expect(history[0]).toEqual({ role: "user", content: "make inside.txt" });
+  expect(history[1]?.content).toBe(`Created inside.txt.\n\n${runNote("work")}`);
+  expect(runNote("work")).toMatch(/Work run that used tools/);
 });
 
 test("reasoning used the whole output limit (real OpenAI recording): billed, flagged, not an error", async () => {

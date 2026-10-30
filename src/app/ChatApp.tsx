@@ -1717,6 +1717,15 @@ export function ChatApp({
     if (pending.length > 0) {
       setChatFolderMap((m) => ({ ...m, [threadId]: pending, draft: [] }));
     }
+    // So do its Work or Code switch, run mode and branch choice: without this, the second
+    // message in a new Work chat went out as plain chat.
+    const fromDraft = <T,>(m: Record<string, T>): Record<string, T> => {
+      const { draft, ...rest } = m;
+      return draft === undefined ? m : { ...rest, [threadId]: draft };
+    };
+    setCodeOn(fromDraft);
+    setCodeMode(fromDraft);
+    setCodeBranch(fromDraft);
     setSelectedId(threadId);
     selectedRef.current = threadId;
     await refreshThreads();
