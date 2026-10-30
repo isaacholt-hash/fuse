@@ -19,7 +19,7 @@
   - [x] 5a. The run engine: `runs` and `run_steps` (`0030_runs.sql`, and `request_log` gains the `agent` purpose), the loop with list, read and search tools, cost per turn, a cap that pauses, stop, continue from the record, logging. No UI yet.
   - [x] 5b. The run in chat: start a run from a chat in a linked project, its steps and cost as it goes, stop, continue at the cap.
 - [x] **6. File edits with diffs (CA-02).** Edit, create, move and delete under the root. Changes are shown as diffs to accept, reject or undo, per file or per run.
-- [ ] **7. Commands (CA-03).** Rust runs a command in the root with streamed output, a time limit, an output cap and the exit code. Each command asks first, with the exact command shown.
+- [x] **7. Commands (CA-03).** Rust runs a command in the root with streamed output, a time limit, an output cap and the exit code. Each command asks first, with the exact command shown.
 - [ ] **8. Permission modes (CA-04).** Ask, Auto-edit and Plan only per project; always-allow per command; destructive commands always ask; every tool call goes in an audit log with inputs, outputs, model and cost.
 - [ ] **9. Context budget for tools (CA-08).** File reads and command output capped with a pointer to the rest; older tool results summarized on the Cheap tier; resume a stopped run from its record.
 - [ ] **10. Git (CA-05).** Status, diff, branch and commit with a message; a run can work on its own branch or worktree; push and open a pull request through `gh`, and a push always asks.

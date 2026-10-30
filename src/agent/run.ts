@@ -34,7 +34,16 @@ import {
   type RunStep,
 } from "@/storage/runs";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
-import { EDIT_TOOL_NAMES, EDIT_TOOLS, READ_ONLY_TOOLS, readWhole, runTool } from "./tools";
+import {
+  COMMAND_TOOL,
+  commandOutput,
+  EDIT_TOOL_NAMES,
+  EDIT_TOOLS,
+  READ_ONLY_TOOLS,
+  readWhole,
+  runTool,
+} from "./tools";
+import type { ExecApi } from "@/repo/exec";
 
 /** AG-05's default cap per run. */
 export const DEFAULT_RUN_CAP_MICRO_USD = 1_000_000;
@@ -55,7 +64,7 @@ export function agentGuide(mode: RunMode): string {
           "End with a clear answer: what you found, and for a change the user wants, exactly what you'd change and where. Don't claim to have changed anything.",
         ]
       : [
-          "You can list, read and search files, and change them with edit_file, write_file, delete_file and move_file. You can't run commands yet, so you can't run tests; say what the user should run.",
+          "You can list, read and search files, change them with edit_file, write_file, delete_file and move_file, and run commands (tests, builds) with run_command. The user approves each command and may decline; if they do, carry on without it or say what they should run.",
           "Make focused changes that do what was asked and nothing more. Read a file before editing it. Keep the repository's style.",
           "End with what you changed (each file and why) and anything the user should check. The user sees every change as a diff and can undo it.",
         ];
@@ -67,10 +76,26 @@ export const AGENT_GUIDE = agentGuide("plan");
 
 /** The run's tools: fixed for the whole run so the prompt cache holds. */
 export const toolsFor = (mode: RunMode) =>
-  mode === "plan" ? READ_ONLY_TOOLS : [...READ_ONLY_TOOLS, ...EDIT_TOOLS];
+  mode === "plan" ? READ_ONLY_TOOLS : [...READ_ONLY_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL];
 
 export interface RunDeps extends ChatDeps {
   repo: RepoApi;
+  /** Runs commands (CA-03); without it, run_command is refused. */
+  exec?: ExecApi;
+  /**
+   * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
+   * nothing runs that nobody approved.
+   */
+  approve?: (request: ApprovalRequest) => Promise<boolean>;
+}
+
+/** What a run wants to do that needs your say-so. */
+export interface ApprovalRequest {
+  runId: string;
+  kind: "command";
+  command: string;
+  /** Stop: the question goes away and counts as no. */
+  signal?: AbortSignal;
 }
 
 export interface RunProgress {
@@ -318,11 +343,13 @@ async function work(
     }
     // Every call gets a result, in call order (docs/providers.md, M6).
     for (const call of calls) {
-      // A read-only run never changes files, whatever the model asks for.
+      // A read-only run never changes files or runs commands, whatever the model asks for.
       const out =
-        run.mode === "plan" && EDIT_TOOL_NAMES.has(call.name)
+        run.mode === "plan" && (EDIT_TOOL_NAMES.has(call.name) || call.name === COMMAND_TOOL.name)
           ? { output: "Error: this run is read-only.", isError: true, folder: null }
-          : await runTool(deps.repo, run.projectId, call);
+          : call.name === COMMAND_TOOL.name
+            ? await runCommand(deps, run, call, input)
+            : await runTool(deps.repo, run.projectId, call);
       const stepId = await addToolStep(db, tenant, runId, {
         call,
         output: out.output,
@@ -338,6 +365,72 @@ async function work(
   const finished = await getRun(db, tenant, runId);
   if (!finished) throw new Error("Run not found");
   return finished;
+}
+
+/** CA-03: asks first, then runs the command, streaming its output to the run's progress. */
+async function runCommand(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<{ output: string; isError: boolean; folder: null }> {
+  const command = typeof call.input.command === "string" ? call.input.command.trim() : "";
+  const asked = typeof call.input.timeout_seconds === "number" ? call.input.timeout_seconds : 120;
+  const timeoutSecs = Math.min(Math.max(Math.round(asked), 1), 600);
+  if (!command) return { output: "Error: give a command to run.", isError: true, folder: null };
+  if (!deps.exec || !deps.approve) {
+    return {
+      output: "Error: commands need the user's approval, and there's no one to ask here.",
+      isError: true,
+      folder: null,
+    };
+  }
+  await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
+  const stopped = new Promise<boolean>((resolve) => {
+    if (input.signal?.aborted) resolve(false);
+    input.signal?.addEventListener("abort", () => {
+      resolve(false);
+    });
+  });
+  const yes = await Promise.race([
+    deps.approve({
+      runId: run.id,
+      kind: "command",
+      command,
+      ...(input.signal ? { signal: input.signal } : {}),
+    }),
+    stopped,
+  ]);
+  if (input.signal?.aborted) {
+    return { output: "Error: the run was stopped.", isError: true, folder: null };
+  }
+  if (!yes) {
+    return {
+      output: `Error: the user declined to run \`${command}\`.`,
+      isError: true,
+      folder: null,
+    };
+  }
+  try {
+    const result = await deps.exec.run(run.projectId, command, {
+      timeoutSecs,
+      ...(input.signal ? { signal: input.signal } : {}),
+      onOutput: (soFar) => {
+        void progress(deps, run.id, input, `$ ${command}\n${soFar.slice(-4000)}`);
+      },
+    });
+    return {
+      output: commandOutput(command, result, timeoutSecs),
+      isError: result.timedOut || result.stopped || result.exitCode !== 0,
+      folder: null,
+    };
+  } catch (e) {
+    return {
+      output: `Error: ${e instanceof Error ? e.message : String(e)}`,
+      isError: true,
+      folder: null,
+    };
+  }
 }
 
 export async function startRun(deps: RunDeps, input: RunInput): Promise<Run> {

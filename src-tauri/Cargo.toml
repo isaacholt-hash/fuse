@@ -34,9 +34,16 @@ tauri-plugin-global-shortcut = "=2.4.1"
 sha2 = "0.11.1"
 # .gitignore rules for the coding agent's repository access (CA-01); pinned: released 2026-08-04.
 ignore = "=0.4.33"
+# Coding agent commands (CA-03): child processes with streamed output and time limits. Already
+# in the build through Tauri's runtime.
+tokio = { version = "1", features = ["process", "io-util", "time", "sync", "macros", "rt"] }
 tauri-plugin-process = "2"
 # Desktop only, like the app (CLAUDE.md: P1 is desktop only).
 tauri-plugin-updater = "2"
+
+# Ending a command's whole process group on the time limit or Stop (CA-03, src/exec.rs).
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 # Windows Hello for the app lock (SE-03, src/hello.rs): the windows crates Tauri already uses.
 [target.'cfg(windows)'.dependencies]

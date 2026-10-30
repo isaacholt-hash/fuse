@@ -40,6 +40,7 @@ import {
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
+import type { ExecApi } from "@/repo/exec";
 import { loadRepoInstructions, type RepoInstruction } from "@/repo/instructions";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
 import { DEFAULT_RUN_CAP_MICRO_USD, undoChange, undoRun, type RunProgress } from "@/agent/run";
@@ -386,6 +387,8 @@ export interface ChatAppProps {
   exporter?: ExportApi;
   /** The coding agent's linked repository (CA-01). */
   repoApi?: RepoApi;
+  /** Commands in that repository (CA-03). */
+  execApi?: ExecApi;
   /** Backup and restore of the database (PL-11). */
   backups?: BackupsApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
@@ -500,6 +503,7 @@ export function ChatApp({
   preview,
   exporter,
   repoApi,
+  execApi,
   backups,
   quickCapture,
   zoom,
@@ -768,6 +772,10 @@ export function ChatApp({
   const [repoNote, setRepoNote] = useState<string | null>(null);
   // M6: Code on per chat ("draft" before the chat exists), and each answer's coding run.
   const [codeOn, setCodeOn] = useState<Record<string, boolean>>({});
+  // CA-03: commands waiting for your OK, by run.
+  const [approvals, setApprovals] = useState<
+    Map<string, { command: string; answer: (yes: boolean) => void }>
+  >(new Map());
   // CA-04: what a run may do, per chat ("draft" before it exists); read-only by default.
   const [codeMode, setCodeMode] = useState<Record<string, "plan" | "auto_edit">>({});
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
@@ -1393,25 +1401,22 @@ export function ChatApp({
     };
     try {
       const result = await (runIn && repoApi && job.kind === "send"
-        ? startChatRun(
-            { ...deps, repo: repoApi },
-            {
-              threadId,
-              projectId: runIn,
-              task: job.text,
-              model: routed.model,
-              mode: codeMode[threadId] ?? codeMode.draft ?? "plan",
-              signal: controller.signal,
-              onProgress: (answerId, p) => {
-                setThreadRuns((m) => new Map(m).set(answerId, p));
-                if (!loaded) {
-                  loaded = true;
-                  void reload(threadId);
-                  void refreshThreads();
-                }
-              },
+        ? startChatRun(runDeps(repoApi), {
+            threadId,
+            projectId: runIn,
+            task: job.text,
+            model: routed.model,
+            mode: codeMode[threadId] ?? codeMode.draft ?? "plan",
+            signal: controller.signal,
+            onProgress: (answerId, p) => {
+              setThreadRuns((m) => new Map(m).set(answerId, p));
+              if (!loaded) {
+                loaded = true;
+                void reload(threadId);
+                void refreshThreads();
+              }
             },
-          ).then((run) => ({
+          }).then((run) => ({
             status: run.status === "done" ? ("complete" as const) : ("stopped" as const),
             failedOverFrom: undefined,
           }))
@@ -1940,6 +1945,36 @@ export function ChatApp({
   const activeProjectId = thread ? thread.projectId : draftProject;
   const activeProject = projects.find((p) => p.id === activeProjectId);
   const codeAvailable = Boolean(activeProject?.repoRoot && repoApi);
+  /** Everything a run needs: the repository, commands, and a way to ask you first. */
+  const runDeps = (repo: RepoApi) => ({
+    ...deps,
+    repo,
+    ...(execApi ? { exec: execApi } : {}),
+    approve: (req: { runId: string; command: string; signal?: AbortSignal }) =>
+      new Promise<boolean>((resolve) => {
+        req.signal?.addEventListener("abort", () => {
+          setApprovals((all) => {
+            const next = new Map(all);
+            next.delete(req.runId);
+            return next;
+          });
+          resolve(false);
+        });
+        setApprovals((m) =>
+          new Map(m).set(req.runId, {
+            command: req.command,
+            answer: (yes: boolean) => {
+              setApprovals((all) => {
+                const next = new Map(all);
+                next.delete(req.runId);
+                return next;
+              });
+              resolve(yes);
+            },
+          }),
+        );
+      }),
+  });
   const codeKey = selectedId ?? "draft";
   const codeActive = codeAvailable && (codeOn[codeKey] ?? false);
   /** M6: goes on with a paused or stopped run in the open chat. */
@@ -1948,7 +1983,7 @@ export function ChatApp({
     const threadId = selectedId;
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
-    continueChatRun({ ...deps, repo: repoApi }, runId, {
+    continueChatRun(runDeps(repoApi), runId, {
       ...(raise ? { raiseCapBy: DEFAULT_RUN_CAP_MICRO_USD } : {}),
       signal: controller.signal,
       onProgress: (answerId, p) => {
@@ -2223,7 +2258,11 @@ export function ChatApp({
     }
     for (const v of views) {
       const r = threadRuns.get(v.id);
-      if (r) v.run = runView(r.run, r.steps, r.streaming, r.changes);
+      if (r) {
+        v.run = runView(r.run, r.steps, r.streaming, r.changes);
+        const waiting = approvals.get(r.run.id);
+        if (waiting) v.run.approval = { command: waiting.command };
+      }
       const fromFiles = threadFileSources.get(v.id);
       if (fromFiles?.length) v.fileSources = fromFiles;
       const info = threadBranches.get(v.id);
@@ -2245,6 +2284,7 @@ export function ChatApp({
     fileUrls,
     catalog,
     threadRuns,
+    approvals,
   ]);
   // "Try a stronger model" goes on the latest answer only: earlier ones would need branching.
   const stronger = liveHere ? null : escalation(messages.findLast((m) => m.role === "assistant"));
@@ -3906,10 +3946,13 @@ export function ChatApp({
                       openSource(chunkId).catch(report);
                     }}
                     onContinueRun={continueRunHere}
+                    onApprove={(runId, yes) => {
+                      approvals.get(runId)?.answer(yes);
+                    }}
                     onUndoChange={(changeId) => {
                       if (!repoApi || !selectedId) return;
                       const threadId = selectedId;
-                      undoChange({ ...deps, repo: repoApi }, changeId)
+                      undoChange(runDeps(repoApi), changeId)
                         .catch((e: unknown) => {
                           setProblem(e instanceof Error ? e.message : String(e));
                         })
@@ -3918,7 +3961,7 @@ export function ChatApp({
                     onUndoRun={(runId) => {
                       if (!repoApi || !selectedId) return;
                       const threadId = selectedId;
-                      undoRun({ ...deps, repo: repoApi }, runId)
+                      undoRun(runDeps(repoApi), runId)
                         .catch((e: unknown) => {
                           setProblem(e instanceof Error ? e.message : String(e));
                         })

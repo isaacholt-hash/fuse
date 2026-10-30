@@ -134,6 +134,58 @@ export const EDIT_TOOLS: ToolSpec[] = [
 
 export const EDIT_TOOL_NAMES = new Set(EDIT_TOOLS.map((t) => t.name));
 
+/** CA-03: one shell command in the repository. Each one asks you first. */
+export const COMMAND_TOOL: ToolSpec = {
+  name: "run_command",
+  description:
+    "Run one shell command in the repository's root folder, e.g. the tests or a build. The " +
+    "user approves each command before it runs and may decline. There's no input: commands " +
+    "that ask a question fail. Output and the exit code come back; long output keeps its start " +
+    "and end. The time limit is 2 minutes unless you ask for more (up to 10).",
+  schema: {
+    type: "object",
+    properties: {
+      command: { type: "string", description: "The command, exactly as it would be typed." },
+      timeout_seconds: {
+        type: ["integer", "null"],
+        description: "Seconds before it's stopped; null for 120. At most 600.",
+      },
+    },
+    required: ["command", "timeout_seconds"],
+    additionalProperties: false,
+  },
+};
+
+/** Keeps the start and the end of long output (the end is where test failures are). */
+const HEAD = 8_000;
+
+/** A command's result as the model reads it. */
+export function commandOutput(
+  command: string,
+  r: {
+    output: string;
+    exitCode: number | null;
+    timedOut: boolean;
+    stopped: boolean;
+    truncated: boolean;
+    elapsedMs: number;
+  },
+  timeoutSecs: number,
+): string {
+  const out =
+    r.output.length > MAX_TOOL_OUTPUT_CHARS
+      ? `${r.output.slice(0, HEAD)}\n[… ${String(r.output.length - MAX_TOOL_OUTPUT_CHARS)} characters cut …]\n${r.output.slice(-(MAX_TOOL_OUTPUT_CHARS - HEAD))}`
+      : r.output;
+  const end = r.timedOut
+    ? `[stopped: it ran past the ${String(timeoutSecs)} s time limit]`
+    : r.stopped
+      ? "[stopped by the user]"
+      : `[exit code ${String(r.exitCode ?? "unknown")}, ${(r.elapsedMs / 1000).toFixed(1)} s]`;
+  return [`$ ${command}`, out.trimEnd(), r.truncated ? "[output past 1 MB wasn't kept]" : null, end]
+    .filter((x): x is string => Boolean(x))
+    .join("\n");
+}
+
 /** A file change a tool made, kept so it can be shown and undone (CA-02). */
 export interface FileChange {
   path: string;
