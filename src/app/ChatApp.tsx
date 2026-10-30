@@ -1434,6 +1434,8 @@ export function ChatApp({
               projects.find((p) => p.id === runIn)?.runMode ??
               "ask",
             newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
+            // RT-14: on Auto, the cheapest Best model plans; a pinned tier or model does it all.
+            planner: routed.info.mode === "auto" ? routed.info.best : null,
             signal: controller.signal,
             onProgress: (answerId, p) => {
               setThreadRuns((m) => new Map(m).set(answerId, p));
