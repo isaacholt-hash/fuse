@@ -1,0 +1,622 @@
+//! A project's linked repository (CA-01, M6 step 3). The coding agent lists, reads and searches
+//! files here, and only here: every path is checked against the project's root, which is looked
+//! up from the database, never taken from the frontend's word. Files the repository ignores and
+//! secret-looking files (`.env`, keys) are skipped unless the project allows them.
+
+use std::fs;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::{Component, Path, PathBuf};
+
+use ignore::WalkBuilder;
+use ignore::gitignore::Gitignore;
+use serde::Serialize;
+use sqlx::Row;
+use sqlx::sqlite::SqlitePool;
+
+/// The most one read returns; the agent asks for the next part with an offset.
+pub const MAX_READ: u64 = 256 * 1024;
+const MAX_LIST: usize = 2_000;
+const MAX_HITS: usize = 200;
+/// Files bigger than this aren't searched.
+const MAX_SEARCH_FILE: u64 = 1024 * 1024;
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoInfo {
+    /// The folder, resolved (symlinks followed).
+    pub root: String,
+    pub name: String,
+    pub is_git: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Entry {
+    /// Relative to the root, with `/` on every platform.
+    pub path: String,
+    pub dir: bool,
+    pub size: u64,
+    pub secret: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FileText {
+    pub path: String,
+    pub content: String,
+    pub offset: u64,
+    pub total_bytes: u64,
+    /// More follows: read again from `offset + content's byte length`.
+    pub truncated: bool,
+}
+
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Hit {
+    pub path: String,
+    pub line: usize,
+    pub text: String,
+}
+
+/// Checks a folder before it's linked: it must exist and be a directory.
+pub fn check(folder: &Path) -> Result<RepoInfo, String> {
+    let root = fs::canonicalize(folder).map_err(|e| format!("Can't open that folder: {e}"))?;
+    if !root.is_dir() {
+        return Err("That isn't a folder.".into());
+    }
+    Ok(RepoInfo {
+        name: root
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| root.to_string_lossy().into_owned()),
+        is_git: root.join(".git").exists(),
+        root: root.to_string_lossy().into_owned(),
+    })
+}
+
+/// The file or folder `rel` names inside `root`, or why it can't be used. Relative paths only,
+/// no `..`, and after following symlinks it must still be inside the root.
+pub fn resolve(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let rel_path = Path::new(rel);
+    for c in rel_path.components() {
+        match c {
+            Component::Normal(_) | Component::CurDir => {}
+            Component::ParentDir => return Err(format!("{rel}: `..` isn't allowed.")),
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(format!("{rel}: use a path relative to the repository."));
+            }
+        }
+    }
+    let joined = root.join(rel_path);
+    let real = fs::canonicalize(&joined).map_err(|_| format!("{rel}: no such file or folder."))?;
+    if !real.starts_with(&root) {
+        return Err(format!("{rel} is outside the repository."));
+    }
+    Ok(real)
+}
+
+/// Names that usually hold credentials. The agent doesn't read them unless the project says so.
+pub fn is_secret(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n == ".env"
+        || (n.starts_with(".env.") && !n.ends_with(".example") && !n.ends_with(".sample"))
+        || n.ends_with(".pem")
+        || n.ends_with(".key")
+        || n.ends_with(".p12")
+        || n.ends_with(".pfx")
+        || n.ends_with(".keystore")
+        || n.starts_with("id_rsa")
+        || n.starts_with("id_ed25519")
+        || n.starts_with("id_ecdsa")
+        || n == ".npmrc"
+        || n == ".netrc"
+        || n == ".pypirc"
+        || n == "credentials"
+        || n == "credentials.json"
+        || n == "secrets.json"
+}
+
+fn rel_string(root: &Path, p: &Path) -> String {
+    p.strip_prefix(root)
+        .unwrap_or(p)
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn walker(dir: &Path, depth: Option<usize>) -> WalkBuilder {
+    let mut w = WalkBuilder::new(dir);
+    // Dotfiles like .github are shown; .git itself never is. Ignore rules apply even when the
+    // folder isn't a git repository yet.
+    w.hidden(false)
+        .require_git(false)
+        .max_depth(depth)
+        .filter_entry(|e| e.file_name() != ".git")
+        .sort_by_file_path(|a, b| a.cmp(b));
+    w
+}
+
+/// Whether the repository's ignore rules (any `.gitignore` from the root down) exclude `path`.
+pub fn is_ignored(root: &Path, path: &Path) -> bool {
+    let Ok(rel) = path.strip_prefix(root) else {
+        return true;
+    };
+    if rel.components().any(|c| c.as_os_str() == ".git") {
+        return true;
+    }
+    let is_dir = path.is_dir();
+    // The deepest .gitignore that has an opinion wins.
+    let mut dirs = vec![root.to_path_buf()];
+    let mut d = root.to_path_buf();
+    if let Some(parent) = rel.parent() {
+        for c in parent.components() {
+            d = d.join(c);
+            dirs.push(d.clone());
+        }
+    }
+    for dir in dirs.iter().rev() {
+        let file = dir.join(".gitignore");
+        if !file.is_file() {
+            continue;
+        }
+        let (gi, _) = Gitignore::new(&file);
+        let m = gi.matched_path_or_any_parents(path, is_dir);
+        if m.is_ignore() {
+            return true;
+        }
+        if m.is_whitelist() {
+            return false;
+        }
+    }
+    false
+}
+
+/// What's in a folder (or under it, with `recursive`), ignored files left out.
+pub fn list(root: &Path, rel: &str, recursive: bool) -> Result<Vec<Entry>, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let dir = resolve(&root, rel)?;
+    if !dir.is_dir() {
+        return Err(format!("{rel} is a file, not a folder."));
+    }
+    let mut out = Vec::new();
+    for e in walker(&dir, if recursive { None } else { Some(1) }).build() {
+        let Ok(e) = e else { continue };
+        if e.path() == dir {
+            continue;
+        }
+        let meta = e.metadata().ok();
+        out.push(Entry {
+            path: rel_string(&root, e.path()),
+            dir: e.file_type().is_some_and(|t| t.is_dir()),
+            size: meta.map(|m| m.len()).unwrap_or(0),
+            secret: is_secret(&e.file_name().to_string_lossy()),
+        });
+        if out.len() >= MAX_LIST {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+fn readable(root: &Path, path: &Path, rel: &str, allow_secrets: bool) -> Result<(), String> {
+    if !path.is_file() {
+        return Err(format!("{rel} is a folder, not a file."));
+    }
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    if !allow_secrets && is_secret(&name) {
+        return Err(format!(
+            "{rel} looks like it holds secrets, so it isn't read. You can allow this in the \
+             project's settings."
+        ));
+    }
+    if is_ignored(root, path) {
+        return Err(format!("{rel} is ignored by the repository's .gitignore."));
+    }
+    Ok(())
+}
+
+/// Up to `MAX_READ` bytes of a text file, from `offset`.
+pub fn read(root: &Path, rel: &str, offset: u64, allow_secrets: bool) -> Result<FileText, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve(&root, rel)?;
+    readable(&root, &path, rel, allow_secrets)?;
+    let mut f = fs::File::open(&path).map_err(|e| format!("{rel}: {e}"))?;
+    let total = f.metadata().map(|m| m.len()).unwrap_or(0);
+    let mut head = vec![0u8; 8192.min(total as usize)];
+    f.read_exact(&mut head).map_err(|e| format!("{rel}: {e}"))?;
+    if head.contains(&0) {
+        return Err(format!("{rel} is a binary file."));
+    }
+    let start = offset.min(total);
+    f.seek(SeekFrom::Start(start))
+        .map_err(|e| format!("{rel}: {e}"))?;
+    let mut buf = Vec::new();
+    f.take(MAX_READ)
+        .read_to_end(&mut buf)
+        .map_err(|e| format!("{rel}: {e}"))?;
+    // Don't cut a character in half at the end of a part.
+    let mut end = buf.len();
+    while end > 0 && std::str::from_utf8(&buf[..end]).is_err() && buf.len() - end < 4 {
+        end -= 1;
+    }
+    buf.truncate(end);
+    let read = buf.len() as u64;
+    Ok(FileText {
+        path: rel_string(&root, &path),
+        content: String::from_utf8_lossy(&buf).into_owned(),
+        offset: start,
+        total_bytes: total,
+        truncated: start + read < total,
+    })
+}
+
+/// Lines containing `query`, in text files under `rel`, ignored and secret files left out.
+pub fn search(
+    root: &Path,
+    rel: &str,
+    query: &str,
+    ignore_case: bool,
+    allow_secrets: bool,
+) -> Result<Vec<Hit>, String> {
+    if query.is_empty() {
+        return Err("Search for something.".into());
+    }
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let dir = resolve(&root, rel)?;
+    let needle = if ignore_case {
+        query.to_lowercase()
+    } else {
+        query.to_string()
+    };
+    let mut hits = Vec::new();
+    for e in walker(&dir, None).build() {
+        let Ok(e) = e else { continue };
+        if !e.file_type().is_some_and(|t| t.is_file()) {
+            continue;
+        }
+        if !allow_secrets && is_secret(&e.file_name().to_string_lossy()) {
+            continue;
+        }
+        if e.metadata().map(|m| m.len()).unwrap_or(0) > MAX_SEARCH_FILE {
+            continue;
+        }
+        let Ok(bytes) = fs::read(e.path()) else {
+            continue;
+        };
+        if bytes.iter().take(8192).any(|b| *b == 0) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        for (i, line) in text.lines().enumerate() {
+            let hay = if ignore_case {
+                line.to_lowercase()
+            } else {
+                line.to_string()
+            };
+            if hay.contains(&needle) {
+                hits.push(Hit {
+                    path: rel_string(&root, e.path()),
+                    line: i + 1,
+                    text: line.trim().chars().take(300).collect(),
+                });
+                if hits.len() >= MAX_HITS {
+                    return Ok(hits);
+                }
+            }
+        }
+    }
+    Ok(hits)
+}
+
+/// The project's linked folder and whether it may read secret-looking files.
+pub async fn project_root(pool: &SqlitePool, project_id: &str) -> Result<(PathBuf, bool), String> {
+    let row = sqlx::query(
+        "SELECT repo_root, repo_read_sensitive FROM projects WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| format!("Couldn't read the project: {e}"))?
+    .ok_or("That project doesn't exist.")?;
+    let root: Option<String> = row.get("repo_root");
+    let secrets: i64 = row.get("repo_read_sensitive");
+    let root = root.ok_or("This project has no linked folder.")?;
+    Ok((PathBuf::from(root), secrets == 1))
+}
+
+pub mod commands {
+    use super::*;
+    use crate::db::Database;
+    use tauri::{AppHandle, State};
+    use tauri_plugin_dialog::DialogExt;
+
+    /// The native folder picker; None when cancelled.
+    #[tauri::command]
+    pub async fn repo_pick(app: AppHandle) -> Result<Option<RepoInfo>, String> {
+        let Some(folder) = app.dialog().file().blocking_pick_folder() else {
+            return Ok(None);
+        };
+        let path = folder.into_path().map_err(|e| e.to_string())?;
+        check(&path).map(Some)
+    }
+
+    #[tauri::command]
+    pub fn repo_check(path: String) -> Result<RepoInfo, String> {
+        check(Path::new(&path))
+    }
+
+    #[tauri::command]
+    pub async fn repo_list(
+        db: State<'_, Database>,
+        project_id: String,
+        path: String,
+        recursive: bool,
+    ) -> Result<Vec<Entry>, String> {
+        let (root, _) = project_root(&db.pool()?, &project_id).await?;
+        list(&root, &path, recursive)
+    }
+
+    #[tauri::command]
+    pub async fn repo_read(
+        db: State<'_, Database>,
+        project_id: String,
+        path: String,
+        offset: u64,
+    ) -> Result<FileText, String> {
+        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        read(&root, &path, offset, secrets)
+    }
+
+    #[tauri::command]
+    pub async fn repo_search(
+        db: State<'_, Database>,
+        project_id: String,
+        path: String,
+        query: String,
+        ignore_case: bool,
+    ) -> Result<Vec<Hit>, String> {
+        let (root, secrets) = project_root(&db.pool()?, &project_id).await?;
+        search(&root, &path, &query, ignore_case, secrets)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A small repository: README, src/main.rs, an ignored build folder, a .env and .git.
+    fn repo() -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "fuse-repo-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("src")).unwrap();
+        fs::create_dir_all(dir.join("build")).unwrap();
+        fs::create_dir_all(dir.join(".git")).unwrap();
+        fs::create_dir_all(dir.join("docs/drafts")).unwrap();
+        fs::write(
+            dir.join("README.md"),
+            "# Lighthouse\nPrints the tide table.\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("src/main.rs"),
+            "fn main() {\n    println!(\"tide\");\n}\n",
+        )
+        .unwrap();
+        fs::write(dir.join("build/out.txt"), "tide\n").unwrap();
+        fs::write(dir.join(".env"), "TOKEN=tide\n").unwrap();
+        fs::write(dir.join(".env.example"), "TOKEN=\n").unwrap();
+        fs::write(dir.join(".git/config"), "[core]\n").unwrap();
+        fs::write(dir.join(".gitignore"), "build/\n*.log\n").unwrap();
+        fs::write(dir.join("debug.log"), "tide\n").unwrap();
+        fs::write(dir.join("docs/drafts/.gitignore"), "!keep.log\n").unwrap();
+        fs::write(dir.join("docs/drafts/keep.log"), "tide\n").unwrap();
+        fs::write(dir.join("logo.bin"), [0u8, 1, 2, 3]).unwrap();
+        dir
+    }
+
+    #[test]
+    fn paths_outside_the_root_are_refused() {
+        let r = repo();
+        assert!(resolve(&r, "README.md").is_ok());
+        assert!(resolve(&r, "./src/main.rs").is_ok());
+        assert!(resolve(&r, "src/../README.md").unwrap_err().contains(".."));
+        assert!(resolve(&r, "../outside").unwrap_err().contains(".."));
+        let abs = r.join("README.md").to_string_lossy().into_owned();
+        assert!(resolve(&r, &abs).unwrap_err().contains("relative"));
+        assert!(resolve(&r, "nope.txt").unwrap_err().contains("no such"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_out_of_the_root_is_refused() {
+        let r = repo();
+        let outside = r.with_extension("outside");
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.txt"), "x").unwrap();
+        std::os::unix::fs::symlink(&outside, r.join("escape")).unwrap();
+        std::os::unix::fs::symlink(r.join("README.md"), r.join("inside")).unwrap();
+        assert!(
+            resolve(&r, "escape/secret.txt")
+                .unwrap_err()
+                .contains("outside")
+        );
+        assert!(resolve(&r, "inside").is_ok());
+    }
+
+    #[test]
+    fn ignored_files_and_git_are_left_out_of_lists() {
+        let r = repo();
+        let all: Vec<String> = list(&r, "", true)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.path)
+            .collect();
+        assert!(all.contains(&"README.md".to_string()));
+        assert!(all.contains(&"src/main.rs".to_string()));
+        assert!(all.contains(&"docs/drafts/keep.log".to_string()));
+        assert!(!all.iter().any(|p| p.starts_with("build")));
+        assert!(!all.iter().any(|p| p.starts_with(".git/")));
+        assert!(!all.contains(&"debug.log".to_string()));
+        let top: Vec<String> = list(&r, "", false)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.path)
+            .collect();
+        assert!(top.contains(&"src".to_string()));
+        assert!(!top.contains(&"src/main.rs".to_string()));
+        let env = list(&r, "", false)
+            .unwrap()
+            .into_iter()
+            .find(|e| e.path == ".env")
+            .unwrap();
+        assert!(env.secret);
+    }
+
+    #[test]
+    fn reads_refuse_ignored_secret_and_binary_files() {
+        let r = repo();
+        assert_eq!(
+            read(&r, "README.md", 0, false).unwrap().content,
+            "# Lighthouse\nPrints the tide table.\n"
+        );
+        assert!(
+            read(&r, "build/out.txt", 0, false)
+                .unwrap_err()
+                .contains("ignored")
+        );
+        assert!(
+            read(&r, "debug.log", 0, false)
+                .unwrap_err()
+                .contains("ignored")
+        );
+        assert!(read(&r, "docs/drafts/keep.log", 0, false).is_ok());
+        assert!(read(&r, ".env", 0, false).unwrap_err().contains("secrets"));
+        assert!(read(&r, ".env", 0, true).is_ok());
+        assert!(read(&r, ".env.example", 0, false).is_ok());
+        assert!(
+            read(&r, "logo.bin", 0, false)
+                .unwrap_err()
+                .contains("binary")
+        );
+        assert!(read(&r, "src", 0, false).unwrap_err().contains("folder"));
+        assert!(read(&r, ".git/config", 0, false).is_err());
+    }
+
+    #[test]
+    fn long_files_are_read_in_parts() {
+        let r = repo();
+        let big = "a".repeat((MAX_READ as usize) + 10);
+        fs::write(r.join("big.txt"), &big).unwrap();
+        let first = read(&r, "big.txt", 0, false).unwrap();
+        assert!(first.truncated);
+        assert_eq!(first.content.len() as u64, MAX_READ);
+        let rest = read(&r, "big.txt", MAX_READ, false).unwrap();
+        assert!(!rest.truncated);
+        assert_eq!(rest.content.len(), 10);
+    }
+
+    #[test]
+    fn search_skips_ignored_secret_and_binary_files() {
+        let r = repo();
+        let hits = search(&r, "", "tide", false, false).unwrap();
+        let paths: Vec<&str> = hits.iter().map(|h| h.path.as_str()).collect();
+        assert_eq!(paths, ["README.md", "docs/drafts/keep.log", "src/main.rs"]);
+        assert_eq!(hits[2].line, 2);
+        assert!(search(&r, "", "TIDE", true, false).unwrap().len() == 3);
+        assert!(
+            search(&r, "", "tide", false, true)
+                .unwrap()
+                .iter()
+                .any(|h| h.path == ".env")
+        );
+        assert!(search(&r, "../", "tide", false, false).is_err());
+    }
+
+    #[test]
+    fn secret_names() {
+        for n in [
+            ".env",
+            ".env.local",
+            "id_rsa",
+            "id_ed25519.pub",
+            "server.pem",
+            "x.key",
+            ".npmrc",
+        ] {
+            assert!(is_secret(n), "{n}");
+        }
+        for n in [
+            ".env.example",
+            ".env.sample",
+            "README.md",
+            "keyboard.rs",
+            "env.ts",
+        ] {
+            assert!(!is_secret(n), "{n}");
+        }
+    }
+
+    #[tokio::test]
+    async fn the_root_comes_from_the_database() {
+        use crate::db::{Opened, execute, open};
+        use crate::keys::MemoryStore;
+        let dir = repo().with_extension("db");
+        let pool = match open(&dir, &MemoryStore::default()).await.unwrap() {
+            Opened::Ready(p) => p,
+            Opened::NeedsRecoveryKey => panic!("expected the database to open"),
+        };
+        let r = repo();
+        for (id, root) in [
+            ("linked", Some(r.to_string_lossy().into_owned())),
+            ("bare", None),
+        ] {
+            let root = root
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null);
+            execute(
+                &pool,
+                "INSERT INTO projects (id, workspace_id, user_id, name, repo_root, created_at, updated_at)
+                 SELECT ?, workspace_id, id, 'P', ?, 1, 1 FROM users LIMIT 1",
+                &[serde_json::Value::String(id.into()), root],
+            )
+            .await
+            .unwrap();
+        }
+        let (root, secrets) = project_root(&pool, "linked").await.unwrap();
+        assert_eq!(root, r);
+        assert!(!secrets);
+        assert!(
+            project_root(&pool, "bare")
+                .await
+                .unwrap_err()
+                .contains("no linked folder")
+        );
+        assert!(
+            project_root(&pool, "missing")
+                .await
+                .unwrap_err()
+                .contains("doesn't exist")
+        );
+    }
+
+    #[test]
+    fn checking_a_folder() {
+        let r = repo();
+        let info = check(&r).unwrap();
+        assert!(info.is_git);
+        assert!(check(&r.join("README.md")).unwrap_err().contains("folder"));
+        assert!(check(&r.join("missing")).is_err());
+    }
+}

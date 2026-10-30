@@ -7,6 +7,7 @@ mod hello;
 mod keys;
 mod preview;
 mod quick;
+mod repo;
 mod transport;
 mod web;
 
@@ -56,6 +57,11 @@ pub fn run() {
             db::commands::db_recovery_key,
             db::commands::db_execute,
             db::commands::db_select,
+            repo::commands::repo_pick,
+            repo::commands::repo_check,
+            repo::commands::repo_list,
+            repo::commands::repo_read,
+            repo::commands::repo_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

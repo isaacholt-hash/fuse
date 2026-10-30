@@ -175,6 +175,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "egress",
         sql: include_str!("../migrations/0028_egress.sql"),
     },
+    MigrationFile {
+        version: 29,
+        description: "repo",
+        sql: include_str!("../migrations/0029_repo.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the

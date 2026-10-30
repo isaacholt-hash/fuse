@@ -2,6 +2,7 @@ import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
 import { DecisionsSection, type DecisionsProps } from "./Decisions";
 import { TasksSection, type TasksProps } from "./Tasks";
 import { ProjectPrivacySection, type ProjectPrivacyProps } from "./ProjectPrivacy";
+import { ProjectRepoSection, type ProjectRepoProps } from "./ProjectRepo";
 import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -146,8 +147,11 @@ export function ProjectDialog({
   decisions,
   tasks,
   privacy,
+  repo,
   onExport,
 }: {
+  /** Only when editing: the folder the coding agent works in (CA-01). */
+  repo?: ProjectRepoProps;
   /** Only when editing: saves this project as a FUSE export (PL-12); returns a line to show. */
   onExport?: () => Promise<string | null>;
   /** Only when editing: where the project's content may be sent (SE-13). */
@@ -303,6 +307,11 @@ export function ProjectDialog({
       {tasks && (
         <div className="mt-4">
           <TasksSection {...tasks} />
+        </div>
+      )}
+      {repo && (
+        <div className="mt-4">
+          <ProjectRepoSection {...repo} />
         </div>
       )}
       {privacy && (
