@@ -43,10 +43,11 @@
   - `src-tauri/src/hardware.rs` (`sysinfo` 0.39.6) reads total and free memory, logical CPUs, AVX2, FMA and F16C, and free space on the disk holding the app's data, without elevated rights.
   - `src/local/hardware.ts` picks the largest profile whose estimated peak memory is within 40% of RAM and whose file fits with 1 GB of disk to spare. It picks none without AVX2 or on a non-x86-64 CPU, and warns when less memory is free now than the model needs.
   - Settings → Local model shows this computer, the choice and why, and the profile's size, memory, licence and source. On HULK (15.9 GB): Qwen3 4B.
-- [ ] **6. Install, update and remove (LL-03, LL-08).**
-  - Before download, the screen shows size, memory needed, licence and source.
-  - The download can be resumed and is checked against its SHA-256 before use. It is stored in app data, apart from the app.
-  - Remove and update. A bad checksum, a full disk or an interrupted download leaves the app working on the cloud path.
+- [x] **6. Install, update and remove (LL-03, LL-08).**
+  - `src-tauri/src/model_files.rs`: a download comes only from `https://huggingface.co/…/resolve/<40-hex revision>/<file>`, over HTTPS only. It goes to `models/<file>.part`, resumes with a Range request, and is checked against its size and SHA-256 (hashed end to end, resumed bytes included) before it's renamed into place with a `<file>.gguf.json` note.
+  - Free disk is checked first (the file plus 1 GB). A bad checksum or an oversized download deletes the partial file. A dropped connection or Pause keeps it for resuming.
+  - Settings → Local model: Download and install, progress with Pause, Update when `data/local-models.json` names a newer build, Remove (which ends the worker first), and other model files on this computer.
+  - Checked on HULK through the app: the 2.50 GB Qwen3 4B file downloaded, matched its SHA-256 and installed. Hugging Face's CDN answers Range requests with 206, so resuming works.
 - [ ] **7. Local adapter (LL-02).**
   - The `ProviderAdapter` over the worker. Token counts are logged, with cost 0 and provider `local` in the request log.
   - Malformed or empty output is an error, never shown as text.

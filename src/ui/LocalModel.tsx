@@ -1,4 +1,5 @@
 import { Cpu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { openExternal } from "./openExternal";
 
 /** Settings → Local model (M7, LL-03): what this computer can run, and which model it gets. */
@@ -9,21 +10,41 @@ export interface LocalModelView {
   warning: string | null;
   profile: {
     name: string;
+    file: string;
     /** e.g. "Q8_0 · 1.8 GB download · about 2.6 GB of memory" */
     detail: string;
     licence: string;
     licenceUrl: string;
     sourceUrl: string;
   } | null;
+  /** The recommended profile's file (absent when there's no profile). */
+  install?: {
+    status: "missing" | "installed" | "update" | "downloading" | "verifying";
+    /** Bytes, while downloading. */
+    progress: { done: number; total: number } | null;
+    error: string | null;
+  };
+  /** Other model files on this computer (e.g. from before the hardware changed). */
+  others?: { file: string; label: string }[];
 }
+
+const pct = (p: { done: number; total: number }) =>
+  `${String(Math.floor((p.done / Math.max(1, p.total)) * 100))}%`;
 
 export function LocalModelSection({
   view,
   error = null,
+  onInstall,
+  onPause,
+  onRemove,
 }: {
   view: LocalModelView | null;
   error?: string | null;
+  onInstall?: () => void;
+  onPause?: () => void;
+  onRemove?: (file: string) => void;
 }) {
+  const job = view?.install;
   return (
     <section className="mt-8 border-t pt-6" aria-label="Local model">
       <div className="mb-1 flex items-center gap-2">
@@ -68,7 +89,102 @@ export function LocalModelSection({
                   Source
                 </button>
               </p>
+              {job && (
+                <div className="mt-2 space-y-1.5">
+                  {job.status === "downloading" || job.status === "verifying" ? (
+                    <>
+                      <div
+                        className="h-1.5 overflow-hidden rounded-full bg-muted"
+                        role="progressbar"
+                        aria-label="Download"
+                        aria-valuenow={
+                          job.progress
+                            ? Math.floor(
+                                (job.progress.done / Math.max(1, job.progress.total)) * 100,
+                              )
+                            : 0
+                        }
+                      >
+                        <div
+                          className="h-full bg-foreground/70"
+                          style={{ width: job.progress ? pct(job.progress) : "0%" }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                        <span>
+                          {job.status === "verifying"
+                            ? "Checking the file…"
+                            : job.progress
+                              ? `Downloading ${pct(job.progress)} (${(job.progress.done / 1e9).toFixed(2)} of ${(job.progress.total / 1e9).toFixed(2)} GB)`
+                              : "Starting…"}
+                        </span>
+                        {job.status === "downloading" && onPause && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 text-xs"
+                            onClick={onPause}
+                          >
+                            Pause
+                          </Button>
+                        )}
+                      </div>
+                    </>
+                  ) : job.status === "installed" ? (
+                    <div className="flex items-center justify-between gap-2">
+                      <span>Installed and checked.</span>
+                      {onRemove && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => {
+                            onRemove(view.profile?.file ?? "");
+                          }}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">
+                        {job.status === "update"
+                          ? "A newer build of this model is available."
+                          : "Downloaded from Hugging Face and checked against its SHA-256 before use."}
+                      </span>
+                      {onInstall && (
+                        <Button size="sm" className="h-7 text-xs" onClick={onInstall}>
+                          {job.status === "update" ? "Update" : "Download and install"}
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                  {job.error && <p className="text-destructive">{job.error}</p>}
+                </div>
+              )}
             </div>
+          )}
+          {view.others && view.others.length > 0 && (
+            <ul className="space-y-1">
+              {view.others.map((o) => (
+                <li key={o.file} className="flex items-center justify-between gap-2">
+                  <span className="text-muted-foreground">Also on this computer: {o.label}</span>
+                  {onRemove && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        onRemove(o.file);
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}
