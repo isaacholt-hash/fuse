@@ -665,15 +665,19 @@ mod tests {
     fn no_network_unless_allowed() {
         let dir = fresh_dir("net");
         grant(&dir).unwrap();
-        let probe =
-            "curl.exe -s -m 10 -o NUL https://www.microsoft.com && echo connected || echo blocked";
-        let (off, _) = run(&dir, probe, false);
+        let probe = |url: &str| {
+            format!("curl.exe -sS -m 15 -o NUL {url} && echo connected || echo blocked")
+        };
+        let (off, _) = run(&dir, &probe("http://example.com"), false);
         assert!(
             off.contains("blocked") && !off.contains("connected"),
             "{off}"
         );
-        let (on, _) = run(&dir, probe, true);
-        assert!(on.contains("connected"), "{on}");
+        let (http, _) = run(&dir, &probe("http://example.com"), true);
+        let (https, _) = run(&dir, &probe("https://example.com"), true);
+        eprintln!("network on, http: {http}\nnetwork on, https: {https}");
+        assert!(http.contains("connected"), "{http}");
+        assert!(https.contains("connected"), "{https}");
     }
 
     #[test]

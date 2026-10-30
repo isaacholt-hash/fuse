@@ -76,5 +76,8 @@ jobs:
       # One at a time: the tests share the one container and change folder permissions.
       - run: cargo test --manifest-path src-tauri/sandbox-win/Cargo.toml -- --test-threads=1
       # tauri::generate_context! needs the frontend dist folder to exist at compile time.
-      - run: mkdir dist
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      # These run even when a sandbox test fails, so one run reports both.
+      - if: ${{ !cancelled() }}
+        run: mkdir dist
+      - if: ${{ !cancelled() }}
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
