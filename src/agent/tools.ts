@@ -2,6 +2,7 @@
 // OpenAI's rules so both providers get the same definition (docs/providers.md, M6). The list is
 // fixed for a whole run, in this order, so the prompt cache holds.
 import { docKind, docxText, partOf, xlsxText } from "@/documents/read";
+import { writeDocx, writePdf, writeXlsx, type Block, type SheetSpec } from "@/documents/write";
 import { pageMarker } from "@/files/pdfText";
 import type { RepoApi } from "@/repo/api";
 import type { ToolCall, ToolSpec } from "@/providers/types";
@@ -155,7 +156,133 @@ export const EDIT_TOOLS: ToolSpec[] = [
   },
 ];
 
-export const EDIT_TOOL_NAMES = new Set(EDIT_TOOLS.map((t) => t.name));
+/** WF-04: Word, Excel and PDF files from structured content, for Work runs. */
+export const WRITE_DOCUMENT_TOOL: ToolSpec = {
+  name: "write_document",
+  description:
+    "Create or replace a Word (.docx), Excel (.xlsx) or PDF (.pdf) file; the extension picks the " +
+    "format. For Word and PDF give blocks (headings, paragraphs, bullet and numbered items, " +
+    "tables whose first row is the header) and set sheets to null. For Excel give sheets (rows " +
+    "of cells; a cell starting with = is a formula, e.g. =SUM(B2:B9); numbers are numbers) and " +
+    "set blocks to null. The user sees a readable version of the document before or after.",
+  schema: {
+    type: "object",
+    properties: {
+      path: { type: "string", description: "The file to write, from the folder's root." },
+      title: { type: ["string", "null"], description: "Word and PDF: a title on top; or null." },
+      blocks: {
+        type: ["array", "null"],
+        items: {
+          type: "object",
+          properties: {
+            kind: { type: "string", enum: ["heading", "paragraph", "bullet", "numbered", "table"] },
+            text: { type: ["string", "null"], description: "Everything but tables." },
+            level: { type: ["integer", "null"], description: "Headings: 1 to 3." },
+            rows: {
+              type: ["array", "null"],
+              items: { type: "array", items: { type: "string" } },
+              description: "Tables: rows of cells, the first row the header.",
+            },
+          },
+          required: ["kind", "text", "level", "rows"],
+          additionalProperties: false,
+        },
+      },
+      sheets: {
+        type: ["array", "null"],
+        items: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            rows: { type: "array", items: { type: "array", items: { type: "string" } } },
+          },
+          required: ["name", "rows"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["path", "title", "blocks", "sheets"],
+    additionalProperties: false,
+  },
+};
+
+export const EDIT_TOOL_NAMES = new Set([
+  ...EDIT_TOOLS.map((t) => t.name),
+  WRITE_DOCUMENT_TOOL.name,
+]);
+
+/** The blocks of a write_document call, checked; bad ones are dropped rather than written. */
+function blocksOf(input: Record<string, unknown>): Block[] {
+  const raw = Array.isArray(input.blocks) ? (input.blocks as Record<string, unknown>[]) : [];
+  return raw.flatMap((b): Block[] => {
+    const text = typeof b.text === "string" ? b.text : "";
+    switch (b.kind) {
+      case "heading":
+        return [{ kind: "heading", text, level: typeof b.level === "number" ? b.level : 1 }];
+      case "paragraph":
+      case "bullet":
+      case "numbered":
+        return [{ kind: b.kind, text }];
+      case "table":
+        return Array.isArray(b.rows)
+          ? [{ kind: "table", rows: (b.rows as unknown[][]).map((r) => r.map((c) => String(c))) }]
+          : [];
+      default:
+        return [];
+    }
+  });
+}
+
+/** The document a write_document call makes, and a readable version of it for the diff. */
+export async function buildDocument(
+  input: Record<string, unknown>,
+): Promise<{ bytes: Uint8Array; text: string }> {
+  const path = str(input.path);
+  const kind = docKind(path);
+  const title = typeof input.title === "string" && input.title ? input.title : null;
+  if (kind === "excel") {
+    const sheets = (
+      Array.isArray(input.sheets) ? (input.sheets as Record<string, unknown>[]) : []
+    ).map((sh): SheetSpec => ({
+      name: typeof sh.name === "string" ? sh.name : "Sheet",
+      rows: Array.isArray(sh.rows)
+        ? (sh.rows as unknown[][]).map((r) => r.map((c) => String(c)))
+        : [],
+    }));
+    const bytes = writeXlsx(sheets);
+    return { bytes, text: xlsxText(bytes) };
+  }
+  const blocks = blocksOf(input);
+  if (kind === "word") {
+    const bytes = writeDocx(title, blocks);
+    return { bytes, text: docxText(bytes) };
+  }
+  if (kind === "pdf") {
+    const bytes = await writePdf(title, blocks);
+    // The same blocks as Word would read them back: what's in the PDF, in words.
+    return { bytes, text: docxText(writeDocx(title, blocks)) };
+  }
+  throw new Error(
+    `${path}: write_document makes .docx, .xlsx and .pdf files; use write_file for text.`,
+  );
+}
+
+/** What a document holds now, in words (for the diff), or null when it isn't there. */
+async function documentNow(repo: RepoApi, projectId: string, path: string) {
+  if (!repo.readBytes) return null;
+  const bytes = await repo.readBytes(projectId, path).catch(() => null);
+  if (!bytes) return null;
+  const kind = docKind(path);
+  let text = "(a binary file)";
+  try {
+    if (kind === "word") text = docxText(bytes);
+    else if (kind === "excel") text = xlsxText(bytes);
+    else if (kind === "pdf") text = "(a PDF)";
+  } catch {
+    // Unreadable: the diff says so; the bytes are still kept for undo.
+  }
+  return { bytes, text };
+}
 
 const noInput = { type: "object", properties: {}, required: [], additionalProperties: false };
 
@@ -382,6 +509,8 @@ export interface FileChange {
   fromPath: string | null;
   before: string | null;
   after: string | null;
+  /** WF-04: a binary file's bytes, kept by the run for undo; `before` and `after` read them. */
+  binary?: { before: Uint8Array | null; after: Uint8Array };
 }
 
 export interface ToolOutcome {
@@ -561,6 +690,27 @@ export async function runTool(
           change: { path: done.path, fromPath: null, before: done.before, after },
         };
       }
+      case "write_document": {
+        if (!repo.writeBytes) {
+          return { output: "Error: documents can't be written here.", isError: true, folder: null };
+        }
+        const path = str(input.path);
+        const made = await buildDocument(input);
+        const now = await documentNow(repo, projectId, path);
+        const written = await repo.writeBytes(projectId, path, made.bytes);
+        return {
+          output: `${now ? "Replaced" : "Created"} ${written} (${String(Math.round(made.bytes.length / 1024))} KB).`,
+          isError: false,
+          folder: parent(written),
+          change: {
+            path: written,
+            fromPath: null,
+            before: now?.text ?? null,
+            after: made.text,
+            binary: { before: now?.bytes ?? null, after: made.bytes },
+          },
+        };
+      }
       case "write_file": {
         const content = str(input.content);
         const done = await repo.write(projectId, str(input.path), content);
@@ -643,6 +793,19 @@ export async function previewChange(
         return {
           change: { path: str(input.to), fromPath: str(input.from), before: null, after: null },
         };
+      case "write_document": {
+        const made = await buildDocument(input);
+        const now = await documentNow(repo, projectId, path);
+        return {
+          change: {
+            path,
+            fromPath: null,
+            before: now?.text ?? null,
+            after: made.text,
+            binary: { before: now?.bytes ?? null, after: made.bytes },
+          },
+        };
+      }
       default:
         return { error: `Error: there's no tool called ${call.name}.` };
     }

@@ -43,6 +43,10 @@ export interface RepoApi {
   read(folderId: string, path: string, offset: number): Promise<RepoFileText>;
   /** WF-03: a whole file's bytes (documents, images), up to 25 MB. */
   readBytes?(folderId: string, path: string): Promise<Uint8Array>;
+  /** WF-04: writes a binary file whole; returns its path. */
+  writeBytes?(folderId: string, path: string, bytes: Uint8Array): Promise<string>;
+  /** WF-04: removes a binary file (undoing one FUSE made). */
+  removeBytes?(folderId: string, path: string): Promise<void>;
   search(folderId: string, path: string, query: string, ignoreCase: boolean): Promise<RepoHit[]>;
   write(folderId: string, path: string, content: string): Promise<RepoChange>;
   remove(folderId: string, path: string): Promise<RepoChange>;
@@ -57,6 +61,11 @@ export const tauriRepo: RepoApi = {
   read: (folderId, path, offset) => invoke<RepoFileText>("repo_read", { folderId, path, offset }),
   readBytes: async (folderId, path) =>
     new Uint8Array(await invoke<ArrayBuffer>("repo_read_bytes", { folderId, path })),
+  writeBytes: (folderId, path, bytes) =>
+    invoke<string>("repo_write_bytes", bytes, {
+      headers: { "x-folder-id": encodeURIComponent(folderId), "x-path": encodeURIComponent(path) },
+    }),
+  removeBytes: (folderId, path) => invoke("repo_remove_bytes", { folderId, path }),
   search: (folderId, path, query, ignoreCase) =>
     invoke<RepoHit[]>("repo_search", { folderId, path, query, ignoreCase }),
   write: (folderId, path, content) => invoke<RepoChange>("repo_write", { folderId, path, content }),

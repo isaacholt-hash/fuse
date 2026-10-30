@@ -48,8 +48,11 @@
   - `read_document` on a .png, .jpg, .gif or .webp up to 3.75 MB returns the image with its result. The bytes go into the encrypted attachment store, and migration 0042's `run_steps.images` records them, so every later turn of the run sends it again.
   - Anthropic gets text then an image block inside `tool_result`; OpenAI gets `input_text` then `input_image` inside `function_call_output`. A model without vision gets a note instead.
   - Not yet checked against the live APIs; `pnpm work:live` (step 13) covers that.
-- [ ] **5. Creating documents (WF-04).** A `write_document` tool takes structured content (headings, paragraphs, lists, tables; formulas for Excel) and writes .docx, .xlsx or .pdf. The libraries are chosen and pinned in this step.
-  - Undo for binary files keeps the bytes it replaced in the file store, by hash.
+- [x] **5. Creating documents (WF-04).**
+  - `write_document`, for Work runs, takes structured content and writes .docx, .xlsx or .pdf. Word and PDF take headings, paragraphs, bullet and numbered items, and tables; Excel takes sheets of cells, where `=…` is a formula and numbers are numbers.
+  - `src/documents/write.ts` writes minimal Office Open XML zipped with fflate (formulas are calculated when the file opens), and PDFs with jsPDF. Both libraries were already in the app, so no new dependency. The PDF font covers Latin scripts.
+  - Rust `repo_write_bytes` and `repo_remove_bytes` apply the same path rules as text writes. Migration 0043 adds `before_sha` and `after_sha` to `run_changes`: the old and new bytes go into the attachment store, and the diff shows readable text of both.
+  - Undo is refused if the file changed since. Otherwise it puts the old bytes back, or removes a file the run created.
 - [ ] **6. Previews (WF-05).** Files FUSE made or changed open in the side panel: documents rendered, sheets as tables, PDFs as pages, images as images. "Open in its app" and "Show in folder" are there too.
 - [ ] **7. Organise as one plan (WF-06).**
   - An `organise` tool proposes moves, renames and new folders together. You see the whole plan as a tree before and after, then Allow all, untick some, or Deny. It runs as one change with one Undo.

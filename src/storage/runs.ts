@@ -434,6 +434,9 @@ export interface RunChange {
   fromPath: string | null;
   before: string | null;
   after: string | null;
+  /** WF-04: for a binary file, the bytes it replaced and wrote, by attachment-store hash. */
+  beforeSha: string | null;
+  afterSha: string | null;
   status: "applied" | "undone";
   createdAt: number;
 }
@@ -446,6 +449,8 @@ interface ChangeRow {
   from_path: string | null;
   before: string | null;
   after: string | null;
+  before_sha: string | null;
+  after_sha: string | null;
   status: "applied" | "undone";
   created_at: number;
 }
@@ -458,23 +463,27 @@ const toChange = (r: ChangeRow): RunChange => ({
   fromPath: r.from_path,
   before: r.before,
   after: r.after,
+  beforeSha: r.before_sha,
+  afterSha: r.after_sha,
   status: r.status,
   createdAt: r.created_at,
 });
 
-const CHANGE_COLUMNS = "id, run_id, step_id, path, from_path, before, after, status, created_at";
+const CHANGE_COLUMNS =
+  "id, run_id, step_id, path, from_path, before, after, before_sha, after_sha, status, created_at";
 
 export async function addChange(
   db: SqlDb,
   tenant: Tenant,
-  c: Omit<RunChange, "id" | "status" | "createdAt">,
+  c: Omit<RunChange, "id" | "status" | "createdAt" | "beforeSha" | "afterSha"> &
+    Partial<Pick<RunChange, "beforeSha" | "afterSha">>,
 ): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_changes (id, workspace_id, user_id, run_id, step_id, path, from_path, before,
-       after, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       after, before_sha, after_sha, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -485,6 +494,8 @@ export async function addChange(
       c.fromPath,
       c.before,
       c.after,
+      c.beforeSha ?? null,
+      c.afterSha ?? null,
       now,
       now,
     ],

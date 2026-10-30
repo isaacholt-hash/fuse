@@ -74,6 +74,8 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
           id: "pending",
           runId: req.runId,
           stepId: null,
+          beforeSha: null,
+          afterSha: null,
           status: "applied",
           createdAt: 0,
         }),

@@ -227,6 +227,52 @@ pub fn delete(root: &Path, rel: &str, allow_secrets: bool) -> Result<Change, Str
     })
 }
 
+/// WF-04: writes a binary file (a Word, Excel or PDF document) all at once, like `write`. The
+/// caller keeps what it replaced (it reads the old bytes first), for undo.
+pub fn write_bytes(
+    root: &Path,
+    rel: &str,
+    bytes: &[u8],
+    allow_secrets: bool,
+) -> Result<String, String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve_target(&root, rel, allow_secrets)?;
+    if path.is_dir() {
+        return Err(format!("{rel} is a folder."));
+    }
+    if bytes.len() as u64 > MAX_BYTES {
+        return Err(format!(
+            "{rel}: that's over {} MB.",
+            MAX_BYTES / (1024 * 1024)
+        ));
+    }
+    let dir = path.parent().ok_or_else(|| format!("{rel}: no folder"))?;
+    fs::create_dir_all(dir).map_err(|e| format!("{rel}: {e}"))?;
+    let tmp = dir.join(format!(
+        ".fuse-write-{}-{}",
+        std::process::id(),
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    ));
+    fs::write(&tmp, bytes).map_err(|e| format!("{rel}: {e}"))?;
+    if let Err(e) = fs::rename(&tmp, &path) {
+        let _ = fs::remove_file(&tmp);
+        return Err(format!("{rel}: {e}"));
+    }
+    Ok(rel_string(&root, &path))
+}
+
+/// WF-04: removes a binary file FUSE made (undoing its creation); the caller checked its bytes.
+pub fn remove_bytes(root: &Path, rel: &str, allow_secrets: bool) -> Result<(), String> {
+    let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let path = resolve_target(&root, rel, allow_secrets)?;
+    if !path.is_file() {
+        return Err(format!("{rel}: no such file."));
+    }
+    fs::remove_file(&path).map_err(|e| format!("{rel}: {e}"))
+}
+
 /// Moves or renames a file inside the repository; never over an existing one.
 pub fn rename(root: &Path, from: &str, to: &str, allow_secrets: bool) -> Result<Change, String> {
     let root = fs::canonicalize(root).map_err(|e| format!("The linked folder is missing: {e}"))?;
@@ -553,6 +599,59 @@ pub mod commands {
     ) -> Result<tauri::ipc::Response, String> {
         let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
         read_bytes(&root, &path, secrets).map(tauri::ipc::Response::new)
+    }
+
+    /// WF-04: body = the bytes; headers `x-folder-id` and `x-path` (URI-encoded).
+    #[tauri::command]
+    pub async fn repo_write_bytes(
+        db: State<'_, Database>,
+        request: tauri::ipc::Request<'_>,
+    ) -> Result<String, String> {
+        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+            return Err("expected raw bytes".into());
+        };
+        let header = |name: &str| {
+            request
+                .headers()
+                .get(name)
+                .and_then(|v| v.to_str().ok())
+                .map(percent_decode)
+                .ok_or(format!("missing {name}"))
+        };
+        let folder_id = header("x-folder-id")?;
+        let path = header("x-path")?;
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
+        write_bytes(&root, &path, bytes, secrets)
+    }
+
+    #[tauri::command]
+    pub async fn repo_remove_bytes(
+        db: State<'_, Database>,
+        folder_id: String,
+        path: String,
+    ) -> Result<(), String> {
+        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
+        remove_bytes(&root, &path, secrets)
+    }
+
+    /// `%XX` escapes back to bytes (headers carry only ASCII); invalid UTF-8 is replaced.
+    fn percent_decode(s: &str) -> String {
+        let b = s.as_bytes();
+        let mut out = Vec::with_capacity(b.len());
+        let mut i = 0;
+        while i < b.len() {
+            if b[i] == b'%'
+                && i + 2 < b.len()
+                && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+            {
+                out.push(v);
+                i += 3;
+            } else {
+                out.push(b[i]);
+                i += 1;
+            }
+        }
+        String::from_utf8_lossy(&out).into_owned()
     }
 
     #[tauri::command]
@@ -910,6 +1009,22 @@ mod tests {
                 .unwrap_err()
                 .contains("isn't granted")
         );
+    }
+
+    #[test]
+    fn binary_files_are_written_whole_and_removed_with_the_path_rules() {
+        let r = repo();
+        let bytes = [0x50u8, 0x4b, 0, 0, 7];
+        assert_eq!(
+            write_bytes(&r, "out/report.docx", &bytes, false).unwrap(),
+            "out/report.docx"
+        );
+        assert_eq!(fs::read(r.join("out/report.docx")).unwrap(), bytes);
+        assert!(write_bytes(&r, "../x.docx", &bytes, false).is_err());
+        assert!(write_bytes(&r, ".git/x", &bytes, false).is_err());
+        remove_bytes(&r, "out/report.docx", false).unwrap();
+        assert!(!r.join("out/report.docx").exists());
+        assert!(remove_bytes(&r, "out/report.docx", false).is_err());
     }
 
     #[test]

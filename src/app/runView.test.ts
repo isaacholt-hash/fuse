@@ -100,7 +100,14 @@ test("tool labels", () => {
 });
 
 test("changes: labels, diff stats and undone", () => {
-  const base = { runId: "r1", stepId: null, createdAt: 1, status: "applied" as const };
+  const base = {
+    runId: "r1",
+    stepId: null,
+    createdAt: 1,
+    status: "applied" as const,
+    beforeSha: null,
+    afterSha: null,
+  };
   expect(
     changeView({
       ...base,
