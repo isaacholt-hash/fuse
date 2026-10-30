@@ -681,12 +681,31 @@ mod tests {
         assert!(https.contains("connected"), "{https}");
     }
 
+    /// Windows Server (CI's runners), not Windows 10 or 11.
+    fn is_server() -> bool {
+        std::process::Command::new("reg")
+            .args([
+                "query",
+                r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion",
+                "/v",
+                "InstallationType",
+            ])
+            .output()
+            .is_ok_and(|o| String::from_utf8_lossy(&o.stdout).contains("Server"))
+    }
+
     #[test]
     fn redirecting_to_nul_works() {
-        // Scripts send output to NUL all the time; it must work inside the container.
+        // Scripts send output to NUL all the time; it must work inside the container. Windows
+        // Server's device policy denies NUL to every AppContainer (Windows 10 and 11 allow
+        // it), and widening that would be machine-wide, so there it's only reported.
         let dir = fresh_dir("nul");
         grant(&dir).unwrap();
         let (out, code) = run(&dir, "echo hidden>NUL && echo shown", false);
+        if is_server() && out.contains("denied") {
+            eprintln!("Windows Server denies NUL to AppContainers; skipped: {out}");
+            return;
+        }
         assert!(out.contains("shown") && !out.contains("hidden"), "{out}");
         assert_eq!(code, 0, "{out}");
     }

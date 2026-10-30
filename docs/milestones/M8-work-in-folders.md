@@ -78,10 +78,11 @@
     2. In a Work chat on that folder, ask it to run `echo hi> inside.txt`. The file appears, and the result says "[sandboxed, network off]".
     3. Ask it to run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
     4. Ask it to run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
-    5. Ask it to run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
-    6. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
+    5. Ask it to run `echo hidden>NUL && echo shown`. It prints "shown" (CI can't check this one: Windows Server denies the NUL device to every sandboxed app, Windows 10 and 11 don't).
+    6. Ask it to run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
+    7. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
   - Also fixed: on Windows, commands started in `\\?\C:\…` (the form `canonicalize` gives), where cmd.exe can't start. They now get the plain path.
-  - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, and a first grant on a large folder (with `node_modules`, say) takes a while.
+  - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
 - [x] **10. Network per chat (WF-07).**
   - Sandboxed commands have **no network** unless the chat, or a folder of the run, was allowed it (migration 0045, `network_grants`).
   - When a sandboxed command fails with what looks like a network error (DNS or connect errors from common tools), the run asks: Allow for this chat, Allow for this folder, or No. Allowing runs it again, once. It's never allowed without asking.
