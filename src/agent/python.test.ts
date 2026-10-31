@@ -232,3 +232,12 @@ test("it isn't offered without Python, without the sandbox, or in a Code run, an
     });
   }
 });
+
+test("F7: Python's own startup line in the Windows sandbox is left out; the script's output isn't", () => {
+  const out =
+    "Failed to find real location of C:\\Users\\x\\AppData\\Roaming\\com.isaacholt.fuse\\python-runtime\\python\\python.exe\r\ntotal 42\r\n";
+  expect(withoutStartupNoise(out)).toBe("total 42\r\n");
+  expect(withoutStartupNoise("total 42\nFailed to find real location of x\n")).toBe(
+    "total 42\nFailed to find real location of x\n",
+  );
+});
