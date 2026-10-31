@@ -11,6 +11,7 @@ mod keys;
 mod local;
 pub mod local_worker;
 mod mcp;
+mod mcp_oauth;
 mod model_files;
 mod preview;
 mod python_runtime;
@@ -106,6 +107,9 @@ pub fn run() {
             mcp::commands::mcp_stop,
             mcp::commands::mcp_tools,
             mcp::commands::mcp_call,
+            mcp::commands::mcp_sign_in,
+            mcp::commands::mcp_sign_out,
+            mcp::commands::mcp_signed_in,
             python_runtime::commands::python_install,
             python_runtime::commands::python_install_cancel,
             python_runtime::commands::python_status,

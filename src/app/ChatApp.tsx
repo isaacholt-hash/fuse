@@ -829,9 +829,14 @@ export function ChatApp({
           const set = mcpApi
             ? await mcpApi.secretStatus(s.id, s.envNames).catch(() => s.envNames.map(() => false))
             : s.envNames.map(() => false);
+          const signedIn =
+            s.transport === "http" && mcpApi?.signedIn
+              ? await mcpApi.signedIn(s.id).catch(() => false)
+              : undefined;
           return {
             id: s.id,
             name: s.name,
+            ...(signedIn !== undefined ? { signedIn } : {}),
             detail:
               s.transport === "stdio"
                 ? `Local: ${joinCommand(s.command ?? "", s.args)}`
@@ -4164,11 +4169,34 @@ export function ChatApp({
                       Promise.all(
                         (server?.variables ?? []).map((v) => mcpApi.removeSecret(id, v.name)),
                       )
+                        .then(() => (server?.signedIn ? mcpApi.signOut?.(id) : undefined))
                         .then(() => mcpApi.stop?.(id))
                         .then(() => removeMcpServer(db, tenant, id))
                         .then(refreshMcp)
                         .catch(report);
                     }}
+                    {...(mcpApi.signIn && mcpApi.signOut
+                      ? {
+                          onSignIn: (id: string) => {
+                            setMcpHealth((h) => ({ ...h, [id]: "checking" }));
+                            mcpApi
+                              .signIn?.(id)
+                              .then(refreshMcp)
+                              .then(() => {
+                                setMcpHealth((h) => {
+                                  const { [id]: _done, ...rest } = h;
+                                  return rest;
+                                });
+                              })
+                              .catch((e: unknown) => {
+                                setMcpHealth((h) => ({ ...h, [id]: { error: String(e) } }));
+                              });
+                          },
+                          onSignOut: (id: string) => {
+                            mcpApi.signOut?.(id).then(refreshMcp).catch(report);
+                          },
+                        }
+                      : {})}
                     onNetwork={(id, on) => {
                       setMcpServerNetwork(db, tenant, id, on).then(refreshMcp).catch(report);
                     }}

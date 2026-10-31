@@ -38,6 +38,10 @@ export interface McpApi {
   call?(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
   /** Starts the server (again), does the handshake and lists its tools. */
   check?(serverId: string): Promise<McpHealth>;
+  /** M9 step 10: a remote server's sign-in (the system browser) and its tokens. */
+  signIn?(serverId: string): Promise<void>;
+  signOut?(serverId: string): Promise<void>;
+  signedIn?(serverId: string): Promise<boolean>;
   stop?(serverId: string): Promise<void>;
   setSecret(serverId: string, name: string, value: string): Promise<void>;
   removeSecret(serverId: string, name: string): Promise<void>;
@@ -54,6 +58,9 @@ export const tauriMcpApi: McpApi = {
   call: (serverId, name, args) =>
     invoke<McpCallResult>("mcp_call", { serverId, name, arguments: args }),
   stop: (serverId) => invoke("mcp_stop", { serverId }),
+  signIn: (serverId) => invoke("mcp_sign_in", { serverId }),
+  signOut: (serverId) => invoke("mcp_sign_out", { serverId }),
+  signedIn: (serverId) => invoke<boolean>("mcp_signed_in", { serverId }),
 };
 
 /**

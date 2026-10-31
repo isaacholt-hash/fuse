@@ -311,6 +311,19 @@ pub(crate) fn mcp_env_for(
     Ok(out)
 }
 
+/// M9 step 10: a remote MCP server's OAuth tokens, as JSON, in the keychain.
+pub(crate) fn mcp_oauth_get(keys: &Keys, server_id: &str) -> Result<Option<String>, String> {
+    keys.store.get(&mcp_account(server_id, "__oauth")?)
+}
+
+pub(crate) fn mcp_oauth_set(keys: &Keys, server_id: &str, json: &str) -> Result<(), String> {
+    keys.store.set(&mcp_account(server_id, "__oauth")?, json)
+}
+
+pub(crate) fn mcp_oauth_delete(keys: &Keys, server_id: &str) -> Result<(), String> {
+    keys.store.delete(&mcp_account(server_id, "__oauth")?)
+}
+
 pub mod commands {
     use super::*;
     use tauri::State;
