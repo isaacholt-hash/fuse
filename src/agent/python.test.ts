@@ -13,6 +13,7 @@ import { openTestDb } from "@/storage/testing/nodeDb";
 import {
   startRun,
   undoChange,
+  withoutStartupNoise,
   type ApprovalAnswer,
   type ApprovalRequest,
   type RunDeps,
