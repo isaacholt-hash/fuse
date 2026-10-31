@@ -1,0 +1,90 @@
+name: PC tests
+
+# M8 step 15: tests on Isaac's Windows PC, through a self-hosted runner (docs/windows-test-runner.md).
+# Only after a release from main, or started by hand. Never on pull requests: the repo is public,
+# so a stranger's code must never run on that PC.
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      update_test:
+        description: "Also run the update test (installs the previous release, then updates it)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: pc-tests
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  pc:
+    name: Tests on Isaac's PC
+    # A release that ran because of a push to main, or a run started by hand. Nothing else.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: [self-hosted, Windows, fuse-pc]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The commit the release was built from.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: pnpm install --frozen-lockfile
+      - name: Click-through tests on this desktop
+        id: e2e
+        continue-on-error: true
+        env:
+          VITE_E2E_FOLDER: C:\fuse-e2e
+          FUSE_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\fuse.exe
+          FUSE_E2E_FOLDER: C:\fuse-e2e
+        run: |
+          pnpm tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json
+          pnpm e2e
+      - name: Update test
+        id: update
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_test }}
+        continue-on-error: true
+        shell: pwsh
+        run: ./scripts/pc/update-test.ps1
+      - name: Local model benchmark
+        id: local
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:APPDATA\com.isaacholt.fuse\models\*.gguf") { pnpm local:bench }
+          else { "Local model benchmark skipped: no local model installed." | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: pc-e2e-screenshots
+          path: e2e/screenshots/
+          if-no-files-found: ignore
+      - name: Summary, and an issue if anything failed
+        if: ${{ !cancelled() }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          E2E: ${{ steps.e2e.outcome }}
+          UPDATE: ${{ steps.update.outcome }}
+          LOCAL: ${{ steps.local.outcome }}
+        run: |
+          $rows = "| Check | Result |`n| --- | --- |`n| Click-through tests | $env:E2E |`n| Update test | $env:UPDATE |`n| Local model benchmark | $env:LOCAL |"
+          Add-Content $env:GITHUB_STEP_SUMMARY "`n$rows"
+          if ($env:E2E -eq "failure" -or $env:UPDATE -eq "failure" -or $env:LOCAL -eq "failure") {
+            $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            gh issue create --title "PC tests failed on $($env:GITHUB_SHA.Substring(0, 7))" --body "$rows`n`nRun: $url"
+          }

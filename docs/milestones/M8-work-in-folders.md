@@ -155,11 +155,19 @@
     - Not tauri-driver: from WebView2 133 on, Edge's msedgedriver crashes the WebView it launches (WebView2Feedback#5415), and the runners have 156. The test starts the app and drives it over WebView2's DevTools port, which only the test build opens (localhost), with real mouse and key events.
     - Check 5 (`>NUL`) is skipped on GitHub's runners, because Windows Server denies NUL to sandboxed apps. It runs on Isaac's PC (step 15).
   - The screenshots caught F4 gaps, fixed here: at narrow widths More itself was cut off, the folder chip shrank to a sliver, and buttons were squeezed instead of moving. Now More sits outside the clipped row, chips keep their icon, and main controls keep their width. At the narrowest widths Search also moves into More, and the model chevron and Ctrl K hint are dropped.
-- [ ] **15. Tests on Isaac's Windows PC (Isaac, 2026-10-31).**
+- [x] **15. Tests on Isaac's Windows PC (Isaac, 2026-10-31).**
   - A GitHub Actions self-hosted runner on Isaac's PC, set up by him from `docs/windows-test-runner.md`. It runs as a normal program at login, not as a service, so it can open windows.
   - Its jobs run **only** after a merge to main and when started by hand, never on pull requests: the repo is public, so a stranger's PR must never run code on that PC. One job at a time.
   - After each release: install it, run the step 14 suite on the real desktop, then the real update test: install the previous release, let it find and download the new one, press Restart, and check the new version is running. Also `pnpm local:bench` when a local model is installed.
   - Results go to the job summary and the build tracker. A failure doesn't block merging; it opens an issue.
+  - **Built:** `.github/workflows/pc-tests.yml` (runner label `fuse-pc`), `scripts/pc/update-test.ps1` and `docs/windows-test-runner.md`.
+    - It runs only after a Release from a push to main succeeds, or when started by hand. A job-level check also refuses any other trigger.
+    - The update test skips itself when FUSE is open, so it never closes Isaac's work. It presses Restart now through Windows UI Automation, since a release build has no DevTools port.
+    - Windows CI checks that the PC's PowerShell scripts parse.
+  - **Not yet run:** it needs Isaac to set up the runner. Unchecked until then:
+    - whether Tauri's installer downgrades silently (`/S`) over a newer FUSE
+    - whether "Restart now" is reachable through UI Automation in the release build
+  - **Isaac must also** set Settings → Actions → General → fork pull request approval to "Require approval for all external contributors". It's "first-time contributors" today, which isn't enough with a runner on his PC.
 - [ ] **16. Live-key test button (Isaac, 2026-10-31).**
   - A workflow started by hand only, never on a schedule. It runs on Isaac's PC: `pnpm work:live` and a short chat on each provider, with keys from his own Windows environment (`FUSE_OPENAI_API_KEY`, `FUSE_ANTHROPIC_API_KEY`). Nothing else ever reads them.
   - The log is put through the secret scan before it's uploaded, and shows only pass or fail, turns and cost per model.

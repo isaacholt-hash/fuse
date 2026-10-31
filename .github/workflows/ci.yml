@@ -78,6 +78,15 @@ jobs:
             src-tauri
             src-tauri/sandbox-win
       - run: cargo clippy --manifest-path src-tauri/sandbox-win/Cargo.toml --all-targets -- -D warnings
+      # M8 step 15: the PC's scripts only run on Isaac's PC, so check here that they parse.
+      - name: PowerShell scripts parse
+        shell: pwsh
+        run: |
+          foreach ($f in Get-ChildItem scripts/pc -Filter *.ps1) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $errors; exit 1 }
+          }
       # One at a time: the tests share the one container and change folder permissions.
       - run: cargo test --manifest-path src-tauri/sandbox-win/Cargo.toml -- --test-threads=1
       # tauri::generate_context! needs the frontend dist folder to exist at compile time.
