@@ -8,7 +8,7 @@ import type { FetchLike, ProviderAdapter } from "@/providers/types";
 import type { ProviderId } from "@/catalog/catalog";
 import { tauriRepo, type RepoApi } from "@/repo/api";
 import type { UpdateApi } from "@/update/api";
-import type { SqlDb } from "@/storage/sql";
+import type { SqlDb, SqlValue } from "@/storage/sql";
 import { openTauriDb } from "@/storage/tauriDb";
 
 export const E2E_MARK = "fuse-e2e-scripted-build";
@@ -142,8 +142,27 @@ async function loggedDb(): Promise<SqlDb> {
     }
   };
   return {
-    execute: (sql, params) => slow(sql, () => db.execute(sql, params)),
-    select: (sql, params) => slow(sql, () => db.select(sql, params)),
+    execute: async (sql, params) => {
+      const r = await slow(sql, () => db.execute(sql, params));
+      // When an answer is saved finished, and how many rows that touched.
+      if (sql.includes("UPDATE messages SET content = ?, status = ?")) {
+        console.info(
+          `e2e db finished answer: ${String(params?.[1])}, ${String(r.rowsAffected)} row at ${at()}`,
+        );
+      }
+      return r;
+    },
+    select: async <Row>(sql: string, params?: SqlValue[]) => {
+      const rows = await slow(sql, () => db.select<Row>(sql, params));
+      // What a chat's reload saw: each message's role and status.
+      if (sql.includes("FROM messages") && sql.includes("parent_id, role, content, status")) {
+        const seen = (rows as { role?: string; status?: string }[])
+          .map((m) => `${m.role ?? "?"}:${m.status ?? "?"}`)
+          .join(" ");
+        console.info(`e2e db read messages [${seen}] at ${at()}`);
+      }
+      return rows;
+    },
   };
 }
 
