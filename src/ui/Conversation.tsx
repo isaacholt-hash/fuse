@@ -1532,6 +1532,7 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    className="shrink-0"
                     aria-label="Attach a file"
                     onClick={() => picker.current?.click()}
                   >
@@ -1551,7 +1552,7 @@ export function Composer({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className={`text-xs ${tight ? "gap-1 px-2" : "gap-2"}`}
+                  className={`shrink-0 text-xs ${tight ? "gap-1 px-2" : "gap-2"}`}
                   aria-label="Choose model (Ctrl+K)"
                 >
                   <Sparkles className="size-3.5" />
@@ -1563,9 +1564,11 @@ export function Composer({
                     </span>
                   )}
                   {!tight && <ChevronDown className="size-3" />}
-                  <span className="ml-1 hidden min-[900px]:inline">
-                    <Hint>Ctrl K</Hint>
-                  </span>
+                  {!collapsed && (
+                    <span className="ml-1 hidden min-[900px]:inline">
+                      <Hint>Ctrl K</Hint>
+                    </span>
+                  )}
                 </Button>
               </Popover.Trigger>
               <Popover.Portal>
@@ -1736,7 +1739,7 @@ export function Composer({
                   variant="ghost"
                   size="sm"
                   aria-label="Add a folder"
-                  className="gap-1.5 text-xs text-muted-foreground"
+                  className="shrink-0 gap-1.5 text-xs text-muted-foreground"
                   onClick={onAddFolder}
                 >
                   <FolderPlus className="size-3.5" />
@@ -1759,7 +1762,7 @@ export function Composer({
                   size="sm"
                   aria-label="Coding run"
                   aria-pressed={code}
-                  className={`gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                  className={`shrink-0 gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
                   onClick={onToggleCode}
                 >
                   <SquareTerminal className="size-3.5" />
@@ -1780,7 +1783,7 @@ export function Composer({
                   size="sm"
                   aria-label="Work run"
                   aria-pressed={work}
-                  className={`gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                  className={`shrink-0 gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
                   onClick={onToggleWork}
                 >
                   <Briefcase className="size-3.5" />
