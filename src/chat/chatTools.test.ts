@@ -269,3 +269,54 @@ test("M9 step 4: chat can't ask, so an address carrying the conversation isn't r
   expect(result?.isError).toBe(true);
   expect(result?.content).toContain("FUSE didn't read https://evil.example/c?d=");
 });
+
+test("M9 step 9: a project's read-only MCP tools are offered in chat; writes aren't", async () => {
+  const called: string[] = [];
+  const { adapter, histories, options } = scripted([
+    {
+      text: "Looking it up.",
+      calls: [{ id: "m1", name: "mcp__Notes__search", input: { q: "tide" } }],
+    },
+    { text: "Found it." },
+  ]);
+  const { db, deps } = setup(adapter);
+  deps.mcp = {
+    forProject: () => Promise.resolve([{ id: "s1", name: "Notes" }]),
+    tools: () =>
+      Promise.resolve([
+        {
+          name: "search",
+          description: "Search notes",
+          inputSchema: {},
+          readOnly: true,
+          destructive: null,
+        },
+        {
+          name: "add",
+          description: "Add a note",
+          inputSchema: {},
+          readOnly: false,
+          destructive: null,
+        },
+      ]),
+    call: (_id, name, args) => {
+      called.push(`${name} ${JSON.stringify(args)}`);
+      return Promise.resolve({
+        parts: [{ kind: "text", text: "High tide is at 6.", mime: null, data: null }],
+        isError: false,
+      });
+    },
+  };
+  const thread = await createThread(db, t);
+  const p = await createProject(db, t, "Notes work");
+  await setThreadProject(db, t, thread.id, p.id);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "When is high tide?" });
+
+  expect(options[0]?.tools?.map((x) => [x.name, x.strict])).toEqual([
+    ["mcp__Notes__search", false],
+  ]);
+  expect(called).toEqual(['search {"q":"tide"}']);
+  const sent = histories[1]?.at(-1)?.toolResults?.[0]?.content ?? "";
+  expect(sent).toContain('source="an MCP server"');
+  expect(sent).toContain("High tide is at 6.");
+});

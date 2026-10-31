@@ -24,6 +24,7 @@ import { toolsIn } from "@/agent/registry";
 import { FETCH_URL_TOOL, readPage } from "@/agent/tools";
 import { asData, DATA_RULE } from "@/agent/untrusted";
 import { addressCarries } from "@/agent/injection";
+import { mcpOutput, mcpToolsFor, type McpOffered, type McpRunApi } from "@/agent/mcpTools";
 import { projectToolsOff } from "@/storage/projectTools";
 import type { WebApi } from "@/web/api";
 import type { Tenant } from "@/storage/defaults";
@@ -77,6 +78,8 @@ export interface ChatDeps {
   now?: () => number;
   /** Reads public web pages for fetch_url (M9 step 2); without it, no tool is offered. */
   web?: WebApi;
+  /** M9 step 9: MCP servers; chats get a project's read-only tools, runs all of them. */
+  mcp?: McpRunApi;
 }
 
 /** M9 step 2: tool rounds one chat answer may take before it must answer without tools. */
@@ -484,9 +487,17 @@ async function streamAnswer(
   // M9 step 2: a model that takes tools may read the pages it needs (fetch_url), unless the
   // project is Local only or switched the tool off.
   const toolsOff = await projectToolsOff(db, tenant, thread?.projectId ?? null);
+  // M9 step 9: and the read-only tools of the project's MCP servers; not in a Local only one.
+  const chatMcp =
+    deps.mcp && thread?.projectId && policy.mode !== "local_only"
+      ? await mcpToolsFor(deps.mcp, thread.projectId, true, () => undefined)
+      : { specs: [], byName: new Map<string, McpOffered>() };
   const chatTools = (m: CatalogModel) =>
-    deps.web && policy.mode !== "local_only" && m.capabilities.includes("tools")
-      ? toolsIn("chat", { off: toolsOff })
+    policy.mode !== "local_only" && m.capabilities.includes("tools")
+      ? [
+          ...(deps.web ? toolsIn("chat", { off: toolsOff }) : []),
+          ...chatMcp.specs.filter((x) => !toolsOff.has(x.name)),
+        ]
       : [];
 
   /** One answer from a model, streamed in: a provider call, or a few when it reads pages. */
@@ -603,6 +614,29 @@ async function streamAnswer(
         });
         const results: ToolResult[] = [];
         for (const call of calls) {
+          const fromMcp = chatMcp.byName.get(call.name);
+          if (fromMcp && deps.mcp) {
+            try {
+              const r = await deps.mcp.call(fromMcp.serverId, fromMcp.tool, call.input);
+              const out = mcpOutput(r);
+              results.push({
+                callId: call.id,
+                content: asData(call.name, out.text),
+                isError: r.isError,
+                ...(out.images.length ? { images: out.images } : {}),
+              });
+            } catch (e) {
+              results.push({
+                callId: call.id,
+                content: asData(
+                  call.name,
+                  `Error: the MCP server ${fromMcp.serverName} didn't answer: ${e instanceof Error ? e.message : String(e)}`,
+                ),
+                isError: true,
+              });
+            }
+            continue;
+          }
           const url = typeof call.input.url === "string" ? call.input.url.trim() : "";
           // M9 step 4: chat can't ask, so an address carrying the conversation isn't read.
           const carries =

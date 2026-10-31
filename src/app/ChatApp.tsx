@@ -1051,8 +1051,24 @@ export function ChatApp({
       ...(repoApi ? { repo: repoApi } : {}),
       // M9 step 2: chats and runs read web pages with fetch_url.
       ...(web ? { web } : {}),
+      // M9 step 9: a project's MCP servers' tools.
+      ...(mcpApi?.tools && mcpApi.call
+        ? {
+            mcp: {
+              forProject: (pid: string) =>
+                listProjectMcpServers(db, tenant, pid).then((l) =>
+                  l.map((s) => ({ id: s.id, name: s.name })),
+                ),
+              tools: (id: string) => mcpApi.tools?.(id) ?? Promise.resolve([]),
+              call: (id: string, name: string, args: Record<string, unknown>) =>
+                mcpApi.call
+                  ? mcpApi.call(id, name, args)
+                  : Promise.reject(new Error("MCP calls aren't available here.")),
+            },
+          }
+        : {}),
     }),
-    [db, tenant, catalog, adapterFor, files, repoApi, localHelper, shadowRate, web],
+    [db, tenant, catalog, adapterFor, files, repoApi, localHelper, shadowRate, web, mcpApi],
   );
   const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
@@ -2410,22 +2426,6 @@ export function ChatApp({
     })(),
     ...(execApi ? { exec: execApi } : {}),
     ...(gitApi ? { git: gitApi } : {}),
-    // M9 step 9: a project's MCP servers' tools.
-    ...(mcpApi?.tools && mcpApi.call
-      ? {
-          mcp: {
-            forProject: (pid: string) =>
-              listProjectMcpServers(db, tenant, pid).then((l) =>
-                l.map((s) => ({ id: s.id, name: s.name })),
-              ),
-            tools: (id: string) => mcpApi.tools?.(id) ?? Promise.resolve([]),
-            call: (id: string, name: string, args: Record<string, unknown>) =>
-              mcpApi.call
-                ? mcpApi.call(id, name, args)
-                : Promise.reject(new Error("MCP calls aren't available here.")),
-          },
-        }
-      : {}),
     // M9 step 6: run_python is offered once Python is installed (Settings).
     ...(pythonApi ? { pythonReady: () => pythonApi.status().then((r) => r !== null) } : {}),
     approve: (req: ApprovalRequest) =>
