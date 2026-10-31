@@ -130,13 +130,64 @@ function anthropicContent(m: ChatMessage): string | Record<string, unknown>[] {
 }
 
 /** A tool sent to Claude: strict, so `input` always matches the schema (docs/providers.md, M6). */
-export function anthropicTool(t: ToolSpec): Record<string, unknown> {
+export function anthropicTool(t: ToolSpec, strict = t.strict !== false): Record<string, unknown> {
   return {
     name: t.name,
     description: t.description,
     input_schema: t.schema,
-    ...(t.strict === false ? {} : { strict: true }),
+    ...(strict ? { strict: true } : {}),
   };
+}
+
+/**
+ * Claude compiles every strict schema in a request into one grammar, and turns the request down
+ * when it's too big. The published caps are 20 strict tools, 24 optional fields and 16 fields
+ * with a type list or anyOf, across all of them; FUSE's nullable fields are type lists, and a Work
+ * run's tools have more than 16. So strict goes to the cheapest tools first, well inside the caps
+ * (the grammar can outgrow them before any cap is hit); the rest go loose, and the run checks
+ * their input against the schema itself (agent/checkInput.ts).
+ */
+export const STRICT_BUDGET = { tools: 16, unions: 10, optional: 16 };
+
+/** How much a schema adds to the grammar: its union fields and its optional ones. */
+export function strictCost(schema: Record<string, unknown>): { unions: number; optional: number } {
+  let unions = 0;
+  let optional = 0;
+  const walk = (s: Record<string, unknown>) => {
+    if (s.items && typeof s.items === "object") walk(s.items as Record<string, unknown>);
+    const props = (s.properties ?? {}) as Record<string, Record<string, unknown>>;
+    const required = new Set(Array.isArray(s.required) ? (s.required as string[]) : []);
+    for (const [key, p] of Object.entries(props)) {
+      if (Array.isArray(p.type) || Array.isArray(p.anyOf)) unions += 1;
+      if (!required.has(key)) optional += 1;
+      walk(p);
+    }
+  };
+  walk(schema);
+  return { unions, optional };
+}
+
+/** The request's tools, strict on as many as the budget takes (cheapest first), in their order. */
+export function anthropicTools(specs: readonly ToolSpec[]): Record<string, unknown>[] {
+  const candidates = specs
+    .map((t, i) => ({ i, cost: strictCost(t.schema) }))
+    .filter(({ i }) => specs[i]?.strict !== false)
+    .sort(
+      (a, b) =>
+        a.cost.unions * 2 + a.cost.optional - (b.cost.unions * 2 + b.cost.optional) || a.i - b.i,
+    );
+  const strict = new Set<number>();
+  let unions = 0;
+  let optional = 0;
+  for (const { i, cost } of candidates) {
+    if (strict.size >= STRICT_BUDGET.tools) break;
+    if (unions + cost.unions > STRICT_BUDGET.unions) continue;
+    if (optional + cost.optional > STRICT_BUDGET.optional) continue;
+    strict.add(i);
+    unions += cost.unions;
+    optional += cost.optional;
+  }
+  return specs.map((t, i) => anthropicTool(t, strict.has(i)));
 }
 
 function anthropicMessage(m: ChatMessage, model: string): Record<string, unknown> {
@@ -195,7 +246,7 @@ export function buildRequestBody(
   if (options.system) body.system = options.system;
   // Effort only; never `thinking` (Opus 5.5 rejects "disabled", Sonnet 5.5 too).
   if (options.effort) body.output_config = { effort: options.effort };
-  const tools: Record<string, unknown>[] = (options.tools ?? []).map(anthropicTool);
+  const tools: Record<string, unknown>[] = anthropicTools(options.tools ?? []);
   if (options.webSearch) {
     // Basic version: ZDR-eligible and no code execution (docs/providers.md, M1).
     tools.push({ type: "web_search_20250305", name: "web_search", max_uses: 5 });

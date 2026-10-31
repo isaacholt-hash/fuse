@@ -418,3 +418,37 @@ describe("web search", () => {
     });
   });
 });
+
+test("M9: strict goes to the cheapest tools first, inside Claude's grammar budget", async () => {
+  const { anthropicTools, strictCost, STRICT_BUDGET } = await import("./adapter");
+  const { toolsIn } = await import("@/agent/registry");
+  for (const place of ["code", "work", "chat"] as const) {
+    const specs = toolsIn(place);
+    const sent = anthropicTools(specs);
+    expect(sent.map((t) => t.name)).toEqual(specs.map((t) => t.name));
+    let unions = 0;
+    let optional = 0;
+    let strict = 0;
+    sent.forEach((t, i) => {
+      if (t.strict !== true) return;
+      const spec = specs[i];
+      if (!spec) return;
+      const cost = strictCost(spec.schema);
+      unions += cost.unions;
+      optional += cost.optional;
+      strict += 1;
+    });
+    expect(strict).toBeGreaterThan(0);
+    expect(strict).toBeLessThanOrEqual(STRICT_BUDGET.tools);
+    expect(unions).toBeLessThanOrEqual(STRICT_BUDGET.unions);
+    expect(optional).toBeLessThanOrEqual(STRICT_BUDGET.optional);
+  }
+  // A tool marked loose never gets strict, however cheap.
+  const loose = {
+    name: "x",
+    description: "",
+    schema: { type: "object", properties: {} },
+    strict: false,
+  };
+  expect(anthropicTools([loose])[0]).not.toHaveProperty("strict");
+});

@@ -76,6 +76,7 @@ import {
   runTool,
   type FileChange,
 } from "./tools";
+import { checkInput } from "./checkInput";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
 import { mcpToolsFor, type McpOffered } from "./mcpTools";
@@ -991,6 +992,13 @@ async function handleCall(
   if (run.mode === "plan" && tool && tool.kind !== "read") {
     return { output: "Error: this run is read-only.", isError: true };
   }
+  // A call to a tool Claude got without strict can come back loose (providers/anthropic/adapter.ts).
+  const bad = tool ? checkInput(tool.spec.schema, call.input) : null;
+  if (bad)
+    return {
+      output: `Error: ${bad} Call ${call.name} again with input that fits its schema.`,
+      isError: true,
+    };
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
