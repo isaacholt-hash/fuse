@@ -70,6 +70,9 @@ pub const MAX_OUT_BYTES: u64 = 20 * 1024 * 1024;
 /// within it, a runaway loop doesn't take the computer down.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub const PYTHON_MEMORY_KB: u64 = 4 * 1024 * 1024;
+/// The same cap on Windows, where the job limits each process's committed memory.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub const PYTHON_MEMORY_BYTES: usize = 4 * 1024 * 1024 * 1024;
 
 fn shell(command: &str) -> tokio::process::Command {
     #[cfg(windows)]
@@ -378,16 +381,40 @@ pub async fn run(
             command,
             network: sb.network,
             env_remove: SCRUBBED,
+            container: fuse_sandbox_win::Container::Commands,
+            env_set: &[],
+            memory_bytes: None,
         });
-        let mut child = match spawned {
-            Ok(c) => c,
-            Err(e) => {
-                on(ExecMsg::Error {
-                    message: format!("Couldn't start the command in the sandbox: {e}"),
-                });
-                return;
-            }
-        };
+        match spawned {
+            Ok(child) => run_contained(child, started, timeout, stop, on).await,
+            Err(e) => on(ExecMsg::Error {
+                message: format!("Couldn't start the command in the sandbox: {e}"),
+            }),
+        }
+        return;
+    }
+    run_process(
+        root,
+        command_for(root, command, sandbox),
+        started,
+        timeout,
+        stop,
+        on,
+    )
+    .await;
+}
+
+/// Supervises a command or script started in an AppContainer: its output to `on`, the time
+/// limit and Stop end its job (everything it started), then one `Done`.
+#[cfg(windows)]
+async fn run_contained(
+    mut child: fuse_sandbox_win::Child,
+    started: Instant,
+    timeout: Duration,
+    stop: oneshot::Receiver<()>,
+    on: impl FnMut(ExecMsg),
+) {
+    {
         let (tx, rx) = mpsc::unbounded_channel::<Vec<u8>>();
         if let Some(mut out) = child.take_output() {
             std::thread::spawn(move || {
@@ -413,17 +440,7 @@ pub async fn run(
                 .flatten()
         };
         supervise(started, timeout, stop, rx, wait, move || killer.kill(), on).await;
-        return;
     }
-    run_process(
-        root,
-        command_for(root, command, sandbox),
-        started,
-        timeout,
-        stop,
-        on,
-    )
-    .await;
 }
 
 /// Starts `cmd` in `root` and supervises it: output to `on`, the time limit and Stop end the
@@ -572,6 +589,27 @@ fn grant_folders(data: &Path, folders: &[PathBuf]) -> Result<(), String> {
     Ok(())
 }
 
+/// M9 step 6: lets Python's container read `folder` and the runtime, and write `work`; each is
+/// recorded so "Reset folder permissions" takes it off again.
+#[cfg(windows)]
+fn grant_python(data: &Path, folder: &Path, runtime: &Path, work: &Path) -> Result<(), String> {
+    use fuse_sandbox_win::{Container, READ, WRITE, grant_to, plain};
+    let record = data.join(GRANTS_FILE);
+    let mut known = std::fs::read_to_string(&record).unwrap_or_default();
+    for (p, access) in [(folder, READ), (runtime, READ), (work, WRITE)] {
+        let p = plain(p);
+        grant_to(Container::Python, &p, access)
+            .map_err(|e| format!("Couldn't let Python's sandbox use {}: {e}", p.display()))?;
+        let line = p.to_string_lossy().into_owned();
+        if !known.lines().any(|l| l == line) {
+            known.push_str(&line);
+            known.push('\n');
+            std::fs::write(&record, &known).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
 /// Takes the sandbox's entries off every folder it was given and deletes the container.
 /// Returns how many folders were put back; a folder that's gone is skipped.
 #[cfg(windows)]
@@ -585,7 +623,9 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
         if !p.exists() {
             continue;
         }
-        match fuse_sandbox_win::revoke(p) {
+        // Both containers: commands', and Python's (M9 step 6).
+        let python = fuse_sandbox_win::revoke_from(fuse_sandbox_win::Container::Python, p);
+        match fuse_sandbox_win::revoke(p).and(python) {
             Ok(()) => done += 1,
             Err(_) => {
                 left.push_str(line);
@@ -596,6 +636,7 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
     if left.is_empty() {
         let _ = std::fs::remove_file(&record);
         let _ = fuse_sandbox_win::remove_profile();
+        let _ = fuse_sandbox_win::remove_profile_of(fuse_sandbox_win::Container::Python);
         Ok(done)
     } else {
         std::fs::write(&record, &left).map_err(|e| e.to_string())?;
@@ -744,10 +785,93 @@ pub mod commands {
         #[cfg(target_os = "linux")]
         let cmd = python_command(&root, &python, &script_path, &out, network);
         #[cfg(not(target_os = "linux"))]
-        let cmd: Option<tokio::process::Command> = {
-            let _ = (&python, network);
-            None
-        };
+        let cmd: Option<tokio::process::Command> = None;
+        // M9 step 6: on Windows, Python's own AppContainer, given read access to the folder and
+        // the runtime and write access to its work folder; a 4 GB memory cap per process.
+        #[cfg(windows)]
+        if sandbox_kind() == SandboxKind::AppContainer {
+            let (stop_tx, stop_rx) = oneshot::channel();
+            execs
+                .running
+                .lock()
+                .map_err(|e| e.to_string())?
+                .insert(id, stop_tx);
+            let timeout = timeout_secs
+                .map(Duration::from_secs)
+                .unwrap_or(DEFAULT_TIMEOUT);
+            let root = fuse_sandbox_win::plain(&root);
+            let runtime_dir = runtime.join("python");
+            tauri::async_runtime::spawn(async move {
+                let (r, rd, w) = (root.clone(), runtime_dir.clone(), work.clone());
+                let granted =
+                    tokio::task::spawn_blocking(move || grant_python(&data, &r, &rd, &w)).await;
+                let err = match granted {
+                    Ok(Ok(())) => None,
+                    Ok(Err(e)) => Some(e),
+                    Err(e) => Some(e.to_string()),
+                };
+                if let Some(message) = err {
+                    let _ = on_event.send(ExecMsg::Error { message });
+                    let _ = std::fs::remove_dir_all(&work);
+                    return;
+                }
+                let out_s = fuse_sandbox_win::plain(&out).to_string_lossy().into_owned();
+                // matplotlib's cache goes in the work folder, the one place it can write.
+                let mpl_s = fuse_sandbox_win::plain(&work.join("matplotlib"))
+                    .to_string_lossy()
+                    .into_owned();
+                let command = format!(
+                    "\"{}\" -I \"{}\"",
+                    fuse_sandbox_win::plain(&python).display(),
+                    fuse_sandbox_win::plain(&script_path).display()
+                );
+                let vars = [
+                    ("FUSE_OUT", out_s.as_str()),
+                    ("MPLBACKEND", "Agg"),
+                    ("MPLCONFIGDIR", mpl_s.as_str()),
+                    ("OPENBLAS_NUM_THREADS", "2"),
+                    ("PYTHONDONTWRITEBYTECODE", "1"),
+                    ("PYTHONUNBUFFERED", "1"),
+                ];
+                let spawned = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
+                    cwd: &root,
+                    command: &command,
+                    network,
+                    env_remove: SCRUBBED,
+                    container: fuse_sandbox_win::Container::Python,
+                    env_set: &vars,
+                    memory_bytes: Some(PYTHON_MEMORY_BYTES),
+                });
+                let mut done = None;
+                match spawned {
+                    Ok(child) => {
+                        run_contained(child, Instant::now(), timeout, stop_rx, |m| match m {
+                            ExecMsg::Done { .. } => done = Some(m),
+                            other => {
+                                let _ = on_event.send(other);
+                            }
+                        })
+                        .await;
+                    }
+                    Err(e) => {
+                        let _ = on_event.send(ExecMsg::Error {
+                            message: format!("Couldn't start Python in the sandbox: {e}"),
+                        });
+                        let _ = std::fs::remove_dir_all(&work);
+                        return;
+                    }
+                }
+                let (files, skipped) = collect_outputs(&out);
+                let _ = on_event.send(ExecMsg::Files { files, skipped });
+                if let Some(d) = done {
+                    let _ = on_event.send(d);
+                }
+                let _ = std::fs::remove_dir_all(&work);
+            });
+            return Ok(id);
+        }
+        #[cfg(not(any(target_os = "linux", windows)))]
+        let _ = (&python, network, &data);
         let Some(cmd) = cmd else {
             let _ = std::fs::remove_dir_all(&work);
             return Err(

@@ -650,11 +650,13 @@ async function priorFlags(deps: RunDeps, run: Run): Promise<PriorFlag[]> {
 
 /**
  * M9 step 6: Python can run in this run: a Work run, with Python installed, on a computer that
- * sandboxes it (Linux for now). Code runs don't ask.
+ * sandboxes it (bubblewrap on Linux, the AppContainer on Windows). Code runs don't ask.
  */
 async function pythonUsable(deps: RunDeps, run: Run): Promise<boolean> {
   if (run.kind !== "work" || !deps.exec?.python || !deps.pythonReady) return false;
-  if ((await deps.exec.sandboxKind?.()) !== "bubblewrap") return false;
+  // Linux's bubblewrap, or Windows' AppContainer (part 2); never unsandboxed.
+  const kind = await deps.exec.sandboxKind?.();
+  if (kind !== "bubblewrap" && kind !== "app_container") return false;
   return deps.pythonReady().catch(() => false);
 }
 
