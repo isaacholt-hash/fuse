@@ -82,12 +82,15 @@ export function toolsIn(
   ).map((t) => t.spec);
 }
 
-/** "Code and Work", "Code", "Work": where a tool runs, for settings. Chat joins in step 2. */
-export const placesLabel = (places: readonly ToolPlace[]): string =>
-  places
-    .filter((p) => p !== "chat")
-    .map((p) => (p === "code" ? "Code" : "Work"))
-    .join(" and ");
+const PLACE_LABEL: Record<ToolPlace, string> = { code: "Code", work: "Work", chat: "Chat" };
+
+/** "Code and Work", "Code, Work and Chat": where a tool runs, for settings. */
+export function placesLabel(places: readonly ToolPlace[]): string {
+  const names = places.map((p) => PLACE_LABEL[p]);
+  return names.length > 1
+    ? `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`
+    : names.join("");
+}
 
 /** "Reads", "Writes", …: how a kind reads in settings and the activity log. */
 export const KIND_LABEL: Record<ToolKind, string> = {

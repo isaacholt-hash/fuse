@@ -6,7 +6,7 @@ export interface ProjectToolView {
   name: string;
   /** "Reads", "Writes", …, from the tool's kind. */
   kind: string;
-  /** "Code and Work", "Code", "Work". */
+  /** "Code and Work", "Code, Work and Chat", …. */
   where: string;
   on: boolean;
   /** Always on: a run can't work without it. */
@@ -27,8 +27,9 @@ export function ProjectToolsSection({ tools, onSwitch }: ProjectToolsProps) {
         Tools
       </h3>
       <p className="mb-2 text-[10px] text-muted-foreground">
-        What this project&apos;s Code and Work runs may use. A tool that&apos;s off isn&apos;t
-        offered to the model. Writes, commands and sends still ask as the run&apos;s mode says.
+        What this project&apos;s chats and its Code and Work runs may use. A tool that&apos;s off
+        isn&apos;t offered to the model. Writes, commands and sends still ask as the run&apos;s mode
+        says.
       </p>
       <div className="space-y-2">
         {kinds.map((kind) => (

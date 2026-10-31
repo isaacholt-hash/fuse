@@ -6,6 +6,8 @@ import { writeDocx, writePdf, writeXlsx, type Block, type SheetSpec } from "@/do
 import { pageMarker } from "@/files/pdfText";
 import type { RepoApi } from "@/repo/api";
 import type { ToolCall, ToolSpec } from "@/providers/types";
+import type { WebApi } from "@/web/api";
+import { readable } from "@/web/readable";
 
 /** The most one result sends back; the rest is described, not sent (CA-08 refines this). */
 export const MAX_TOOL_OUTPUT_CHARS = 40_000;
@@ -103,6 +105,39 @@ export function pageOutput(page: {
   const head = [`Page: ${page.title}`, `Address: ${page.url}`];
   if (page.truncated) head.push("(The page was longer than FUSE reads; this is its start.)");
   return capped(`${head.join("\n")}\n\n${page.text}`);
+}
+
+/**
+ * Reads one page for fetch_url, in a run or a chat. Rust refuses local and private addresses,
+ * after DNS and on every redirect, and caps the size and time (FK-06). Failures come back as
+ * results, not throws; `page` is set when it was read.
+ */
+export async function readPage(
+  web: WebApi,
+  rawUrl: unknown,
+): Promise<{ output: string; isError: boolean; page?: { url: string; title: string } }> {
+  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  if (!url) return { output: "Error: give the page's address as url.", isError: true };
+  try {
+    const page = await web.fetch(url);
+    const r = readable(page.body, page.contentType, page.url);
+    if (!r.text) return { output: `Error: ${page.url} has no readable text.`, isError: true };
+    return {
+      output: pageOutput({
+        url: page.url,
+        title: r.title,
+        text: r.text,
+        truncated: page.truncated,
+      }),
+      isError: false,
+      page: { url: page.url, title: r.title },
+    };
+  } catch (e) {
+    return {
+      output: `Error: couldn't read ${url}: ${e instanceof Error ? e.message : String(e)}`,
+      isError: true,
+    };
+  }
 }
 
 /** WF-03: Word, Excel and PDF files as text, for Work runs. */

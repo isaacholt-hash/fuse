@@ -938,8 +938,10 @@ export function ChatApp({
         ? { shadow: { rate: shadowRate, record: (r: ShadowRecord) => recordShadow(db, tenant, r) } }
         : {}),
       ...(repoApi ? { repo: repoApi } : {}),
+      // M9 step 2: chats and runs read web pages with fetch_url.
+      ...(web ? { web } : {}),
     }),
-    [db, tenant, catalog, adapterFor, files, repoApi, localHelper, shadowRate],
+    [db, tenant, catalog, adapterFor, files, repoApi, localHelper, shadowRate, web],
   );
   const filesApi = files;
   const attachments = useAttachments({ db, tenant, files, prepareImage, ...(web ? { web } : {}) });
@@ -2295,7 +2297,6 @@ export function ChatApp({
     })(),
     ...(execApi ? { exec: execApi } : {}),
     ...(gitApi ? { git: gitApi } : {}),
-    ...(web ? { web } : {}),
     approve: (req: ApprovalRequest) =>
       new Promise<ApprovalAnswer>((resolve) => {
         const done = (a: ApprovalAnswer) => {
