@@ -59,8 +59,11 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => {
-  writeFileSync(join(SHOTS, "console.log"), app.console.join("\n"));
-  app.quit();
+  // Unset when the app didn't start.
+  const started = app as Session | undefined;
+  if (!started) return;
+  writeFileSync(join(SHOTS, "console.log"), started.console.join("\n"));
+  started.quit();
 });
 
 test("send a message and see its cost", async () => {

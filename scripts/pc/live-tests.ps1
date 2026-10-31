@@ -3,6 +3,8 @@
 # pass the secret scan, and only the result lines (pass or fail, turns, cost per model) are shown.
 $ErrorActionPreference = "Stop"
 $summary = $env:GITHUB_STEP_SUMMARY
+# pnpm writes UTF-8; Windows PowerShell would read it with the old console code page.
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 # A key set with SetEnvironmentVariable(..., "User") reaches the runner once it restarts.
 foreach ($name in "FUSE_OPENAI_API_KEY", "FUSE_ANTHROPIC_API_KEY") {
@@ -19,8 +21,11 @@ $failed = $false
 $shown = @()
 foreach ($suite in "chat:live", "work:live") {
   $log = Join-Path $env:RUNNER_TEMP "$($suite -replace ':', '-').log"
+  # Windows PowerShell treats a program's stderr as an error when it's redirected, so not "Stop".
+  $ErrorActionPreference = "Continue"
   & pnpm $suite *> $log
   $ok = $LASTEXITCODE -eq 0
+  $ErrorActionPreference = "Stop"
   if (-not $ok) { $failed = $true }
   $text = Get-Content $log -Raw
   # The secret scan's pattern (scripts/secret-scan.sh), plus the keys themselves.
@@ -43,5 +48,5 @@ foreach ($suite in "chat:live", "work:live") {
 }
 $out = $shown -join "`n`n"
 Write-Host $out
-if ($summary) { Add-Content $summary $out }
+if ($summary) { [IO.File]::AppendAllText($summary, "$out`n") }
 if ($failed) { exit 1 }

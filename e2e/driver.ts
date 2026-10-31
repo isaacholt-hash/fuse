@@ -81,9 +81,14 @@ export class Session {
   /** Starts the app and attaches to its window's page. */
   static async start(application: string): Promise<Session> {
     const app = spawn(application, [], { stdio: "inherit" });
+    const failed: { error?: Error } = {};
+    app.on("error", (e) => {
+      failed.error = e;
+    });
     const until = Date.now() + 60_000;
     let url: string | undefined;
     while (!url) {
+      if (failed.error) throw new Error(`Couldn't start ${application}: ${String(failed.error)}`);
       if (app.exitCode !== null) throw new Error(`The app exited (${String(app.exitCode)})`);
       if (Date.now() > until) throw new Error(`No DevTools port ${String(PORT)} after 60 s`);
       const pages = await fetch(`http://127.0.0.1:${String(PORT)}/json/list`)

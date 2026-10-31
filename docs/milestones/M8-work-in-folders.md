@@ -163,7 +163,8 @@
   - **Built:** `.github/workflows/pc-tests.yml` (runner label `fuse-windows`), `scripts/pc/update-test.ps1` and `docs/windows-test-runner.md`.
     - It runs only after a Release from a push to main succeeds, or when started by hand. A job-level check also refuses any other trigger.
     - The update test skips itself when FUSE is open, so it never closes Isaac's work. It presses Restart now through Windows UI Automation, since a release build has no DevTools port.
-    - Windows CI checks that the PC's PowerShell scripts parse.
+    - Windows CI checks that the PC's PowerShell scripts parse, in Windows PowerShell 5.1.
+  - **First runs on TCHALLA (2026-10-31) failed before testing anything.** The PC has no PowerShell 7 and no Rust. Now every step uses Windows PowerShell, and the PC downloads the test build that CI's run on the same commit made (`e2e-app`, kept 7 days) instead of compiling one. Summary and output files are written as UTF-8 without a BOM, and the issue is opened through the REST API, so `gh` isn't needed either.
   - **Not yet run:** it needs Isaac to set up the runner. Unchecked until then:
     - whether Tauri's installer downgrades silently (`/S`) over a newer FUSE
     - whether "Restart now" is reachable through UI Automation in the release build
