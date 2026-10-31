@@ -2070,6 +2070,33 @@ function RunCard({
           )}
         </ol>
       )}
+      {run.approval && onApprove && run.approvalFlags && run.approvalFlags.length > 0 && (
+        <div
+          role="note"
+          aria-label="A tool result may have asked for this"
+          className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-[11px]"
+        >
+          <p className="mb-1 font-medium text-destructive">
+            Check this one: something the run read may have asked for it.
+          </p>
+          <ul className="space-y-1">
+            {run.approvalFlags.map((f, i) => (
+              <li key={i}>
+                <span className="text-muted-foreground">
+                  From {f.source}, which {f.why}:
+                </span>
+                <q className="mt-0.5 block font-mono break-words whitespace-pre-wrap">
+                  {f.passage}
+                </q>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-muted-foreground">
+            FUSE treats what tools bring back as data, so until this run ends everything it wants to
+            change, run or send asks you first, and none of it can be always-allowed.
+          </p>
+        </div>
+      )}
       {run.approval?.kind === "organise" && onApprove && (
         <OrganisePlan
           key={run.approval.moves.map((m) => m.from).join("|")}
@@ -2101,15 +2128,17 @@ function RunCard({
             >
               Allow for this chat
             </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                onApprove(run.id, "always");
-              }}
-            >
-              Allow for this folder
-            </Button>
+            {!run.approvalFlags?.length && (
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => {
+                  onApprove(run.id, "always");
+                }}
+              >
+                Allow for this folder
+              </Button>
+            )}
             <Button
               variant="outline"
               size="xs"
@@ -2183,17 +2212,20 @@ function RunCard({
               >
                 Allow
               </Button>
-              {run.approval.kind === "command" && !run.approval.destructive && run.inProject && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={() => {
-                    onApprove(run.id, "always");
-                  }}
-                >
-                  Always allow in this project
-                </Button>
-              )}
+              {run.approval.kind === "command" &&
+                !run.approval.destructive &&
+                run.inProject &&
+                !run.approvalFlags?.length && (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={() => {
+                      onApprove(run.id, "always");
+                    }}
+                  >
+                    Always allow in this project
+                  </Button>
+                )}
               <Button
                 variant="outline"
                 size="xs"

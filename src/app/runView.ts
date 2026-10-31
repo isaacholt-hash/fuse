@@ -163,6 +163,7 @@ export function auditRow(e: AuditEntry): AuditRowView {
     model: e.model,
     action: toolLabel(e.tool, e.input),
     kind: ((k) => (k ? KIND_LABEL[k] : ""))(kindOf(e.tool)),
+    flagged: e.flags.length ? `Flagged: ${e.flags.map((f) => f.why).join("; ")}` : "",
     allowed: e.approval ? ALLOWED[e.approval] : "—",
     result: firstLine(e.output) ?? "",
     failed: e.isError,

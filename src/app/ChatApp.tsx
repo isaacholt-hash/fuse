@@ -2667,7 +2667,17 @@ export function ChatApp({
       if (r) {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
         const waiting = approvals.get(r.run.id);
-        if (waiting) v.run.approval = approvalView(waiting.request);
+        if (waiting) {
+          v.run.approval = approvalView(waiting.request);
+          const flags = waiting.request.flags ?? [];
+          if (flags.length) {
+            v.run.approvalFlags = flags.map(({ source, why, passage }) => ({
+              source,
+              why,
+              passage,
+            }));
+          }
+        }
       }
       const fromFiles = threadFileSources.get(v.id);
       if (fromFiles?.length) v.fileSources = fromFiles;

@@ -145,6 +145,11 @@ export interface RunView {
   inProject?: boolean;
   /** What the run is waiting for your OK on (CA-03, CA-04). */
   approval?: ApprovalView;
+  /**
+   * M9 step 4: what earlier tool results seemed to ask for. Shown on the approval; while there are
+   * any, nothing can be always-allowed.
+   */
+  approvalFlags?: { source: string; why: string; passage: string }[];
 }
 
 export type ApprovalView =
