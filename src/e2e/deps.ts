@@ -68,6 +68,13 @@ export function scriptedTurn(body: Body): Turn {
     .flatMap((m) => (m.role === "user" ? blocks(m.content) : []))
     .map((b) => b.text ?? "")
     .findLast((t) => t.includes("E2E "));
+  // M9 step 12: "E2E fetch" reads a public page through fetch_url.
+  if (lastAsked?.includes("E2E fetch")) {
+    if (!body.tools?.length) return { text: "1. Read the page." };
+    if (!body.tools.some((t) => t.name === "fetch_url"))
+      return { text: "fetch_url wasn't offered." };
+    return { calls: [{ name: "fetch_url", input: { url: "https://example.com/" } }] };
+  }
   if (lastAsked?.includes("E2E python")) {
     // The planner asks without tools: it gets a plan.
     if (!body.tools?.length) return { text: "1. Run the script with run_python." };

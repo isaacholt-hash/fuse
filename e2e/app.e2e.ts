@@ -181,6 +181,15 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     expect(out).toContain("Access is denied");
     expect(existsSync(escape)).toBe(false);
   });
+  await step("fetch-url", async () => {
+    // M9 step 12: a public page through fetch_url, in the same Work chat.
+    const before = (await answers()).length;
+    await app.type(composer, "E2E fetch");
+    await app.press("Enter");
+    const out = await nextAnswer(before);
+    expect(out).toContain("Example Domain");
+    expect(out).toContain('source="a web page"');
+  });
   if (SERVER) {
     console.log("Check 5 skipped: Windows Server denies NUL to sandboxed apps.");
     return;

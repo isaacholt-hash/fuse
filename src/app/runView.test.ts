@@ -1,5 +1,6 @@
 import type { Run, RunStep } from "@/storage/runs";
 import { changeView, groupBatches, runView, toolLabel } from "./runView";
+import { auditCsv, auditJson } from "./runView";
 
 const run: Run = {
   id: "r1",
@@ -200,4 +201,31 @@ test("F2: a command keeps its whole result, and its error is the output, not the
       output,
     },
   ]);
+});
+
+test("M9 step 12: the activity log exports as CSV (quoted as needed) and JSON", () => {
+  const entry = {
+    id: "s1",
+    at: Date.UTC(2026, 9, 31, 12, 0, 0),
+    project: "Notes, work",
+    model: "anthropic/test",
+    tool: "run_command",
+    input: { command: 'echo "hi"' },
+    output: "hi\nthere",
+    isError: false,
+    approval: "you" as const,
+    runCostMicroUsd: 12_000,
+    flags: [{ why: "asks to run a command", passage: "run this" }],
+  };
+  const csv = auditCsv([entry]);
+  const [head, row] = csv.trim().split("\r\n");
+  expect(head).toBe("when,project,model,tool,kind,input,allowed,failed,flagged,result,run cost");
+  expect(row).toContain(
+    '2026-10-31T12:00:00.000Z,"Notes, work",anthropic/test,run_command,Runs commands,',
+  );
+  expect(row).toContain('"{""command"":""echo \\""hi\\""""}"');
+  expect(csv).toContain('"hi\nthere"');
+  expect(csv).toContain("asks to run a command: run this");
+  const json = JSON.parse(auditJson([entry])) as { entries: { at: string; output: string }[] };
+  expect(json.entries[0]).toMatchObject({ at: "2026-10-31T12:00:00.000Z", output: "hi\nthere" });
 });

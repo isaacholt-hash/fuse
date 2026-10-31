@@ -58,6 +58,15 @@ export function PrivacySection({
           the system allows, with no network unless you allow it.
         </p>
         <p>
+          <span className="font-medium text-foreground">When a chat or run uses tools,</span>{" "}
+          reading a web page sends its address to that site (only public ones; never this computer
+          or your network), and the page goes to the provider. Python runs on this computer in the
+          sandbox. An MCP server you add sees exactly what the model sends to its tools, which can
+          include your chats&apos; and files&apos; content: a local one runs here, sandboxed; a
+          remote one receives it under its own terms. Sign-in tokens and server variables stay in
+          this computer&apos;s keychain. None of this happens in a Local only project.
+        </p>
+        <p>
           <span className="font-medium text-foreground">What never leaves:</span> memories and
           knowledge files you mark to keep on this computer, anything in a project set to Local
           only, and anything for a provider blocked below or in a project. FUSE checks this twice,

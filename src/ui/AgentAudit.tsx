@@ -22,12 +22,41 @@ export interface AuditRowView {
  * Settings → Coding agent (AG-04): every tool call coding runs made, newest first, with how it
  * was allowed, what came back, the model and what its run cost.
  */
-export function AgentAuditSection({ rows }: { rows: AuditRowView[] }) {
+export function AgentAuditSection({
+  rows,
+  onExport,
+}: {
+  rows: AuditRowView[];
+  /** M9 step 12 (SE-10): saves the whole log as CSV or JSON. */
+  onExport?: (format: "csv" | "json") => void;
+}) {
   return (
     <section className="mt-8 border-t pt-6" aria-label="Coding agent activity">
       <div className="mb-1 flex items-center gap-2">
         <ScrollText className="size-3.5 text-muted-foreground" />
         <h2 className="text-sm font-medium">Coding agent activity</h2>
+        {onExport && rows.length > 0 && (
+          <span className="ml-auto flex gap-2 text-[11px]">
+            <button
+              type="button"
+              className="hover:underline"
+              onClick={() => {
+                onExport("csv");
+              }}
+            >
+              Export CSV
+            </button>
+            <button
+              type="button"
+              className="hover:underline"
+              onClick={() => {
+                onExport("json");
+              }}
+            >
+              Export JSON
+            </button>
+          </span>
+        )}
       </div>
       <p className="mb-3 text-xs text-muted-foreground">
         Every file read, change and command coding runs made, and who allowed it. Kept on this

@@ -102,7 +102,7 @@ import {
 import type { RunMode } from "@/storage/runs";
 import { recentToolCalls, runsForThread, type AuditEntry } from "@/storage/runs";
 import { AgentAuditSection } from "@/ui/AgentAudit";
-import { approvalView, auditRow, runView } from "./runView";
+import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -4001,7 +4001,23 @@ export function ChatApp({
               }
               agent={
                 <>
-                  <AgentAuditSection rows={audit.map(auditRow)} />
+                  <AgentAuditSection
+                    rows={audit.map(auditRow)}
+                    {...(exporter
+                      ? {
+                          onExport: (format: "csv" | "json") => {
+                            const day = new Date().toISOString().slice(0, 10);
+                            const text = format === "csv" ? auditCsv(audit) : auditJson(audit);
+                            exporter
+                              .save(
+                                `fuse-activity-${day}.${format}`,
+                                new TextEncoder().encode(text),
+                              )
+                              .catch(report);
+                          },
+                        }
+                      : {})}
+                  />
                   {windowsSandbox && execApi?.windowsSandbox && (
                     <WindowsSandboxSection
                       on={windowsSandbox.on}

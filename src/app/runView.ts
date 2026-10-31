@@ -168,6 +168,54 @@ const ALLOWED: Record<Approval, string> = {
 };
 
 /** One audit row (AG-04). */
+/** M9 step 12 (SE-10): one CSV field, quoted when it needs to be. */
+const csvField = (v: string) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** M9 step 12 (SE-10): the activity log as CSV, newest first, one row per tool call. */
+export function auditCsv(entries: AuditEntry[]): string {
+  const head = [
+    "when",
+    "project",
+    "model",
+    "tool",
+    "kind",
+    "input",
+    "allowed",
+    "failed",
+    "flagged",
+    "result",
+    "run cost",
+  ];
+  const rows = entries.map((e) => {
+    const k = kindOf(e.tool);
+    return [
+      new Date(e.at).toISOString(),
+      e.project,
+      e.model,
+      e.tool,
+      k ? KIND_LABEL[k] : "",
+      JSON.stringify(e.input),
+      e.approval ? ALLOWED[e.approval] : "",
+      e.isError ? "yes" : "no",
+      e.flags.map((f) => `${f.why}: ${f.passage}`).join(" | "),
+      e.output.slice(0, 2000),
+      formatUsd(e.runCostMicroUsd),
+    ].map(csvField);
+  });
+  return [head, ...rows].map((r) => r.join(",")).join("\r\n") + "\r\n";
+}
+
+/** M9 step 12 (SE-10): the activity log as JSON, with every result in full. */
+export const auditJson = (entries: AuditEntry[]) =>
+  JSON.stringify(
+    {
+      exported: new Date().toISOString(),
+      entries: entries.map((e) => ({ ...e, at: new Date(e.at).toISOString() })),
+    },
+    null,
+    2,
+  );
+
 export function auditRow(e: AuditEntry): AuditRowView {
   return {
     id: e.id,
