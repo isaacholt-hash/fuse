@@ -17,7 +17,8 @@ M8 step 15 runs FUSE's tests on Isaac's real Windows desktop through a GitHub Ac
    ```powershell
    $a = New-ScheduledTaskAction -Execute "C:\actions-runner\run.cmd" -WorkingDirectory "C:\actions-runner"
    $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-   Register-ScheduledTask -TaskName "FUSE test runner" -Action $a -Trigger $t -RunLevel Limited
+   $p = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+   Register-ScheduledTask -TaskName "FUSE test runner" -Action $a -Trigger $t -Principal $p
    Start-ScheduledTask -TaskName "FUSE test runner"
    ```
 
@@ -37,6 +38,16 @@ The runner shows as **Idle** on the Runners page when it's ready.
 3. **`pnpm local:bench`**, when a local model is installed.
 
 The results are in the run's summary. A failure opens an issue and never blocks merging. Screenshots of the click-through tests are uploaded as `pc-e2e-screenshots`.
+
+### If the update test says the runner isn't on your desktop
+
+The update test presses **Restart now** through Windows UI Automation, which only sees windows on the desktop it runs on. The runner must run only when you're logged on, as yourself, with **LogonType Interactive** (the `-Principal` line above). If the task was made without it, make it again:
+
+```powershell
+Unregister-ScheduledTask -TaskName "FUSE test runner" -Confirm:$false
+```
+
+Then run step 4 again. The click-through tests don't need this, since they drive the test build over its DevTools port.
 
 ## Keys for the live-key button (step 16)
 
