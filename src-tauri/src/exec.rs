@@ -157,7 +157,7 @@ pub enum SandboxKind {
 static WINDOWS_SANDBOX: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "linux")]
-fn bwrap_path() -> Option<PathBuf> {
+pub(crate) fn bwrap_path() -> Option<PathBuf> {
     ["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"]
         .iter()
         .map(PathBuf::from)
