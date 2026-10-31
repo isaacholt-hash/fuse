@@ -64,6 +64,8 @@ Each phase ships only when its gate passes. P1's gate is the one that matters: i
 2. **Coding agent** (added 2026-10-30, section 11b): what Claude Code and Codex do for your daily work. A project linked to a local repository; the agent reads, searches and edits files, runs commands with your approval, shows every change as a diff, works with git, reads CLAUDE.md and AGENTS.md, and does long runs with a plan and a cost cap, each step routed and priced like chat. It brings forward the parts of P2 agents it needs (AG-04, AG-05, AG-06). **Gate:** for two weeks you do your edit, run, review and commit loop in FUSE rather than in Claude Code or Codex, and no repo content reaches a blocked provider in tests.
 3. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
 
+**P2 order (set 2026-10-31):** Work in folders (M8), Tools and MCP (M9), then Runs on HULK (M10): the self-hosted web app with background runs, handover from the desktop and scheduled tasks. Sync (PL-04) comes after.
+
 ## 4. Users and key use cases
 
 V1 has one user: you, a technical power user who pays for two AI subscriptions, works in short sprints, and needs fast capture and an easy way to pick up where you left off. The future user is the same profile at scale: people already paying for two or more AI apps who want one place and a lower bill.
@@ -230,7 +232,7 @@ Tools are opt-in per project, side effects need approval, and every run has a co
 | AG-04 | Approvals: read-only tools run freely; tools that write, send, delete or spend ask first, with "always allow for this project" per tool; an audit log records every tool call with inputs, outputs, model and cost. | Must | P2 |
 | AG-05 | Agent runs: a request can start a multi-step run with a visible plan, step list, live progress, pause and stop, and a cost cap per run (default $1) that pauses the run for approval when reached. | Must | P2 |
 | AG-06 | Routing inside runs (RT-14): planning and final synthesis on Best, routine steps on Balanced, summaries and classification on Cheap. | Should | P2 |
-| AG-07 | Scheduled tasks: run a saved prompt with chosen tools on a schedule or once at a time; results land in a thread and a notification; failures are reported with the last step. | Should | P2 |
+| AG-07 | Scheduled tasks: run a saved prompt with chosen tools on a schedule or once at a time; results land in a thread and a notification; failures are reported with the last step. M10 (2026-10-31): on the HULK server only, run by its runner. | Should | P2 |
 | AG-08 | Browser automation through a browser extension or an embedded browser, limited to sites the user allows; computer use on desktop, opt-in, screenshots shown before each action. | Nice | P3 |
 | AG-09 | Parallel steps and sub-runs with a combined cost cap. | Nice | P3 |
 | AG-10 | Prompt-injection guard: content fetched by tools is treated as data; instructions found inside it are shown to the user and never executed without confirmation. | Must | P2 |
@@ -256,8 +258,8 @@ Added 2026-10-30. The first requirements missed that Claude Code and Codex are p
 | CA-12 | Skills: packaged instructions with files and scripts, called by name; extends the prompt library (CH-12). | Should | P2 |
 | CA-13 | Hooks: your own commands at points in a run (before a tool, after a stop). | Nice | P2 |
 | CA-14 | Subagents and parallel runs, each in its own worktree, with a combined cost cap (AG-09). | Should | P2 |
-| CA-15 | Background runs on the HULK server (P2 web), handed over from the desktop, that keep going with the laptop closed. | Should | P2 |
-| CA-16 | Remote control: follow and steer a run from another device through the web app. | Nice | P2 |
+| CA-15 | Background runs on the HULK server (P2 web), handed over from the desktop, that keep going with the laptop closed. M10 (2026-10-31): Code runs on a repository with a remote are handed over and push their own branch; the server has its own database until sync (PL-04). | Should | P2 |
+| CA-16 | Remote control: follow and steer a run from another device through the web app. M10 (2026-10-31): follow, approve and stop from any signed-in browser; web push later. | Nice | P2 |
 | CA-17 | Plugins: packs of skills, hooks and MCP servers. | Nice | P3 |
 | CA-18 | Entry points outside the app: a `fuse` terminal command and an IDE extension. | Nice | P3 |
 | CA-19 | Security scanning on a schedule (AG-07), with proposed fixes. | Nice | P3 |
@@ -485,9 +487,10 @@ Decided 2026-10-30:
 - [x] P1.5 part 2, Coding agent (M6, section 11b, added 2026-10-30): built 2026-10-30 (`docs/milestones/M6-coding-agent.md`); live benchmark passed 3 of 3 on both providers (2026-10-30); Isaac skipped the two-week gate (2026-10-30). Tool calling on both providers, a linked repository read through Rust, CLAUDE.md and AGENTS.md, runs with plan, steps, cost cap and summaries, edits with diffs and undo, commands with approval, permission modes and always-allow, git with branch, commit, push and PR, egress on every send path, and the coding benchmark (CA-01 to CA-09)
 - [x] P1.5 part 3, Local and lean (M7, section 16b): built 2026-10-30 (`docs/milestones/M7-local-and-lean.md`). The automated P1.5 gate passes: cost per successful task fell 21% on the routing test set with no quality drop, and a Local only project makes no cloud call. Cost per successful task (LL-07), answers without a model (LL-01), Qwen3 1.7B or 4B built in through llama.cpp in a worker process, with hardware detection and a checked install (LL-02, LL-03), housekeeping local first (LL-04), search by word without a key and token ceilings (LL-05), an exact-match cache (LL-06), shadow checks and `pnpm local:bench` (LL-09), and local-path security (LL-08)
 - [x] P2 part 1, Work in folders (M8, section 11c, added 2026-10-30): built 2026-10-31 (`docs/milestones/M8-work-in-folders.md`); live Work benchmark passed 3 of 3 on both providers, and the image check on both (WF-01 to WF-08, CA-11, FK-07)
-- [ ] P2 part 2, Tools and MCP (M9, section 11): plan and decisions 2026-10-31 (`docs/milestones/M9-tools-and-mcp.md`); build step by step on Isaac's go. The tool registry and fetch_url (AG-01), the injection guard (AG-10), Python in the sandbox (AG-03, FK-08), MCP over stdio and HTTP (AG-02), and the audit export (SE-10)
+- [x] P2 part 2, Tools and MCP (M9, section 11): built 2026-10-31 (`docs/milestones/M9-tools-and-mcp.md`); live tools benchmark passed 3 of 3 on both providers. The tool registry and fetch_url (AG-01), the injection guard (AG-10), Python in the sandbox (AG-03, FK-08), MCP over stdio and HTTP (AG-02), and the audit export (SE-10)
 
 **Can wait**
 
-- [ ] P2 web app on HULK and background runs, sync, scheduled tasks, dictation (after M9)
+- [ ] P2 part 3, Runs on HULK (M10): plan and decisions 2026-10-31 (`docs/milestones/M10-runs-on-hulk.md`), built unattended. The self-hosted web app (PL-03, PL-02), background runs and handover (CA-15), following and approving from another device (CA-16 core), and scheduled tasks (AG-07)
+- [ ] P2 sync, dictation, deep research (after M10)
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on

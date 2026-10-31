@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M9-tools-and-mcp.md`** — work only on what it lists (M0–M8 are built). Build steps start once Isaac approves the plan
+- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). Isaac approved the plan and asked for it to be built unattended: merge each step once green and go on to the next
 
 ## The 5 things that matter
 
@@ -33,6 +33,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Local and lean (2026-10-30) | llama.cpp built in through Rust, in a worker process; Qwen3 1.7B or 4B picked by hardware, opt-in download; housekeeping only (RT-17 kept); on as soon as a model is installed, one switch to turn it off. Isaac skipped M6's two-week trial |
 | Work in folders (2026-10-30) | M8 starts P2: a Work mode beside Code, folders per chat and several per project, Word, Excel and PDF read and written, organise as one approved plan, and commands in an OS sandbox (bubblewrap; AppContainer on Windows) |
 | Tools and MCP (2026-10-31) | M9 is P2 part 2: a tool registry with kinds, fetch_url, tool results treated as data with flagged passages shown on approvals, Python only in the M8 sandbox (pinned download, checked by hash), MCP over stdio and HTTP with OAuth (tools only, local servers sandboxed, secrets in the keychain). Read-only tools also work in plain chat |
+| Runs on HULK (2026-10-31) | M10 is P2 part 3: fuse-server (Rust, axum, Linux only) serves the same UI and commands to the browser and to a Node runner that runs runs headless; keys in systemd-creds; sign-in by passphrase, tailnet only via `tailscale serve`; desktop handover of Code runs on repos with a remote; scheduled tasks on the server; its own database until sync |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 
