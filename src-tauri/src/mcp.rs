@@ -818,6 +818,7 @@ pub fn stdio_contained(
         roaming.to_string_lossy().into_owned(),
         local.to_string_lossy().into_owned(),
     );
+    // Windows needs a profile variable to start a process in an AppContainer at all.
     let mut vars: Vec<(&str, &str)> = vec![
         ("USERPROFILE", &home),
         ("HOME", &home),

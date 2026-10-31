@@ -449,7 +449,9 @@ pub struct Spawn<'a> {
     /// Its own pipes for stdin, stdout and stderr (an MCP server talks on them), not NUL in and
     /// one pipe out.
     pub piped: bool,
-    /// When set, only these of FUSE's variables are passed on (before `env_set`), not all.
+    /// When set, only these of FUSE's variables are passed on (before `env_set`), not all. The
+    /// environment must still have USERPROFILE, APPDATA or LOCALAPPDATA (here or in `env_set`):
+    /// without one, Windows won't start a process in an AppContainer (error 203).
     pub env_only: Option<&'a [&'a str]>,
 }
 
@@ -759,13 +761,14 @@ mod tests {
         use std::io::Write;
         let dir = fresh_dir("piped");
         assert!(grant_to(Container::Mcp, &dir, WRITE).unwrap());
+        let d = dir.to_string_lossy().into_owned();
         let mut child = spawn(&Spawn {
             cwd: &dir,
             command: "echo oops 1>&2 & findstr \"^\"",
             network: false,
             env_remove: &[],
             container: Container::Mcp,
-            env_set: &[("FUSE_MCP_TEST", "1")],
+            env_set: &[("USERPROFILE", &d), ("FUSE_MCP_TEST", "1")],
             memory_bytes: None,
             piped: true,
             env_only: Some(&["PATH", "SystemRoot"]),
@@ -791,86 +794,6 @@ mod tests {
         assert_eq!(err.trim(), "oops");
         revoke_from(Container::Mcp, &dir).unwrap();
         let _ = remove_profile_of(Container::Mcp);
-    }
-
-    // TEMPORARY: which environments let a contained command start (error 203 otherwise).
-    #[test]
-    #[allow(clippy::type_complexity)]
-    fn zz_diag_env() {
-        let dir = fresh_dir("diag");
-        grant_to(Container::Mcp, &dir, WRITE).unwrap();
-        let d = dir.to_string_lossy().into_owned();
-        let base: &[&str] = &[
-            "PATH",
-            "PATHEXT",
-            "SystemRoot",
-            "SystemDrive",
-            "windir",
-            "ComSpec",
-            "OS",
-            "NUMBER_OF_PROCESSORS",
-            "PROCESSOR_ARCHITECTURE",
-            "ProgramFiles",
-            "ProgramData",
-        ];
-        let real: Vec<&str> = base
-            .iter()
-            .copied()
-            .chain([
-                "USERPROFILE",
-                "APPDATA",
-                "LOCALAPPDATA",
-                "HOMEDRIVE",
-                "HOMEPATH",
-                "USERNAME",
-            ])
-            .collect();
-        let own = [
-            ("USERPROFILE", d.as_str()),
-            ("APPDATA", d.as_str()),
-            ("LOCALAPPDATA", d.as_str()),
-        ];
-        let cases: Vec<(&str, bool, Option<&[&str]>, &[(&str, &str)])> = vec![
-            ("all, piped", true, None, &[]),
-            (
-                "PATH+SystemRoot, not piped",
-                false,
-                Some(&["PATH", "SystemRoot"]),
-                &[],
-            ),
-            ("base, piped", true, Some(base), &[]),
-            ("base+own profile, piped", true, Some(base), &own),
-            ("base+real profile, piped", true, Some(&real), &[]),
-            ("all+own profile, piped", true, None, &own),
-        ];
-        let mut report = String::new();
-        for (name, piped, only, set) in cases {
-            let r = spawn(&Spawn {
-                cwd: &dir,
-                command: "echo ok",
-                network: false,
-                env_remove: &[],
-                container: Container::Mcp,
-                env_set: set,
-                memory_bytes: None,
-                piped,
-                env_only: only,
-            });
-            match r {
-                Ok(mut c) => {
-                    drop(c.take_input());
-                    let mut out = String::new();
-                    let _ = c.take_output().unwrap().read_to_string(&mut out);
-                    report.push_str(&format!(
-                        "{name}: ok {:?} {:?}\n",
-                        c.wait().ok(),
-                        out.trim()
-                    ));
-                }
-                Err(e) => report.push_str(&format!("{name}: ERR {e}\n")),
-            }
-        }
-        panic!("DIAG\n{report}");
     }
 
     #[test]
