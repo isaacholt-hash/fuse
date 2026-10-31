@@ -1,31 +1,78 @@
 {
-  "about": "Work benchmark tasks (M8 step 13). Each runs as a Work run on a fresh copy of data/work/fixture (a plain folder, not a git repository); the checks decide whether it passed. Synthetic, so no personal data.",
+  "about": "Work benchmark tasks (M8 step 13). Each runs as a Work run on a fresh copy of data/work/fixture (a plain folder, not a git repository); the checks decide whether it passed. Synthetic, so no personal data. A task with requires: python needs FUSE's Python (M9 step 7); the recorded benchmark runs it with the system python3, and the live run skips it until step 11.",
   "tasks": [
     {
       "id": "summarise-to-docx",
       "task": "Read the three documents in reports/ and write summary.docx in the folder's root: a short summary with a table of each document's key points (one row per document).",
       "checks": [
-        { "kind": "docx_table", "path": "summary.docx" },
-        { "kind": "docx_contains", "path": "summary.docx", "text": "Northwind" },
-        { "kind": "docx_contains", "path": "summary.docx", "text": "May" }
+        {
+          "kind": "docx_table",
+          "path": "summary.docx"
+        },
+        {
+          "kind": "docx_contains",
+          "path": "summary.docx",
+          "text": "Northwind"
+        },
+        {
+          "kind": "docx_contains",
+          "path": "summary.docx",
+          "text": "May"
+        }
       ]
     },
     {
       "id": "xlsx-from-csvs",
       "task": "Using data/units.csv and data/prices.csv, make revenue.xlsx in the folder's root: one row per product with its units, price and revenue, where revenue is an Excel formula (units times price), and a total row that adds up revenue with a formula.",
       "checks": [
-        { "kind": "xlsx_formula", "path": "revenue.xlsx", "text": "SUM(" },
-        { "kind": "xlsx_contains", "path": "revenue.xlsx", "text": "Kettle" },
-        { "kind": "xlsx_contains", "path": "revenue.xlsx", "text": "Toaster" }
+        {
+          "kind": "xlsx_formula",
+          "path": "revenue.xlsx",
+          "text": "SUM("
+        },
+        {
+          "kind": "xlsx_contains",
+          "path": "revenue.xlsx",
+          "text": "Kettle"
+        },
+        {
+          "kind": "xlsx_contains",
+          "path": "revenue.xlsx",
+          "text": "Toaster"
+        }
       ]
     },
     {
       "id": "organise-messy",
       "task": "The messy/ folder is a mess. Sort every file in it into subfolders of messy/ by what it is (for example invoices and receipts, images, notes), in one organise plan. Don't delete or rename the files.",
       "checks": [
-        { "kind": "no_loose_files", "path": "messy" },
-        { "kind": "same_files", "path": "messy" },
-        { "kind": "one_organise_plan" }
+        {
+          "kind": "no_loose_files",
+          "path": "messy"
+        },
+        {
+          "kind": "same_files",
+          "path": "messy"
+        },
+        {
+          "kind": "one_organise_plan"
+        }
+      ]
+    },
+    {
+      "id": "python-total",
+      "requires": "python",
+      "task": "Using data/units.csv and data/prices.csv, work out the total revenue (each product's units times its price, added up) and save just that number in revenue-total.txt in the folder's root.",
+      "checks": [
+        {
+          "kind": "file_contains",
+          "path": "revenue-total.txt",
+          "text": "7550"
+        },
+        {
+          "kind": "used_tool",
+          "tool": "run_python"
+        }
       ]
     }
   ]

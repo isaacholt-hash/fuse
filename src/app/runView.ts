@@ -215,7 +215,9 @@ export function runView(
         kind: "tool",
         label: toolLabel(s.call.name, s.call.input),
         error: s.isError ? firstLine(s.output) : null,
-        ...(s.call.name === "run_command" ? { output: s.output } : {}),
+        ...(s.call.name === "run_command" || s.call.name === "run_python"
+          ? { output: s.output }
+          : {}),
       });
     } else if (s.text.trim() && !(run.status === "done" && s === lastModel)) {
       views.push({ id: s.id, kind: "note", label: s.text.trim(), error: null });
