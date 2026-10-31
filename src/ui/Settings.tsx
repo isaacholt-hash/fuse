@@ -233,6 +233,7 @@ export function SettingsView({
   keyCaps,
   local,
   python,
+  mcp,
   quickCapture,
   data,
   appLock,
@@ -280,6 +281,8 @@ export function SettingsView({
   local?: ReactNode;
   /** M9 step 5: the Python runtime for data work. */
   python?: ReactNode;
+  /** M9 step 8: MCP servers. */
+  mcp?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -365,6 +368,7 @@ export function SettingsView({
         {models}
         {local}
         {python}
+        {mcp}
         {prices}
         {appLock}
         {quickCapture}

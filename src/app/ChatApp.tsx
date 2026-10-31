@@ -18,6 +18,9 @@ import { statusFor, usableProfile, type InstalledFile } from "@/local/install";
 import { localCatalogModel, localModels, type LocalProfile } from "@/local/models";
 import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { PythonRuntimeSection } from "@/ui/PythonRuntime";
+import { McpServersSection, type McpServerDraft, type McpServerView } from "@/ui/McpServers";
+import { joinCommand, splitCommand, type McpApi } from "@/mcp/api";
+import { addMcpServer, listMcpServers, removeMcpServer, setMcpServerNetwork } from "@/storage/mcp";
 import {
   pythonPin,
   thisPlatform,
@@ -460,6 +463,8 @@ export interface ChatAppProps {
   localApi?: LocalApi;
   /** M9 step 5: the Python runtime for data work. */
   pythonApi?: PythonApi;
+  /** M9 step 8: MCP servers' keychain values. */
+  mcpApi?: McpApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   zoom?: ZoomApi;
@@ -635,6 +640,7 @@ export function ChatApp({
   backups,
   localApi,
   pythonApi,
+  mcpApi,
   quickCapture,
   zoom,
   hello,
@@ -805,6 +811,55 @@ export function ChatApp({
     percent: number | null;
   } | null>(null);
   const [pyError, setPyError] = useState<string | null>(null);
+  // M9 step 8: MCP servers, as Settings shows them.
+  const [mcpServers, setMcpServers] = useState<McpServerView[]>([]);
+  const refreshMcp = async () => {
+    const list = await listMcpServers(db, tenant);
+    setMcpServers(
+      await Promise.all(
+        list.map(async (s) => {
+          const set = mcpApi
+            ? await mcpApi.secretStatus(s.id, s.envNames).catch(() => s.envNames.map(() => false))
+            : s.envNames.map(() => false);
+          return {
+            id: s.id,
+            name: s.name,
+            detail:
+              s.transport === "stdio"
+                ? `Local: ${joinCommand(s.command ?? "", s.args)}`
+                : `Remote: ${s.url ?? ""}`,
+            local: s.transport === "stdio",
+            network: s.network,
+            variables: s.envNames.map((name, i) => ({ name, set: set[i] ?? false })),
+          };
+        }),
+      ),
+    );
+  };
+  /** M9 step 8: adds a server, its variables' values going to the keychain. */
+  const addMcp = async (d: McpServerDraft): Promise<string | null> => {
+    const parsed = d.transport === "stdio" ? splitCommand(d.commandLine) : null;
+    if (parsed && "error" in parsed) return parsed.error;
+    const vars = d.variables.filter((v) => v.name.trim());
+    try {
+      const server = await addMcpServer(db, tenant, {
+        name: d.name,
+        transport: d.transport,
+        command: parsed?.command ?? null,
+        args: parsed?.args ?? [],
+        url: d.transport === "http" ? d.url : null,
+        envNames: vars.map((v) => v.name.trim()),
+        network: d.transport === "stdio" && d.network,
+      });
+      for (const v of vars) {
+        if (v.value) await mcpApi?.setSecret(server.id, v.name.trim(), v.value);
+      }
+      await refreshMcp();
+      return null;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  };
   const [localInstallError, setLocalInstallError] = useState<string | null>(null);
   const refreshLocalInstalled = () => localApi?.installed().then(setLocalInstalled, report);
   /** LL-04: one switch for the local model; on unless turned off (Isaac, 2026-10-30). */
@@ -826,6 +881,7 @@ export function ChatApp({
     }, report);
     localApi?.installed().then(setLocalInstalled, () => undefined);
     pythonApi?.status().then(setPyRuntime, () => undefined);
+    refreshMcp().catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once at start
   }, [db, tenant]);
   /** M9 step 5: downloads, checks and installs the pinned Python and its libraries. */
@@ -4037,6 +4093,26 @@ export function ChatApp({
                     error={shortcut.error}
                     onSave={(value) => {
                       void applyShortcut(value, true);
+                    }}
+                  />
+                )
+              }
+              mcp={
+                mcpApi && (
+                  <McpServersSection
+                    servers={mcpServers}
+                    onAdd={addMcp}
+                    onRemove={(id) => {
+                      const server = mcpServers.find((s) => s.id === id);
+                      Promise.all(
+                        (server?.variables ?? []).map((v) => mcpApi.removeSecret(id, v.name)),
+                      )
+                        .then(() => removeMcpServer(db, tenant, id))
+                        .then(refreshMcp)
+                        .catch(report);
+                    }}
+                    onNetwork={(id, on) => {
+                      setMcpServerNetwork(db, tenant, id, on).then(refreshMcp).catch(report);
                     }}
                   />
                 )

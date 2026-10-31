@@ -276,9 +276,62 @@ impl Default for Keys {
     }
 }
 
+/// M9 step 8: where an MCP server's environment variable is kept in the keychain. The server
+/// id is FUSE's own (a UUID), the name an environment variable's; anything else is refused.
+pub fn mcp_account(server_id: &str, name: &str) -> Result<String, String> {
+    let id_ok = !server_id.is_empty()
+        && server_id.len() <= 64
+        && server_id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-');
+    let name_ok = !name.is_empty()
+        && name.len() <= 128
+        && !name.as_bytes()[0].is_ascii_digit()
+        && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_');
+    if id_ok && name_ok {
+        Ok(format!("mcp:{server_id}:{name}"))
+    } else {
+        Err("That isn't a server id and variable name FUSE can keep.".into())
+    }
+}
+
 pub mod commands {
     use super::*;
     use tauri::State;
+
+    /// M9 step 8: keeps an MCP server's environment variable in the keychain.
+    #[tauri::command]
+    pub fn mcp_secret_set(
+        keys: State<'_, Keys>,
+        server_id: String,
+        name: String,
+        value: String,
+    ) -> Result<(), String> {
+        keys.store.set(&mcp_account(&server_id, &name)?, &value)
+    }
+
+    /// M9 step 8: removes one; nothing if it wasn't there.
+    #[tauri::command]
+    pub fn mcp_secret_delete(
+        keys: State<'_, Keys>,
+        server_id: String,
+        name: String,
+    ) -> Result<(), String> {
+        keys.store.delete(&mcp_account(&server_id, &name)?)
+    }
+
+    /// M9 step 8: which of these variables have a value kept (never the values).
+    #[tauri::command]
+    pub fn mcp_secret_status(
+        keys: State<'_, Keys>,
+        server_id: String,
+        names: Vec<String>,
+    ) -> Result<Vec<bool>, String> {
+        names
+            .iter()
+            .map(|n| Ok(keys.store.get(&mcp_account(&server_id, n)?)?.is_some()))
+            .collect()
+    }
 
     #[tauri::command]
     pub fn key_status(keys: State<'_, Keys>, provider: Provider) -> Result<KeyStatus, String> {
@@ -313,6 +366,26 @@ mod tests {
     use std::thread;
 
     const FAKE_KEY: &str = "fake-test-value-0123456789abcd";
+
+    #[test]
+    fn mcp_variables_are_kept_by_server_and_name() {
+        let id = "019a3b1c-0000-7000-8000-000000000001";
+        assert_eq!(
+            mcp_account(id, "GITHUB_TOKEN").unwrap(),
+            format!("mcp:{id}:GITHUB_TOKEN")
+        );
+        for (sid, name) in [
+            ("", "X"),
+            (id, ""),
+            (id, "1ABC"),
+            (id, "A-B"),
+            ("../x", "X"),
+            ("a:b", "X"),
+            (id, "A B"),
+        ] {
+            assert!(mcp_account(sid, name).is_err(), "{sid} {name}");
+        }
+    }
 
     /// One-shot HTTP server: answers a single request with `status`, returns the raw request text.
     fn serve_once(status: u16, request_id_header: &str) -> (String, thread::JoinHandle<String>) {
