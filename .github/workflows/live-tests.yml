@@ -1,0 +1,31 @@
+name: Live-key tests
+
+# M8 step 16: the live tests with Isaac's own keys, on his PC (docs/windows-test-runner.md).
+# Started by hand only: never on a schedule, a push or a pull request. The keys come from his
+# Windows environment (FUSE_OPENAI_API_KEY, FUSE_ANTHROPIC_API_KEY); nothing else reads them.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: pc-tests
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Live-key tests on Isaac's PC
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Windows, fuse-windows]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: pnpm install --frozen-lockfile
+      - name: Live tests
+        shell: pwsh
+        run: ./scripts/pc/live-tests.ps1

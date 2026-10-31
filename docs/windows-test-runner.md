@@ -52,6 +52,8 @@ Remove-Variable k
 
 Then restart the runner so it picks them up: `Stop-ScheduledTask "FUSE test runner"; Start-ScheduledTask "FUSE test runner"`.
 
+To run it: **Actions → Live-key tests → Run workflow**. It runs `pnpm chat:live` and `pnpm work:live`, and shows only the result tables: pass or fail, turns and cost per model. The output goes through the secret scan first, and if anything looks like a key, none of it is shown.
+
 ## Good to know
 
 - Jobs run only while the PC is on and you're logged in. Otherwise they wait in the queue, and GitHub drops them after 24 hours.

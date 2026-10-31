@@ -10,19 +10,11 @@ import { cpSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
-import {
-  findModel,
-  type CatalogModel,
-  type CloudProviderId,
-  type ProviderId,
-} from "@/catalog/catalog";
+import type { CatalogModel, CloudProviderId } from "@/catalog/catalog";
 import { formatUsd } from "@/cost/cost";
 import { memoryFilesApi } from "@/files/api";
-import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
-import { createOpenAIAdapter } from "@/providers/openai/adapter";
-import { SCOPE_HEADER, type FetchLike, type ProviderAdapter } from "@/providers/types";
-import { defaultPolicy } from "@/routing/defaultPolicy";
-import { tierModels } from "@/routing/policy";
+import type { ProviderAdapter } from "@/providers/types";
+import { KEYS, liveAdapter, liveModel } from "./testing/live";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { grantFolder } from "@/storage/folders";
 import { listSteps } from "@/storage/runs";
@@ -38,35 +30,16 @@ import {
 } from "./testing/bench";
 
 const LIVE = import.meta.env.MODE === "work";
-const KEYS: Record<CloudProviderId, string | undefined> = {
-  openai: process.env.FUSE_OPENAI_API_KEY,
-  anthropic: process.env.FUSE_ANTHROPIC_API_KEY,
-};
 const GATE = 2;
 const IMAGE = join(import.meta.dirname, "..", "..", "data", "work", "image", "gate.png");
 
-/** Real fetch with the key added; FUSE's internal scope header stays here. */
-function keyedFetch(provider: ProviderId, key: string): FetchLike {
-  return async (url, init) => {
-    const { [SCOPE_HEADER]: _scope, ...headers } = init.headers;
-    const auth: Record<string, string> =
-      provider === "openai" ? { authorization: `Bearer ${key}` } : { "x-api-key": key };
-    return fetch(url, {
-      method: init.method,
-      headers: { ...headers, ...auth },
-      ...(init.body !== undefined ? { body: init.body } : {}),
-      ...(init.signal ? { signal: init.signal } : {}),
-    });
-  };
-}
-
-function modelFor(provider: ProviderId): CatalogModel | undefined {
-  const chosen =
+function modelFor(provider: CloudProviderId): CatalogModel | undefined {
+  return liveModel(
+    provider,
     provider === "openai"
       ? process.env.FUSE_WORK_OPENAI_MODEL
-      : process.env.FUSE_WORK_ANTHROPIC_MODEL;
-  if (chosen) return findModel(defaultCatalog, provider, chosen) ?? undefined;
-  return tierModels(defaultPolicy, defaultCatalog, "balanced", { providers: [provider] })[0];
+      : process.env.FUSE_WORK_ANTHROPIC_MODEL,
+  );
 }
 
 /** One Work run in `dir`, with plans and commands allowed (destructive ones and the network
@@ -103,10 +76,7 @@ async function workRun(adapter: ProviderAdapter, model: CatalogModel, dir: strin
   return { run, asked, db, t };
 }
 
-const adapterFor = (provider: CloudProviderId) => {
-  const fetch = keyedFetch(provider, KEYS[provider] ?? "");
-  return provider === "openai" ? createOpenAIAdapter({ fetch }) : createAnthropicAdapter({ fetch });
-};
+const adapterFor = liveAdapter;
 
 test.skipIf(!LIVE)(
   "work benchmark (live, Isaac's keys)",
