@@ -2162,7 +2162,9 @@ function RunCard({
                 ? "Run this command?"
                 : run.approval.kind === "git"
                   ? "Go ahead with git?"
-                  : "Make this change?"
+                  : run.approval.kind === "fetch"
+                    ? "Read this address?"
+                    : "Make this change?"
             }
             className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
           >
@@ -2183,6 +2185,16 @@ function RunCard({
                     outside this chat&apos;s folders.
                   </p>
                 )}
+              </>
+            ) : run.approval.kind === "fetch" ? (
+              <>
+                <p className="mb-1 font-medium">Read this web address?</p>
+                <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
+                  {run.approval.url}
+                </pre>
+                <p className="mb-2 text-amber-700 dark:text-amber-400">
+                  Reading it sends the address to that site, and {run.approval.why}.
+                </p>
               </>
             ) : run.approval.kind === "git" ? (
               <>

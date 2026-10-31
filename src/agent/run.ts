@@ -74,7 +74,7 @@ import {
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
-import { findInstructions, scansOutput } from "./injection";
+import { addressCarries, findInstructions, localFlags, scansOutput } from "./injection";
 import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
@@ -183,6 +183,8 @@ export type ApprovalAsk =
   | { kind: "edit"; change: FileChange }
   /** CA-05: a commit, branch, push or pull request, in words. `remote`: it leaves this computer. */
   | { kind: "git"; summary: string; remote: boolean }
+  /** M9 step 4: a page address that may carry content out; it asks before it's read. */
+  | { kind: "fetch"; url: string; why: string }
   /** WF-06: a whole reorganisation; the answer may keep only some moves. */
   | { kind: "organise"; moves: Move[]; reason: string | null }
   /**
@@ -555,8 +557,11 @@ async function work(
         call,
         output: kept.output,
         isError: out.isError,
-        // M9 step 4: what it brought in is checked for instructions (AG-10).
-        ...(scansOutput(call.name) ? { flags: findInstructions(kept.output) } : {}),
+        // M9 step 4: what it brought in is checked for instructions (AG-10): the rules, then the
+        // local model when they found nothing.
+        ...(scansOutput(call.name)
+          ? { flags: await flagsFor(deps, run, call.name, kept.output) }
+          : {}),
         ...(out.approval ? { approval: out.approval } : {}),
         ...(kept.images.length ? { images: kept.images } : {}),
       });
@@ -632,6 +637,12 @@ async function priorFlags(deps: RunDeps, run: Run): Promise<PriorFlag[]> {
     .slice(-3);
 }
 
+/** The rules' flags for a tool's output; the local model's when the rules found none. */
+async function flagsFor(deps: RunDeps, run: Run, tool: string, output: string) {
+  const found = findInstructions(output);
+  return found.length ? found : await localFlags(deps, tool, output, run.threadId);
+}
+
 /** Whether this run has seen a flagged tool result: then writes, commands and sends all ask. */
 const flaggedRun = async (deps: RunDeps, run: Run) => (await priorFlags(deps, run)).length > 0;
 
@@ -639,7 +650,12 @@ const flaggedRun = async (deps: RunDeps, run: Run) => (await priorFlags(deps, ru
  * M9 step 2: reads a public web page. Rust refuses local and private addresses, after DNS and on
  * every redirect, and caps the size and time (FK-06). It's a read, so it doesn't ask.
  */
-async function runFetch(deps: RunDeps, run: Run, call: ToolCall): Promise<CallOutcome> {
+async function runFetch(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
   if (!deps.web) return { output: "Error: web pages can't be read here.", isError: true };
   const policy = await projectPolicy(deps.db, deps.tenant, run.projectId);
   if (policy.mode === "local_only") {
@@ -648,8 +664,28 @@ async function runFetch(deps: RunDeps, run: Run, call: ToolCall): Promise<CallOu
       isError: true,
     };
   }
-  const { output, isError } = await readPage(deps.web, call.input.url);
-  return { output, isError };
+  // M9 step 4: an address carrying what the run read could send it out; that asks first.
+  const url = typeof call.input.url === "string" ? call.input.url.trim() : "";
+  const seen = (await listSteps(deps.db, deps.tenant, run.id)).flatMap((s) =>
+    s.kind === "tool" ? [s.output] : [],
+  );
+  const why = addressCarries(url, seen, run.task);
+  let approval: Approval | undefined;
+  if (why) {
+    await progress(deps, run.id, input, `Waiting for your OK to read ${url}`);
+    const answer = await ask(deps, run, { kind: "fetch", url, why }, input);
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no") {
+      return {
+        output: `Error: the user declined to read ${url}: ${why}.`,
+        isError: true,
+        approval: "denied",
+      };
+    }
+    approval = "you";
+  }
+  const { output, isError } = await readPage(deps.web, url);
+  return { output, isError, ...(approval ? { approval } : {}) };
 }
 
 /**
@@ -678,7 +714,7 @@ async function handleCall(
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
-  if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call);
+  if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call, input);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && (run.mode === "ask" || (await flaggedRun(deps, run)))) {

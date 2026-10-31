@@ -164,6 +164,8 @@ export type ApprovalView =
   | { kind: "edit"; change: RunChangeView }
   /** WF-07: a sandboxed command seems to need the network. */
   | { kind: "network"; command: string }
+  /** M9 step 4: an address that may carry what the run read. */
+  | { kind: "fetch"; url: string; why: string }
   /** WF-06: a reorganisation to allow in full, in part, or not at all. */
   | { kind: "organise"; moves: { from: string; to: string }[]; reason: string | null }
   /** `remote`: it leaves this computer (push, pull request). */
