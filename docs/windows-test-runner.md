@@ -25,6 +25,19 @@ M8 step 15 runs FUSE's tests on Isaac's real Windows desktop through a GitHub Ac
 
 The runner shows as **Idle** on the Runners page when it's ready.
 
+## What it runs
+
+`.github/workflows/pc-tests.yml` runs after each release from a push to main, and when you start it from **Actions → PC tests → Run workflow**. It never runs on pull requests, and a check on the job itself refuses any other trigger. It runs:
+
+1. **The click-through tests** (step 14) on your real desktop, including check 5 (`>NUL`), which GitHub's Windows Server can't run. They use the separate test build, "FUSE E2E", with its own data folder, so your chats and settings aren't touched. They make `C:\fuse-e2e`, and check that `Documents\escape.txt` never appears.
+2. **The update test** (`scripts/pc/update-test.ps1`). It installs the release before the newest over your FUSE, starts it, and waits for the update bar. It presses **Restart now** through Windows UI Automation, then checks the newest is installed and running.
+   - **It skips itself if FUSE is open**, so it never closes your work. Close FUSE, or start the workflow by hand when you're away, to include it.
+   - Your chats stay, as with any update, and it ends on the newest release.
+   - Starting it by hand, you can untick "Also run the update test".
+3. **`pnpm local:bench`**, when a local model is installed.
+
+The results are in the run's summary. A failure opens an issue and never blocks merging. Screenshots of the click-through tests are uploaded as `pc-e2e-screenshots`.
+
 ## Keys for the live-key button (step 16)
 
 Only needed for the button. Type each key at the prompt, so it never lands in PowerShell's history:
