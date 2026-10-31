@@ -1512,7 +1512,7 @@ export function Composer({
           <div
             ref={row}
             data-composer-row
-            className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+            className={`flex min-w-0 flex-1 items-center overflow-hidden ${tight ? "gap-0.5" : "gap-1"}`}
           >
             {onAddFiles && (
               <>
@@ -1551,7 +1551,7 @@ export function Composer({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="gap-2 text-xs"
+                  className={`text-xs ${tight ? "gap-1 px-2" : "gap-2"}`}
                   aria-label="Choose model (Ctrl+K)"
                 >
                   <Sparkles className="size-3.5" />
@@ -1562,7 +1562,7 @@ export function Composer({
                       → {preview}
                     </span>
                   )}
-                  <ChevronDown className="size-3" />
+                  {!tight && <ChevronDown className="size-3" />}
                   <span className="ml-1 hidden min-[900px]:inline">
                     <Hint>Ctrl K</Hint>
                   </span>
