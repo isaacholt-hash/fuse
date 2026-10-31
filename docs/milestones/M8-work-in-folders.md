@@ -144,10 +144,17 @@
   - With Code on and a folder chip shown, the row is wider than the composer. New branch wraps onto two lines, and Think, Compare and Send sit outside the box's right edge.
   - Fix: the row never overflows at any window width. The main controls stay visible (attach, model, Search, folders, Code / Work, Send). The rest (run mode, New branch, Think, Compare) move into a "More" menu when space runs out, and each shows its state there. Send stays inside the box, on the right.
   - Tests check the row at a narrow, a medium and a wide width, and step 14 screenshots it.
-- [ ] **14. Click-through tests on Windows in CI (Isaac, 2026-10-31).**
+- [x] **14. Click-through tests on Windows in CI (Isaac, 2026-10-31).**
   - The app is driven like a person would use it, through `tauri-driver` and Edge's WebDriver, on GitHub's Windows machines on every PR. It uses scripted model turns and a fake update source, with no keys and no network calls to providers.
   - Covers at least: send a message and see its cost, switch models, open Settings, see the update bar appear and Dismiss it (F1 of M7), and a Work run on a test folder that does checks 2, 3 and 5 of the step 9 checklist.
   - A failed run uploads screenshots of each step.
+  - **Built** (`e2e/`, the "Windows click-through" CI job):
+    - A test build, "FUSE E2E" (`src-tauri/tauri.e2e.conf.json`), with its own data folder. It runs `src/e2e/deps.ts`, which gives it scripted Anthropic turns through the real adapter, a fake key, an update that is always ready, and a fixed test folder. CI fails if that code ever reaches a release bundle.
+    - Covered: a message and its cost, switching models, the update bar and Later, Settings, the composer at 640, 900 and 1400 px (F4), and a sandboxed Work run doing checks 2 and 3. Screenshots of every step are uploaded on every run.
+  - **Deviations:**
+    - Not tauri-driver: from WebView2 133 on, Edge's msedgedriver crashes the WebView it launches (WebView2Feedback#5415), and the runners have 156. The test starts the app and drives it over WebView2's DevTools port, which only the test build opens (localhost), with real mouse and key events.
+    - Check 5 (`>NUL`) is skipped on GitHub's runners, because Windows Server denies NUL to sandboxed apps. It runs on Isaac's PC (step 15).
+  - The screenshots caught F4 gaps, fixed here: at narrow widths More itself was cut off, the folder chip shrank to a sliver, and buttons were squeezed instead of moving. Now More sits outside the clipped row, chips keep their icon, and main controls keep their width. At the narrowest widths Search also moves into More, and the model chevron and Ctrl K hint are dropped.
 - [ ] **15. Tests on Isaac's Windows PC (Isaac, 2026-10-31).**
   - A GitHub Actions self-hosted runner on Isaac's PC, set up by him from `docs/windows-test-runner.md`. It runs as a normal program at login, not as a service, so it can open windows.
   - Its jobs run **only** after a merge to main and when started by hand, never on pull requests: the repo is public, so a stranger's PR must never run code on that PC. One job at a time.
