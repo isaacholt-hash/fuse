@@ -17,6 +17,7 @@ import {
   type ProviderId,
 } from "@/catalog/catalog";
 import { formatUsd } from "@/cost/cost";
+import { memoryFilesApi } from "@/files/api";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import { SCOPE_HEADER, type FetchLike, type ProviderAdapter } from "@/providers/types";
@@ -81,6 +82,8 @@ async function workRun(adapter: ProviderAdapter, model: CatalogModel, dir: strin
     adapterFor: () => adapter,
     repo: nodeRepo(dir),
     exec: nodeExec(dir),
+    // Images a tool reads are kept here and sent with its result, as the app's store does.
+    files: memoryFilesApi(),
     approve: (req) => {
       asked.push(req);
       if (req.kind === "network") return Promise.resolve("no" as const);
@@ -195,9 +198,17 @@ test.skipIf(!LIVE)(
           dir,
           "Look at gate.png. It shows a code. Write exactly that code, and nothing else, into code.txt in the folder's root.",
         );
-        const shown = (await listSteps(db, t, run.id)).filter(
-          (s) => s.kind === "tool" && s.images.length > 0,
-        ).length;
+        const steps = await listSteps(db, t, run.id);
+        const shown = steps.filter((s) => s.kind === "tool" && s.images.length > 0).length;
+        const tools = steps.flatMap((s) =>
+          s.kind === "tool"
+            ? [
+                s.call.name === "run_command"
+                  ? `run_command: ${String(s.call.input.command)}`
+                  : s.call.name,
+              ]
+            : [],
+        );
         const fails = failedChecks(dir, [
           { kind: "file_contains", path: "code.txt", text: "HERON-4172" },
         ]);
@@ -208,14 +219,14 @@ test.skipIf(!LIVE)(
           status: run.status,
           shown,
           cost: formatUsd(run.spentMicroUsd),
-          why: [run.note, ...fails].filter(Boolean).join("; "),
+          why: [run.note, ...fails, `tools: ${tools.join(", ")}`].filter(Boolean).join("; "),
         });
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     }
     console.table(rows.map(({ why: _w, ...r }) => r));
-    for (const r of rows.filter((x) => !x.pass)) console.log(`FAILED ${r.provider}: ${r.why}`);
+    for (const r of rows) console.log(`${r.pass ? "PASSED" : "FAILED"} ${r.provider}: ${r.why}`);
     for (const r of rows) expect(r.pass, `${r.provider}: ${r.why}`).toBe(true);
   },
   5 * 60 * 1000,
