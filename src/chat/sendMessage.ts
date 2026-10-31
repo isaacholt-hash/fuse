@@ -22,6 +22,7 @@ import type {
 } from "@/providers/types";
 import { toolsIn } from "@/agent/registry";
 import { FETCH_URL_TOOL, readPage } from "@/agent/tools";
+import { asData, DATA_RULE } from "@/agent/untrusted";
 import { projectToolsOff } from "@/storage/projectTools";
 import type { WebApi } from "@/web/api";
 import type { Tenant } from "@/storage/defaults";
@@ -513,10 +514,16 @@ async function streamAnswer(
           ? `${mine.prefix}\n\n${system}`
           : mine.prefix
         : system;
+      // M9 step 3: a model offered tools is told what their wrapped results are.
+      const withRule = chatTools(m).length
+        ? prefixed
+          ? `${prefixed}\n\n${DATA_RULE}`
+          : DATA_RULE
+        : prefixed;
       const options = {
         // SE-13: the Rust transport checks this chat's project policy again.
         scope: { kind: "thread" as const, id: input.threadId },
-        ...(prefixed ? { system: prefixed } : {}),
+        ...(withRule ? { system: withRule } : {}),
         ...(webSearch ? { webSearch } : {}),
         // High effort thinks at length, and thinking counts against the output limit: give it
         // the model's whole output budget (docs/providers.md, M2), unless you set a limit.
@@ -602,11 +609,15 @@ async function streamAnswer(
               sources.push({ url: page.url, title: page.title });
               input.onCitations?.([...sources]);
             }
-            results.push({ callId: call.id, content: read.output, isError: read.isError });
+            results.push({
+              callId: call.id,
+              content: asData(call.name, read.output),
+              isError: read.isError,
+            });
           } else {
             results.push({
               callId: call.id,
-              content: `Error: ${call.name} isn't available in chat.`,
+              content: asData(call.name, `Error: ${call.name} isn't available in chat.`),
               isError: true,
             });
           }

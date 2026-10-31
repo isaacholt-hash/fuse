@@ -1,5 +1,6 @@
 // @vitest-environment node
 // M6 step 5: coding runs, read-only. A scripted provider stands in for the model.
+import { asData } from "./untrusted";
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import { ProviderError } from "@/providers/errors";
 import type {
@@ -159,8 +160,12 @@ test("a run: plan, tool calls, results replayed, answer; every turn priced and l
     native: { provider: "anthropic", model: "test-claude", items: [{ turn: 1 }] },
   });
   expect(second[2]?.toolResults).toEqual([
-    { callId: "c1", content: "src/app/tide.ts:1: export const tide = 3;", isError: false },
-    { callId: "c2", content: "export const tide = 3;\n", isError: false },
+    {
+      callId: "c1",
+      content: asData("search_files", "src/app/tide.ts:1: export const tide = 3;"),
+      isError: false,
+    },
+    { callId: "c2", content: asData("read_file", "export const tide = 3;\n"), isError: false },
   ]);
   // Same tools every turn; the project scope for the Rust egress check.
   expect(
@@ -207,7 +212,9 @@ test("the cost cap pauses the run; continuing with more lets it finish", async (
   expect(done).toMatchObject({ status: "done", capMicroUsd: TURN_COST + 1_000_000 });
   expect(sent).toHaveLength(2);
   // Resumed from the record: the first turn and its result replayed unchanged.
-  expect(sent[1]?.history[2]?.toolResults?.[0]?.content).toBe("README.md (13 bytes)\nsrc/");
+  expect(sent[1]?.history[2]?.toolResults?.[0]?.content).toBe(
+    asData("list_files", "README.md (13 bytes)\nsrc/"),
+  );
   expect(runAnswer(await listSteps(db, t, done.id))).toBe("Done looking.");
 });
 
