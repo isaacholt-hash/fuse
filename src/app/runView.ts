@@ -109,6 +109,7 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   if (req.kind === "network") return { kind: "network", command: req.command };
+  if (req.kind === "fetch") return { kind: "fetch", url: req.url, why: req.why };
   return req.kind === "command"
     ? {
         kind: "command",

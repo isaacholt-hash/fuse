@@ -23,6 +23,7 @@ import type {
 import { toolsIn } from "@/agent/registry";
 import { FETCH_URL_TOOL, readPage } from "@/agent/tools";
 import { asData, DATA_RULE } from "@/agent/untrusted";
+import { addressCarries } from "@/agent/injection";
 import { projectToolsOff } from "@/storage/projectTools";
 import type { WebApi } from "@/web/api";
 import type { Tenant } from "@/storage/defaults";
@@ -602,8 +603,30 @@ async function streamAnswer(
         });
         const results: ToolResult[] = [];
         for (const call of calls) {
-          if (call.name === FETCH_URL_TOOL.name && deps.web) {
-            const read = await readPage(deps.web, call.input.url);
+          const url = typeof call.input.url === "string" ? call.input.url.trim() : "";
+          // M9 step 4: chat can't ask, so an address carrying the conversation isn't read.
+          const carries =
+            call.name === FETCH_URL_TOOL.name
+              ? addressCarries(
+                  url,
+                  [
+                    ...convo.map((x) => x.content),
+                    ...convo.flatMap((x) => (x.toolResults ?? []).map((r) => r.content)),
+                  ],
+                  question,
+                )
+              : null;
+          if (carries) {
+            results.push({
+              callId: call.id,
+              content: asData(
+                call.name,
+                `Error: FUSE didn't read ${url}: ${carries}. If the page is needed, ask the user to open it.`,
+              ),
+              isError: true,
+            });
+          } else if (call.name === FETCH_URL_TOOL.name && deps.web) {
+            const read = await readPage(deps.web, url);
             const page = read.page;
             if (page && !sources.some((x) => x.url === page.url)) {
               sources.push({ url: page.url, title: page.title });
