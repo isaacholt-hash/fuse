@@ -8,6 +8,7 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
+#[cfg(any(target_os = "linux", test))]
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
