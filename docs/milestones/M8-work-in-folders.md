@@ -132,6 +132,19 @@
     None of the tasks reads a picture. Since F3, `pnpm work:live` also runs a second test: each model reads `data/work/image/gate.png` through read_file and writes the code it shows into a file. The code can't be guessed, so a pass means the image reached the model. Not yet run live.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
+- [ ] **14. Click-through tests on Windows in CI (Isaac, 2026-10-31).**
+  - The app is driven like a person would use it, through `tauri-driver` and Edge's WebDriver, on GitHub's Windows machines on every PR. It uses scripted model turns and a fake update source, with no keys and no network calls to providers.
+  - Covers at least: send a message and see its cost, switch models, open Settings, see the update bar appear and Dismiss it (F1 of M7), and a Work run on a test folder that does checks 2, 3 and 5 of the step 9 checklist.
+  - A failed run uploads screenshots of each step.
+- [ ] **15. Tests on Isaac's Windows PC (Isaac, 2026-10-31).**
+  - A GitHub Actions self-hosted runner on Isaac's PC, set up by him from `docs/windows-test-runner.md`. It runs as a normal program at login, not as a service, so it can open windows.
+  - Its jobs run **only** after a merge to main and when started by hand, never on pull requests: the repo is public, so a stranger's PR must never run code on that PC. One job at a time.
+  - After each release: install it, run the step 14 suite on the real desktop, then the real update test: install the previous release, let it find and download the new one, press Restart, and check the new version is running. Also `pnpm local:bench` when a local model is installed.
+  - Results go to the job summary and the build tracker. A failure doesn't block merging; it opens an issue.
+- [ ] **16. Live-key test button (Isaac, 2026-10-31).**
+  - A workflow started by hand only, never on a schedule. It runs on Isaac's PC: `pnpm work:live` and a short chat on each provider, with keys from his own Windows environment (`FUSE_OPENAI_API_KEY`, `FUSE_ANTHROPIC_API_KEY`). Nothing else ever reads them.
+  - The log is put through the secret scan before it's uploaded, and shows only pass or fail, turns and cost per model.
+
 ## Fixes
 
 - [x] **F1. Work and Code stayed on for one message only in a new chat.** The switch, run mode and branch choice were kept under the draft. After the first message saved the chat, the next one went out as plain chat (found by Isaac running the step 9 checklist). They now carry over to the saved chat, as its folders already did. Also, an answer from a Code or Work run is marked as one in the history sent to the model, so a later answer without tools doesn't claim the run's changes never happened.
