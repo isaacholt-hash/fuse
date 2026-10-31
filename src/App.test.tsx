@@ -3207,3 +3207,24 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
     within(screen.getByRole("region", { name: "Coding run" })).getByText("asks first"),
   ).toBeInTheDocument();
 });
+
+test("M8: the Windows sandbox is on unless it was switched off", async () => {
+  const set = vi.fn((_on: boolean) => Promise.resolve());
+  const exec: ExecApi = {
+    run: () => Promise.reject(new Error("not used")),
+    windowsSandbox: {
+      available: () => Promise.resolve(true),
+      set,
+      reset: () => Promise.resolve(0),
+    },
+  };
+  const { user } = setup({}, undefined, {}, { exec });
+  await waitFor(() => {
+    expect(set).toHaveBeenCalledWith(true);
+  });
+  await user.keyboard("{Control>},{/Control}");
+  const box = await screen.findByRole("checkbox", { name: "Run commands in the sandbox" });
+  expect(box).toBeChecked();
+  await user.click(box);
+  expect(set).toHaveBeenLastCalledWith(false);
+});

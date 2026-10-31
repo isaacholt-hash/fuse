@@ -72,9 +72,9 @@
   - Commands run in an AppContainer, Windows' app sandbox, inside a job object. The container can write only in the folders it was granted (the run's folders, each looked up in the database), has its own TEMP, and gets the network capabilities only when the network is allowed. The job ends the whole tree on the time limit or Stop, and when FUSE quits.
   - To grant a folder, FUSE adds an entry for the container to the folder's permissions the first time a command runs there. Granted folders are listed in `sandbox-grants.txt` in the app's data folder. Settings → "Reset folder permissions" takes the entries off them all and deletes the container.
   - The code is its own small crate, `src-tauri/sandbox-win`, so a new Windows CI job tests it in minutes. The tests check that a write inside works and outside fails, that there's no network without the capability, that killing ends the tree, that the exit code comes back and keys aren't passed on, and that revoke takes the access away. The same job runs clippy on the whole app for Windows.
-  - **Off by default** (Isaac's call, 2026-10-30): Settings → "Sandbox on Windows (testing)" switches it on. Until Isaac has tried it on his PC, Windows commands keep running unsandboxed, and each says so.
+  - **On by default since F3** (Isaac's call, 2026-10-31, after the checklist below passed). Before that it was off until tried on a real PC. Settings → "Sandbox on Windows" switches it off. While it's off, Windows commands run unsandboxed, and each says so.
   - Isaac's checklist, on a test folder such as `C:\fuse-sandbox-test`:
-    1. Settings → "Sandbox on Windows (testing)": tick "Run commands in the sandbox".
+    1. Settings → "Sandbox on Windows": "Run commands in the sandbox" is ticked.
     2. In a Work chat on that folder (Work on, and still on for each message), send: Run this exact command with run_command, and don't use any other tool: `echo hi> inside.txt`. It asks to run it; allow it. The file appears, and the result says "[sandboxed, network off]".
     3. The same way, run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
     4. The same way, run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
@@ -83,7 +83,7 @@
     7. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
   - Also fixed: on Windows, commands started in `\\?\C:\…` (the form `canonicalize` gives), where cmd.exe can't start. They now get the plain path.
   - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, `ping` fails with "Unable to contact IP driver" (Windows doesn't let sandboxed apps send ICMP, even to localhost), and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
-  - **Result on Isaac's PC (2026-10-30, v0.1.126 and v0.1.127):** all 7 checks passed. It stays off by default until F2 lets you see each command's output, and after a few days of use in real chats.
+  - **Result on Isaac's PC (2026-10-30, v0.1.126 and v0.1.127):** all 7 checks passed. After F2, Isaac chose to turn it on by default (F3).
 
     | Check | Result |
     | --- | --- |
@@ -129,7 +129,7 @@
     | anthropic/claude-sonnet-5-5 | pass, 4 turns | pass, 3 turns | pass, 3 turns | $0.064 |
     | openai/gpt-6.1-sol | pass, 4 turns | pass, 5 turns | pass, 4 turns | $0.027 |
 
-    None of the tasks reads a picture, so images in tool results (step 4) are still unchecked against the live APIs.
+    None of the tasks reads a picture. Since F3, `pnpm work:live` also runs a second test: each model reads `data/work/image/gate.png` through read_file and writes the code it shows into a file. The code can't be guessed, so a pass means the image reached the model. Not yet run live.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
 ## Fixes
@@ -143,6 +143,10 @@
   - The model isn't told which shell commands run in, and guessed bash on Windows. The command tool now names it.
   - Settings → Coding agent activity squeezes the What column to a few letters.
   - The Windows CI test for Stop used `ping`, which exits at once in the sandbox, so it never checked that a running command was killed. It now kills a busy loop and checks it was still running.
+
+- [x] **F3. The Windows sandbox on by default, and a live check of images in tool results (Isaac, 2026-10-31).**
+  - The sandbox is on unless it was switched off in Settings. A saved "off" stays off; Isaac's saved "on" is kept. The "(testing)" label is gone.
+  - `pnpm work:live` has a second test, "images in tool results": a Work run on a folder with only `gate.png`, a picture of the code HERON-4172. It passes when `code.txt` holds the code and a tool result carried the image.
 
 ## Notes
 
