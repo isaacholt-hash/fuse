@@ -106,18 +106,6 @@ jobs:
         with:
           workspaces: src-tauri
           key: e2e
-          cache-bin: true
-      - name: tauri-driver
-        run: cargo install tauri-driver --version 2.1.0 --locked
-      - name: Edge WebDriver for this WebView2
-        shell: pwsh
-        run: |
-          $v = (Get-ItemProperty 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}').pv
-          Write-Host "WebView2 $v"
-          $zip = "$env:RUNNER_TEMP\edgedriver.zip"
-          try { Invoke-WebRequest "https://msedgedriver.microsoft.com/$v/edgedriver_win64.zip" -OutFile $zip }
-          catch { Invoke-WebRequest "https://msedgedriver.azureedge.net/$v/edgedriver_win64.zip" -OutFile $zip }
-          Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP\edgedriver"
       - name: Test build
         env:
           VITE_E2E_FOLDER: C:\fuse-e2e
@@ -125,7 +113,6 @@ jobs:
       - name: Click-through tests
         env:
           FUSE_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\fuse.exe
-          FUSE_E2E_NATIVE_DRIVER: ${{ runner.temp }}\edgedriver\msedgedriver.exe
           FUSE_E2E_FOLDER: C:\fuse-e2e
         run: pnpm e2e
       - if: ${{ !cancelled() }}

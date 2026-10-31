@@ -2,6 +2,24 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "FUSE E2E",
   "identifier": "com.isaacholt.fuse.e2e",
-  "build": { "beforeBuildCommand": "pnpm build --mode e2e" },
-  "bundle": { "createUpdaterArtifacts": false }
+  "build": {
+    "beforeBuildCommand": "pnpm build --mode e2e"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "FUSE",
+        "width": 1100,
+        "height": 750,
+        "minWidth": 640,
+        "minHeight": 480,
+        "dragDropEnabled": false,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --remote-debugging-port=9222"
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false
+  }
 }

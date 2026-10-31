@@ -1,23 +1,19 @@
-// M8 step 14: FUSE driven like a person would use it, through tauri-driver, on the test build
+// M8 step 14: FUSE driven like a person would use it, over WebView2's DevTools port, on the test build
 // (scripted models, fake keys and update; src/e2e/deps.ts). Run by CI on Windows: see
 // e2e/README.md. Each step leaves a screenshot in e2e/screenshots/.
-import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir, version } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test } from "vitest";
-import { button, byLabel, KEY, Session } from "./driver";
+import { button, byLabel, Session } from "./driver";
 
 const APP = process.env.FUSE_E2E_APP ?? "";
-const NATIVE = process.env.FUSE_E2E_NATIVE_DRIVER;
 const FOLDER = process.env.FUSE_E2E_FOLDER ?? "C:\\fuse-e2e";
-const BASE = "http://127.0.0.1:4444";
 const SHOTS = join(import.meta.dirname, "screenshots");
 const HELLO = "Hello from the FUSE test script.";
 // Windows Server (GitHub's runners) denies the NUL device to sandboxed apps; 10 and 11 don't.
 const SERVER = /Server/i.test(version());
 
-let driver: ChildProcess;
 let app: Session;
 let shot = 0;
 
@@ -54,22 +50,7 @@ beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   rmSync(FOLDER, { recursive: true, force: true });
   mkdirSync(FOLDER, { recursive: true });
-  driver = spawn(
-    process.env.FUSE_E2E_DRIVER ?? "tauri-driver",
-    NATIVE ? ["--native-driver", NATIVE] : [],
-    { stdio: "inherit" },
-  );
-  const until = Date.now() + 30_000;
-  while (
-    !(await fetch(`${BASE}/status`).then(
-      (r) => r.ok,
-      () => false,
-    ))
-  ) {
-    if (Date.now() > until) throw new Error("tauri-driver didn't start");
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  app = await Session.start(BASE, APP);
+  app = await Session.start(APP);
   await app.find(composer, 60_000);
   // Never drive a real build: only the test build has scripted models.
   expect(await app.run<string>("return document.documentElement.dataset.build ?? '';")).toBe(
@@ -77,14 +58,14 @@ beforeAll(async () => {
   );
 }, 120_000);
 
-afterAll(async () => {
-  await app.quit().catch(() => undefined);
-  driver.kill();
+afterAll(() => {
+  app.quit();
 });
 
 test("send a message and see its cost", async () => {
   await step("message", async () => {
-    await app.type(composer, `Say hello${KEY.enter}`);
+    await app.type(composer, "Say hello");
+    await app.press("Enter");
     expect(await nextAnswer(0)).toContain(HELLO);
     await app.find('//*[starts-with(@aria-label, "Cost breakdown for")]');
   });
@@ -94,7 +75,8 @@ test("switch models", async () => {
   await step("switch-model", async () => {
     await app.chord("k");
     await app.click('//button[contains(normalize-space(), "Claude Opus 5.5")]');
-    await app.type(composer, `Again${KEY.enter}`);
+    await app.type(composer, "Again");
+    await app.press("Enter");
     expect(await nextAnswer(1)).toContain(HELLO);
     await app.sees("Switched to Claude Opus 5.5");
   });
@@ -127,8 +109,31 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     await app.sees("fuse-e2e");
     await app.click(button("Work run"));
   });
+  // F4: at a narrow, a medium and a wide window, the main controls and Send stay inside the box.
+  for (const [w, h] of [
+    [640, 600],
+    [900, 700],
+    [1400, 900],
+  ] as const) {
+    await step(`composer-${String(w)}`, async () => {
+      await app.resize(w, h);
+      await new Promise((r) => setTimeout(r, 500));
+      const outside = await app.run<string[]>(`
+        const box = document.querySelector('textarea[aria-label="Message"]').closest('.rounded-2xl').getBoundingClientRect();
+        const names = ["Choose model (Ctrl+K)", "Add a folder", "Coding run", "Work run", "Send message (Enter)"];
+        return names.filter((n) => {
+          const b = document.querySelector('[aria-label="' + n + '"]');
+          if (!b) return true;
+          const r = b.getBoundingClientRect();
+          return r.left < box.left || r.right > box.right;
+        });`);
+      expect(outside).toEqual([]);
+    });
+  }
+  await app.unsize();
   const check = async (n: number, seen: number) => {
-    await app.type(composer, `E2E check ${String(n)}${KEY.enter}`);
+    await app.type(composer, `E2E check ${String(n)}`);
+    await app.press("Enter");
     await app.click(
       '//*[@aria-label="Run this command?"]//button[normalize-space()="Allow"]',
       60_000,
