@@ -27,3 +27,4 @@ coverage/
 # Claude Code personal settings
 .claude/settings.local.json
 docs/screenshots/*.log
+e2e/screenshots/

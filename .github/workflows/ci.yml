@@ -26,6 +26,11 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: bash scripts/secret-scan.sh
+      # M8 step 14: the click-through tests' scripted models must never reach a release build.
+      - name: Release bundle has no test code
+        run: |
+          pnpm build
+          if grep -rq fuse-e2e-scripted-build dist; then echo "The test build's code is in the release bundle"; exit 1; fi
 
   rust:
     name: Rust fmt, clippy, test
@@ -81,3 +86,38 @@ jobs:
         run: mkdir dist
       - if: ${{ !cancelled() }}
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+
+  # M8 step 14: the app driven like a person would use it, on Windows, with scripted models
+  # (src/e2e/deps.ts) and no keys. e2e/README.md says how it works.
+  e2e:
+    name: Windows click-through
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: e2e
+      - name: Test build
+        env:
+          VITE_E2E_FOLDER: C:\fuse-e2e
+        run: pnpm tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json
+      - name: Click-through tests
+        env:
+          FUSE_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\fuse.exe
+          FUSE_E2E_FOLDER: C:\fuse-e2e
+        run: pnpm e2e
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-screenshots
+          path: e2e/screenshots/
+          if-no-files-found: ignore

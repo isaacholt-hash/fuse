@@ -12,6 +12,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "e2e": "vitest run --config e2e/vitest.config.ts",
     "test:watch": "vitest",
     "tauri": "tauri",
     "check": "bash scripts/check.sh",
