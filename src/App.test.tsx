@@ -1,4 +1,5 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
+import { asData } from "@/agent/untrusted";
 import type { SqlDb, SqlValue } from "@/storage/sql";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -3046,7 +3047,9 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   expect(card.getByText("1. Read the README.")).toBeInTheDocument();
   expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
   // The tool result went back to the model with the turn.
-  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe("# Lighthouse\n");
+  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
+    asData("read_file", "# Lighthouse\n"),
+  );
 });
 
 test("M6: a run that can edit shows each change as a diff, and Undo puts the file back", async () => {
@@ -3219,7 +3222,10 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   await user.click(screen.getByRole("button", { name: "Ran pnpm test" }));
   expect(screen.getByLabelText("Output of Ran pnpm test")).toHaveTextContent("3 passed");
   expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
-    "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]\n[not sandboxed: this computer can't sandbox commands]",
+    asData(
+      "run_command",
+      "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]\n[not sandboxed: this computer can't sandbox commands]",
+    ),
   );
   expect(screen.queryByRole("alertdialog", { name: "Run this command?" })).toBeNull();
 });
