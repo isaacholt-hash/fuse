@@ -2295,6 +2295,7 @@ export function ChatApp({
     })(),
     ...(execApi ? { exec: execApi } : {}),
     ...(gitApi ? { git: gitApi } : {}),
+    ...(web ? { web } : {}),
     approve: (req: ApprovalRequest) =>
       new Promise<ApprovalAnswer>((resolve) => {
         const done = (a: ApprovalAnswer) => {

@@ -5,6 +5,7 @@ import type { ToolSpec } from "@/providers/types";
 import {
   COMMAND_TOOL,
   EDIT_TOOLS,
+  FETCH_URL_TOOL,
   GIT_READ_TOOLS,
   GIT_WRITE_TOOLS,
   ORGANISE_TOOL,
@@ -44,6 +45,7 @@ export const TOOLS: readonly ToolEntry[] = [
   ...READ_ONLY_TOOLS.map((t) => entry(t, "read", BOTH, true)),
   ...GIT_READ_TOOLS.map((t) => entry(t, "read", ["code"])),
   entry(READ_DOCUMENT_TOOL, "read", ["work"]),
+  entry(FETCH_URL_TOOL, "read", ["code", "work", "chat"]),
   ...EDIT_TOOLS.map((t) => entry(t, "write", BOTH)),
   entry(WRITE_DOCUMENT_TOOL, "write", ["work"]),
   entry(ORGANISE_TOOL, "write", ["work"]),
