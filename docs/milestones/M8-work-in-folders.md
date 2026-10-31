@@ -136,7 +136,7 @@
 
 - [x] **F1. Work and Code stayed on for one message only in a new chat.** The switch, run mode and branch choice were kept under the draft. After the first message saved the chat, the next one went out as plain chat (found by Isaac running the step 9 checklist). They now carry over to the saved chat, as its folders already did. Also, an answer from a Code or Work run is marked as one in the history sent to the model, so a later answer without tools doesn't claim the run's changes never happened.
 
-- [ ] **F2. What the run card leaves out (found by Isaac running the step 9 checklist).**
+- [x] **F2. What the run card leaves out (found by Isaac running the step 9 checklist).**
   - A "Ran …" row can't be opened, so the command's output, exit code and sandbox line can't be seen. Open it to show them.
   - A failed command's red text repeats the command ("$ …"). Show its first line of output instead.
   - "Always allow in this project" is offered in a chat with no project, where it can't be kept. Show it only in a project.

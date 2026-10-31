@@ -1882,6 +1882,7 @@ function RunCard({
 }) {
   const live = run.status === "running";
   const [shown, setShown] = useState<string | null>(null);
+  const [openStep, setOpenStep] = useState<string | null>(null);
   const applied = run.changes.filter((c) => !c.undone);
   return (
     <section aria-label={run.title} className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
@@ -1915,9 +1916,30 @@ function RunCard({
                 ) : (
                   <FileText className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
                 )}
-                <span className="min-w-0">
-                  <span className="font-mono break-all">{s.label}</span>
+                <span className="min-w-0 flex-1">
+                  {s.output === undefined ? (
+                    <span className="font-mono break-all">{s.label}</span>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-expanded={openStep === s.id}
+                      className="text-left font-mono break-all hover:underline"
+                      onClick={() => {
+                        setOpenStep(openStep === s.id ? null : s.id);
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  )}
                   {s.error && <span className="ml-1.5 text-destructive">{s.error}</span>}
+                  {s.output !== undefined && openStep === s.id && (
+                    <pre
+                      aria-label={`Output of ${s.label}`}
+                      className="mt-1 max-h-80 overflow-auto rounded border bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap"
+                    >
+                      {s.output}
+                    </pre>
+                  )}
                 </span>
               </li>
             ) : (
@@ -2044,7 +2066,7 @@ function RunCard({
               >
                 Allow
               </Button>
-              {run.approval.kind === "command" && !run.approval.destructive && (
+              {run.approval.kind === "command" && !run.approval.destructive && run.inProject && (
                 <Button
                   variant="outline"
                   size="xs"

@@ -129,6 +129,16 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
       };
 }
 
+/** A tool result's first line that says something: not "Error: ", not a command's "$ …" echo. */
+function firstLine(output: string): string | null {
+  return (
+    output
+      .replace(/^Error: /, "")
+      .split("\n")
+      .find((l) => l.trim() && !l.startsWith("$ ")) ?? null
+  );
+}
+
 const ALLOWED: Record<Approval, string> = {
   auto: "needed nobody",
   you: "you",
@@ -150,7 +160,7 @@ export function auditRow(e: AuditEntry): AuditRowView {
     model: e.model,
     action: toolLabel(e.tool, e.input),
     allowed: e.approval ? ALLOWED[e.approval] : "—",
-    result: e.output.split("\n").find((l) => l.trim() && !l.startsWith("$ ")) ?? "",
+    result: firstLine(e.output) ?? "",
     failed: e.isError,
     runCost: formatUsd(e.runCostMicroUsd),
   };
@@ -193,7 +203,8 @@ export function runView(
         id: s.id,
         kind: "tool",
         label: toolLabel(s.call.name, s.call.input),
-        error: s.isError ? (s.output.replace(/^Error: /, "").split("\n")[0] ?? null) : null,
+        error: s.isError ? firstLine(s.output) : null,
+        ...(s.call.name === "run_command" ? { output: s.output } : {}),
       });
     } else if (s.text.trim() && !(run.status === "done" && s === lastModel)) {
       views.push({ id: s.id, kind: "note", label: s.text.trim(), error: null });
@@ -210,5 +221,6 @@ export function runView(
     modeLabel: MODE_LABELS[run.mode],
     branch: run.branch,
     changes: groupBatches(changes),
+    inProject: run.projectId !== null,
   };
 }

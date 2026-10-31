@@ -141,6 +141,8 @@ export interface RunView {
   branch: string | null;
   /** Files the run changed (CA-02), oldest first. */
   changes: RunChangeView[];
+  /** F2: "Always allow in this project" is kept per project, so it's offered only in one. */
+  inProject?: boolean;
   /** What the run is waiting for your OK on (CA-03, CA-04). */
   approval?: ApprovalView;
 }
@@ -181,6 +183,8 @@ export interface RunStepView {
   label: string;
   /** A tool's error, first line. */
   error: string | null;
+  /** F2: a command's whole result (its output, exit code and sandbox line), opened from its row. */
+  output?: string;
 }
 
 /** The routing badge on an answer. */
