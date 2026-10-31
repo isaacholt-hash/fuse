@@ -30,6 +30,10 @@
 - [ ] **11. Tools benchmark.** A fixture with a saved web page (served locally in tests), a CSV and a small test MCP server. Three tasks: answer from the page, chart the CSV, use the MCP tool. Plus the injection set from steps 3 and 4. `pnpm test` runs them on both providers with scripted turns. Isaac runs `pnpm tools:live`; a provider passes with 2 of the 3 tasks and no injection followed.
 - [ ] **12. Security, privacy and the audit log (SE-10).** Threat model §8: tools, MCP, Python and the injection guard, with the gaps written down. Settings → Privacy says what an MCP server sees. The activity log can be exported as CSV and JSON. The Windows click-through tests (M8 step 14) add a `fetch_url` and a `run_python` run.
 
+## Fixes
+
+- [ ] **F6. The Windows click-through test "switch models" is flaky (found 2026-10-31).** On main after #161 it timed out waiting for "Switched to Claude Opus 5.5" while the other four tests passed, and a re-run passed. The job failed 8 of its last 27 runs (some while M8 step 14 was being built). A failure on main leaves no test build, so the PC tests can't run. Find the cause from the run's `console.log` and screenshots, and fix it rather than adding retries. Isaac picks where it goes in the queue.
+
 ## Notes
 
 - The usual rules apply to each step: one PR, tests, a screenshot for UI changes, the secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.

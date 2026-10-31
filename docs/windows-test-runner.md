@@ -12,6 +12,16 @@ M8 step 15 runs FUSE's tests on Isaac's real Windows desktop through a GitHub Ac
    - Additional labels: `fuse-windows`.
    - Work folder: press Enter.
    - **Run as service? N.** A service can't open the app's window or take screenshots.
+
+   If it was set up as a service by mistake (Services lists `actions.runner.…`, and the update test says the runner isn't on your desktop), keep the configuration and switch it. In PowerShell as administrator, with your runner's service name:
+
+   ```powershell
+   Stop-Service "actions.runner.isaacholt-hash-fuse.<name>"
+   Set-Service "actions.runner.isaacholt-hash-fuse.<name>" -StartupType Disabled
+   icacls C:\actions-runner /grant "${env:USERDOMAIN}\${env:USERNAME}:(OI)(CI)F" /T /Q
+   ```
+
+   Then do step 4 as yourself.
 4. Start it whenever you log in:
 
    ```powershell
