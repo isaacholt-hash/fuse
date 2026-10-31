@@ -1,47 +1,59 @@
-# Tests on Isaac's Windows PC (M8 step 15)
+# Test runner on Isaac's Windows PC
 
-A GitHub Actions runner on your PC runs `.github/workflows/pc-tests.yml` after each release, and when you start it by hand. It does three things:
+M8 step 15 runs FUSE's tests on Isaac's real Windows desktop through a GitHub Actions self-hosted runner. Isaac installs it once, in about five minutes. No job uses it until step 15 is merged, so it can be set up before then.
 
-1. Runs the click-through tests (step 14) on your real desktop.
-2. Runs the real update test: it installs the release before the newest, lets it find and download the newest, presses **Restart now**, and checks the newest is running.
-3. Runs `pnpm local:bench`, if a local model is installed.
+## Install
 
-Results go to the run's summary and the build tracker. A failure opens an issue and never blocks merging.
+1. On GitHub, open the fuse repo, then **Settings → Actions → Runners → New self-hosted runner**, and pick **Windows** and **x64**. The page shows the commands, with a token that lasts an hour.
+2. Open PowerShell as yourself (**not** as administrator) and run the page's **Download** commands. They create `C:\actions-runner`.
+3. Run the page's **Configure** command (`.\config.cmd --url … --token …`). Answer:
+   - Runner group: press Enter.
+   - Name: `fuse-windows`.
+   - Additional labels: `fuse-windows`.
+   - Work folder: press Enter.
+   - **Run as service? N.** A service can't open the app's window or take screenshots.
+4. Start it whenever you log in:
 
-## Safety
+   ```powershell
+   $a = New-ScheduledTaskAction -Execute "C:\actions-runner\run.cmd" -WorkingDirectory "C:\actions-runner"
+   $t = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+   Register-ScheduledTask -TaskName "FUSE test runner" -Action $a -Trigger $t -RunLevel Limited
+   Start-ScheduledTask -TaskName "FUSE test runner"
+   ```
 
-The repository is public, so the runner must never run a stranger's code.
+5. Back on GitHub, **Settings → Actions → General → Approval for running fork pull request workflows from contributors**: choose **Require approval for all external contributors**. The runner's jobs never run on pull requests anyway; this is a second lock.
 
-- `pc-tests.yml` only runs after a release from a push to main, or when you start it by hand. It never runs on pull requests.
-- **GitHub setting, required:** Settings → Actions → General → "Approval for running fork pull request workflows from contributors" → **"Require approval for all external contributors"** (the strictest choice). A pull request could otherwise add a job with `runs-on: [self-hosted, fuse-pc]` to another workflow. With this setting, no workflow runs for an outsider's pull request until you approve it. Only approve pull requests you have read.
-- The runner runs as your normal user, not as a service, so it can open windows. It has your rights. Don't add a key or any other secret to it: step 16 reads keys from your own environment, and only when you start that workflow.
-- One job at a time (`concurrency: pc-tests`).
+The runner shows as **Idle** on the Runners page when it's ready.
 
-## What the tests touch
+## What it runs
 
-- The click-through tests use the separate test build, "FUSE E2E", with its own data folder. Your chats and settings aren't touched. They make `C:\fuse-e2e`, and check that nothing appears in `Documents\escape.txt`.
-- **The update test installs over your real FUSE.** It skips itself if FUSE is open, so close FUSE to include it. Your chats stay, as with any update. Afterwards the newest release is installed, as before.
+`.github/workflows/pc-tests.yml` runs after each release from a push to main, and when you start it from **Actions → PC tests → Run workflow**. It never runs on pull requests, and a check on the job itself refuses any other trigger. It runs:
 
-## Setting it up (once, about 20 minutes)
+1. **The click-through tests** (step 14) on your real desktop, including check 5 (`>NUL`), which GitHub's Windows Server can't run. They use the separate test build, "FUSE E2E", with its own data folder, so your chats and settings aren't touched. They make `C:\fuse-e2e`, and check that `Documents\escape.txt` never appears.
+2. **The update test** (`scripts/pc/update-test.ps1`). It installs the release before the newest over your FUSE, starts it, and waits for the update bar. It presses **Restart now** through Windows UI Automation, then checks the newest is installed and running.
+   - **It skips itself if FUSE is open**, so it never closes your work. Close FUSE, or start the workflow by hand when you're away, to include it.
+   - Your chats stay, as with any update, and it ends on the newest release.
+   - Starting it by hand, you can untick "Also run the update test".
+3. **`pnpm local:bench`**, when a local model is installed.
 
-1. Install the build tools, if they aren't there already:
-   - [Rust](https://rustup.rs) (stable), with the "Desktop development with C++" workload from the Visual Studio Build Tools
-   - Node.js LTS
-   - Git
-2. In GitHub: **Settings → Actions → Runners → New self-hosted runner → Windows x64**. Follow the download and `config.cmd` steps it shows, with these answers:
-   - Runner group: Default
-   - Name: `fuse-pc`
-   - Labels: `fuse-pc`
-   - Work folder: `_work`
-   - **"Run as service?" N**: it must run as you, so it can open windows.
-3. Make it start at login: in the runner's folder, make a shortcut to `run.cmd` and put it in `shell:startup` (Win+R, `shell:startup`).
-4. Turn on the GitHub setting from **Safety** above.
-5. Check it: in GitHub, **Actions → PC tests → Run workflow**. While it runs, a FUSE E2E window opens and is clicked through. Leave it alone until it closes.
+The results are in the run's summary. A failure opens an issue and never blocks merging. Screenshots of the click-through tests are uploaded as `pc-e2e-screenshots`.
 
-## Starting it by hand
+## Keys for the live-key button (step 16)
 
-**Actions → PC tests → Run workflow.** Untick "Also run the update test" to skip that part.
+Only needed for the button. Type each key at the prompt, so it never lands in PowerShell's history:
 
-## Turning it off
+```powershell
+$k = Read-Host "OpenAI key" -AsSecureString
+[Environment]::SetEnvironmentVariable("FUSE_OPENAI_API_KEY", [Net.NetworkCredential]::new("", $k).Password, "User")
+$k = Read-Host "Anthropic key" -AsSecureString
+[Environment]::SetEnvironmentVariable("FUSE_ANTHROPIC_API_KEY", [Net.NetworkCredential]::new("", $k).Password, "User")
+Remove-Variable k
+```
 
-Settings → Actions → Runners → fuse-pc → Remove, then delete the runner's folder and the `shell:startup` shortcut.
+Then restart the runner so it picks them up: `Stop-ScheduledTask "FUSE test runner"; Start-ScheduledTask "FUSE test runner"`.
+
+## Good to know
+
+- Jobs run only while the PC is on and you're logged in. Otherwise they wait in the queue, and GitHub drops them after 24 hours.
+- A test may open FUSE windows on your screen for a minute or two. Leave them alone until the job finishes.
+- To stop it: `Disable-ScheduledTask "FUSE test runner"`. To remove it: `.\config.cmd remove` in `C:\actions-runner`, with the removal token from the Runners page.

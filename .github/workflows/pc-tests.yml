@@ -32,7 +32,7 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
-    runs-on: [self-hosted, Windows, fuse-pc]
+    runs-on: [self-hosted, Windows, fuse-windows]
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7

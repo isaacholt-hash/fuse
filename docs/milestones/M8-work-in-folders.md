@@ -160,7 +160,7 @@
   - Its jobs run **only** after a merge to main and when started by hand, never on pull requests: the repo is public, so a stranger's PR must never run code on that PC. One job at a time.
   - After each release: install it, run the step 14 suite on the real desktop, then the real update test: install the previous release, let it find and download the new one, press Restart, and check the new version is running. Also `pnpm local:bench` when a local model is installed.
   - Results go to the job summary and the build tracker. A failure doesn't block merging; it opens an issue.
-  - **Built:** `.github/workflows/pc-tests.yml` (runner label `fuse-pc`), `scripts/pc/update-test.ps1` and `docs/windows-test-runner.md`.
+  - **Built:** `.github/workflows/pc-tests.yml` (runner label `fuse-windows`), `scripts/pc/update-test.ps1` and `docs/windows-test-runner.md`.
     - It runs only after a Release from a push to main succeeds, or when started by hand. A job-level check also refuses any other trigger.
     - The update test skips itself when FUSE is open, so it never closes Isaac's work. It presses Restart now through Windows UI Automation, since a release build has no DevTools port.
     - Windows CI checks that the PC's PowerShell scripts parse.
