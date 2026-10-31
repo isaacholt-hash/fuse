@@ -131,7 +131,12 @@ function anthropicContent(m: ChatMessage): string | Record<string, unknown>[] {
 
 /** A tool sent to Claude: strict, so `input` always matches the schema (docs/providers.md, M6). */
 export function anthropicTool(t: ToolSpec): Record<string, unknown> {
-  return { name: t.name, description: t.description, input_schema: t.schema, strict: true };
+  return {
+    name: t.name,
+    description: t.description,
+    input_schema: t.schema,
+    ...(t.strict === false ? {} : { strict: true }),
+  };
 }
 
 function anthropicMessage(m: ChatMessage, model: string): Record<string, unknown> {

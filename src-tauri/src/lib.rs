@@ -104,6 +104,8 @@ pub fn run() {
             keys::commands::mcp_secret_status,
             mcp::commands::mcp_check,
             mcp::commands::mcp_stop,
+            mcp::commands::mcp_tools,
+            mcp::commands::mcp_call,
             python_runtime::commands::python_install,
             python_runtime::commands::python_install_cancel,
             python_runtime::commands::python_status,

@@ -59,6 +59,8 @@ export interface ToolSpec {
   name: string;
   description: string;
   schema: Record<string, unknown>;
+  /** M9 step 9: false for a schema FUSE didn't write (an MCP server's); sent without strict. */
+  strict?: boolean;
 }
 
 /** A call the model made, with its input parsed. `id` links the result back to it. */

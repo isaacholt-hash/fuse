@@ -22,7 +22,8 @@ const SOURCE: Record<string, string> = {
 };
 
 /** The label for a tool's output; anything not listed (an MCP tool, later) is "a tool". */
-export const sourceOf = (tool: string): string => SOURCE[tool] ?? "a tool";
+export const sourceOf = (tool: string): string =>
+  SOURCE[tool] ?? (tool.startsWith("mcp__") ? "an MCP server" : "a tool");
 
 const TAG = "tool_output";
 

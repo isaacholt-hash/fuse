@@ -141,7 +141,7 @@ export function openaiTool(t: ToolSpec): Record<string, unknown> {
     name: t.name,
     description: t.description,
     parameters: t.schema,
-    strict: true,
+    strict: t.strict !== false,
   };
 }
 

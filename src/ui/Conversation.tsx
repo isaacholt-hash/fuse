@@ -2166,7 +2166,9 @@ function RunCard({
                     ? "Read this address?"
                     : run.approval.kind === "python"
                       ? "Run this Python script?"
-                      : "Make this change?"
+                      : run.approval.kind === "mcp"
+                        ? "Use this MCP tool?"
+                        : "Make this change?"
             }
             className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
           >
@@ -2187,6 +2189,20 @@ function RunCard({
                     outside this chat&apos;s folders.
                   </p>
                 )}
+              </>
+            ) : run.approval.kind === "mcp" ? (
+              <>
+                <p className="mb-1 font-medium">
+                  Use {run.approval.tool} on {run.approval.server}?
+                </p>
+                <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+                  {run.approval.input}
+                </pre>
+                <p className="mb-2 text-muted-foreground">
+                  {run.approval.destructive
+                    ? "The server marks this tool destructive, so it asks every time."
+                    : "This tool can change things on that server's side."}
+                </p>
               </>
             ) : run.approval.kind === "python" ? (
               <>

@@ -9,6 +9,8 @@ import {
   mcpServerProblem,
   removeMcpServer,
   setMcpServerNetwork,
+  listProjectMcpServers,
+  setProjectMcpServer,
   type NewMcpServer,
 } from "./mcp";
 import { createProject } from "./projects";
@@ -69,4 +71,22 @@ test("added, listed by name, network switched, removed with its project links", 
 
   await deleteAllData(db, t, memoryFilesApi());
   expect(await db.select("SELECT * FROM mcp_servers")).toEqual([]);
+});
+
+test("M9 step 9: a project switches servers on and off", async () => {
+  const db = openTestDb();
+  const a = await addMcpServer(db, t, { ...local, name: "B server" });
+  const b = await addMcpServer(db, t, { ...local, name: "A server" });
+  const p = await createProject(db, t, "P");
+  await setProjectMcpServer(db, t, p.id, a.id, true);
+  await setProjectMcpServer(db, t, p.id, b.id, true);
+  await setProjectMcpServer(db, t, p.id, b.id, true);
+  expect((await listProjectMcpServers(db, t, p.id)).map((s) => s.name)).toEqual([
+    "A server",
+    "B server",
+  ]);
+  await setProjectMcpServer(db, t, p.id, a.id, false);
+  expect((await listProjectMcpServers(db, t, p.id)).map((s) => s.name)).toEqual(["A server"]);
+  await removeMcpServer(db, t, b.id);
+  expect(await listProjectMcpServers(db, t, p.id)).toEqual([]);
 });

@@ -59,6 +59,7 @@ import {
   commandOutput,
   FETCH_URL_TOOL,
   IMAGE_MIME,
+  MAX_TOOL_OUTPUT_CHARS,
   MAX_IMAGE_BYTES,
   readPage,
   RUN_PYTHON_TOOL,
@@ -77,6 +78,8 @@ import {
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
+import type { McpCallResult, McpTool } from "@/mcp/api";
+import type { ToolSpec } from "@/providers/types";
 import { addressCarries, findInstructions, localFlags, scansOutput } from "./injection";
 import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
@@ -169,11 +172,95 @@ export interface RunDeps extends ChatDeps {
   git?: GitApi;
   /** M9 step 6: whether FUSE's Python is installed; without it, run_python isn't offered. */
   pythonReady?: () => Promise<boolean>;
+  /** M9 step 9: MCP servers; without it, a project's servers aren't offered. */
+  mcp?: McpRunApi;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
    */
   approve?: (request: ApprovalRequest) => Promise<boolean | ApprovalAnswer>;
+}
+
+/** M9 step 9: what a run needs of MCP servers. */
+export interface McpRunApi {
+  /** The servers a project switched on. */
+  forProject(projectId: string): Promise<{ id: string; name: string }[]>;
+  tools(serverId: string): Promise<McpTool[]>;
+  call(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
+}
+
+/** M9 step 9: an MCP tool as a run offers it. */
+interface McpOffered {
+  serverId: string;
+  serverName: string;
+  tool: string;
+  readOnly: boolean;
+  destructive: boolean;
+}
+
+const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "x";
+
+/**
+ * A provider-safe name for a server's tool, `mcp__<server>__<tool>`, at most 64 characters and
+ * unique in the run (a suffix when two would meet).
+ */
+export function mcpToolName(server: string, tool: string, taken: Set<string>): string {
+  const base = `mcp__${slug(server).slice(0, 20)}__${slug(tool)}`.slice(0, 64);
+  let name = base;
+  for (let n = 2; taken.has(name); n++) {
+    const suffix = `_${String(n)}`;
+    name = base.slice(0, 64 - suffix.length) + suffix;
+  }
+  taken.add(name);
+  return name;
+}
+
+/**
+ * M9 step 9 (AG-02): the tools of the servers the run's project switched on, read each turn. A
+ * server that won't start is skipped, with a note, and the run carries on without it. A
+ * read-only run gets only the tools the server marks read-only.
+ */
+async function mcpFor(
+  deps: RunDeps,
+  run: Run,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<{ specs: ToolSpec[]; byName: Map<string, McpOffered> }> {
+  const byName = new Map<string, McpOffered>();
+  const specs: ToolSpec[] = [];
+  if (!deps.mcp || !run.projectId) return { specs, byName };
+  const taken = new Set<string>();
+  for (const server of await deps.mcp.forProject(run.projectId)) {
+    let tools: McpTool[];
+    try {
+      tools = await deps.mcp.tools(server.id);
+    } catch (e) {
+      await progress(
+        deps,
+        run.id,
+        input,
+        `The MCP server ${server.name} isn't available: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      continue;
+    }
+    for (const t of tools) {
+      if (run.mode === "plan" && !t.readOnly) continue;
+      const name = mcpToolName(server.name, t.name, taken);
+      byName.set(name, {
+        serverId: server.id,
+        serverName: server.name,
+        tool: t.name,
+        readOnly: t.readOnly,
+        destructive: t.destructive === true,
+      });
+      specs.push({
+        name,
+        description: `[${server.name}, an MCP server] ${t.description}`.slice(0, 1024),
+        schema: { type: "object", ...t.inputSchema },
+        strict: false,
+      });
+    }
+  }
+  return { specs, byName };
 }
 
 /** What a run wants to do that needs your say-so. */
@@ -194,6 +281,8 @@ export type ApprovalAsk =
   | { kind: "fetch"; url: string; why: string }
   /** M9 step 6: a Python script, and the files it will save into the folder. */
   | { kind: "python"; script: string; keep: string[]; network: boolean }
+  /** M9 step 9: an MCP tool that changes something, with what it's given. */
+  | { kind: "mcp"; server: string; tool: string; input: string; destructive: boolean }
   /** WF-06: a whole reorganisation; the answer may keep only some moves. */
   | { kind: "organise"; moves: Move[]; reason: string | null }
   /**
@@ -468,6 +557,7 @@ async function work(
     await withImages(deps, history, steps);
     const adapter = deps.adapterFor(model.provider);
     const off = await projectToolsOff(db, tenant, run.projectId);
+    const mcp = await mcpFor(deps, run, input);
     // A Local only project sends nothing out, not even an address to read.
     const offered = new Set(off);
     if (!deps.web || policy.mode === "local_only") offered.add(FETCH_URL_TOOL.name);
@@ -486,7 +576,10 @@ async function work(
           scope: scope(run),
           ...(system ? { system } : {}),
           maxOutputTokens: model.maxOutput,
-          tools: toolsFor(run.mode, run.kind, offered),
+          tools: [
+            ...toolsFor(run.mode, run.kind, offered),
+            ...mcp.specs.filter((x) => !off.has(x.name)),
+          ],
         },
         input.signal,
       )) {
@@ -561,7 +654,7 @@ async function work(
     }
     // Every call gets a result, in call order (docs/providers.md, M6).
     for (const call of calls) {
-      const out = await handleCall(deps, run, call, input, off);
+      const out = await handleCall(deps, run, call, input, off, mcp.byName);
       const kept = await keepImages(deps, run, out);
       const stepId = await addToolStep(db, tenant, runId, {
         call,
@@ -648,6 +741,85 @@ async function priorFlags(deps: RunDeps, run: Run): Promise<PriorFlag[]> {
         : [],
     )
     .slice(-3);
+}
+
+/**
+ * M9 step 9: one MCP tool call. A read-only tool runs freely; any other asks in Ask first and
+ * after a flagged result, and a destructive one always asks; none can be always-allowed. What it
+ * returns is data like any tool's, and images go to the model.
+ */
+async function runMcp(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  m: McpOffered,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  if (!deps.mcp) return { output: "Error: MCP servers aren't available here.", isError: true };
+  if (run.mode === "plan" && !m.readOnly) {
+    return { output: "Error: this run is read-only.", isError: true };
+  }
+  let approval: Approval = "auto";
+  if (!m.readOnly && (run.mode === "ask" || m.destructive || (await flaggedRun(deps, run)))) {
+    if (!deps.approve) {
+      return {
+        output: "Error: this needs the user's approval, and there's no one to ask here.",
+        isError: true,
+      };
+    }
+    await progress(deps, run.id, input, `Waiting for your OK to use ${m.tool} on ${m.serverName}`);
+    const answer = await ask(
+      deps,
+      run,
+      {
+        kind: "mcp",
+        server: m.serverName,
+        tool: m.tool,
+        input: JSON.stringify(call.input, null, 2).slice(0, 4000),
+        destructive: m.destructive,
+      },
+      input,
+    );
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no") {
+      return {
+        output: `Error: the user declined ${m.tool} on ${m.serverName}.`,
+        isError: true,
+        approval: "denied",
+      };
+    }
+    approval = "you";
+  }
+  try {
+    const r = await deps.mcp.call(m.serverId, m.tool, call.input);
+    const text = r.parts.flatMap((p) => (p.kind === "text" && p.text ? [p.text] : [])).join("\n");
+    const images = r.parts.flatMap((p) =>
+      p.kind === "image" && p.data
+        ? [
+            {
+              mime: p.mime ?? "image/png",
+              bytes: Uint8Array.from(atob(p.data), (c) => c.charCodeAt(0)),
+            },
+          ]
+        : [],
+    );
+    const output = text || (images.length ? "(an image)" : "(no output)");
+    return {
+      output:
+        output.length > MAX_TOOL_OUTPUT_CHARS
+          ? `${output.slice(0, MAX_TOOL_OUTPUT_CHARS)}\n[… ${String(output.length - MAX_TOOL_OUTPUT_CHARS)} more characters not shown]`
+          : output,
+      isError: r.isError,
+      approval,
+      ...(images.length ? { images } : {}),
+    };
+  } catch (e) {
+    return {
+      output: `Error: the MCP server ${m.serverName} didn't answer: ${e instanceof Error ? e.message : String(e)}`,
+      isError: true,
+      approval,
+    };
+  }
 }
 
 /**
@@ -862,7 +1034,15 @@ async function handleCall(
   call: ToolCall,
   input: Pick<RunInput, "signal" | "onProgress">,
   off: ReadonlySet<string> = new Set(),
+  mcpTools: ReadonlyMap<string, McpOffered> = new Map(),
 ): Promise<CallOutcome> {
+  const fromMcp = mcpTools.get(call.name);
+  if (fromMcp) {
+    if (off.has(call.name)) {
+      return { output: `Error: ${call.name} is switched off for this project.`, isError: true };
+    }
+    return runMcp(deps, run, call, fromMcp, input);
+  }
   const tool = toolEntry(call.name);
   if (tool && !tool.places.includes(run.kind)) {
     return { output: `Error: ${call.name} isn't available in this run.`, isError: true };
