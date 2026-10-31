@@ -21,6 +21,11 @@ async function step(name: string, body: () => Promise<void>) {
   try {
     await body();
   } finally {
+    // Errors the app showed (report() puts them on screen, not in the console).
+    const alerts = await app.run<string[]>(
+      "return [...document.querySelectorAll('[role=alert]')].map((e) => e.innerText.trim()).filter(Boolean);",
+    );
+    for (const a of alerts) app.console.push(`after ${name}, alert: ${a}`);
     await app.screenshot(join(SHOTS, `${String(++shot).padStart(2, "0")}-${name}.png`));
   }
 }

@@ -194,6 +194,8 @@
   - The sandbox is on unless it was switched off in Settings. A saved "off" stays off; Isaac's saved "on" is kept. The "(testing)" label is gone.
   - `pnpm work:live` has a second test, "images in tool results": a Work run on a folder with only `gate.png`, a picture of the code HERON-4172. It passes when `code.txt` holds the code and a tool result carried the image.
 
+- [x] **F5. A short answer could stay looking unfinished (found by step 14's click-through tests, 2026-10-31).** The chat reloads when an answer's first words arrive, without waiting, and again when it ends. If the first reload landed last, it put the finished answer back to an empty "streaming" row, with no cost, until something else reloaded the chat. Fast, short answers made this likely: it failed about one CI run in three, and stalled 60 s on Isaac's PC. Now only the newest reload updates the screen. The test holds the mid-answer reload until the answer has finished, then lets it land. Found with the test build's new logs: each stream, answer save and message read, with times, slow or failed database calls, and on-screen alerts, saved as `e2e-screenshots/console.log`.
+
 ## Notes
 
 - The usual rules apply to each step: one PR, tests, a screenshot for UI changes, the secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.

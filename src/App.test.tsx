@@ -1,4 +1,5 @@
 // The real app (storage, keys, chat engine) on an in-memory SQLite DB, with scripted providers.
+import type { SqlDb, SqlValue } from "@/storage/sql";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
@@ -158,9 +159,17 @@ function setup(
     helloAvailable = false,
     repo = noRepo,
     exec,
-  }: { helloAvailable?: boolean; repo?: RepoApi; exec?: ExecApi } = {},
+    wrapDb = (d) => d,
+  }: {
+    helloAvailable?: boolean;
+    repo?: RepoApi;
+    exec?: ExecApi;
+    /** Wraps the database the app sees, e.g. to slow one query down. */
+    wrapDb?: (db: SqlDb) => SqlDb;
+  } = {},
 ) {
   const db = openTestDb();
+  const appDb = wrapDb(db);
   const keys = fakeKeysApi();
   for (const p of savedKeys) keys.keys.set(p, "fake-value-for-tests-0000");
   const calls: Record<string, ChatMessage[][]> = { anthropic: [], openai: [] };
@@ -282,7 +291,7 @@ function setup(
   };
   render(
     <App
-      openDb={() => Promise.resolve(db)}
+      openDb={() => Promise.resolve(appDb)}
       keysApi={keys.api}
       adapterFor={adapterFor}
       catalog={catalog}
@@ -355,6 +364,56 @@ const sidebar = () => within(screen.getByRole("navigation", { name: "Conversatio
 
 beforeEach(() => {
   localStorage.clear();
+});
+
+test("F5: a slow reload from mid-answer can't put the finished answer back to streaming", async () => {
+  // The reload started by the answer's first words is held up until the answer has finished
+  // and been reloaded; when it lands, it must not undo that.
+  let armed = false;
+  let holding = false;
+  let release = () => {};
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  const { user } = setup(
+    {},
+    undefined,
+    {},
+    {
+      wrapDb: (db) => ({
+        execute: (sql, params) => db.execute(sql, params),
+        select: async <Row,>(sql: string, params?: SqlValue[]) => {
+          const rows = await db.select<Row>(sql, params);
+          // A reload that has just read the answer still streaming…
+          if (
+            sql.includes("parent_id, role, content, status") &&
+            (rows as { status?: string }[]).some((m) => m.status === "streaming")
+          ) {
+            armed = true;
+          }
+          // …is held at its last query.
+          if (sql.includes("FROM artifacts a") && armed && !holding) {
+            holding = true;
+            await held;
+          }
+          return rows;
+        },
+      }),
+    },
+  );
+  await user.type(await composer(), "What is FUSE?{Enter}");
+  expect(
+    await screen.findByRole("button", { name: "Cost breakdown for Test Claude" }),
+  ).toBeInTheDocument();
+  release();
+  // Let the held reload finish and render.
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  expect(
+    screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Hello there.")).toBeInTheDocument();
 });
 
 test("send a message: the answer streams in, then shows model, tokens and cost", async () => {

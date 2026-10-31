@@ -8,6 +8,8 @@ import type { FetchLike, ProviderAdapter } from "@/providers/types";
 import type { ProviderId } from "@/catalog/catalog";
 import { tauriRepo, type RepoApi } from "@/repo/api";
 import type { UpdateApi } from "@/update/api";
+import type { SqlDb, SqlValue } from "@/storage/sql";
+import { openTauriDb } from "@/storage/tauriDb";
 
 export const E2E_MARK = "fuse-e2e-scripted-build";
 
@@ -104,13 +106,91 @@ const updates: UpdateApi = {
 
 const repo: RepoApi = { ...tauriRepo, pick: () => tauriRepo.check(FOLDER) };
 
+/** For e2e/screenshots/console.log: seconds since the page loaded. */
+const at = () => `${(performance.now() / 1000).toFixed(1)}s`;
+
+/** The adapter, saying when each turn's stream starts and ends. */
+function logged(adapter: ProviderAdapter): ProviderAdapter {
+  return {
+    ...adapter,
+    async *streamChat(messages, model, options, signal) {
+      const n = ++streams;
+      console.info(`e2e stream ${String(n)} asked at ${at()}`);
+      let first = true;
+      for await (const e of adapter.streamChat(messages, model, options, signal)) {
+        if (first) console.info(`e2e stream ${String(n)} first event (${e.type}) at ${at()}`);
+        first = false;
+        yield e;
+        if (e.type === "done") console.info(`e2e stream ${String(n)} done at ${at()}`);
+      }
+      console.info(`e2e stream ${String(n)} read to the end at ${at()}`);
+    },
+  };
+}
+let streams = 0;
+
+/** The real database, reporting any call that takes over a second. */
+async function loggedDb(): Promise<SqlDb> {
+  const db = await openTauriDb();
+  // Calls still waiting, listed every 5 s once they've waited that long.
+  const waiting = new Map<number, { sql: string; since: number }>();
+  let calls = 0;
+  setInterval(() => {
+    for (const w of waiting.values()) {
+      const ms = performance.now() - w.since;
+      if (ms > 5000) console.warn(`e2e db still waiting ${String(Math.round(ms))} ms: ${w.sql}`);
+    }
+  }, 5000);
+  const slow = async <T>(sql: string, run: () => Promise<T>): Promise<T> => {
+    const t = performance.now();
+    const id = ++calls;
+    waiting.set(id, { sql: sql.replace(/\s+/g, " ").slice(0, 80), since: t });
+    try {
+      return await run();
+    } catch (e) {
+      console.error(
+        `e2e db failed at ${at()}: ${String(e)} :: ${sql.replace(/\s+/g, " ").slice(0, 80)}`,
+      );
+      throw e;
+    } finally {
+      waiting.delete(id);
+      const ms = performance.now() - t;
+      if (ms > 1000) console.warn(`e2e slow db ${String(Math.round(ms))} ms: ${sql.slice(0, 80)}`);
+    }
+  };
+  return {
+    execute: async (sql, params) => {
+      const r = await slow(sql, () => db.execute(sql, params));
+      // When an answer is saved finished, and how many rows that touched.
+      if (sql.includes("UPDATE messages SET content = ?, status = ?")) {
+        console.info(
+          `e2e db finished answer: ${String(params?.[1])}, ${String(r.rowsAffected)} row at ${at()}`,
+        );
+      }
+      return r;
+    },
+    select: async <Row>(sql: string, params?: SqlValue[]) => {
+      const rows = await slow(sql, () => db.select<Row>(sql, params));
+      // What a chat's reload saw: each message's role and status.
+      if (sql.includes("FROM messages") && sql.includes("parent_id, role, content, status")) {
+        const seen = (rows as { role?: string; status?: string }[])
+          .map((m) => `${m.role ?? "?"}:${m.status ?? "?"}`)
+          .join(" ");
+        console.info(`e2e db read messages [${seen}] at ${at()}`);
+      }
+      return rows;
+    },
+  };
+}
+
 export function e2eDeps() {
   // The test checks this before it clicks anything, so it never drives a real build.
   document.documentElement.dataset.build = E2E_MARK;
-  const anthropic = createAnthropicAdapter({ fetch: scriptedFetch });
+  const anthropic = logged(createAnthropicAdapter({ fetch: scriptedFetch }));
   return {
     keysApi,
     updates,
+    openDb: loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       if (p !== "anthropic") throw new Error(`${p} isn't scripted in the test build.`);
