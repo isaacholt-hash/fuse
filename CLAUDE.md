@@ -32,6 +32,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Roadmap (2026-10-30) | P1.5 is now three parts: Continuity core (M5, done), Coding agent (M6, §11b: Claude Code and Codex for the daily loop), Local and lean (M7). P2 follows. The coding agent's gate is Isaac's own edit, run, review and commit loop, not feature parity |
 | Local and lean (2026-10-30) | llama.cpp built in through Rust, in a worker process; Qwen3 1.7B or 4B picked by hardware, opt-in download; housekeeping only (RT-17 kept); on as soon as a model is installed, one switch to turn it off. Isaac skipped M6's two-week trial |
 | Work in folders (2026-10-30) | M8 starts P2: a Work mode beside Code, folders per chat and several per project, Word, Excel and PDF read and written, organise as one approved plan, and commands in an OS sandbox (bubblewrap; AppContainer on Windows) |
+| Tools and MCP (2026-10-31) | M9 is P2 part 2: a tool registry with kinds, fetch_url, tool results treated as data with flagged passages shown on approvals, Python only in the M8 sandbox (pinned download, checked by hash), MCP over stdio and HTTP with OAuth (tools only, local servers sandboxed, secrets in the keychain). Read-only tools also work in plain chat |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 

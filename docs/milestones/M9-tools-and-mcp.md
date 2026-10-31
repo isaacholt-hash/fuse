@@ -6,19 +6,17 @@
 
 **Out of scope:** the web app on HULK and background runs (CA-15, CA-16), sync (PL-04), scheduled tasks (AG-07), built-in connectors (AG-11, though any MCP server you add works), skills and hooks (CA-12, CA-13), subagents (CA-14), dictation (VI-01) and deep research (FK-12).
 
-## Decisions (proposed, waiting on Isaac)
+## Decisions (Isaac, 2026-10-31)
 
-Each has a recommendation. Nothing is built until Isaac answers.
-
-1. **What M9 is.** Recommended: Tools and MCP, as written here, because it finishes P2's Musts. The other choice is the web app on HULK with background runs (CA-15) first, which is the bigger change to how FUSE is used day to day but only Should-level.
-2. **Where tools work.** Recommended: in Code and Work runs, and in plain chat for the read-only ones (fetch_url, MCP tools marked read-only). Anything that writes, sends or spends needs a run, so it gets the run's approvals, plan and cost cap.
-3. **MCP scope.** Recommended: stdio servers and remote HTTP servers (Streamable HTTP) with OAuth, and tools only, not resources or prompts. Servers are added in Settings and switched on per project. Local servers run in the M8 sandbox, with no network unless allowed. Their env and OAuth tokens live in the OS keychain, like API keys.
-4. **Code execution runtime.** Recommended: Python only in M9, run in the M8 sandbox (bubblewrap or AppContainer), from a pinned Python downloaded on first use and checked by hash (the same pattern as M7's local model). It comes with pandas, numpy, matplotlib and openpyxl, pinned. Node is left for later, since `run_command` already covers it for Code runs. The other choice is WASM (Pyodide), which needs no download but is slower and harder to give files to.
-5. **How the injection guard works.** Recommended: two layers. First, every tool result reaches the model wrapped as untrusted data, with a note saying what it is. Second, before a write, command or send that follows such a result, FUSE checks the result for instruction-like text (a fixed rule set, plus the local model when one is installed) and, if there is any, the approval shows the passage that may have caused the action. It's never decided only by the local model, and it never blocks without telling you.
+- **M9 is Tools and MCP**, because it finishes P2's Musts. The web app on HULK and background runs (CA-15) come after.
+- **Where tools work:** in Code and Work runs, and in plain chat for the read-only ones (fetch_url, MCP tools marked read-only). Anything that writes, sends or spends needs a run, so it gets the run's approvals, plan and cost cap.
+- **MCP:** stdio servers and remote HTTP servers (Streamable HTTP) with OAuth; tools only, not resources or prompts. Servers are added in Settings and switched on per project. Local servers run in the M8 sandbox, with no network unless allowed. Their env values and OAuth tokens live in the OS keychain, like API keys.
+- **Code execution:** Python only in M9, in the M8 sandbox (bubblewrap or AppContainer), from a pinned Python downloaded on first use and checked by hash, the same pattern as M7's local model. It comes with pandas, numpy, matplotlib and openpyxl, pinned. Node waits, since `run_command` already covers it for Code runs. Not Pyodide.
+- **Injection guard, two layers.** Every tool result reaches the model wrapped as untrusted data, saying what it is. Before a write, command or send that follows such a result, FUSE checks the result for instruction-like text (a fixed rule set, plus the local model when one is installed); if there is any, the approval shows the passage that may have caused the action. The local model can add a flag but never clear one, and nothing is blocked without telling you.
 
 ## Steps (one PR each, in order)
 
-- [ ] **0. M9 plan.** This file, the decisions above answered, requirements §11 updated, and CLAUDE.md pointed here.
+- [x] **0. M9 plan.** This file, the decisions above, requirements §11 and §18 updated, and CLAUDE.md pointed here.
 - [ ] **1. Tools as a registry (AG-01).** One list of every tool, with name, schema, kind (read, write, command, send, spend) and where it can run (chat, Code, Work). Approvals, permission modes and the activity log read the kind from it instead of from tool names. Project settings → Tools switches each on or off. No behaviour change for the tools that exist.
 - [ ] **2. `fetch_url` for runs and chat (AG-01).** The FK-06 reader in `web.rs` as a tool: public addresses only, after DNS and on every redirect; size and time capped; HTML turned into readable text. Read-only, so it runs without asking. The egress policy is checked before the page's text is sent anywhere.
 - [ ] **3. Tool results are data (AG-10, part 1).** Every tool result is wrapped and labelled before it reaches the model, on both providers. The run and chat guides say so. Tests with an "ignore your instructions" page, file, command output and document.
