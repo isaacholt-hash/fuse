@@ -24,6 +24,8 @@ export const DELETE_ORDER = [
   "local_shadow",
   "network_grants",
   "project_tools_off",
+  "project_mcp_servers",
+  "mcp_servers",
   "response_cache",
   "chunk_vectors",
   "chunks",

@@ -1,5 +1,6 @@
 import { tauriLocalApi, type LocalApi } from "@/local/api";
 import { tauriPythonApi, type PythonApi } from "@/python/runtime";
+import { tauriMcpApi, type McpApi } from "@/mcp/api";
 import { createLocalAdapter } from "@/providers/local/adapter";
 import { tauriLocalBackend } from "@/providers/local/tauri";
 import { localModels } from "@/local/models";
@@ -80,6 +81,8 @@ interface Props {
   local?: LocalApi;
   /** The Python runtime for data work (M9 step 5). */
   python?: PythonApi;
+  /** MCP servers' keychain values (M9 step 8). */
+  mcp?: McpApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
   zoom?: ZoomApi;
@@ -109,6 +112,7 @@ export default function App({
   backups = tauriBackupsApi,
   local = tauriLocalApi,
   python = tauriPythonApi,
+  mcp = tauriMcpApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
   hello = tauriHello,
@@ -177,6 +181,7 @@ export default function App({
       backups={backups}
       localApi={local}
       pythonApi={python}
+      mcpApi={mcp}
       quickCapture={quickCapture}
       zoom={zoom}
       hello={hello}
