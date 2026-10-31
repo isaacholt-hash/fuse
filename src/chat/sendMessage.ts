@@ -13,7 +13,17 @@ import type { ModelDefaults } from "@/routing/modelDefaults";
 import { ProviderError, userMessage } from "@/providers/errors";
 import type { FilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
-import type { ProviderAdapter, StreamDone } from "@/providers/types";
+import type {
+  ChatMessage,
+  ProviderAdapter,
+  StreamDone,
+  ToolCall,
+  ToolResult,
+} from "@/providers/types";
+import { toolsIn } from "@/agent/registry";
+import { FETCH_URL_TOOL, readPage } from "@/agent/tools";
+import { projectToolsOff } from "@/storage/projectTools";
+import type { WebApi } from "@/web/api";
 import type { Tenant } from "@/storage/defaults";
 import {
   addMessage,
@@ -63,6 +73,26 @@ export interface ChatDeps {
   /** How often streamed text is saved while the answer is still coming in. */
   saveEveryMs?: number;
   now?: () => number;
+  /** Reads public web pages for fetch_url (M9 step 2); without it, no tool is offered. */
+  web?: WebApi;
+}
+
+/** M9 step 2: tool rounds one chat answer may take before it must answer without tools. */
+export const MAX_CHAT_TOOL_ROUNDS = 3;
+
+/** Two requests' usage added up: tokens and cost; latency and price version are the first's. */
+function addUsage(a: Usage, b: Usage): Usage {
+  return {
+    ...a,
+    inputTokens: a.inputTokens + b.inputTokens,
+    outputTokens: a.outputTokens + b.outputTokens,
+    cachedInputTokens: a.cachedInputTokens + b.cachedInputTokens,
+    cacheWriteTokens: a.cacheWriteTokens + b.cacheWriteTokens,
+    reasoningTokens: a.reasoningTokens + b.reasoningTokens,
+    webSearchCalls: a.webSearchCalls + b.webSearchCalls,
+    costMicroUsd: a.costMicroUsd + b.costMicroUsd,
+    priceVersion: a.priceVersion ?? b.priceVersion,
+  };
 }
 
 export interface SendInput {
@@ -436,7 +466,28 @@ async function streamAnswer(
     }
   }
 
-  /** One provider call, streamed into the answer. */
+  /** What a finished request cost on this model: tokens, plus searches billed per call. */
+  const priceOf = (m: CatalogModel, d: StreamDone): number => {
+    const tokens = d.usage;
+    const totalInput = tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens;
+    // Searches are billed per call on top of tokens (data/models.json tool_prices).
+    const searchFee = Math.round(
+      tokens.webSearchCalls *
+        (toolPrice(deps.catalog, m.provider, "web_search")?.usdPerCall ?? 0) *
+        1_000_000,
+    );
+    return cost({ ...EMPTY_USAGE, ...tokens }, priceFor(m, totalInput)) + searchFee;
+  };
+
+  // M9 step 2: a model that takes tools may read the pages it needs (fetch_url), unless the
+  // project is Local only or switched the tool off.
+  const toolsOff = await projectToolsOff(db, tenant, thread?.projectId ?? null);
+  const chatTools = (m: CatalogModel) =>
+    deps.web && policy.mode !== "local_only" && m.capabilities.includes("tools")
+      ? toolsIn("chat", { off: toolsOff })
+      : [];
+
+  /** One answer from a model, streamed in: a provider call, or a few when it reads pages. */
   const attempt = async (m: CatalogModel) => {
     const started = now();
     let firstTokenAt: number | null = null;
@@ -445,6 +496,8 @@ async function streamAnswer(
     let done: StreamDone | null = null;
     let failure: ProviderError | null = null;
     const sources: Source[] = [];
+    /** Tool rounds before the last request, each already logged on its own. */
+    let earlier: Usage = { ...EMPTY_USAGE, priceVersion: null, latencyMs: null, ttftMs: null };
     const webSearch = Boolean(input.webSearch) && m.capabilities.includes("web_search");
     try {
       // SE-13: a provider this project blocks never gets the request; you see why.
@@ -474,25 +527,95 @@ async function streamAnswer(
             ? { maxOutputTokens: m.maxOutput }
             : {}),
       };
-      for await (const ev of adapter.streamChat(history, m.id, options, input.signal)) {
-        if (ev.type === "status") {
-          input.onStatus?.(ev.status);
-        } else if (ev.type === "citation") {
-          if (!sources.some((x) => x.url === ev.url)) {
-            sources.push({ url: ev.url, title: ev.title });
-            input.onCitations?.([...sources]);
+      let convo: ChatMessage[] = history;
+      for (let round = 0; ; round++) {
+        const tools = round < MAX_CHAT_TOOL_ROUNDS ? chatTools(m) : [];
+        const roundStarted = now();
+        let roundText = "";
+        const calls: ToolCall[] = [];
+        done = null;
+        for await (const ev of adapter.streamChat(
+          convo,
+          m.id,
+          tools.length ? { ...options, tools } : options,
+          input.signal,
+        )) {
+          if (ev.type === "status") {
+            input.onStatus?.(ev.status);
+          } else if (ev.type === "citation") {
+            if (!sources.some((x) => x.url === ev.url)) {
+              sources.push({ url: ev.url, title: ev.title });
+              input.onCitations?.([...sources]);
+            }
+          } else if (ev.type === "text") {
+            firstTokenAt ??= now();
+            // A later round's text starts a new paragraph.
+            if (roundText === "" && answer !== "" && !answer.endsWith("\n")) answer += "\n\n";
+            roundText += ev.text;
+            answer += ev.text;
+            input.onText?.(answer);
+            if (now() - lastSave >= saveEvery) {
+              lastSave = now();
+              await updateMessageContent(db, tenant, assistantMessageId, answer);
+            }
+          } else if (ev.type === "tool_call") {
+            calls.push(ev.call);
+          } else {
+            done = ev;
           }
-        } else if (ev.type === "text") {
-          firstTokenAt ??= now();
-          answer += ev.text;
-          input.onText?.(answer);
-          if (now() - lastSave >= saveEvery) {
-            lastSave = now();
-            await updateMessageContent(db, tenant, assistantMessageId, answer);
+        }
+        // Calls are run only when tools were offered: the last round must answer.
+        if (!done || calls.length === 0 || tools.length === 0) break;
+
+        // A tool round: logged and priced like any request, then its calls are run.
+        const d: StreamDone = done;
+        const roundUsage: Usage = {
+          ...EMPTY_USAGE,
+          ...d.usage,
+          costMicroUsd: d.usageReported ? priceOf(m, d) : 0,
+          priceVersion: d.usageReported ? deps.catalog.priceVersion : null,
+          latencyMs: now() - roundStarted,
+          ttftMs: null,
+        };
+        earlier = addUsage(earlier, roundUsage);
+        await logRequest(db, tenant, {
+          threadId: input.threadId,
+          messageId: assistantMessageId,
+          purpose: "chat",
+          provider: m.provider,
+          model: m.id,
+          attempt: d.attempts,
+          usage: roundUsage,
+          httpStatus: 200,
+          errorCode: null,
+          errorMessage: null,
+          providerRequestId: d.providerRequestId,
+          tier: input.route?.tier ?? null,
+          routeRuleId: input.route?.ruleId ?? null,
+        });
+        const results: ToolResult[] = [];
+        for (const call of calls) {
+          if (call.name === FETCH_URL_TOOL.name && deps.web) {
+            const read = await readPage(deps.web, call.input.url);
+            const page = read.page;
+            if (page && !sources.some((x) => x.url === page.url)) {
+              sources.push({ url: page.url, title: page.title });
+              input.onCitations?.([...sources]);
+            }
+            results.push({ callId: call.id, content: read.output, isError: read.isError });
+          } else {
+            results.push({
+              callId: call.id,
+              content: `Error: ${call.name} isn't available in chat.`,
+              isError: true,
+            });
           }
-        } else if (ev.type === "done") {
-          done = ev;
-        } // tool calls only come when tools are offered, which chat doesn't do
+        }
+        convo = [
+          ...convo,
+          { role: "assistant", content: roundText, ...(d.turn ? { native: d.turn } : {}) },
+          { role: "user", content: "", toolResults: results },
+        ];
       }
     } catch (e) {
       failure =
@@ -509,10 +632,13 @@ async function streamAnswer(
       done: done,
       failure: failure,
       sources,
+      earlier,
     };
   };
 
   let run = await attempt(model);
+  /** Tool rounds of every attempt, already logged: they count toward the answer's cost. */
+  let toolRounds = run.earlier;
   // MM-06: a provider that's down, overloaded or rate-limited (after its retries) hands the
   // answer to the same tier on the other provider, as long as nothing was shown yet.
   let failedOver: { from: CatalogModel; failure: ProviderError } | null = null;
@@ -545,6 +671,7 @@ async function streamAnswer(
     await setMessageModel(db, tenant, assistantMessageId, model.provider, model.id);
     input.onStatus?.(null);
     run = await attempt(model);
+    toolRounds = addUsage(run.earlier, toolRounds);
   }
   const { started, firstTokenAt, answer, done, failure, sources } = run;
 
@@ -553,17 +680,9 @@ async function streamAnswer(
   let usage: Usage = { ...EMPTY_USAGE, latencyMs, ttftMs };
   let bestCostMicroUsd: number | null = null;
   if (done) {
-    const tokens = done.usage;
-    const totalInput = tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens;
-    // Searches are billed per call on top of tokens (data/models.json tool_prices).
-    const searchFee = (m: CatalogModel) =>
-      Math.round(
-        tokens.webSearchCalls *
-          (toolPrice(deps.catalog, m.provider, "web_search")?.usdPerCall ?? 0) *
-          1_000_000,
-      );
-    const priced = (m: CatalogModel) =>
-      cost({ ...usage, ...tokens }, priceFor(m, totalInput)) + searchFee(m);
+    const finished: StreamDone = done;
+    const tokens = finished.usage;
+    const priced = (m: CatalogModel) => priceOf(m, finished);
     // RT-09: the same tokens on the cheapest Best model. An estimate: another model would
     // have used a different number of tokens.
     const best = input.route?.best;
@@ -612,11 +731,13 @@ async function streamAnswer(
     tier: input.route?.tier ?? null,
     routeRuleId: input.route?.ruleId ?? null,
   });
+  // M9 step 2: the answer costs its tool rounds too (each logged above as its own request).
+  const answerUsage = addUsage(usage, toolRounds);
   await finishMessage(db, tenant, assistantMessageId, {
     bestCostMicroUsd,
     content: answer,
     status,
-    usage,
+    usage: answerUsage,
     errorCode: failure ? failure.kind : truncated ? "length_limit" : paused ? "pause_turn" : null,
     errorMessage: message,
     requestId,
@@ -653,7 +774,7 @@ async function streamAnswer(
     userMessageId,
     assistantMessageId,
     status,
-    costMicroUsd: usage.costMicroUsd,
+    costMicroUsd: answerUsage.costMicroUsd,
     ...(message ? (status === "error" ? { error: message } : { notice: message }) : {}),
     ...(failedOver ? { failedOverFrom: failedOver.from.provider } : {}),
   };

@@ -70,6 +70,8 @@ test("each tool has one entry and a kind; pushes and pull requests are sends", (
   expect(kindOf("no_such_tool")).toBeUndefined();
   expect(toolEntry("git_push")?.places).toEqual(["code"]);
   expect(placesLabel(["code", "work"])).toBe("Code and Work");
+  expect(placesLabel(["code", "work", "chat"])).toBe("Code, Work and Chat");
+  expect(placesLabel(["work"])).toBe("Work");
 });
 
 test("a project can switch tools off, but not the ones a run needs to find its way", () => {

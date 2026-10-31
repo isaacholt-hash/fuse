@@ -58,7 +58,7 @@ import {
   COMMAND_TOOL,
   commandOutput,
   FETCH_URL_TOOL,
-  pageOutput,
+  readPage,
   EDIT_TOOL_NAMES,
   previewChange,
   GIT_READ_NAMES,
@@ -74,8 +74,6 @@ import {
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { projectToolsOff } from "@/storage/projectTools";
-import type { WebApi } from "@/web/api";
-import { readable } from "@/web/readable";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 
@@ -163,8 +161,6 @@ export interface RunDeps extends ChatDeps {
   exec?: ExecApi;
   /** git and gh (CA-05); without it, the git tools are refused. */
   git?: GitApi;
-  /** Reads public web pages (M9 step 2); without it, fetch_url isn't offered. */
-  web?: WebApi;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
@@ -607,27 +603,8 @@ async function runFetch(deps: RunDeps, run: Run, call: ToolCall): Promise<CallOu
       isError: true,
     };
   }
-  const url = typeof call.input.url === "string" ? call.input.url.trim() : "";
-  if (!url) return { output: "Error: give the page's address as url.", isError: true };
-  try {
-    const page = await deps.web.fetch(url);
-    const r = readable(page.body, page.contentType, page.url);
-    if (!r.text) return { output: `Error: ${page.url} has no readable text.`, isError: true };
-    return {
-      output: pageOutput({
-        url: page.url,
-        title: r.title,
-        text: r.text,
-        truncated: page.truncated,
-      }),
-      isError: false,
-    };
-  } catch (e) {
-    return {
-      output: `Error: couldn't read ${url}: ${e instanceof Error ? e.message : String(e)}`,
-      isError: true,
-    };
-  }
+  const { output, isError } = await readPage(deps.web, call.input.url);
+  return { output, isError };
 }
 
 /**
