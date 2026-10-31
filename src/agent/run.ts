@@ -73,7 +73,8 @@ import {
   type FileChange,
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
-import { asData, DATA_RULE } from "./untrusted";
+import { asData, DATA_RULE, sourceOf } from "./untrusted";
+import { findInstructions, scansOutput } from "./injection";
 import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
@@ -190,8 +191,22 @@ export type ApprovalAsk =
    */
   | { kind: "network"; command: string };
 
+/** M9 step 4: a passage an earlier tool result had, shown on the approval. */
+export interface PriorFlag {
+  tool: string;
+  /** "a web page", "a file in the user's folders", … */
+  source: string;
+  why: string;
+  passage: string;
+}
+
 export type ApprovalRequest = ApprovalAsk & {
   runId: string;
+  /**
+   * M9 step 4 (AG-10): what earlier tool results in this run seemed to ask for. While there are
+   * any, everything asks, and "always" counts as a single yes.
+   */
+  flags?: PriorFlag[];
   /** Stop: the question goes away and counts as no. */
   signal?: AbortSignal;
 };
@@ -540,6 +555,8 @@ async function work(
         call,
         output: kept.output,
         isError: out.isError,
+        // M9 step 4: what it brought in is checked for instructions (AG-10).
+        ...(scansOutput(call.name) ? { flags: findInstructions(kept.output) } : {}),
         ...(out.approval ? { approval: out.approval } : {}),
         ...(kept.images.length ? { images: kept.images } : {}),
       });
@@ -578,6 +595,7 @@ async function ask(
   input: Pick<RunInput, "signal" | "onProgress">,
 ): Promise<ApprovalAnswer | "stopped"> {
   if (!deps.approve) return "no";
+  const flags = await priorFlags(deps, run);
   const stopped = new Promise<"stopped">((resolve) => {
     if (input.signal?.aborted) resolve("stopped");
     input.signal?.addEventListener("abort", () => {
@@ -586,14 +604,36 @@ async function ask(
   });
   const answer = await Promise.race([
     deps
-      .approve({ ...req, runId: run.id, ...(input.signal ? { signal: input.signal } : {}) })
-      .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a)),
+      .approve({
+        ...req,
+        runId: run.id,
+        ...(flags.length ? { flags } : {}),
+        ...(input.signal ? { signal: input.signal } : {}),
+      })
+      .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a))
+      // After a flag nothing is always-allowed: a yes is for this one.
+      .then((a): ApprovalAnswer => (flags.length && a === "always" ? "yes" : a)),
     stopped,
   ]);
   return input.signal?.aborted ? "stopped" : answer;
 }
 
 const STOPPED: CallOutcome = { output: "Error: the run was stopped.", isError: true };
+
+/** M9 step 4: the passages earlier tool results in this run were flagged for, newest last. */
+async function priorFlags(deps: RunDeps, run: Run): Promise<PriorFlag[]> {
+  const steps = await listSteps(deps.db, deps.tenant, run.id);
+  return steps
+    .flatMap((s) =>
+      s.kind === "tool"
+        ? (s.flags ?? []).map((f) => ({ tool: s.call.name, source: sourceOf(s.call.name), ...f }))
+        : [],
+    )
+    .slice(-3);
+}
+
+/** Whether this run has seen a flagged tool result: then writes, commands and sends all ask. */
+const flaggedRun = async (deps: RunDeps, run: Run) => (await priorFlags(deps, run)).length > 0;
 
 /**
  * M9 step 2: reads a public web page. Rust refuses local and private addresses, after DNS and on
@@ -641,7 +681,7 @@ async function handleCall(
   if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
-  if (isEdit && run.mode === "ask") {
+  if (isEdit && (run.mode === "ask" || (await flaggedRun(deps, run)))) {
     const preview = await previewChange(deps.repo, HERE, call);
     if ("error" in preview) return { output: preview.error, isError: true };
     if (!deps.approve) {
@@ -843,7 +883,8 @@ async function runGit(
   // asks in Ask first.
   const kind = kindOf(call.name);
   const remote = kind === "send";
-  const asks = remote || (kind === "write" && run.mode === "ask");
+  const asks =
+    remote || (kind === "write" && (run.mode === "ask" || (await flaggedRun(deps, run))));
   let approval: Approval = "auto";
   if (asks) {
     if (!deps.approve) {
@@ -910,7 +951,7 @@ async function runCommand(
     ? await listAllowedCommands(deps.db, deps.tenant, run.projectId)
     : [];
   let approval: Approval = "always";
-  if (danger || !allowed.includes(command)) {
+  if (danger || !allowed.includes(command) || (await flaggedRun(deps, run))) {
     await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
     const unsandboxed = !isSandboxed(await deps.exec.sandboxKind?.());
     const answer = await ask(

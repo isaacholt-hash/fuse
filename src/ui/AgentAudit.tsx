@@ -9,6 +9,8 @@ export interface AuditRowView {
   action: string;
   /** M9 step 1: the tool's kind, "Reads", "Writes", …; empty for a tool FUSE no longer has. */
   kind: string;
+  /** M9 step 4: "Flagged: asks to run a command", or empty. */
+  flagged: string;
   /** "you", "always allowed", "needed nobody", "declined". */
   allowed: string;
   result: string;
@@ -61,6 +63,11 @@ export function AgentAuditSection({ rows }: { rows: AuditRowView[] }) {
                     title={r.result}
                   >
                     {r.result}
+                    {r.flagged && (
+                      <span className="block font-sans text-[10px] text-destructive">
+                        {r.flagged}
+                      </span>
+                    )}
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">
                     {r.model} · {r.runCost}

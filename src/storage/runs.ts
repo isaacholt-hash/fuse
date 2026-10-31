@@ -60,9 +60,18 @@ export type RunStep =
       approval: Approval | null;
       /** WF-03: images it showed the model, by attachment-store hash. */
       images: StepImage[];
+      /** M9 step 4: what its output seemed to ask for; none when it read as plain data. */
+      flags?: StepFlag[];
     };
 
 export type Approval = "auto" | "you" | "always" | "denied";
+
+/** M9 step 4 (AG-10): a passage in a tool's output that reads like an instruction, and why. */
+export interface StepFlag {
+  /** "says to ignore your instructions", "asks to run a command", … */
+  why: string;
+  passage: string;
+}
 
 /** An image a tool step showed the model; its bytes are in the attachment store. */
 export interface StepImage {
@@ -107,6 +116,7 @@ interface StepRow {
   is_error: number;
   approval: Approval | null;
   images: string | null;
+  flags: string | null;
   cost_micro_usd: number;
 }
 
@@ -157,6 +167,7 @@ const toStep = (r: StepRow): RunStep =>
         isError: r.is_error === 1,
         approval: r.approval,
         images: r.images ? (JSON.parse(r.images) as StepImage[]) : [],
+        ...(r.flags ? { flags: JSON.parse(r.flags) as StepFlag[] } : {}),
       };
 
 export async function createRun(
@@ -315,7 +326,7 @@ export async function raiseRunCap(
 export async function listSteps(db: SqlDb, tenant: Tenant, runId: string): Promise<RunStep[]> {
   const rows = await db.select<StepRow>(
     `SELECT id, seq, kind, text, native, request_id, tool_name, tool_call_id, input, output,
-       is_error, approval, images, cost_micro_usd
+       is_error, approval, images, flags, cost_micro_usd
      FROM run_steps WHERE workspace_id = ? AND run_id = ? ORDER BY seq`,
     [tenant.workspaceId, runId],
   );
@@ -373,14 +384,15 @@ export async function addToolStep(
     isError: boolean;
     approval?: Approval;
     images?: StepImage[];
+    flags?: StepFlag[];
   },
 ): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, tool_name, tool_call_id,
-       input, output, is_error, approval, images, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       input, output, is_error, approval, images, flags, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 'tool', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -394,6 +406,7 @@ export async function addToolStep(
       step.isError ? 1 : 0,
       step.approval ?? null,
       step.images?.length ? JSON.stringify(step.images) : null,
+      step.flags?.length ? JSON.stringify(step.flags) : null,
       now,
       now,
     ],
@@ -544,6 +557,8 @@ export interface AuditEntry {
   isError: boolean;
   approval: Approval | null;
   runCostMicroUsd: number;
+  /** M9 step 4: what its output seemed to ask for. */
+  flags: StepFlag[];
 }
 
 export async function recentToolCalls(
@@ -562,10 +577,11 @@ export async function recentToolCalls(
     output: string | null;
     is_error: number;
     approval: Approval | null;
+    flags: string | null;
     spent_micro_usd: number;
   }>(
     `SELECT s.id, s.created_at, COALESCE(p.name, 'No project') AS project, r.provider, r.model,
-       s.tool_name, s.input, s.output, s.is_error, s.approval, r.spent_micro_usd
+       s.tool_name, s.input, s.output, s.is_error, s.approval, s.flags, r.spent_micro_usd
      FROM run_steps s JOIN runs r ON r.id = s.run_id LEFT JOIN projects p ON p.id = r.project_id
      WHERE s.workspace_id = ? AND s.kind = 'tool'
      ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
@@ -582,6 +598,7 @@ export async function recentToolCalls(
     isError: r.is_error === 1,
     approval: r.approval,
     runCostMicroUsd: r.spent_micro_usd,
+    flags: r.flags ? (JSON.parse(r.flags) as StepFlag[]) : [],
   }));
 }
 
