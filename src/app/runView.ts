@@ -5,6 +5,7 @@ import { formatUsd } from "@/cost/cost";
 import type { Approval, AuditEntry, Run, RunChange, RunStep } from "@/storage/runs";
 import type { AuditRowView } from "@/ui/AgentAudit";
 import type { ApprovalRequest } from "@/agent/run";
+import { KIND_LABEL, kindOf } from "@/agent/registry";
 import type { ApprovalView, RunChangeView, RunStepView, RunView } from "@/ui/types";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -159,6 +160,7 @@ export function auditRow(e: AuditEntry): AuditRowView {
     project: e.project,
     model: e.model,
     action: toolLabel(e.tool, e.input),
+    kind: ((k) => (k ? KIND_LABEL[k] : ""))(kindOf(e.tool)),
     allowed: e.approval ? ALLOWED[e.approval] : "—",
     result: firstLine(e.output) ?? "",
     failed: e.isError,

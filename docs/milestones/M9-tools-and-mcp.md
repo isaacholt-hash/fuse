@@ -17,7 +17,11 @@
 ## Steps (one PR each, in order)
 
 - [x] **0. M9 plan.** This file, the decisions above, requirements §11 and §18 updated, and CLAUDE.md pointed here.
-- [ ] **1. Tools as a registry (AG-01).** One list of every tool, with name, schema, kind (read, write, command, send, spend) and where it can run (chat, Code, Work). Approvals, permission modes and the activity log read the kind from it instead of from tool names. Project settings → Tools switches each on or off. No behaviour change for the tools that exist.
+- [x] **1. Tools as a registry (AG-01).**
+  - `src/agent/registry.ts` lists every tool once, with its kind (read, write, command, send, spend) and where it runs (Code, Work; chat joins in step 2). Runs are offered the registry's tools, in the same order as before, so the prompt cache and every existing behaviour hold (a test checks the four lists).
+  - Read-only runs, Ask-first git and pushes go by the kind: a read-only run only reads, a push or pull request (send) always asks, and a local branch or commit (write) asks in Ask first.
+  - Project settings → Tools lists each tool by kind with a switch. A tool that's off isn't offered, and if a model calls it anyway it gets an error, not a run. `list_files`, `read_file` and `search_files` are always on, since a run can't find its way without them. Migration 0047, `project_tools_off`; runs outside a project have every tool.
+  - The activity log shows each call's kind beside its project.
 - [ ] **2. `fetch_url` for runs and chat (AG-01).** The FK-06 reader in `web.rs` as a tool: public addresses only, after DNS and on every redirect; size and time capped; HTML turned into readable text. Read-only, so it runs without asking. The egress policy is checked before the page's text is sent anywhere.
 - [ ] **3. Tool results are data (AG-10, part 1).** Every tool result is wrapped and labelled before it reaches the model, on both providers. The run and chat guides say so. Tests with an "ignore your instructions" page, file, command output and document.
 - [ ] **4. Flag what a tool result asks for (AG-10, part 2).** A rule set finds instruction-like text in tool results (commands to run, files to delete, addresses to send to, "ignore previous"). When a write, command or send follows a flagged result, its approval shows the passage and where it came from, and it can't be always-allowed. The local model, when installed, can add a flag but never remove one. Logged in the activity log.

@@ -23,6 +23,7 @@ export const DELETE_ORDER = [
   // M7: shadow checks and the response cache.
   "local_shadow",
   "network_grants",
+  "project_tools_off",
   "response_cache",
   "chunk_vectors",
   "chunks",

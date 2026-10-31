@@ -7,6 +7,7 @@ import { DEFAULT_TENANT } from "@/storage/defaults";
 import { createProject, setProjectRepo } from "@/storage/projects";
 import { listChanges, listSteps } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
+import { projectToolsOff, switchProjectTool } from "@/storage/projectTools";
 import { startRun, undoChange, undoRun, type RunDeps } from "./run";
 
 const t = DEFAULT_TENANT;
@@ -127,7 +128,7 @@ async function setup(turns: ToolCall[][], files: Record<string, string>) {
       model,
       mode,
     });
-  return { db, deps, repo, tools, run };
+  return { db, deps, repo, tools, run, project };
 }
 
 test("an editing run changes files and records each change with what was there", async () => {
@@ -211,6 +212,30 @@ test("a read-only run never changes files, and isn't offered the tools", async (
     output: "Error: this run is read-only.",
   });
   expect(await listChanges(db, t, r.id)).toEqual([]);
+});
+
+test("M9 step 1: a tool the project switched off isn't offered, and isn't run if called anyway", async () => {
+  const { db, repo, tools, run, project } = await setup(
+    [[call("write_file", { path: "a.ts", content: "!" })], []],
+    { "a.ts": "ok\n" },
+  );
+  await switchProjectTool(db, t, project.id, "write_file", false);
+  // The tools a run needs to find its way around can't be switched off.
+  await switchProjectTool(db, t, project.id, "read_file", false);
+  const r = await run("auto_edit");
+  expect(repo.files.get("a.ts")).toBe("ok\n");
+  const offered = tools[0]?.map((x) => x.name) ?? [];
+  expect(offered).not.toContain("write_file");
+  expect(offered).toContain("edit_file");
+  expect(offered).toContain("read_file");
+  expect((await listSteps(db, t, r.id)).find((s) => s.kind === "tool")).toMatchObject({
+    isError: true,
+    output: "Error: write_file is switched off for this project.",
+  });
+
+  await switchProjectTool(db, t, project.id, "write_file", true);
+  expect(await projectToolsOff(db, t, project.id)).toEqual(new Set(["read_file"]));
+  expect(await projectToolsOff(db, t, null)).toEqual(new Set());
 });
 
 test("undo one change, refuse when the file changed since, undo a whole run newest first", async () => {
