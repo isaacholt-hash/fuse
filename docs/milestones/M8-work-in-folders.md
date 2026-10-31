@@ -168,9 +168,14 @@
     - whether Tauri's installer downgrades silently (`/S`) over a newer FUSE
     - whether "Restart now" is reachable through UI Automation in the release build
   - **Isaac must also** set Settings → Actions → General → fork pull request approval to "Require approval for all external contributors". It's "first-time contributors" today, which isn't enough with a runner on his PC.
-- [ ] **16. Live-key test button (Isaac, 2026-10-31).**
+- [x] **16. Live-key test button (Isaac, 2026-10-31).**
   - A workflow started by hand only, never on a schedule. It runs on Isaac's PC: `pnpm work:live` and a short chat on each provider, with keys from his own Windows environment (`FUSE_OPENAI_API_KEY`, `FUSE_ANTHROPIC_API_KEY`). Nothing else ever reads them.
   - The log is put through the secret scan before it's uploaded, and shows only pass or fail, turns and cost per model.
+  - **Built:**
+    - `.github/workflows/live-tests.yml`, started by hand only, on `fuse-windows`.
+    - `scripts/pc/live-tests.ps1` runs `pnpm chat:live` (new: one short chat per provider, `src/chat/chat.live.test.ts`) and `pnpm work:live`. Each suite's output goes to a file, never straight to the job log. That file must pass the secret scan's pattern, and must not contain either key; otherwise nothing from it is shown. The script then shows only the result tables and PASSED / FAILED lines in the job log and summary.
+    - The live tests share one helper for keys and adapters (`src/agent/testing/live.ts`).
+  - **Not run yet:** Isaac starts it from Actions → Live-key tests → Run workflow, after setting the keys as in `docs/windows-test-runner.md`.
 
 ## Fixes
 

@@ -20,6 +20,7 @@
     "continuity:live": "vitest run --mode continuity src/context/continuity.live.test.ts",
     "coding:live": "vitest run --mode coding src/agent/coding.live.test.ts",
     "work:live": "vitest run --mode work src/agent/work.live.test.ts",
+    "chat:live": "vitest run --mode chat src/chat/chat.live.test.ts",
     "local:bench": "vitest run --mode localbench src/local/local.bench.test.ts"
   },
   "dependencies": {
