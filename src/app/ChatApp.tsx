@@ -2344,6 +2344,8 @@ export function ChatApp({
     })(),
     ...(execApi ? { exec: execApi } : {}),
     ...(gitApi ? { git: gitApi } : {}),
+    // M9 step 6: run_python is offered once Python is installed (Settings).
+    ...(pythonApi ? { pythonReady: () => pythonApi.status().then((r) => r !== null) } : {}),
     approve: (req: ApprovalRequest) =>
       new Promise<ApprovalAnswer>((resolve) => {
         const done = (a: ApprovalAnswer) => {

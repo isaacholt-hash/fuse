@@ -25,6 +25,8 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Ran ${str(input.command)}`;
     case "fetch_url":
       return `Read ${str(input.url)}`;
+    case "run_python":
+      return "Ran a Python script";
     case "git_status":
       return "Checked git status";
     case "git_diff":
@@ -110,6 +112,9 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   if (req.kind === "network") return { kind: "network", command: req.command };
   if (req.kind === "fetch") return { kind: "fetch", url: req.url, why: req.why };
+  if (req.kind === "python") {
+    return { kind: "python", script: req.script, keep: req.keep, network: req.network };
+  }
   return req.kind === "command"
     ? {
         kind: "command",

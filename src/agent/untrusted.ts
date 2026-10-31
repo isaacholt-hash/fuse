@@ -11,6 +11,7 @@ const SOURCE: Record<string, string> = {
   search_files: "files in the user's folders",
   read_document: "a document in the user's folders",
   run_command: "a command's output",
+  run_python: "a Python script's output",
   git_status: "git",
   git_diff: "git",
   git_log: "git",

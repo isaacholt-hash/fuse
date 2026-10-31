@@ -2164,7 +2164,9 @@ function RunCard({
                   ? "Go ahead with git?"
                   : run.approval.kind === "fetch"
                     ? "Read this address?"
-                    : "Make this change?"
+                    : run.approval.kind === "python"
+                      ? "Run this Python script?"
+                      : "Make this change?"
             }
             className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
           >
@@ -2185,6 +2187,20 @@ function RunCard({
                     outside this chat&apos;s folders.
                   </p>
                 )}
+              </>
+            ) : run.approval.kind === "python" ? (
+              <>
+                <p className="mb-1 font-medium">Run this Python script?</p>
+                <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre">
+                  {run.approval.script}
+                </pre>
+                <p className="mb-2 text-muted-foreground">
+                  It runs in the sandbox in this chat&apos;s folder: it can read the files but not
+                  change them, and{" "}
+                  {run.approval.network ? "it can use the network" : "it has no network"}.
+                  {run.approval.keep.length > 0 &&
+                    ` Then it saves ${run.approval.keep.join(", ")} into the folder, which you can undo.`}
+                </p>
               </>
             ) : run.approval.kind === "fetch" ? (
               <>

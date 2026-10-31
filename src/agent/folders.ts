@@ -172,6 +172,22 @@ export function scopedExec(base: ExecApi, folders: readonly RunFolder[]): ExecAp
         },
       });
     },
+    // M9 step 6: Python works in the run's first folder too.
+    ...(base.python
+      ? {
+          python: (
+            _id: string,
+            script: string,
+            opts: Parameters<NonNullable<ExecApi["python"]>>[2],
+          ) => {
+            const first = folders[0];
+            if (!first || !base.python) {
+              return Promise.reject(new Error("This chat has no folder to run Python in."));
+            }
+            return base.python(first.folderId, script, opts);
+          },
+        }
+      : {}),
   };
 }
 

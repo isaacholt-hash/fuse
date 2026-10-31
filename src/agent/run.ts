@@ -58,7 +58,10 @@ import {
   COMMAND_TOOL,
   commandOutput,
   FETCH_URL_TOOL,
+  IMAGE_MIME,
+  MAX_IMAGE_BYTES,
   readPage,
+  RUN_PYTHON_TOOL,
   EDIT_TOOL_NAMES,
   previewChange,
   GIT_READ_NAMES,
@@ -162,6 +165,8 @@ export interface RunDeps extends ChatDeps {
   exec?: ExecApi;
   /** git and gh (CA-05); without it, the git tools are refused. */
   git?: GitApi;
+  /** M9 step 6: whether FUSE's Python is installed; without it, run_python isn't offered. */
+  pythonReady?: () => Promise<boolean>;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
@@ -185,6 +190,8 @@ export type ApprovalAsk =
   | { kind: "git"; summary: string; remote: boolean }
   /** M9 step 4: a page address that may carry content out; it asks before it's read. */
   | { kind: "fetch"; url: string; why: string }
+  /** M9 step 6: a Python script, and the files it will save into the folder. */
+  | { kind: "python"; script: string; keep: string[]; network: boolean }
   /** WF-06: a whole reorganisation; the answer may keep only some moves. */
   | { kind: "organise"; moves: Move[]; reason: string | null }
   /**
@@ -460,8 +467,9 @@ async function work(
     const adapter = deps.adapterFor(model.provider);
     const off = await projectToolsOff(db, tenant, run.projectId);
     // A Local only project sends nothing out, not even an address to read.
-    const offered =
-      deps.web && policy.mode !== "local_only" ? off : new Set([...off, FETCH_URL_TOOL.name]);
+    const offered = new Set(off);
+    if (!deps.web || policy.mode === "local_only") offered.add(FETCH_URL_TOOL.name);
+    if (!(await pythonUsable(deps, run))) offered.add(RUN_PYTHON_TOOL.name);
 
     const started = (deps.now ?? Date.now)();
     let text = "";
@@ -566,6 +574,7 @@ async function work(
         ...(kept.images.length ? { images: kept.images } : {}),
       });
       if (out.change) await recordChange(deps, runId, stepId, out.change);
+      for (const c of out.changes ?? []) await recordChange(deps, runId, stepId, c);
       if (out.batch?.length) {
         const batchId = uuidv7(Date.now());
         for (const c of out.batch) await recordChange(deps, runId, stepId, c, batchId);
@@ -586,6 +595,8 @@ interface CallOutcome {
   change?: FileChange | undefined;
   /** WF-06: an organise plan's moves, recorded as one batch. */
   batch?: FileChange[];
+  /** M9 step 6: several changes, each its own row with its own undo. */
+  changes?: FileChange[];
   images?: { mime: string; bytes: Uint8Array }[];
 }
 
@@ -635,6 +646,142 @@ async function priorFlags(deps: RunDeps, run: Run): Promise<PriorFlag[]> {
         : [],
     )
     .slice(-3);
+}
+
+/**
+ * M9 step 6: Python can run in this run: a Work run, with Python installed, on a computer that
+ * sandboxes it (Linux for now). Code runs don't ask.
+ */
+async function pythonUsable(deps: RunDeps, run: Run): Promise<boolean> {
+  if (run.kind !== "work" || !deps.exec?.python || !deps.pythonReady) return false;
+  if ((await deps.exec.sandboxKind?.()) !== "bubblewrap") return false;
+  return deps.pythonReady().catch(() => false);
+}
+
+const asText = (bytes: Uint8Array | null): string | null => {
+  if (!bytes || bytes.length > 1_000_000) return null;
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return null;
+  }
+};
+
+const kb = (n: number) => `${String(Math.max(1, Math.round(n / 1024)))} KB`;
+
+/**
+ * M9 step 6 (AG-03): a Python script in the sandbox. It always asks, showing the script and what
+ * it will save. Images it made come back to the model; the files it was told to keep are written
+ * into the folder like any change, with undo.
+ */
+async function runPython(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  const script = typeof call.input.script === "string" ? call.input.script : "";
+  if (!script.trim()) return { output: "Error: give a script to run.", isError: true };
+  // Not offered isn't enough: a model can still call it.
+  if (!deps.exec?.python || !deps.approve || !(await pythonUsable(deps, run))) {
+    return {
+      output:
+        "Error: Python can't run here: it isn't installed (Settings → Python for data work), or this computer can't sandbox it.",
+      isError: true,
+    };
+  }
+  const keep = (Array.isArray(call.input.keep) ? call.input.keep : []).flatMap((k: unknown) => {
+    const o = (k ?? {}) as { from?: unknown; to?: unknown };
+    return typeof o.from === "string" && typeof o.to === "string" && o.from && o.to
+      ? [{ from: o.from.replace(/^\.?\//, ""), to: o.to }]
+      : [];
+  });
+  const asked = typeof call.input.timeout_seconds === "number" ? call.input.timeout_seconds : 120;
+  const timeoutSecs = Math.min(Math.max(Math.round(asked), 1), 600);
+  const folders = await listRunFolders(deps.db, deps.tenant, run.id);
+  const scopes: NetworkScope[] = [
+    ...(run.threadId ? [{ kind: "thread" as const, id: run.threadId }] : []),
+    ...folders.map((f) => ({ kind: "folder" as const, id: f.folderId })),
+  ];
+  const network = await networkAllowed(deps.db, deps.tenant, scopes);
+  await progress(deps, run.id, input, "Waiting for your OK to run a Python script");
+  const answer = await ask(
+    deps,
+    run,
+    { kind: "python", script, keep: keep.map((k) => k.to), network },
+    input,
+  );
+  if (answer === "stopped") return STOPPED;
+  if (answer === "no") {
+    return {
+      output: "Error: the user declined to run the script.",
+      isError: true,
+      approval: "denied",
+    };
+  }
+  try {
+    const result = await deps.exec.python(HERE, script, {
+      timeoutSecs,
+      network,
+      ...(input.signal ? { signal: input.signal } : {}),
+      onOutput: (soFar) => {
+        void progress(deps, run.id, input, `python\n${soFar.slice(-4000)}`);
+      },
+    });
+    const images: { mime: string; bytes: Uint8Array }[] = [];
+    const listed: string[] = [];
+    for (const f of result.files) {
+      const mime = IMAGE_MIME[f.path.split(".").pop()?.toLowerCase() ?? ""];
+      const shown = mime !== undefined && f.bytes.length <= MAX_IMAGE_BYTES;
+      if (shown) images.push({ mime, bytes: f.bytes });
+      listed.push(`${f.path} (${kb(f.bytes.length)}${shown ? ", shown" : ""})`);
+    }
+    for (const s of result.skipped) listed.push(`${s} (too big to bring back)`);
+    const changes: FileChange[] = [];
+    const saved: string[] = [];
+    for (const k of keep) {
+      const f = result.files.find((x) => x.path === k.from);
+      if (!f) {
+        saved.push(`${k.from}: not in FUSE_OUT, so nothing was saved to ${k.to}`);
+        continue;
+      }
+      if (!deps.repo.writeBytes) {
+        saved.push(`${k.to}: files can't be saved here`);
+        continue;
+      }
+      const before = deps.repo.readBytes
+        ? await deps.repo.readBytes(HERE, k.to).catch(() => null)
+        : null;
+      try {
+        const path = await deps.repo.writeBytes(HERE, k.to, f.bytes);
+        changes.push({
+          path,
+          fromPath: null,
+          before: asText(before),
+          after: asText(f.bytes),
+          binary: { before, after: f.bytes },
+        });
+        saved.push(`${before ? "Replaced" : "Created"} ${path} (${kb(f.bytes.length)})`);
+      } catch (e) {
+        saved.push(`${k.to}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    const lines = [
+      commandOutput("python script.py", result, timeoutSecs),
+      `[sandboxed, network ${network ? "on" : "off"}]`,
+      listed.length ? `Files it made in FUSE_OUT: ${listed.join(", ")}` : "It made no files.",
+      ...saved,
+    ];
+    return {
+      output: lines.join("\n"),
+      isError: result.timedOut || result.stopped || result.exitCode !== 0,
+      approval: "you",
+      ...(changes.length ? { changes } : {}),
+      ...(images.length ? { images } : {}),
+    };
+  } catch (e) {
+    return { output: `Error: ${e instanceof Error ? e.message : String(e)}`, isError: true };
+  }
 }
 
 /** The rules' flags for a tool's output; the local model's when the rules found none. */
@@ -715,6 +862,7 @@ async function handleCall(
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
   if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call, input);
+  if (call.name === RUN_PYTHON_TOOL.name) return runPython(deps, run, call, input);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && (run.mode === "ask" || (await flaggedRun(deps, run)))) {

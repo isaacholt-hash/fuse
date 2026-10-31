@@ -74,6 +74,45 @@ export const READ_ONLY_TOOLS: ToolSpec[] = [
 
 /** CA-02: the tools that change files, offered only when the run may edit (after the read-only
  * ones, in this order, for the whole run). */
+/** M9 step 6 (AG-03): a Python script in the sandbox, with the runtime from Settings. */
+export const RUN_PYTHON_TOOL: ToolSpec = {
+  name: "run_python",
+  description:
+    "Run a Python 3.13 script with pandas, numpy, matplotlib and openpyxl: to analyse data, check " +
+    "numbers, or make charts and files. It runs in a sandbox in the chat's first folder: relative " +
+    "paths read the files there, but it can't change them, and it has no network unless the user " +
+    "allowed it. Save everything you make in the folder named by the FUSE_OUT environment " +
+    "variable (os.environ['FUSE_OUT']). Images saved there (PNG, JPEG) are shown to you after it " +
+    "runs. To put a file you made into the user's folder, list it in keep: from is its path inside " +
+    "FUSE_OUT, to is where it goes in the folder. Print what you need to see; output is capped. " +
+    "The user is asked before it runs.",
+  schema: {
+    type: "object",
+    properties: {
+      script: { type: "string", description: "The whole script." },
+      keep: {
+        type: ["array", "null"],
+        description: "Files from FUSE_OUT to save into the folder; null for none.",
+        items: {
+          type: "object",
+          properties: {
+            from: { type: "string", description: "Its path inside FUSE_OUT." },
+            to: { type: "string", description: "Where it goes, relative to the folder." },
+          },
+          required: ["from", "to"],
+          additionalProperties: false,
+        },
+      },
+      timeout_seconds: {
+        type: ["number", "null"],
+        description: "Seconds before it's stopped; null for 120 (at most 600).",
+      },
+    },
+    required: ["script", "keep", "timeout_seconds"],
+    additionalProperties: false,
+  },
+};
+
 /** M9 step 2 (AG-01): a public web page as text, through the FK-06 reader in Rust. */
 export const FETCH_URL_TOOL: ToolSpec = {
   name: "fetch_url",
@@ -666,7 +705,7 @@ export interface ToolOutcome {
 /** Anthropic takes images up to 5 MB once base64-encoded: about 3.75 MB of file. */
 export const MAX_IMAGE_BYTES = 3_750_000;
 
-const IMAGE_MIME: Record<string, string> = {
+export const IMAGE_MIME: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
