@@ -55,3 +55,30 @@ test("Check starts it; running shows its tools by kind; an error says why", () =
   show({ ...server, health: { error: "Couldn't start the server: No such file" } });
   expect(screen.getByRole("alert")).toHaveTextContent("No such file");
 });
+
+test("M9 step 10: a remote server signs in, or shows it's signed in with Sign out", () => {
+  const calls: string[] = [];
+  const remote: McpServerView = {
+    id: "r1",
+    name: "Tracker",
+    detail: "Remote: https://example.com/mcp",
+    local: false,
+    network: false,
+    variables: [],
+    signedIn: false,
+  };
+  const props = {
+    onAdd: () => Promise.resolve(null),
+    onRemove: () => undefined,
+    onNetwork: () => undefined,
+    onSignIn: (id: string) => calls.push(`in ${id}`),
+    onSignOut: (id: string) => calls.push(`out ${id}`),
+  };
+  render(<McpServersSection servers={[remote]} {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "Sign in (opens your browser)" }));
+  cleanup();
+  render(<McpServersSection servers={[{ ...remote, signedIn: true }]} {...props} />);
+  expect(screen.getByText("Signed in")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+  expect(calls).toEqual(["in r1", "out r1"]);
+});

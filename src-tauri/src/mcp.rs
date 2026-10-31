@@ -737,8 +737,43 @@ pub mod commands {
         let transport: String = row.get("transport");
         if transport == "http" {
             let url: String = row.get::<Option<String>, _>("url").unwrap_or_default();
-            let client = Server::Http(Arc::new(HttpClient::new(&url, None)?));
-            let (server_name, server_version, protocol) = client.initialize().await?;
+            // M9 step 10: signed in, its token (refreshed first when it's about to expire).
+            let mut tokens = load_tokens(keys, server_id)?;
+            let http = oauth_http()?;
+            if let Some(t) = &tokens
+                && t.stale(crate::mcp_oauth::now_secs())
+                && t.refresh_token.is_some()
+            {
+                let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
+                save_tokens(keys, server_id, &fresh)?;
+                tokens = Some(fresh);
+            }
+            let mut client = Server::Http(Arc::new(HttpClient::new(
+                &url,
+                tokens.as_ref().map(|t| t.access_token.clone()),
+            )?));
+            let mut first = client.initialize().await;
+            // A token the server no longer takes is refreshed once.
+            if let (Err(e), Some(t)) = (&first, &tokens)
+                && e.contains("sign in")
+                && t.refresh_token.is_some()
+            {
+                let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
+                save_tokens(keys, server_id, &fresh)?;
+                client = Server::Http(Arc::new(HttpClient::new(
+                    &url,
+                    Some(fresh.access_token.clone()),
+                )?));
+                first = client.initialize().await;
+            }
+            let (server_name, server_version, protocol) = first.map_err(|e| {
+                if e.contains("sign in") {
+                    "This server wants you to sign in: Settings → MCP servers → Sign in."
+                        .to_string()
+                } else {
+                    e
+                }
+            })?;
             let tools = client.list_tools().await?;
             let health = McpHealth {
                 server_name,
@@ -845,6 +880,109 @@ pub mod commands {
     ) -> Result<McpCallResult, String> {
         let (client, _) = ensure(&app, &db, &keys, &servers, &server_id).await?;
         client.call(&name, arguments).await
+    }
+
+    /// M9 step 10: signs in to a remote server in the system browser and keeps the tokens.
+    #[tauri::command]
+    pub async fn mcp_sign_in(
+        app: AppHandle,
+        db: State<'_, Database>,
+        keys: State<'_, Keys>,
+        servers: State<'_, McpServers>,
+        server_id: String,
+    ) -> Result<(), String> {
+        use tauri_plugin_opener::OpenerExt;
+        let row = sqlx::query("SELECT url FROM mcp_servers WHERE id = ? AND transport = 'http' AND deleted_at IS NULL")
+            .bind(&server_id)
+            .fetch_optional(&db.pool()?)
+            .await
+            .map_err(|e| format!("Couldn't read the server: {e}"))?
+            .ok_or("That isn't a remote server in FUSE.")?;
+        let url: String = row.get::<Option<String>, _>("url").unwrap_or_default();
+        let http = oauth_http()?;
+        // Its 401 says where its sign-in is described.
+        let hint = http
+            .post(check_remote_url(&url)?)
+            .header(
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream",
+            )
+            .json(
+                &json!({ "jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {
+                "protocolVersion": PROTOCOL, "capabilities": {},
+                "clientInfo": { "name": "FUSE", "version": env!("CARGO_PKG_VERSION") } } }),
+            )
+            .send()
+            .await
+            .ok()
+            .filter(|r| r.status().as_u16() == 401)
+            .and_then(|r| {
+                r.headers()
+                    .get("www-authenticate")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(crate::mcp_oauth::resource_metadata)
+            });
+        let tokens = crate::mcp_oauth::sign_in(&http, &url, hint, |page| {
+            app.opener()
+                .open_url(page, None::<&str>)
+                .map_err(|e| format!("Couldn't open the browser: {e}"))
+        })
+        .await?;
+        save_tokens(&keys, &server_id, &tokens)?;
+        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
+            old.stop().await;
+        }
+        Ok(())
+    }
+
+    /// M9 step 10: forgets a remote server's tokens.
+    #[tauri::command]
+    pub async fn mcp_sign_out(
+        keys: State<'_, Keys>,
+        servers: State<'_, McpServers>,
+        server_id: String,
+    ) -> Result<(), String> {
+        crate::keys::mcp_oauth_delete(&keys, &server_id)?;
+        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
+            old.stop().await;
+        }
+        Ok(())
+    }
+
+    /// M9 step 10: whether there are tokens for it.
+    #[tauri::command]
+    pub fn mcp_signed_in(keys: State<'_, Keys>, server_id: String) -> Result<bool, String> {
+        Ok(crate::keys::mcp_oauth_get(&keys, &server_id)?.is_some())
+    }
+
+    fn oauth_http() -> Result<reqwest::Client, String> {
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|e| e.to_string())
+    }
+
+    fn load_tokens(
+        keys: &Keys,
+        server_id: &str,
+    ) -> Result<Option<crate::mcp_oauth::Tokens>, String> {
+        Ok(
+            crate::keys::mcp_oauth_get(keys, server_id)?
+                .and_then(|j| serde_json::from_str(&j).ok()),
+        )
+    }
+
+    fn save_tokens(
+        keys: &Keys,
+        server_id: &str,
+        t: &crate::mcp_oauth::Tokens,
+    ) -> Result<(), String> {
+        crate::keys::mcp_oauth_set(
+            keys,
+            server_id,
+            &serde_json::to_string(t).map_err(|e| e.to_string())?,
+        )
     }
 
     /// Stops a running server; nothing if it isn't.

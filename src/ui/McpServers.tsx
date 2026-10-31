@@ -14,6 +14,8 @@ export interface McpServerView {
   network: boolean;
   /** "GITHUB_TOKEN (set)", "API_KEY (not set)". */
   variables: { name: string; set: boolean }[];
+  /** M9 step 10: a remote server: whether it's signed in (absent for a local one). */
+  signedIn?: boolean;
   /** M9 step 8: the last check, while it runs, or none yet. */
   health?:
     | "checking"
@@ -48,6 +50,8 @@ export function McpServersSection({
   onRemove,
   onNetwork,
   onCheck,
+  onSignIn,
+  onSignOut,
 }: {
   servers: McpServerView[];
   /** Resolves to a problem to show, or null once it's added. */
@@ -56,6 +60,9 @@ export function McpServersSection({
   onNetwork: (id: string, on: boolean) => void;
   /** M9 step 8: starts it and lists its tools. */
   onCheck?: (id: string) => void;
+  /** M9 step 10: signs in to a remote server in the browser, or forgets its tokens. */
+  onSignIn?: (id: string) => void;
+  onSignOut?: (id: string) => void;
 }) {
   const [draft, setDraft] = useState<McpServerDraft | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -125,6 +132,34 @@ export function McpServersSection({
                   ))}
                 </ul>
               </div>
+            )}
+            {s.signedIn !== undefined && onSignIn && onSignOut && (
+              <p className="mt-1 flex items-center gap-2">
+                {s.signedIn ? (
+                  <>
+                    <span className="text-emerald-700 dark:text-emerald-400">Signed in</span>
+                    <button
+                      type="button"
+                      className="hover:underline"
+                      onClick={() => {
+                        onSignOut(s.id);
+                      }}
+                    >
+                      Sign out
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="hover:underline"
+                    onClick={() => {
+                      onSignIn(s.id);
+                    }}
+                  >
+                    Sign in (opens your browser)
+                  </button>
+                )}
+              </p>
             )}
             {s.variables.length > 0 && (
               <p className="mt-1 text-[10px] text-muted-foreground">
