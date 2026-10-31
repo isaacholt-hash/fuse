@@ -4,7 +4,11 @@
 // Keys go only in each request's auth header; they're never printed or written anywhere.
 // Either key alone runs that provider. FUSE_WORK_ANTHROPIC_MODEL / FUSE_WORK_OPENAI_MODEL pick
 // the model (default: the cheapest Balanced one). Each task is a Work run on a fresh copy of
-// data/work/fixture; a provider passes with at least 2 of the 3 tasks.
+// data/work/fixture; a provider passes with at least 2 of the 3 tasks. A second test has each
+// model read a picture from a tool result (data/work/image/gate.png).
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
 import {
   findModel,
@@ -15,7 +19,7 @@ import {
 import { formatUsd } from "@/cost/cost";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
-import { SCOPE_HEADER, type FetchLike } from "@/providers/types";
+import { SCOPE_HEADER, type FetchLike, type ProviderAdapter } from "@/providers/types";
 import { defaultPolicy } from "@/routing/defaultPolicy";
 import { tierModels } from "@/routing/policy";
 import { DEFAULT_TENANT } from "@/storage/defaults";
@@ -38,6 +42,7 @@ const KEYS: Record<CloudProviderId, string | undefined> = {
   anthropic: process.env.FUSE_ANTHROPIC_API_KEY,
 };
 const GATE = 2;
+const IMAGE = join(import.meta.dirname, "..", "..", "data", "work", "image", "gate.png");
 
 /** Real fetch with the key added; FUSE's internal scope header stays here. */
 function keyedFetch(provider: ProviderId, key: string): FetchLike {
@@ -63,6 +68,43 @@ function modelFor(provider: ProviderId): CatalogModel | undefined {
   return tierModels(defaultPolicy, defaultCatalog, "balanced", { providers: [provider] })[0];
 }
 
+/** One Work run in `dir`, with plans and commands allowed (destructive ones and the network
+ * aren't), as if Isaac clicked Allow. */
+async function workRun(adapter: ProviderAdapter, model: CatalogModel, dir: string, task: string) {
+  const db = openTestDb();
+  const t = DEFAULT_TENANT;
+  const asked: ApprovalRequest[] = [];
+  const deps: RunDeps = {
+    db,
+    tenant: t,
+    catalog: defaultCatalog,
+    adapterFor: () => adapter,
+    repo: nodeRepo(dir),
+    exec: nodeExec(dir),
+    approve: (req) => {
+      asked.push(req);
+      if (req.kind === "network") return Promise.resolve("no" as const);
+      return Promise.resolve(!(req.kind === "command" && req.destructive));
+    },
+  };
+  const run = await startRun(deps, {
+    projectId: null,
+    folders: [await grantFolder(db, t, dir)],
+    threadId: null,
+    messageId: null,
+    task,
+    model,
+    mode: "auto_edit",
+    kind: "work",
+  });
+  return { run, asked, db, t };
+}
+
+const adapterFor = (provider: CloudProviderId) => {
+  const fetch = keyedFetch(provider, KEYS[provider] ?? "");
+  return provider === "openai" ? createOpenAIAdapter({ fetch }) : createAnthropicAdapter({ fetch });
+};
+
 test.skipIf(!LIVE)(
   "work benchmark (live, Isaac's keys)",
   async () => {
@@ -83,40 +125,11 @@ test.skipIf(!LIVE)(
     for (const provider of providers) {
       const model = modelFor(provider);
       if (!model) throw new Error(`No ${provider} model found in data/models.json`);
-      const fetch = keyedFetch(provider, KEYS[provider] ?? "");
-      const adapter =
-        provider === "openai" ? createOpenAIAdapter({ fetch }) : createAnthropicAdapter({ fetch });
+      const adapter = adapterFor(provider);
       for (const task of loadWorkTasks()) {
         const dir = freshFolder();
         try {
-          const db = openTestDb();
-          const t = DEFAULT_TENANT;
-          const asked: ApprovalRequest[] = [];
-          const deps: RunDeps = {
-            db,
-            tenant: t,
-            catalog: defaultCatalog,
-            adapterFor: () => adapter,
-            repo: nodeRepo(dir),
-            exec: nodeExec(dir),
-            // Plans and commands are allowed (destructive ones and the network aren't), as if
-            // Isaac clicked Allow.
-            approve: (req) => {
-              asked.push(req);
-              if (req.kind === "network") return Promise.resolve("no" as const);
-              return Promise.resolve(!(req.kind === "command" && req.destructive));
-            },
-          };
-          const run = await startRun(deps, {
-            projectId: null,
-            folders: [await grantFolder(db, t, dir)],
-            threadId: null,
-            messageId: null,
-            task: task.task,
-            model,
-            mode: "auto_edit",
-            kind: "work",
-          });
+          const { run, asked, db, t } = await workRun(adapter, model, dir, task.task);
           const fails = failedChecks(dir, task.checks);
           const plans = asked.filter((a) => a.kind === "organise").length;
           if (task.checks.some((c) => c.kind === "one_organise_plan") && plans !== 1)
@@ -150,4 +163,60 @@ test.skipIf(!LIVE)(
     }
   },
   20 * 60 * 1000,
+);
+
+// M8 step 4 (WF-03): a picture in a tool result, read by the real APIs. The code in gate.png
+// can't be guessed, so writing it down means the model saw the image.
+test.skipIf(!LIVE)(
+  "images in tool results (live, Isaac's keys)",
+  async () => {
+    const providers = (["anthropic", "openai"] as const).filter((p) => KEYS[p]);
+    expect(
+      providers.length,
+      "set FUSE_OPENAI_API_KEY and/or FUSE_ANTHROPIC_API_KEY",
+    ).toBeGreaterThan(0);
+    const rows: {
+      provider: string;
+      pass: boolean;
+      status: string;
+      shown: number;
+      cost: string;
+      why: string;
+    }[] = [];
+    for (const provider of providers) {
+      const model = modelFor(provider);
+      if (!model) throw new Error(`No ${provider} model found in data/models.json`);
+      const dir = mkdtempSync(join(tmpdir(), "fuse-image-"));
+      try {
+        cpSync(IMAGE, join(dir, "gate.png"));
+        const { run, db, t } = await workRun(
+          adapterFor(provider),
+          model,
+          dir,
+          "Look at gate.png. It shows a code. Write exactly that code, and nothing else, into code.txt in the folder's root.",
+        );
+        const shown = (await listSteps(db, t, run.id)).filter(
+          (s) => s.kind === "tool" && s.images.length > 0,
+        ).length;
+        const fails = failedChecks(dir, [
+          { kind: "file_contains", path: "code.txt", text: "HERON-4172" },
+        ]);
+        if (shown === 0) fails.push("no tool result carried the image");
+        rows.push({
+          provider: `${provider}/${model.id}`,
+          pass: fails.length === 0 && run.status === "done",
+          status: run.status,
+          shown,
+          cost: formatUsd(run.spentMicroUsd),
+          why: [run.note, ...fails].filter(Boolean).join("; "),
+        });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+    console.table(rows.map(({ why: _w, ...r }) => r));
+    for (const r of rows.filter((x) => !x.pass)) console.log(`FAILED ${r.provider}: ${r.why}`);
+    for (const r of rows) expect(r.pass, `${r.provider}: ${r.why}`).toBe(true);
+  },
+  5 * 60 * 1000,
 );

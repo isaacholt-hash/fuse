@@ -3,8 +3,7 @@ import { Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 /**
- * Settings → Sandbox on Windows (M8 step 9, WF-07): off until switched on while it's tested on
- * a real PC. On, commands from Code and Work runs run in an AppContainer that can write only in
+ * Settings → Sandbox on Windows (M8 step 9, WF-07): on unless switched off. On, commands from Code and Work runs run in an AppContainer that can write only in
  * the chat's folders. Reset puts those folders' permissions back as they were.
  */
 export function WindowsSandboxSection({
@@ -23,18 +22,19 @@ export function WindowsSandboxSection({
     <section className="mt-8 border-t pt-6" aria-label="Sandbox on Windows">
       <div className="mb-1 flex items-center gap-2">
         <Box className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-medium">Sandbox on Windows (testing)</h2>
+        <h2 className="text-sm font-medium">Sandbox on Windows</h2>
       </div>
       <div className="space-y-2 text-[11px] leading-5 text-muted-foreground">
         <p>
           When this is on, commands run in a Windows sandbox. They can write only in the chat&apos;s
           folders, and they have no network unless you allow it. While it&apos;s off, commands run
-          with your full rights.
+          with your full rights. Turn it off only if a tool you need can&apos;t run in it (programs
+          installed under your user folder, or ones that reach localhost).
         </p>
         <p>
           To let the sandbox write in a folder, FUSE adds an entry to that folder&apos;s permissions
           the first time a command runs there. That can take a while on a large folder. The entry
-          stays until you reset. Try it on a test folder first.
+          stays until you reset.
         </p>
       </div>
       <label className="mt-3 flex items-center gap-2 text-xs">

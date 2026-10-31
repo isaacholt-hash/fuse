@@ -955,7 +955,8 @@ export function ChatApp({
     void (async () => {
       // Can't tell (no Tauri, as in tests): nothing to offer.
       if (!(await api.available().catch(() => false))) return;
-      const on = (await getSetting(db, tenant, WINDOWS_SANDBOX_SETTING)) === "on";
+      // On unless switched off (M8: on by default since it passed on Isaac's PC).
+      const on = (await getSetting(db, tenant, WINDOWS_SANDBOX_SETTING)) !== "off";
       await api.set(on);
       setWindowsSandbox({ on });
     })().catch(report);
