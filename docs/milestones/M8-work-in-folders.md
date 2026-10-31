@@ -165,8 +165,11 @@
     - The update test skips itself when FUSE is open, so it never closes Isaac's work. It presses Restart now through Windows UI Automation, since a release build has no DevTools port.
     - Windows CI checks that the PC's PowerShell scripts parse, in Windows PowerShell 5.1.
   - **First runs on TCHALLA (2026-10-31) failed before testing anything.** The PC has no PowerShell 7 and no Rust. Now every step uses Windows PowerShell, and the PC downloads the test build that CI's run on the same commit made (`e2e-app`, kept 7 days) instead of compiling one. Summary and output files are written as UTF-8 without a BOM, and the issue is opened through the REST API, so `gh` isn't needed either.
+  - **Runs so far (2026-10-31):**
+    - The silent downgrade works.
+    - The click-through tests pass on the real desktop, including check 5, once F5 was fixed and the test build's data is cleared before each run (a reused PC kept the last chat open).
+    - The update test can't reach FUSE's window while the PC is locked, which is the case at night. It now skips then, and says so.
   - **Not yet run:** it needs Isaac to set up the runner. Unchecked until then:
-    - whether Tauri's installer downgrades silently (`/S`) over a newer FUSE
     - whether "Restart now" is reachable through UI Automation in the release build
   - **Isaac must also** set Settings → Actions → General → fork pull request approval to "Require approval for all external contributors". It's "first-time contributors" today, which isn't enough with a runner on his PC.
 - [x] **16. Live-key test button (Isaac, 2026-10-31).**

@@ -18,6 +18,12 @@ if ($open) {
   exit 0
 }
 
+# A locked PC shows the lock screen on its own desktop, so UI Automation can't see FUSE's window.
+if (Get-Process -Name "LogonUI" -ErrorAction SilentlyContinue) {
+  Say "Update test skipped: the PC was locked, so its windows can't be reached. Run the workflow again while you're logged in."
+  exit 0
+}
+
 $releases = Invoke-RestMethod "https://api.github.com/repos/$repo/releases?per_page=10"
 $withSetup = @($releases | Where-Object { -not $_.draft -and -not $_.prerelease -and ($_.assets | Where-Object { $_.name -like "*_x64-setup.exe" }) })
 if ($withSetup.Count -lt 2) { throw "Need two releases with a Windows installer." }

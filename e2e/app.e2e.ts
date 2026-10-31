@@ -55,6 +55,10 @@ beforeAll(async () => {
   mkdirSync(SHOTS, { recursive: true });
   rmSync(FOLDER, { recursive: true, force: true });
   mkdirSync(FOLDER, { recursive: true });
+  // A fresh start each run: the test build's own data (never FUSE's), which a reused PC keeps.
+  for (const base of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
+    if (base) rmSync(join(base, "com.isaacholt.fuse.e2e"), { recursive: true, force: true });
+  }
   app = await Session.start(APP);
   await app.find(composer, 60_000);
   // Never drive a real build: only the test build has scripted models.
