@@ -31,7 +31,7 @@ The runner shows as **Idle** on the Runners page when it's ready.
 
 1. **The click-through tests** (step 14) on your real desktop, using the test build CI made from the same commit (so your PC needs no Rust or build tools, only Node, which the job sets up), including check 5 (`>NUL`), which GitHub's Windows Server can't run. They use the separate test build, "FUSE E2E", with its own data folder, so your chats and settings aren't touched. They make `C:\fuse-e2e`, and check that `Documents\escape.txt` never appears.
 2. **The update test** (`scripts/pc/update-test.ps1`). It installs the release before the newest over your FUSE, starts it, and waits for the update bar. It presses **Restart now** through Windows UI Automation, then checks the newest is installed and running.
-   - **It skips itself if FUSE is open**, so it never closes your work. Close FUSE, or start the workflow by hand when you're away, to include it.
+   - **It skips itself if FUSE is open**, so it never closes your work. It also skips when the PC is locked, since the lock screen hides every window from UI Automation. Close FUSE, or start the workflow by hand when you're away, to include it.
    - Your chats stay, as with any update, and it ends on the newest release.
    - Starting it by hand, you can untick "Also run the update test".
 3. **`pnpm local:bench`**, when a local model is installed.
