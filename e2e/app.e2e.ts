@@ -74,7 +74,7 @@ test("send a message and see its cost", async () => {
 test("switch models", async () => {
   await step("switch-model", async () => {
     await app.chord("k");
-    await app.click('//button[contains(normalize-space(), "Claude Opus 5.5")]');
+    await app.click('//button[.//span[normalize-space()="Claude Opus 5.5"]]');
     await app.type(composer, "Again");
     await app.press("Enter");
     expect(await nextAnswer(1)).toContain(HELLO);
@@ -120,13 +120,26 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
       await new Promise((r) => setTimeout(r, 500));
       const outside = await app.run<string[]>(`
         const box = document.querySelector('textarea[aria-label="Message"]').closest('.rounded-2xl').getBoundingClientRect();
-        const names = ["Choose model (Ctrl+K)", "Add a folder", "Coding run", "Work run", "Send message (Enter)"];
-        return names.filter((n) => {
+        // The row clips what doesn't fit, so its controls must end inside the row itself.
+        const row = document.querySelector('[data-composer-row]').getBoundingClientRect();
+        const names = ["Choose model (Ctrl+K)", "Add a folder", "Coding run", "Work run"];
+        const out = (n, edge) => {
           const b = document.querySelector('[aria-label="' + n + '"]');
           if (!b) return true;
           const r = b.getBoundingClientRect();
-          return r.left < box.left || r.right > box.right;
-        });`);
+          return r.left < edge.left || r.right > edge.right;
+        };
+        return names.filter((n) => out(n, row))
+          .concat(out("Send message (Enter)", box) ? ["Send message (Enter)"] : [])
+          .concat(
+          // Think is in the row, or in "More", whose button must be in the box too.
+          ["Think harder", "More options"].some((n) => {
+            const b = document.querySelector('[aria-label="' + n + '"]');
+            if (!b) return false;
+            const r = b.getBoundingClientRect();
+            return r.width > 0 && r.left >= box.left && r.right <= box.right;
+          }) ? [] : ["Think harder or More options"],
+        );`);
       expect(outside).toEqual([]);
     });
   }

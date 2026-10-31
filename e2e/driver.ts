@@ -94,20 +94,27 @@ export class Session {
     return r.result.value as T;
   }
 
-  /** The XPath's first match: its centre on screen and its text, or null. */
+  /**
+   * The XPath's first match: its centre on screen, its text, and whether it's what a click there
+   * would hit (not covered, not mid-animation elsewhere); null when nothing visible matches.
+   */
   private probe(xpath: string) {
-    return this.run<{ x: number; y: number; text: string } | null>(`
+    return this.run<{ x: number; y: number; text: string; hit: boolean } | null>(`
       const el = document.evaluate(${JSON.stringify(xpath)}, document, null,
         XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
       if (!(el instanceof HTMLElement)) return null;
-      el.scrollIntoView({ block: "center", inline: "center" });
+      el.scrollIntoView({ block: "nearest", inline: "nearest" });
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2, text: el.innerText };`);
+      const x = r.left + r.width / 2, y = r.top + r.height / 2;
+      return { x, y, text: el.innerText, hit: el.contains(document.elementFromPoint(x, y)) };`);
   }
 
   /** Waits up to `ms` for the XPath to match something visible. */
-  async find(xpath: string, ms = 15_000): Promise<{ x: number; y: number; text: string }> {
+  async find(
+    xpath: string,
+    ms = 15_000,
+  ): Promise<{ x: number; y: number; text: string; hit: boolean }> {
     const until = Date.now() + ms;
     for (;;) {
       const hit = await this.probe(xpath);
@@ -126,8 +133,18 @@ export class Session {
     }
   }
 
-  async click(xpath: string, ms?: number): Promise<void> {
-    const { x, y } = await this.find(xpath, ms);
+  /** Clicks the match once it's still (popovers animate in) and nothing covers it. */
+  async click(xpath: string, ms = 15_000): Promise<void> {
+    const until = Date.now() + ms;
+    let last = await this.find(xpath, ms);
+    for (;;) {
+      await sleep(150);
+      const now = await this.find(xpath, ms);
+      if (now.hit && now.x === last.x && now.y === last.y) break;
+      if (Date.now() > until) throw new Error(`${xpath} never held still uncovered`);
+      last = now;
+    }
+    const { x, y } = last;
     for (const type of ["mousePressed", "mouseReleased"]) {
       await this.send("Input.dispatchMouseEvent", { type, x, y, button: "left", clickCount: 1 });
     }

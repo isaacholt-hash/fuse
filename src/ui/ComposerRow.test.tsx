@@ -5,7 +5,8 @@ import { Composer } from "./Conversation";
 // jsdom has no layout, so the row's widths are stubbed: everything in one row needs 700 px, and
 // with "More" it needs 450 px.
 let width = 0;
-const content = (el: HTMLElement) => (el.querySelector('[aria-label="More options"]') ? 450 : 700);
+const content = (el: HTMLElement) =>
+  el.parentElement?.querySelector('[aria-label="More options"]') ? 450 : 700;
 const row = (el: HTMLElement) => el.dataset.composerRow !== undefined;
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, "clientWidth", {

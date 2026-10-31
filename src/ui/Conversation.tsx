@@ -1702,7 +1702,7 @@ export function Composer({
             {folders.map((f) => (
               <span
                 key={f.id}
-                className="flex min-w-0 max-w-40 shrink items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
                 title={f.own ? f.path : `${f.path} (from the project)`}
               >
                 <FolderOpen className="size-3 shrink-0" />
@@ -1711,7 +1711,7 @@ export function Composer({
                   <button
                     type="button"
                     aria-label={`Remove folder ${f.name}`}
-                    className="hover:text-foreground"
+                    className="shrink-0 hover:text-foreground"
                     onClick={() => {
                       onRemoveFolder(f.id);
                     }}
@@ -1779,8 +1779,10 @@ export function Composer({
                 </Button>
               </Tip>
             )}
-            {collapsed ? moreMenu : extras(false)}
+            {!collapsed && extras(false)}
           </div>
+          {/* Outside the clipped row, so it can't be cut off itself. */}
+          {collapsed && moreMenu}
           {/* Outside the row, which clips what spills out of it. */}
           {!collapsed && showCompare && compareOpen && (
             <span
