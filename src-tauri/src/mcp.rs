@@ -163,7 +163,8 @@ type Pending = Arc<std::sync::Mutex<HashMap<u64, oneshot::Sender<Result<Value, S
 
 /// The process behind a local server, so it can be ended.
 enum Proc {
-    Tokio(tokio::process::Child),
+    #[cfg_attr(windows, allow(dead_code))]
+    Tokio(Box<tokio::process::Child>),
     /// Windows: in the MCP container. Dropping it ends its job and everything in it.
     #[cfg(windows)]
     Contained(fuse_sandbox_win::Child),
@@ -182,6 +183,7 @@ pub struct Client {
 
 impl Client {
     /// Starts `cmd` with piped stdin, stdout and stderr, and reads its messages as they come.
+    #[cfg_attr(windows, allow(dead_code))]
     pub fn spawn(mut cmd: tokio::process::Command) -> Result<Arc<Client>, String> {
         cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -193,7 +195,12 @@ impl Client {
         let stdin = child.stdin.take().ok_or("The server has no input.")?;
         let stdout = child.stdout.take().ok_or("The server has no output.")?;
         let stderr = child.stderr.take();
-        Ok(Self::start(stdin, stdout, stderr, Proc::Tokio(child)))
+        Ok(Self::start(
+            stdin,
+            stdout,
+            stderr,
+            Proc::Tokio(Box::new(child)),
+        ))
     }
 
     /// M9: a server started in the Windows sandbox, on its pipes.

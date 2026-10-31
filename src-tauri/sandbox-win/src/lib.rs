@@ -793,6 +793,85 @@ mod tests {
         let _ = remove_profile_of(Container::Mcp);
     }
 
+    // TEMPORARY: which environments let a contained command start (error 203 otherwise).
+    #[test]
+    fn zz_diag_env() {
+        let dir = fresh_dir("diag");
+        grant_to(Container::Mcp, &dir, WRITE).unwrap();
+        let d = dir.to_string_lossy().into_owned();
+        let base: &[&str] = &[
+            "PATH",
+            "PATHEXT",
+            "SystemRoot",
+            "SystemDrive",
+            "windir",
+            "ComSpec",
+            "OS",
+            "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE",
+            "ProgramFiles",
+            "ProgramData",
+        ];
+        let real: Vec<&str> = base
+            .iter()
+            .copied()
+            .chain([
+                "USERPROFILE",
+                "APPDATA",
+                "LOCALAPPDATA",
+                "HOMEDRIVE",
+                "HOMEPATH",
+                "USERNAME",
+            ])
+            .collect();
+        let own = [
+            ("USERPROFILE", d.as_str()),
+            ("APPDATA", d.as_str()),
+            ("LOCALAPPDATA", d.as_str()),
+        ];
+        let cases: Vec<(&str, bool, Option<&[&str]>, &[(&str, &str)])> = vec![
+            ("all, piped", true, None, &[]),
+            (
+                "PATH+SystemRoot, not piped",
+                false,
+                Some(&["PATH", "SystemRoot"]),
+                &[],
+            ),
+            ("base, piped", true, Some(base), &[]),
+            ("base+own profile, piped", true, Some(base), &own),
+            ("base+real profile, piped", true, Some(&real), &[]),
+            ("all+own profile, piped", true, None, &own),
+        ];
+        let mut report = String::new();
+        for (name, piped, only, set) in cases {
+            let r = spawn(&Spawn {
+                cwd: &dir,
+                command: "echo ok",
+                network: false,
+                env_remove: &[],
+                container: Container::Mcp,
+                env_set: set,
+                memory_bytes: None,
+                piped,
+                env_only: only,
+            });
+            match r {
+                Ok(mut c) => {
+                    drop(c.take_input());
+                    let mut out = String::new();
+                    let _ = c.take_output().unwrap().read_to_string(&mut out);
+                    report.push_str(&format!(
+                        "{name}: ok {:?} {:?}\n",
+                        c.wait().ok(),
+                        out.trim()
+                    ));
+                }
+                Err(e) => report.push_str(&format!("{name}: ERR {e}\n")),
+            }
+        }
+        panic!("DIAG\n{report}");
+    }
+
     #[test]
     fn env_only_passes_just_those_variables() {
         let vars = environment(&[], Some(&["PATH"]), &[("X_SET", "1")], Path::new("C:\\t"));
