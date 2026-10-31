@@ -4,6 +4,10 @@
 //! when allowed and only its own variables (from the keychain) in its environment. They talk
 //! JSON-RPC 2.0, one message per line on its stdin and stdout. A running server is kept for its
 //! tools to be called (step 9) and ends with FUSE.
+//!
+//! M9 step 10: a remote server is reached over Streamable HTTP: each message is a POST, answered
+//! with JSON or a stream of server-sent events, with the session id and protocol version it
+//! gives kept on later requests. Only https, or http to this computer.
 
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -254,29 +258,12 @@ impl Client {
         }))
     }
 
-    /// One request, answered or failed within the time limit.
-    pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
-        self.request_within(method, params, REQUEST_TIMEOUT).await
-    }
-
-    /// M9 step 9: a tool call, with the longer limit.
-    pub async fn call(&self, name: &str, arguments: Value) -> Result<McpCallResult, String> {
-        let r = self
-            .request_within(
-                "tools/call",
-                json!({ "name": name, "arguments": arguments }),
-                CALL_TIMEOUT,
-            )
-            .await?;
-        Ok(call_result(&r))
-    }
-
     /// Whether its output has ended (it stopped or died).
     pub fn ended(&self) -> bool {
         self.closed.load(Ordering::SeqCst)
     }
 
-    async fn request_within(
+    pub(crate) async fn request_within(
         &self,
         method: &str,
         params: Value,
@@ -318,6 +305,240 @@ impl Client {
             .send(json!({ "jsonrpc": "2.0", "method": method }).to_string());
     }
 
+    /// The last of what it wrote to stderr, for an error.
+    pub fn stderr(&self) -> String {
+        self.stderr_tail
+            .lock()
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default()
+    }
+
+    pub async fn stop(&self) {
+        let _ = self.child.lock().await.kill().await;
+    }
+}
+
+/// What a JSON-RPC answer carries: its result, or its error's message.
+fn answer_of(msg: &Value) -> Result<Value, String> {
+    match (msg.get("result"), msg.get("error")) {
+        (Some(r), _) => Ok(r.clone()),
+        (None, Some(e)) => Err(e
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("The server answered with an error.")
+            .to_string()),
+        (None, None) => Err("The server's answer was empty.".into()),
+    }
+}
+
+/// M9 step 10: a remote server's address must be https, or http to this computer.
+pub fn check_remote_url(url: &str) -> Result<reqwest::Url, String> {
+    let u = reqwest::Url::parse(url).map_err(|_| "That isn't a server address.".to_string())?;
+    let local = matches!(
+        u.host_str(),
+        Some("localhost" | "127.0.0.1" | "[::1]" | "::1")
+    );
+    if u.scheme() == "https" || (u.scheme() == "http" && local) {
+        Ok(u)
+    } else {
+        Err(
+            "A remote server's address must start https:// (http:// only for this computer)."
+                .into(),
+        )
+    }
+}
+
+/// M9 step 10: a remote server over Streamable HTTP.
+pub struct HttpClient {
+    http: reqwest::Client,
+    url: reqwest::Url,
+    session: std::sync::Mutex<Option<String>>,
+    protocol: std::sync::Mutex<Option<String>>,
+    next: AtomicU64,
+    /// An OAuth access token, when it was signed in to (10b).
+    bearer: Option<String>,
+}
+
+impl HttpClient {
+    pub fn new(url: &str, bearer: Option<String>) -> Result<HttpClient, String> {
+        let url = check_remote_url(url)?;
+        let http = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| e.to_string())?;
+        Ok(HttpClient {
+            http,
+            url,
+            session: std::sync::Mutex::default(),
+            protocol: std::sync::Mutex::default(),
+            next: AtomicU64::new(1),
+            bearer,
+        })
+    }
+
+    fn set_protocol(&self, p: &str) {
+        if let Ok(mut v) = self.protocol.lock() {
+            *v = (!p.is_empty()).then(|| p.to_string());
+        }
+    }
+
+    /// One POST. A notification gets `None` back (202); a request its answer, from JSON or from
+    /// the event stream (the event whose id is `id`).
+    async fn post(
+        &self,
+        body: Value,
+        id: Option<u64>,
+        limit: Duration,
+    ) -> Result<Option<Value>, String> {
+        let mut req = self
+            .http
+            .post(self.url.clone())
+            .header(
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream",
+            )
+            .json(&body);
+        if let Some(s) = self.session.lock().ok().and_then(|s| s.clone()) {
+            req = req.header("Mcp-Session-Id", s);
+        }
+        if let Some(p) = self.protocol.lock().ok().and_then(|p| p.clone()) {
+            req = req.header("MCP-Protocol-Version", p);
+        }
+        if let Some(t) = &self.bearer {
+            req = req.bearer_auth(t);
+        }
+        let work = async {
+            let mut resp = req
+                .send()
+                .await
+                .map_err(|e| format!("Couldn't reach the server: {e}"))?;
+            let status = resp.status().as_u16();
+            if status == 401 {
+                return Err("The server wants you to sign in.".to_string());
+            }
+            if let Some(sid) = resp
+                .headers()
+                .get("mcp-session-id")
+                .and_then(|v| v.to_str().ok())
+                && let Ok(mut s) = self.session.lock()
+            {
+                *s = Some(sid.to_string());
+            }
+            if status == 202 || id.is_none() {
+                return Ok(None);
+            }
+            if !(200..300).contains(&status) {
+                let text = resp.text().await.unwrap_or_default();
+                return Err(format!(
+                    "The server answered {status}: {}",
+                    text.chars().take(200).collect::<String>()
+                ));
+            }
+            let stream = resp
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok())
+                .is_some_and(|c| c.starts_with("text/event-stream"));
+            if !stream {
+                let text = resp.text().await.map_err(|e| e.to_string())?;
+                let v: Value = serde_json::from_str(&text)
+                    .map_err(|_| "The server's answer wasn't JSON.".to_string())?;
+                return Ok(Some(v));
+            }
+            // Events, until the one that answers this request.
+            let mut buf = String::new();
+            while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+                buf.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
+                if buf.len() > MAX_LINE {
+                    return Err("The server's answer was too long.".into());
+                }
+                while let Some(end) = buf.find("\n\n") {
+                    let event: String = buf.drain(..end + 2).collect();
+                    let data: Vec<&str> = event
+                        .lines()
+                        .filter_map(|l| l.strip_prefix("data:"))
+                        .map(str::trim_start)
+                        .collect();
+                    if data.is_empty() {
+                        continue;
+                    }
+                    if let Ok(msg) = serde_json::from_str::<Value>(&data.join("\n"))
+                        && msg.get("id").and_then(Value::as_u64) == id
+                        && msg.get("method").is_none()
+                    {
+                        return Ok(Some(msg));
+                    }
+                }
+            }
+            Err("The server's stream ended without an answer.".into())
+        };
+        match tokio::time::timeout(limit, work).await {
+            Ok(r) => r,
+            Err(_) => Err(format!(
+                "The server didn't answer within {} s.",
+                limit.as_secs()
+            )),
+        }
+    }
+
+    pub(crate) async fn request_within(
+        &self,
+        method: &str,
+        params: Value,
+        limit: Duration,
+    ) -> Result<Value, String> {
+        let id = self.next.fetch_add(1, Ordering::Relaxed);
+        let body = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params });
+        let msg = self
+            .post(body, Some(id), limit)
+            .await?
+            .ok_or("The server's answer was empty.")?;
+        answer_of(&msg)
+    }
+
+    async fn notify(&self, method: &str) {
+        let _ = self
+            .post(
+                json!({ "jsonrpc": "2.0", "method": method }),
+                None,
+                REQUEST_TIMEOUT,
+            )
+            .await;
+    }
+}
+
+/// A server, local or remote, and the protocol over either.
+#[derive(Clone)]
+pub enum Server {
+    Stdio(Arc<Client>),
+    Http(Arc<HttpClient>),
+}
+
+impl Server {
+    async fn request_within(
+        &self,
+        method: &str,
+        params: Value,
+        limit: Duration,
+    ) -> Result<Value, String> {
+        match self {
+            Server::Stdio(c) => c.request_within(method, params, limit).await,
+            Server::Http(h) => h.request_within(method, params, limit).await,
+        }
+    }
+
+    /// One request, answered or failed within the time limit.
+    pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_within(method, params, REQUEST_TIMEOUT).await
+    }
+
+    async fn notify(&self, method: &str) {
+        match self {
+            Server::Stdio(c) => c.notify(method),
+            Server::Http(h) => h.notify(method).await,
+        }
+    }
+
     /// The handshake: what it is and which protocol it speaks, then `initialized`.
     pub async fn initialize(&self) -> Result<(String, String, String), String> {
         let r = self
@@ -330,13 +551,18 @@ impl Client {
                 }),
             )
             .await?;
-        self.notify("notifications/initialized");
         let info = r.get("serverInfo");
         let s = |v: Option<&Value>| v.and_then(Value::as_str).unwrap_or_default().to_string();
+        let protocol = s(r.get("protocolVersion"));
+        // Over HTTP every later request says which protocol was agreed.
+        if let Server::Http(h) = self {
+            h.set_protocol(&protocol);
+        }
+        self.notify("notifications/initialized").await;
         Ok((
             s(info.and_then(|i| i.get("name"))),
             s(info.and_then(|i| i.get("version"))),
-            s(r.get("protocolVersion")),
+            protocol,
         ))
     }
 
@@ -364,16 +590,37 @@ impl Client {
         Ok(tools)
     }
 
-    /// The last of what it wrote to stderr, for an error.
+    /// M9 step 9: a tool call, with the longer limit.
+    pub async fn call(&self, name: &str, arguments: Value) -> Result<McpCallResult, String> {
+        let r = self
+            .request_within(
+                "tools/call",
+                json!({ "name": name, "arguments": arguments }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        Ok(call_result(&r))
+    }
+
+    /// Whether a local server's output has ended; a remote one is asked again each time.
+    pub fn ended(&self) -> bool {
+        match self {
+            Server::Stdio(c) => c.ended(),
+            Server::Http(_) => false,
+        }
+    }
+
     pub fn stderr(&self) -> String {
-        self.stderr_tail
-            .lock()
-            .map(|t| t.trim().to_string())
-            .unwrap_or_default()
+        match self {
+            Server::Stdio(c) => c.stderr(),
+            Server::Http(_) => String::new(),
+        }
     }
 
     pub async fn stop(&self) {
-        let _ = self.child.lock().await.kill().await;
+        if let Server::Stdio(c) = self {
+            c.stop().await;
+        }
     }
 }
 
@@ -399,16 +646,7 @@ fn handle(msg: &Value, waiting: &Pending, replies: &mpsc::UnboundedSender<String
     let Some(tx) = waiting.lock().ok().and_then(|mut w| w.remove(&n)) else {
         return;
     };
-    let answer = match (msg.get("result"), msg.get("error")) {
-        (Some(r), _) => Ok(r.clone()),
-        (None, Some(e)) => Err(e
-            .get("message")
-            .and_then(Value::as_str)
-            .unwrap_or("The server answered with an error.")
-            .to_string()),
-        (None, None) => Err("The server's answer was empty.".into()),
-    };
-    let _ = tx.send(answer);
+    let _ = tx.send(answer_of(msg));
 }
 
 /// A local server in bubblewrap: the whole system read-only, its own folder writable (and its
@@ -461,7 +699,7 @@ pub fn stdio_command(
 /// Running servers, by id, with what their handshake and tool list said.
 #[derive(Default)]
 pub struct McpServers {
-    running: Mutex<HashMap<String, (Arc<Client>, McpHealth)>>,
+    running: Mutex<HashMap<String, (Server, McpHealth)>>,
 }
 
 pub mod commands {
@@ -479,7 +717,7 @@ pub mod commands {
         keys: &Keys,
         servers: &McpServers,
         server_id: &str,
-    ) -> Result<(Arc<Client>, McpHealth), String> {
+    ) -> Result<(Server, McpHealth), String> {
         let mut running = servers.running.lock().await;
         if let Some((client, health)) = running.get(server_id) {
             if !client.ended() {
@@ -488,7 +726,7 @@ pub mod commands {
             running.remove(server_id);
         }
         let row = sqlx::query(
-            "SELECT transport, command, args, env_names, network FROM mcp_servers
+            "SELECT transport, command, args, url, env_names, network FROM mcp_servers
              WHERE id = ? AND deleted_at IS NULL",
         )
         .bind(server_id)
@@ -497,8 +735,19 @@ pub mod commands {
         .map_err(|e| format!("Couldn't read the server: {e}"))?
         .ok_or("That server isn't in FUSE.")?;
         let transport: String = row.get("transport");
-        if transport != "stdio" {
-            return Err("Remote servers are reached in a later step; this one isn't yet.".into());
+        if transport == "http" {
+            let url: String = row.get::<Option<String>, _>("url").unwrap_or_default();
+            let client = Server::Http(Arc::new(HttpClient::new(&url, None)?));
+            let (server_name, server_version, protocol) = client.initialize().await?;
+            let tools = client.list_tools().await?;
+            let health = McpHealth {
+                server_name,
+                server_version,
+                protocol,
+                tools,
+            };
+            running.insert(server_id.to_string(), (client.clone(), health.clone()));
+            return Ok((client, health));
         }
         let command: String = row.get::<Option<String>, _>("command").unwrap_or_default();
         let args: Vec<String> =
@@ -524,7 +773,7 @@ pub mod commands {
         let cmd = cmd.ok_or(
             "Local servers run only in the sandbox, and FUSE can't sandbox them on this computer yet.",
         )?;
-        let client = Client::spawn(cmd)?;
+        let client = Server::Stdio(Client::spawn(cmd)?);
         let started = async {
             let (server_name, server_version, protocol) = client.initialize().await?;
             let tools = client.list_tools().await?;
@@ -657,6 +906,114 @@ for line in sys.stdin:
             .then_some("/usr/bin/python3")
     }
 
+    /// A Streamable HTTP MCP server for one test: initialize answers in JSON with a session id;
+    /// later requests must carry it and the protocol version; tools/list answers as events.
+    async fn http_server() -> String {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 4096];
+                    let (head, body) = loop {
+                        let n = sock.read(&mut tmp).await.unwrap_or(0);
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                        let text = String::from_utf8_lossy(&buf).to_string();
+                        if let Some(at) = text.find("\r\n\r\n") {
+                            let head = text[..at].to_lowercase();
+                            let len = head
+                                .lines()
+                                .find_map(|l| l.strip_prefix("content-length:"))
+                                .and_then(|v| v.trim().parse::<usize>().ok())
+                                .unwrap_or(0);
+                            if buf.len() >= at + 4 + len {
+                                break (
+                                    head,
+                                    String::from_utf8_lossy(&buf[at + 4..at + 4 + len]).to_string(),
+                                );
+                            }
+                        }
+                    };
+                    let msg: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+                    let method = msg
+                        .get("method")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default();
+                    let id = msg.get("id").cloned().unwrap_or(Value::Null);
+                    let has_session = head.contains("mcp-session-id: sess-1");
+                    let has_protocol = head.contains(&format!("mcp-protocol-version: {PROTOCOL}"));
+                    let (status, ctype, extra, out) = match method {
+                        "initialize" => ("200 OK", "application/json", "Mcp-Session-Id: sess-1\r\n",
+                            json!({"jsonrpc":"2.0","id":id,"result":{"protocolVersion":PROTOCOL,
+                                "serverInfo":{"name":"remote","version":"9"}}}).to_string()),
+                        _ if !has_session || !has_protocol => ("400 Bad Request", "text/plain", "", "no session".to_string()),
+                        "notifications/initialized" => ("202 Accepted", "text/plain", "", String::new()),
+                        "tools/list" => ("200 OK", "text/event-stream", "",
+                            format!(": hello\n\nevent: message\ndata: {}\n\n",
+                                json!({"jsonrpc":"2.0","id":id,"result":{"tools":[{"name":"lookup",
+                                    "annotations":{"readOnlyHint":true}}]}}))),
+                        "tools/call" => ("200 OK", "application/json", "",
+                            json!({"jsonrpc":"2.0","id":id,"result":{"content":[{"type":"text","text":"found"}]}}).to_string()),
+                        _ => ("200 OK", "application/json", "",
+                            json!({"jsonrpc":"2.0","id":id,"error":{"code":-32601,"message":"no such method"}}).to_string()),
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{out}",
+                        out.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                });
+            }
+        });
+        format!("http://127.0.0.1:{}/mcp", addr.port())
+    }
+
+    #[tokio::test]
+    async fn a_remote_server_over_streamable_http() {
+        let url = http_server().await;
+        let server = Server::Http(Arc::new(HttpClient::new(&url, None).unwrap()));
+        let (name, version, protocol) = server.initialize().await.unwrap();
+        assert_eq!(
+            (name.as_str(), version.as_str(), protocol.as_str()),
+            ("remote", "9", PROTOCOL)
+        );
+        let tools = server.list_tools().await.unwrap();
+        assert_eq!(
+            tools
+                .iter()
+                .map(|t| (t.name.as_str(), t.read_only))
+                .collect::<Vec<_>>(),
+            [("lookup", true)]
+        );
+        let r = server.call("lookup", json!({})).await.unwrap();
+        assert_eq!(r.parts[0].text.as_deref(), Some("found"));
+        assert_eq!(
+            server
+                .request("resources/list", json!({}))
+                .await
+                .unwrap_err(),
+            "no such method"
+        );
+    }
+
+    #[test]
+    fn remote_addresses_are_https_or_this_computer() {
+        assert!(check_remote_url("https://example.com/mcp").is_ok());
+        assert!(check_remote_url("http://localhost:3000/mcp").is_ok());
+        assert!(check_remote_url("http://127.0.0.1/mcp").is_ok());
+        assert!(check_remote_url("http://example.com/mcp").is_err());
+        assert!(check_remote_url("file:///etc/passwd").is_err());
+        assert!(check_remote_url("not a url").is_err());
+    }
+
     #[test]
     fn results_become_text_and_images() {
         let r = call_result(&json!({ "content": [
@@ -695,7 +1052,7 @@ for line in sys.stdin:
         let dir = fake_dir("plain");
         let mut cmd = tokio::process::Command::new(py);
         cmd.arg(dir.join("fake.py"));
-        let client = Client::spawn(cmd).unwrap();
+        let client = Server::Stdio(Client::spawn(cmd).unwrap());
         let (name, version, protocol) = client.initialize().await.unwrap();
         assert_eq!(
             (name.as_str(), version.as_str(), protocol.as_str()),
@@ -764,7 +1121,7 @@ for line in sys.stdin:
             &[("API_TOKEN".into(), "t0k".into())],
         )
         .unwrap();
-        let client = Client::spawn(cmd).unwrap();
+        let client = Server::Stdio(Client::spawn(cmd).unwrap());
         let (name, version, _) = client.initialize().await.unwrap();
         // Only its own variable; /etc read-only; its folder writable.
         assert_eq!(name, "API_TOKEN");
