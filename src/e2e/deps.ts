@@ -69,7 +69,9 @@ export function scriptedTurn(body: Body): Turn {
     .map((b) => b.text ?? "")
     .findLast((t) => t.includes("E2E "));
   if (lastAsked?.includes("E2E python")) {
-    if (!body.tools?.some((t) => t.name === "run_python")) {
+    // The planner asks without tools: it gets a plan.
+    if (!body.tools?.length) return { text: "1. Run the script with run_python." };
+    if (!body.tools.some((t) => t.name === "run_python")) {
       return { text: "run_python wasn't offered." };
     }
     return {

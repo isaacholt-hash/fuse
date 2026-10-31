@@ -672,6 +672,13 @@ const asText = (bytes: Uint8Array | null): string | null => {
 const kb = (n: number) => `${String(Math.max(1, Math.round(n / 1024)))} KB`;
 
 /**
+ * F7: in the Windows sandbox Python can't look at the folders above its own, so it starts by
+ * saying it can't find its real location, then runs normally. That line isn't the script's.
+ */
+export const withoutStartupNoise = (output: string) =>
+  output.replace(/^Failed to find real location of [^\r\n]*python\.exe\r?\n/m, "");
+
+/**
  * M9 step 6 (AG-03): a Python script in the sandbox. It always asks, showing the script and what
  * it will save. Images it made come back to the model; the files it was told to keep are written
  * into the folder like any change, with undo.
@@ -769,7 +776,11 @@ async function runPython(
       }
     }
     const lines = [
-      commandOutput("python script.py", result, timeoutSecs),
+      commandOutput(
+        "python script.py",
+        { ...result, output: withoutStartupNoise(result.output) },
+        timeoutSecs,
+      ),
       `[sandboxed, network ${network ? "on" : "off"}]`,
       listed.length ? `Files it made in FUSE_OUT: ${listed.join(", ")}` : "It made no files.",
       ...saved,

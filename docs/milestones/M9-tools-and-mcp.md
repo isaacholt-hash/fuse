@@ -75,6 +75,9 @@
 
 - [x] **F6. A model picked just before sending wasn't used (found 2026-10-31 by the Windows click-through test "switch models", which failed 8 of its last 27 runs).** Picking a model in a saved chat saved the pin, and the send read the chat's mode from the chat list, which only had the pin once it was saved and read back. On a slow database (1 to 2 s writes in CI), a message sent straight away went out on the old mode, while the picker already showed the new model. Now the picked mode is used at once for that chat, until the list has reloaded with it. A test holds the pin's save and checks the answer comes from the picked model. Not a test fix: it could happen to Isaac too.
 
+- [x] **F7. Python's startup warning, and the test planner's reply (found by the PC tests, 2026-10-31).** In the Windows sandbox, Python can't look at the folders above its own, so every script's output started with "Failed to find real location of …python.exe" before running normally. That one line is now left out of what the model gets (a script's own output, even the same words later, is kept). The test build's scripted model also answered the planner, which asks without tools, with "run_python wasn't offered"; it now gets a plan.
+  - **First PC run (2026-10-31, run 41230569635):** passed in 149 s with the Python install. The script itself took 41.9 s, mostly loading pandas and matplotlib cold (Defender likely scans the new files); later runs aren't timed yet.
+
 ## Notes
 
 - The usual rules apply to each step: one PR, tests, a screenshot for UI changes, the secret scan, `cargo fmt --check` and clippy when Rust changes, CI green, then merge.
