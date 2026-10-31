@@ -1,0 +1,42 @@
+{
+  "verified_on": "2026-10-31",
+  "python": "3.13.16",
+  "release": "20261013",
+  "source_url": "https://github.com/astral-sh/python-build-standalone/releases/tag/20261013",
+  "licence": "PSF-2.0",
+  "notes": "Release 20261013 was published 2026-10-14, the newest at least two weeks old. Sizes and SHA-256s from the release's SHA256SUMS and GitHub's asset digests, which agree. The libraries' locks are in data/python/, made with uv pip compile --exclude-newer 2026-10-17; their licences were checked on PyPI on 2026-10-31.",
+  "platforms": {
+    "linux-x86_64": {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-x86_64-unknown-linux-gnu-install_only.tar.gz",
+      "sha256": "e588e50db882fa6a89f926d9a9ad64e445183af0eda5bda226a2c151b17db8a6",
+      "size_bytes": 75813334,
+      "lock": "requirements-linux.txt"
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20261013/cpython-3.13.16%2B20261013-x86_64-pc-windows-msvc-install_only.tar.gz",
+      "sha256": "e1f9233e780fbe951e531b0eb207d794e1c3fb39d523a6f481f4fc01ef2b6ca5",
+      "size_bytes": 47457960,
+      "lock": "requirements-windows.txt"
+    }
+  },
+  "libraries": {
+    "pandas": { "version": "3.0.6", "licence": "BSD-3-Clause" },
+    "numpy": {
+      "version": "2.5.4",
+      "licence": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0"
+    },
+    "matplotlib": { "version": "3.11.2", "licence": "PSF-based (Matplotlib licence)" },
+    "openpyxl": { "version": "3.1.5", "licence": "MIT" },
+    "contourpy": { "version": "1.4.0", "licence": "BSD-3-Clause" },
+    "cycler": { "version": "0.12.1", "licence": "BSD-3-Clause" },
+    "et-xmlfile": { "version": "2.0.0", "licence": "MIT" },
+    "fonttools": { "version": "4.67.0", "licence": "MIT" },
+    "kiwisolver": { "version": "1.5.1", "licence": "BSD-3-Clause" },
+    "packaging": { "version": "26.3", "licence": "Apache-2.0 OR BSD-2-Clause" },
+    "pillow": { "version": "13.0.0", "licence": "MIT-CMU" },
+    "pyparsing": { "version": "3.3.3", "licence": "MIT" },
+    "python-dateutil": { "version": "2.9.0.post0", "licence": "Apache-2.0 AND BSD-3-Clause" },
+    "six": { "version": "1.17.0", "licence": "MIT" },
+    "tzdata": { "version": "2026.5", "licence": "Apache-2.0", "windows_only": true }
+  }
+}

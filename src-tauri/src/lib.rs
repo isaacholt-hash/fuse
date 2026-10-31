@@ -12,6 +12,7 @@ mod local;
 pub mod local_worker;
 mod model_files;
 mod preview;
+mod python_runtime;
 mod quick;
 mod repo;
 mod transport;
@@ -36,6 +37,7 @@ pub fn run() {
         .manage(preview::Previews::default())
         .manage(local::Local::default())
         .manage(model_files::Downloads::default())
+        .manage(python_runtime::PyInstall::default())
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
             use tauri::Manager;
@@ -94,6 +96,10 @@ pub fn run() {
             model_files::commands::local_install_cancel,
             model_files::commands::local_installed,
             model_files::commands::local_remove,
+            python_runtime::commands::python_install,
+            python_runtime::commands::python_install_cancel,
+            python_runtime::commands::python_status,
+            python_runtime::commands::python_remove,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

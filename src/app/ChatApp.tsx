@@ -17,6 +17,14 @@ import { gb, pickProfile, type Hardware } from "@/local/hardware";
 import { statusFor, usableProfile, type InstalledFile } from "@/local/install";
 import { localCatalogModel, localModels, type LocalProfile } from "@/local/models";
 import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
+import { PythonRuntimeSection } from "@/ui/PythonRuntime";
+import {
+  pythonPin,
+  thisPlatform,
+  type PythonApi,
+  type PythonMsg,
+  type PythonRuntime,
+} from "@/python/runtime";
 import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -450,6 +458,8 @@ export interface ChatAppProps {
   backups?: BackupsApi;
   /** The local model (M7): what this computer can run. */
   localApi?: LocalApi;
+  /** M9 step 5: the Python runtime for data work. */
+  pythonApi?: PythonApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   zoom?: ZoomApi;
@@ -624,6 +634,7 @@ export function ChatApp({
   gitApi,
   backups,
   localApi,
+  pythonApi,
   quickCapture,
   zoom,
   hello,
@@ -787,6 +798,13 @@ export function ChatApp({
   const [localError, setLocalError] = useState<string | null>(null);
   const [localInstalled, setLocalInstalled] = useState<InstalledFile[]>([]);
   const [localJob, setLocalJob] = useState<LocalJob | null>(null);
+  // M9 step 5: the Python runtime, its install under way, and why the last one failed.
+  const [pyRuntime, setPyRuntime] = useState<PythonRuntime | null>(null);
+  const [pyJob, setPyJob] = useState<{
+    step: "downloading" | "verifying" | "unpacking" | "libraries";
+    percent: number | null;
+  } | null>(null);
+  const [pyError, setPyError] = useState<string | null>(null);
   const [localInstallError, setLocalInstallError] = useState<string | null>(null);
   const refreshLocalInstalled = () => localApi?.installed().then(setLocalInstalled, report);
   /** LL-04: one switch for the local model; on unless turned off (Isaac, 2026-10-30). */
@@ -807,8 +825,37 @@ export function ChatApp({
       setLocalOn(v !== "off");
     }, report);
     localApi?.installed().then(setLocalInstalled, () => undefined);
+    pythonApi?.status().then(setPyRuntime, () => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once at start
   }, [db, tenant]);
+  /** M9 step 5: downloads, checks and installs the pinned Python and its libraries. */
+  const installPython = () => {
+    const pin = pythonPin(thisPlatform());
+    if (!pythonApi || !pin) return;
+    setPyError(null);
+    setPyJob({ step: "downloading", percent: null });
+    pythonApi
+      .install(pin, (m: PythonMsg) => {
+        if (m.kind === "progress") {
+          setPyJob({
+            step: "downloading",
+            percent: Math.floor((m.done / Math.max(1, m.total)) * 100),
+          });
+        } else if (m.kind !== "done") {
+          setPyJob({ step: m.kind, percent: null });
+        }
+      })
+      .then(
+        (r) => {
+          setPyJob(null);
+          setPyRuntime(r);
+        },
+        (e: unknown) => {
+          setPyJob(null);
+          setPyError(String(e));
+        },
+      );
+  };
   /** LL-03: downloads, checks and installs the profile this computer gets. */
   const installLocal = (profile: LocalProfile) => {
     if (!localApi) return;
@@ -3988,6 +4035,46 @@ export function ChatApp({
                     error={shortcut.error}
                     onSave={(value) => {
                       void applyShortcut(value, true);
+                    }}
+                  />
+                )
+              }
+              python={
+                pythonApi && (
+                  <PythonRuntimeSection
+                    view={{
+                      offer: ((pin) =>
+                        pin
+                          ? {
+                              python: pin.python,
+                              downloadMb: Math.round(pin.sizeBytes / 1e6),
+                              libraries: ["pandas", "numpy", "matplotlib", "openpyxl"],
+                            }
+                          : null)(pythonPin(thisPlatform())),
+                      installed: pyRuntime
+                        ? {
+                            python: pyRuntime.python,
+                            sizeMb: Math.round(pyRuntime.sizeBytes / 1e6),
+                            libraries: pyRuntime.packages.length,
+                          }
+                        : null,
+                      job: pyJob,
+                      error: pyError,
+                    }}
+                    onInstall={installPython}
+                    onStop={() => {
+                      pythonApi.cancel().catch(report);
+                    }}
+                    onRemove={() => {
+                      setPyError(null);
+                      pythonApi
+                        .remove()
+                        .then(() => {
+                          setPyRuntime(null);
+                        })
+                        .catch((e: unknown) => {
+                          setPyError(String(e));
+                        });
                     }}
                   />
                 )
