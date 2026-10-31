@@ -132,11 +132,28 @@ let streams = 0;
 /** The real database, reporting any call that takes over a second. */
 async function loggedDb(): Promise<SqlDb> {
   const db = await openTauriDb();
+  // Calls still waiting, listed every 5 s once they've waited that long.
+  const waiting = new Map<number, { sql: string; since: number }>();
+  let calls = 0;
+  setInterval(() => {
+    for (const w of waiting.values()) {
+      const ms = performance.now() - w.since;
+      if (ms > 5000) console.warn(`e2e db still waiting ${String(Math.round(ms))} ms: ${w.sql}`);
+    }
+  }, 5000);
   const slow = async <T>(sql: string, run: () => Promise<T>): Promise<T> => {
     const t = performance.now();
+    const id = ++calls;
+    waiting.set(id, { sql: sql.replace(/\s+/g, " ").slice(0, 80), since: t });
     try {
       return await run();
+    } catch (e) {
+      console.error(
+        `e2e db failed at ${at()}: ${String(e)} :: ${sql.replace(/\s+/g, " ").slice(0, 80)}`,
+      );
+      throw e;
     } finally {
+      waiting.delete(id);
       const ms = performance.now() - t;
       if (ms > 1000) console.warn(`e2e slow db ${String(Math.round(ms))} ms: ${sql.slice(0, 80)}`);
     }
