@@ -1,6 +1,6 @@
 //! MCP servers (M9 step 8, AG-02): FUSE's own small client for the Model Context Protocol, no
-//! SDK. A local server is a command FUSE starts in the sandbox (bubblewrap on Linux; Windows
-//! follows), writable only in its own folder (`mcp/<id>`, also its HOME), with the network only
+//! SDK. A local server is a command FUSE starts in the sandbox (bubblewrap on Linux; on Windows
+//! its own AppContainer, `FUSE.MCP`, in a job object), writable only in its own folder (`mcp/<id>`, also its HOME), with the network only
 //! when allowed and only its own variables (from the keychain) in its environment. They talk
 //! JSON-RPC 2.0, one message per line on its stdin and stdout. A running server is kept for its
 //! tools to be called (step 9) and ends with FUSE.
@@ -12,13 +12,13 @@
 use serde::Serialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
-#[cfg(any(target_os = "linux", test))]
+#[cfg(any(target_os = "linux", windows, test))]
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 /// The protocol version FUSE asks for; a server answers with the one it speaks.
@@ -161,12 +161,20 @@ pub fn tool_from(v: &Value) -> Option<McpTool> {
 
 type Pending = Arc<std::sync::Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>>;
 
+/// The process behind a local server, so it can be ended.
+enum Proc {
+    Tokio(tokio::process::Child),
+    /// Windows: in the MCP container. Dropping it ends its job and everything in it.
+    #[cfg(windows)]
+    Contained(fuse_sandbox_win::Child),
+}
+
 /// A running server and the requests waiting on it.
 pub struct Client {
     out: mpsc::UnboundedSender<String>,
     pending: Pending,
     next: AtomicU64,
-    child: Mutex<tokio::process::Child>,
+    child: Mutex<Proc>,
     stderr_tail: Arc<std::sync::Mutex<String>>,
     /// Set once its output has ended: a request after that fails at once.
     closed: Arc<AtomicBool>,
@@ -182,9 +190,33 @@ impl Client {
         let mut child = cmd
             .spawn()
             .map_err(|e| format!("Couldn't start the server: {e}"))?;
-        let mut stdin = child.stdin.take().ok_or("The server has no input.")?;
+        let stdin = child.stdin.take().ok_or("The server has no input.")?;
         let stdout = child.stdout.take().ok_or("The server has no output.")?;
         let stderr = child.stderr.take();
+        Ok(Self::start(stdin, stdout, stderr, Proc::Tokio(child)))
+    }
+
+    /// M9: a server started in the Windows sandbox, on its pipes.
+    #[cfg(windows)]
+    pub fn contained(mut child: fuse_sandbox_win::Child) -> Result<Arc<Client>, String> {
+        let stdin = child.take_input().ok_or("The server has no input.")?;
+        let stdout = child.take_output().ok_or("The server has no output.")?;
+        let stderr = child.take_errors().map(tokio::fs::File::from_std);
+        Ok(Self::start(
+            tokio::fs::File::from_std(stdin),
+            tokio::fs::File::from_std(stdout),
+            stderr,
+            Proc::Contained(child),
+        ))
+    }
+
+    /// Reads the server's messages as they come and writes FUSE's to it.
+    fn start(
+        mut stdin: impl AsyncWrite + Unpin + Send + 'static,
+        stdout: impl AsyncRead + Unpin + Send + 'static,
+        stderr: Option<impl AsyncRead + Unpin + Send + 'static>,
+        child: Proc,
+    ) -> Arc<Client> {
         let (tx, mut rx) = mpsc::unbounded_channel::<String>();
         tokio::spawn(async move {
             while let Some(line) = rx.recv().await {
@@ -248,14 +280,14 @@ impl Client {
                 }
             }
         });
-        Ok(Arc::new(Client {
+        Arc::new(Client {
             out: tx,
             pending,
             next: AtomicU64::new(1),
             child: Mutex::new(child),
             stderr_tail,
             closed,
-        }))
+        })
     }
 
     /// Whether its output has ended (it stopped or died).
@@ -314,7 +346,13 @@ impl Client {
     }
 
     pub async fn stop(&self) {
-        let _ = self.child.lock().await.kill().await;
+        match &mut *self.child.lock().await {
+            Proc::Tokio(c) => {
+                let _ = c.kill().await;
+            }
+            #[cfg(windows)]
+            Proc::Contained(c) => c.killer().kill(),
+        }
     }
 }
 
@@ -696,6 +734,105 @@ pub fn stdio_command(
     Some(c)
 }
 
+/// What a local server on Windows gets of FUSE's environment: enough for Windows and for
+/// `npx`, `uvx` and the like to find themselves; HOME and the app-data folders are its own.
+#[cfg(windows)]
+const WINDOWS_ENV: &[&str] = &[
+    "PATH",
+    "PATHEXT",
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "OS",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "CommonProgramFiles",
+    "ProgramData",
+];
+
+/// `command args...` as one cmd.exe line (`npx` is `npx.cmd`, so cmd runs it): each part quoted
+/// when it has a space or one of cmd's special characters. A part with a quote, `%`, `!` or a
+/// line break is turned down: cmd would read those itself.
+#[cfg(any(windows, test))]
+pub fn windows_command_line(command: &str, args: &[String]) -> Result<String, String> {
+    let mut line = Vec::new();
+    for part in std::iter::once(command).chain(args.iter().map(String::as_str)) {
+        if part.is_empty() {
+            line.push("\"\"".to_string());
+            continue;
+        }
+        if part.contains(['"', '%', '!', '\n', '\r']) {
+            return Err(format!(
+                "FUSE can't pass \u{201c}{part}\u{201d} to a local server on Windows: quotes, %, ! and line breaks aren't allowed."
+            ));
+        }
+        if part.contains([' ', '\t', '&', '|', '<', '>', '^', '(', ')', ',', ';', '=']) {
+            line.push(format!("\"{part}\""));
+        } else {
+            line.push(part.to_string());
+        }
+    }
+    Ok(line.join(" "))
+}
+
+/// A local server in the Windows sandbox: its own container, which can write only its own folder
+/// (also its HOME and app-data folders) and read what every app may, no network unless allowed,
+/// and only `WINDOWS_ENV` and its own variables in its environment. Only while the Windows
+/// sandbox is switched on.
+#[cfg(windows)]
+pub fn stdio_contained(
+    data: &Path,
+    command: &str,
+    args: &[String],
+    work: &Path,
+    network: bool,
+    env: &[(String, String)],
+) -> Result<Option<Arc<Client>>, String> {
+    use crate::exec::{SandboxKind, sandbox_kind};
+    if sandbox_kind() != SandboxKind::AppContainer {
+        return Ok(None);
+    }
+    let work = fuse_sandbox_win::plain(&std::fs::canonicalize(work).map_err(|e| e.to_string())?);
+    crate::exec::grant_mcp(data, &work)?;
+    let line = windows_command_line(command, args)?;
+    let (roaming, local) = (
+        work.join("AppData").join("Roaming"),
+        work.join("AppData").join("Local"),
+    );
+    for d in [&roaming, &local] {
+        std::fs::create_dir_all(d).map_err(|e| e.to_string())?;
+    }
+    let (home, roaming, local) = (
+        work.to_string_lossy().into_owned(),
+        roaming.to_string_lossy().into_owned(),
+        local.to_string_lossy().into_owned(),
+    );
+    let mut vars: Vec<(&str, &str)> = vec![
+        ("USERPROFILE", &home),
+        ("HOME", &home),
+        ("APPDATA", &roaming),
+        ("LOCALAPPDATA", &local),
+    ];
+    vars.extend(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+    let child = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
+        cwd: &work,
+        command: &line,
+        network,
+        env_remove: &[],
+        container: fuse_sandbox_win::Container::Mcp,
+        env_set: &vars,
+        memory_bytes: None,
+        piped: true,
+        env_only: Some(WINDOWS_ENV),
+    })
+    .map_err(|e| format!("Couldn't start the server in the sandbox: {e}"))?;
+    Client::contained(child).map(Some)
+}
+
 /// Running servers, by id, with what their handshake and tool list said.
 #[derive(Default)]
 pub struct McpServers {
@@ -799,16 +936,25 @@ pub mod commands {
             .join(server_id);
         std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
         #[cfg(target_os = "linux")]
-        let cmd = stdio_command(&command, &args, &work, network, &env);
-        #[cfg(not(target_os = "linux"))]
-        let cmd: Option<tokio::process::Command> = {
+        let spawned = stdio_command(&command, &args, &work, network, &env)
+            .map(Client::spawn)
+            .transpose()?;
+        #[cfg(windows)]
+        let spawned = {
+            let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+            let (c, a, w, e) = (command.clone(), args.clone(), work.clone(), env.clone());
+            tokio::task::spawn_blocking(move || stdio_contained(&data, &c, &a, &w, network, &e))
+                .await
+                .map_err(|e| e.to_string())??
+        };
+        #[cfg(not(any(target_os = "linux", windows)))]
+        let spawned: Option<Arc<Client>> = {
             let _ = (&command, &args, network, &env);
             None
         };
-        let cmd = cmd.ok_or(
-            "Local servers run only in the sandbox, and FUSE can't sandbox them on this computer yet.",
-        )?;
-        let client = Server::Stdio(Client::spawn(cmd)?);
+        let client = Server::Stdio(spawned.ok_or(
+            "Local servers run only in the sandbox, and it isn't on here: on Windows, switch it on in Settings → Sandbox.",
+        )?);
         let started = async {
             let (server_name, server_version, protocol) = client.initialize().await?;
             let tools = client.list_tools().await?;
@@ -992,6 +1138,32 @@ pub mod commands {
             old.stop().await;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod windows_line_tests {
+    use super::windows_command_line;
+
+    #[test]
+    fn quotes_what_cmd_would_split_and_turns_down_what_it_would_read() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            windows_command_line(
+                "npx",
+                &args(&["-y", "@modelcontextprotocol/server-everything"])
+            )
+            .unwrap(),
+            "npx -y @modelcontextprotocol/server-everything"
+        );
+        assert_eq!(
+            windows_command_line("C:\\Program Files\\x\\s.exe", &args(&["a&b", "", "k=v"]))
+                .unwrap(),
+            "\"C:\\Program Files\\x\\s.exe\" \"a&b\" \"\" \"k=v\""
+        );
+        for bad in ["%PATH%", "say \"hi\"", "x!", "a\nb"] {
+            assert!(windows_command_line("npx", &args(&[bad])).is_err(), "{bad}");
+        }
     }
 }
 

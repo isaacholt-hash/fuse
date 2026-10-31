@@ -62,12 +62,13 @@ use windows_sys::Win32::System::Threading::{
     TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
 };
 
-/// Which container: commands run in one, Python scripts in another (M9 step 6), each with its
-/// own identity and so its own folder permissions.
+/// Which container: commands run in one, Python scripts in another (M9 step 6), local MCP
+/// servers in a third, each with its own identity and so its own folder permissions.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Container {
     Commands,
     Python,
+    Mcp,
 }
 
 impl Container {
@@ -75,6 +76,7 @@ impl Container {
         match self {
             Container::Commands => "FUSE.Sandbox",
             Container::Python => "FUSE.Python",
+            Container::Mcp => "FUSE.MCP",
         }
     }
 
@@ -82,6 +84,7 @@ impl Container {
         match self {
             Container::Commands => ("FUSE sandbox", "Commands FUSE runs for you"),
             Container::Python => ("FUSE Python sandbox", "Python scripts FUSE runs for you"),
+            Container::Mcp => ("FUSE MCP sandbox", "MCP servers FUSE runs for you"),
         }
     }
 }
@@ -147,6 +150,16 @@ impl Drop for Handle {
             // SAFETY: this owns the handle and closes it once.
             unsafe { CloseHandle(self.0) };
         }
+    }
+}
+
+impl Handle {
+    /// A pipe end as a File, which owns and closes it from here on.
+    fn into_file(self) -> File {
+        let raw = self.0;
+        std::mem::forget(self);
+        // SAFETY: a handle this owned; nothing else closes it now.
+        unsafe { File::from_raw_handle(raw) }
     }
 }
 
@@ -381,13 +394,25 @@ pub struct Child {
     process: Handle,
     job: Arc<Handle>,
     output: Option<File>,
+    input: Option<File>,
+    errors: Option<File>,
 }
 
 impl Child {
-    /// Its stdout and stderr together, in the order written; ends when it and everything it
-    /// started have exited.
+    /// Its stdout and stderr together, in the order written (stdout alone when `piped`); ends
+    /// when it and everything it started have exited.
     pub fn take_output(&mut self) -> Option<File> {
         self.output.take()
+    }
+
+    /// With `piped`: its stdin. Dropping it closes the command's input.
+    pub fn take_input(&mut self) -> Option<File> {
+        self.input.take()
+    }
+
+    /// With `piped`: its stderr, on its own.
+    pub fn take_errors(&mut self) -> Option<File> {
+        self.errors.take()
     }
 
     pub fn killer(&self) -> Killer {
@@ -421,15 +446,26 @@ pub struct Spawn<'a> {
     pub env_set: &'a [(&'a str, &'a str)],
     /// M9 step 6: the most memory any one of its processes may commit.
     pub memory_bytes: Option<usize>,
+    /// Its own pipes for stdin, stdout and stderr (an MCP server talks on them), not NUL in and
+    /// one pipe out.
+    pub piped: bool,
+    /// When set, only these of FUSE's variables are passed on (before `env_set`), not all.
+    pub env_only: Option<&'a [&'a str]>,
 }
 
-/// The environment block: FUSE's own, less `remove`, plus `set`, with TEMP and TMP in the
-/// container's folder.
-fn environment(remove: &[&str], set: &[(&str, &str)], temp: &Path) -> Vec<u16> {
+/// The environment block: FUSE's own (or only `only` of it), less `remove`, plus `set`, with
+/// TEMP and TMP in the container's folder.
+fn environment(
+    remove: &[&str],
+    only: Option<&[&str]>,
+    set: &[(&str, &str)],
+    temp: &Path,
+) -> Vec<u16> {
     let mut vars: Vec<(String, String)> = std::env::vars_os()
         .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
         .filter(|(k, _)| {
-            !remove.iter().any(|r| r.eq_ignore_ascii_case(k))
+            only.is_none_or(|o| o.iter().any(|n| n.eq_ignore_ascii_case(k)))
+                && !remove.iter().any(|r| r.eq_ignore_ascii_case(k))
                 && !k.eq_ignore_ascii_case("TEMP")
                 && !k.eq_ignore_ascii_case("TMP")
                 && !set.iter().any(|(s, _)| s.eq_ignore_ascii_case(k))
@@ -497,30 +533,37 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
         Reserved: 0,
     };
 
-    // One pipe for stdout and stderr; FUSE keeps the read end. Input is NUL.
+    // One pipe for stdout and stderr; FUSE keeps the read end. Input is NUL. With `piped`,
+    // stderr has a pipe of its own and input is a pipe FUSE writes to.
     let sa = inheritable();
-    let (mut read, mut write): (HANDLE, HANDLE) = (null_mut(), null_mut());
-    // SAFETY: out pointers and inheritable attributes.
-    check(unsafe { CreatePipe(&mut read, &mut write, &sa, 0) })?;
-    let read = Handle(read);
-    let write = Handle(write);
-    // SAFETY: a handle this owns; the read end stays with FUSE.
-    check(unsafe { SetHandleInformation(read.0, HANDLE_FLAG_INHERIT, 0) })?;
-    // SAFETY: a valid path and inheritable attributes.
-    let nul = Handle(unsafe {
-        CreateFileW(
-            wide("NUL").as_ptr(),
-            GENERIC_READ,
-            FILE_SHARE_READ | FILE_SHARE_WRITE,
-            &sa,
-            OPEN_EXISTING,
-            0,
-            null_mut(),
-        )
-    });
-    if nul.0 == INVALID_HANDLE_VALUE {
-        return Err(io::Error::last_os_error());
-    }
+    let (read, write) = pipe(&sa, false)?;
+    let errors = if s.piped {
+        Some(pipe(&sa, false)?)
+    } else {
+        None
+    };
+    let (nul, input) = if s.piped {
+        let (child_end, fuse_end) = pipe(&sa, true)?;
+        (child_end, Some(fuse_end))
+    } else {
+        // SAFETY: a valid path and inheritable attributes.
+        let nul = Handle(unsafe {
+            CreateFileW(
+                wide("NUL").as_ptr(),
+                GENERIC_READ,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                &sa,
+                OPEN_EXISTING,
+                0,
+                null_mut(),
+            )
+        });
+        if nul.0 == INVALID_HANDLE_VALUE {
+            return Err(io::Error::last_os_error());
+        }
+        (nul, None)
+    };
+    let err_write = errors.as_ref().map_or(write.0, |(_, w)| w.0);
 
     // The attributes: the container, and exactly which handles it inherits.
     let mut size = 0usize;
@@ -538,7 +581,8 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
         }
     }
     let _list = List(list);
-    let handles = [write.0, nul.0];
+    let all = [write.0, nul.0, err_write];
+    let handles = if s.piped { &all[..] } else { &all[..2] };
     // SAFETY: `security` and `handles` outlive CreateProcessW below.
     check(unsafe {
         UpdateProcThreadAttribute(
@@ -558,7 +602,7 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
             0,
             PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
             handles.as_ptr().cast(),
-            size_of_val(&handles),
+            size_of_val(handles),
             null_mut(),
             null(),
         )
@@ -570,7 +614,7 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
     si.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
     si.StartupInfo.hStdInput = nul.0;
     si.StartupInfo.hStdOutput = write.0;
-    si.StartupInfo.hStdError = write.0;
+    si.StartupInfo.hStdError = err_write;
     si.lpAttributeList = list;
 
     // SAFETY: no attributes, no name.
@@ -600,7 +644,7 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
     let app = wide(&cmd);
     // /S: what follows /C is run as written, between the outer quotes.
     let mut line = wide(format!("\"{}\" /D /S /C \"{}\"", cmd.display(), s.command));
-    let env = environment(s.env_remove, s.env_set, &temp);
+    let env = environment(s.env_remove, s.env_only, s.env_set, &temp);
     let cwd = wide(plain(s.cwd));
     // SAFETY: zeroed, then filled by CreateProcessW.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
@@ -641,14 +685,30 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
     // FUSE's copy of the write end goes, so the output ends when the command's copies do.
     drop(write);
     drop(nul);
-    let raw = read.0;
-    std::mem::forget(read);
+    let errors = errors.map(|(read, write)| {
+        drop(write);
+        read.into_file()
+    });
     Ok(Child {
         process,
         job: Arc::new(job),
-        // SAFETY: the pipe's read end, owned from here on by the File.
-        output: Some(unsafe { File::from_raw_handle(raw) }),
+        output: Some(read.into_file()),
+        input: input.map(Handle::into_file),
+        errors,
     })
+}
+
+/// A pipe: (read end, write end). The end FUSE keeps (the write end when `fuse_writes`, else the
+/// read end) isn't inherited; the other is.
+fn pipe(sa: &SECURITY_ATTRIBUTES, fuse_writes: bool) -> io::Result<(Handle, Handle)> {
+    let (mut read, mut write): (HANDLE, HANDLE) = (null_mut(), null_mut());
+    // SAFETY: out pointers and inheritable attributes.
+    check(unsafe { CreatePipe(&mut read, &mut write, sa, 0) })?;
+    let (read, write) = (Handle(read), Handle(write));
+    let kept = if fuse_writes { write.0 } else { read.0 };
+    // SAFETY: a handle this owns.
+    check(unsafe { SetHandleInformation(kept, HANDLE_FLAG_INHERIT, 0) })?;
+    Ok((read, write))
 }
 
 #[cfg(test)]
@@ -680,6 +740,8 @@ mod tests {
             container: Container::Commands,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         })
         .unwrap();
         let mut out = String::new();
@@ -690,6 +752,63 @@ mod tests {
             .unwrap();
         let code = child.wait().unwrap();
         (out, code)
+    }
+
+    #[test]
+    fn piped_keeps_input_output_and_errors_apart() {
+        use std::io::Write;
+        let dir = fresh_dir("piped");
+        assert!(grant_to(Container::Mcp, &dir, WRITE).unwrap());
+        let mut child = spawn(&Spawn {
+            cwd: &dir,
+            command: "echo oops 1>&2 & findstr \"^\"",
+            network: false,
+            env_remove: &[],
+            container: Container::Mcp,
+            env_set: &[("FUSE_MCP_TEST", "1")],
+            memory_bytes: None,
+            piped: true,
+            env_only: Some(&["PATH", "SystemRoot"]),
+        })
+        .unwrap();
+        let mut input = child.take_input().unwrap();
+        input.write_all(b"hello\r\nworld\r\n").unwrap();
+        drop(input);
+        let mut out = String::new();
+        child
+            .take_output()
+            .unwrap()
+            .read_to_string(&mut out)
+            .unwrap();
+        let mut err = String::new();
+        child
+            .take_errors()
+            .unwrap()
+            .read_to_string(&mut err)
+            .unwrap();
+        assert_eq!(child.wait().unwrap(), 0);
+        assert_eq!(out.trim(), "hello\r\nworld");
+        assert_eq!(err.trim(), "oops");
+        revoke_from(Container::Mcp, &dir).unwrap();
+        let _ = remove_profile_of(Container::Mcp);
+    }
+
+    #[test]
+    fn env_only_passes_just_those_variables() {
+        let vars = environment(&[], Some(&["PATH"]), &[("X_SET", "1")], Path::new("C:\\t"));
+        let text = String::from_utf16_lossy(&vars);
+        let names: Vec<&str> = text
+            .split('\0')
+            .filter(|l| !l.is_empty())
+            .filter_map(|l| l.split('=').next())
+            .collect();
+        for n in &names {
+            assert!(
+                ["PATH", "Path", "X_SET", "TEMP", "TMP"].contains(n),
+                "unexpected {n}"
+            );
+        }
+        assert!(names.contains(&"X_SET"));
     }
 
     #[test]
@@ -790,6 +909,8 @@ mod tests {
             container: Container::Commands,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         })
         .unwrap();
         let mut output = child.take_output().unwrap();
@@ -821,6 +942,8 @@ mod tests {
             container: Container::Commands,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         })
         .unwrap();
         let mut out = String::new();
@@ -843,6 +966,8 @@ mod tests {
             container: Container::Python,
             env_set: vars,
             memory_bytes: Some(512 * 1024 * 1024),
+            piped: false,
+            env_only: None,
         })
         .unwrap();
         let mut out = String::new();
@@ -901,6 +1026,8 @@ mod tests {
             container: Container::Python,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         }) {
             let mut out = String::new();
             let _ = child.take_output().unwrap().read_to_string(&mut out);
@@ -923,6 +1050,8 @@ mod tests {
             container: Container::Commands,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         }) {
             let mut out = String::new();
             let _ = child.take_output().unwrap().read_to_string(&mut out);

@@ -384,6 +384,8 @@ pub async fn run(
             container: fuse_sandbox_win::Container::Commands,
             env_set: &[],
             memory_bytes: None,
+            piped: false,
+            env_only: None,
         });
         match spawned {
             Ok(child) => run_contained(child, started, timeout, stop, on).await,
@@ -610,6 +612,24 @@ fn grant_python(data: &Path, folder: &Path, runtime: &Path, work: &Path) -> Resu
     Ok(())
 }
 
+/// M9: lets the MCP container write a local server's own folder, recorded like the rest.
+#[cfg(windows)]
+pub(crate) fn grant_mcp(data: &Path, work: &Path) -> Result<(), String> {
+    use fuse_sandbox_win::{Container, WRITE, grant_to, plain};
+    let p = plain(work);
+    grant_to(Container::Mcp, &p, WRITE)
+        .map_err(|e| format!("Couldn't let the MCP sandbox use {}: {e}", p.display()))?;
+    let record = data.join(GRANTS_FILE);
+    let mut known = std::fs::read_to_string(&record).unwrap_or_default();
+    let line = p.to_string_lossy().into_owned();
+    if !known.lines().any(|l| l == line) {
+        known.push_str(&line);
+        known.push('\n');
+        std::fs::write(&record, &known).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Takes the sandbox's entries off every folder it was given and deletes the container.
 /// Returns how many folders were put back; a folder that's gone is skipped.
 #[cfg(windows)]
@@ -623,9 +643,10 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
         if !p.exists() {
             continue;
         }
-        // Both containers: commands', and Python's (M9 step 6).
+        // Every container: commands', Python's (M9 step 6) and MCP servers'.
         let python = fuse_sandbox_win::revoke_from(fuse_sandbox_win::Container::Python, p);
-        match fuse_sandbox_win::revoke(p).and(python) {
+        let mcp = fuse_sandbox_win::revoke_from(fuse_sandbox_win::Container::Mcp, p);
+        match fuse_sandbox_win::revoke(p).and(python).and(mcp) {
             Ok(()) => done += 1,
             Err(_) => {
                 left.push_str(line);
@@ -637,6 +658,7 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
         let _ = std::fs::remove_file(&record);
         let _ = fuse_sandbox_win::remove_profile();
         let _ = fuse_sandbox_win::remove_profile_of(fuse_sandbox_win::Container::Python);
+        let _ = fuse_sandbox_win::remove_profile_of(fuse_sandbox_win::Container::Mcp);
         Ok(done)
     } else {
         std::fs::write(&record, &left).map_err(|e| e.to_string())?;
@@ -841,6 +863,8 @@ pub mod commands {
                     container: fuse_sandbox_win::Container::Python,
                     env_set: &vars,
                     memory_bytes: Some(PYTHON_MEMORY_BYTES),
+                    piped: false,
+                    env_only: None,
                 });
                 let mut done = None;
                 match spawned {
