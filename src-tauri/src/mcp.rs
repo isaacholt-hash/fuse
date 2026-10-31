@@ -20,6 +20,8 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 /// The protocol version FUSE asks for; a server answers with the one it speaks.
 pub const PROTOCOL: &str = "2025-06-18";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// M9 step 9: a tool may take longer than the handshake.
+const CALL_TIMEOUT: Duration = Duration::from_secs(120);
 /// The longest message line kept from a server.
 const MAX_LINE: usize = 8 * 1024 * 1024;
 /// The most tool pages read from one server.
@@ -46,6 +48,90 @@ pub struct McpHealth {
     pub server_version: String,
     pub protocol: String,
     pub tools: Vec<McpTool>,
+}
+
+/// M9 step 9: one part of a tool's result.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpPart {
+    /// "text" or "image".
+    pub kind: String,
+    pub text: Option<String>,
+    pub mime: Option<String>,
+    /// An image's bytes, base64, as the server sent them.
+    pub data: Option<String>,
+}
+
+/// M9 step 9: what a tool call returned.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpCallResult {
+    pub parts: Vec<McpPart>,
+    /// The tool says it failed (`isError`), as opposed to the call failing.
+    pub is_error: bool,
+}
+
+/// A `tools/call` result as text and images. Embedded resources give their text; anything else
+/// is described, not dropped silently. With no content, the structured result as JSON.
+pub fn call_result(v: &Value) -> McpCallResult {
+    let mut parts = vec![];
+    for c in v
+        .get("content")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = c.get("type").and_then(Value::as_str).unwrap_or_default();
+        let s = |k: &str| c.get(k).and_then(Value::as_str).map(str::to_string);
+        match kind {
+            "text" => parts.push(McpPart {
+                kind: "text".into(),
+                text: s("text"),
+                mime: None,
+                data: None,
+            }),
+            "image" => parts.push(McpPart {
+                kind: "image".into(),
+                text: None,
+                mime: s("mimeType"),
+                data: s("data"),
+            }),
+            "resource" => {
+                let text = c
+                    .get("resource")
+                    .and_then(|r| r.get("text"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| "[a resource without text]".into());
+                parts.push(McpPart {
+                    kind: "text".into(),
+                    text: Some(text),
+                    mime: None,
+                    data: None,
+                });
+            }
+            other => parts.push(McpPart {
+                kind: "text".into(),
+                text: Some(format!("[{other} content FUSE doesn't show]")),
+                mime: None,
+                data: None,
+            }),
+        }
+    }
+    if parts.is_empty()
+        && let Some(sc) = v.get("structuredContent")
+    {
+        parts.push(McpPart {
+            kind: "text".into(),
+            text: Some(sc.to_string()),
+            mime: None,
+            data: None,
+        });
+    }
+    McpCallResult {
+        parts,
+        is_error: v.get("isError").and_then(Value::as_bool) == Some(true),
+    }
 }
 
 /// A tool from a `tools/list` entry; None when it has no name.
@@ -170,6 +256,32 @@ impl Client {
 
     /// One request, answered or failed within the time limit.
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_within(method, params, REQUEST_TIMEOUT).await
+    }
+
+    /// M9 step 9: a tool call, with the longer limit.
+    pub async fn call(&self, name: &str, arguments: Value) -> Result<McpCallResult, String> {
+        let r = self
+            .request_within(
+                "tools/call",
+                json!({ "name": name, "arguments": arguments }),
+                CALL_TIMEOUT,
+            )
+            .await?;
+        Ok(call_result(&r))
+    }
+
+    /// Whether its output has ended (it stopped or died).
+    pub fn ended(&self) -> bool {
+        self.closed.load(Ordering::SeqCst)
+    }
+
+    async fn request_within(
+        &self,
+        method: &str,
+        params: Value,
+        limit: Duration,
+    ) -> Result<Value, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         let (tx, rx) = oneshot::channel();
         self.pending
@@ -185,7 +297,7 @@ impl Client {
             }
             return Err("The server stopped.".into());
         }
-        match tokio::time::timeout(REQUEST_TIMEOUT, rx).await {
+        match tokio::time::timeout(limit, rx).await {
             Ok(Ok(r)) => r,
             Ok(Err(_)) => Err("The server stopped.".into()),
             Err(_) => {
@@ -194,7 +306,7 @@ impl Client {
                 }
                 Err(format!(
                     "The server didn't answer {method} within {} s.",
-                    REQUEST_TIMEOUT.as_secs()
+                    limit.as_secs()
                 ))
             }
         }
@@ -346,10 +458,10 @@ pub fn stdio_command(
     Some(c)
 }
 
-/// Running servers, by id.
+/// Running servers, by id, with what their handshake and tool list said.
 #[derive(Default)]
 pub struct McpServers {
-    running: Mutex<HashMap<String, Arc<Client>>>,
+    running: Mutex<HashMap<String, (Arc<Client>, McpHealth)>>,
 }
 
 pub mod commands {
@@ -359,23 +471,27 @@ pub mod commands {
     use sqlx::Row;
     use tauri::{AppHandle, Manager, State};
 
-    /// Starts the server (again, if it was running), does the handshake and lists its tools.
-    #[tauri::command]
-    pub async fn mcp_check(
-        app: AppHandle,
-        db: State<'_, Database>,
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
-        server_id: String,
-    ) -> Result<McpHealth, String> {
-        if let Some(old) = servers.running.lock().await.remove(&server_id) {
-            old.stop().await;
+    /// The running server, or a fresh start of it: handshake and tools. A server that died is
+    /// started again.
+    async fn ensure(
+        app: &AppHandle,
+        db: &Database,
+        keys: &Keys,
+        servers: &McpServers,
+        server_id: &str,
+    ) -> Result<(Arc<Client>, McpHealth), String> {
+        let mut running = servers.running.lock().await;
+        if let Some((client, health)) = running.get(server_id) {
+            if !client.ended() {
+                return Ok((client.clone(), health.clone()));
+            }
+            running.remove(server_id);
         }
         let row = sqlx::query(
             "SELECT transport, command, args, env_names, network FROM mcp_servers
              WHERE id = ? AND deleted_at IS NULL",
         )
-        .bind(&server_id)
+        .bind(server_id)
         .fetch_optional(&db.pool()?)
         .await
         .map_err(|e| format!("Couldn't read the server: {e}"))?
@@ -390,13 +506,13 @@ pub mod commands {
         let names: Vec<String> =
             serde_json::from_str(&row.get::<String, _>("env_names")).map_err(|e| e.to_string())?;
         let network = row.get::<i64, _>("network") == 1;
-        let env = crate::keys::mcp_env_for(&keys, &server_id, &names)?;
+        let env = crate::keys::mcp_env_for(keys, server_id, &names)?;
         let work = app
             .path()
             .app_data_dir()
             .map_err(|e| e.to_string())?
             .join("mcp")
-            .join(&server_id);
+            .join(server_id);
         std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
         #[cfg(target_os = "linux")]
         let cmd = stdio_command(&command, &args, &work, network, &env);
@@ -422,8 +538,8 @@ pub mod commands {
         .await;
         match started {
             Ok(health) => {
-                servers.running.lock().await.insert(server_id, client);
-                Ok(health)
+                running.insert(server_id.to_string(), (client.clone(), health.clone()));
+                Ok((client, health))
             }
             Err(e) => {
                 let more = client.stderr();
@@ -437,10 +553,55 @@ pub mod commands {
         }
     }
 
+    /// Starts the server again, does the handshake and lists its tools (Settings → Check).
+    #[tauri::command]
+    pub async fn mcp_check(
+        app: AppHandle,
+        db: State<'_, Database>,
+        keys: State<'_, Keys>,
+        servers: State<'_, McpServers>,
+        server_id: String,
+    ) -> Result<McpHealth, String> {
+        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
+            old.stop().await;
+        }
+        Ok(ensure(&app, &db, &keys, &servers, &server_id).await?.1)
+    }
+
+    /// M9 step 9: the server's tools, starting it if it isn't running.
+    #[tauri::command]
+    pub async fn mcp_tools(
+        app: AppHandle,
+        db: State<'_, Database>,
+        keys: State<'_, Keys>,
+        servers: State<'_, McpServers>,
+        server_id: String,
+    ) -> Result<Vec<McpTool>, String> {
+        Ok(ensure(&app, &db, &keys, &servers, &server_id)
+            .await?
+            .1
+            .tools)
+    }
+
+    /// M9 step 9: calls one of its tools.
+    #[tauri::command]
+    pub async fn mcp_call(
+        app: AppHandle,
+        db: State<'_, Database>,
+        keys: State<'_, Keys>,
+        servers: State<'_, McpServers>,
+        server_id: String,
+        name: String,
+        arguments: Value,
+    ) -> Result<McpCallResult, String> {
+        let (client, _) = ensure(&app, &db, &keys, &servers, &server_id).await?;
+        client.call(&name, arguments).await
+    }
+
     /// Stops a running server; nothing if it isn't.
     #[tauri::command]
     pub async fn mcp_stop(servers: State<'_, McpServers>, server_id: String) -> Result<(), String> {
-        if let Some(old) = servers.running.lock().await.remove(&server_id) {
+        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
             old.stop().await;
         }
         Ok(())
@@ -470,6 +631,11 @@ for line in sys.stdin:
                  {"type": "object"}, "annotations": {"readOnlyHint": True}}], "nextCursor": "p2"}
         else:
             r = {"tools": [{"name": "wipe", "annotations": {"destructiveHint": True}}, {"x": 1}]}
+    elif meth == "tools/call":
+        a = m["params"]["arguments"]
+        r = {"content": [{"type": "text", "text": "you said " + a.get("text", "")},
+                         {"type": "image", "data": "aGk=", "mimeType": "image/png"}],
+             "isError": a.get("text") == "fail"}
     else:
         print(json.dumps({"jsonrpc": "2.0", "id": m["id"], "error": {"code": -32601,
               "message": "no such method"}}), flush=True)
@@ -489,6 +655,23 @@ for line in sys.stdin:
         Path::new("/usr/bin/python3")
             .exists()
             .then_some("/usr/bin/python3")
+    }
+
+    #[test]
+    fn results_become_text_and_images() {
+        let r = call_result(&json!({ "content": [
+            { "type": "resource", "resource": { "uri": "x", "text": "inside" } },
+            { "type": "audio", "data": "…" },
+        ] }));
+        assert_eq!(
+            r.parts
+                .iter()
+                .map(|p| p.text.clone().unwrap_or_default())
+                .collect::<Vec<_>>(),
+            ["inside", "[audio content FUSE doesn't show]"]
+        );
+        let r = call_result(&json!({ "structuredContent": { "n": 3 } }));
+        assert_eq!(r.parts[0].text.as_deref(), Some(r#"{"n":3}"#));
     }
 
     #[test]
@@ -525,6 +708,24 @@ for line in sys.stdin:
                 .map(|t| (t.name.as_str(), t.read_only, t.destructive))
                 .collect::<Vec<_>>(),
             [("echo", true, None), ("wipe", false, Some(true))]
+        );
+        let r = client.call("echo", json!({ "text": "hi" })).await.unwrap();
+        assert!(!r.is_error);
+        assert_eq!(r.parts[0].text.as_deref(), Some("you said hi"));
+        assert_eq!(
+            (
+                r.parts[1].kind.as_str(),
+                r.parts[1].mime.as_deref(),
+                r.parts[1].data.as_deref()
+            ),
+            ("image", Some("image/png"), Some("aGk="))
+        );
+        assert!(
+            client
+                .call("echo", json!({ "text": "fail" }))
+                .await
+                .unwrap()
+                .is_error
         );
         let err = client
             .request("resources/list", json!({}))

@@ -16,9 +16,12 @@ export interface ProjectToolView {
 export interface ProjectToolsProps {
   tools: ProjectToolView[];
   onSwitch: (name: string, on: boolean) => void;
+  /** M9 step 9: the MCP servers from Settings, and whether this project uses each. */
+  servers?: { id: string; name: string; on: boolean }[];
+  onServer?: (id: string, on: boolean) => void;
 }
 
-export function ProjectToolsSection({ tools, onSwitch }: ProjectToolsProps) {
+export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: ProjectToolsProps) {
   const kinds = [...new Set(tools.map((t) => t.kind))];
   return (
     <section aria-label="Tools">
@@ -59,6 +62,27 @@ export function ProjectToolsSection({ tools, onSwitch }: ProjectToolsProps) {
             </ul>
           </fieldset>
         ))}
+        {servers && servers.length > 0 && onServer && (
+          <fieldset>
+            <legend className="text-[10px] text-muted-foreground uppercase">MCP servers</legend>
+            <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+              {servers.map((s) => (
+                <li key={s.id}>
+                  <label className="flex items-center gap-2 text-[11px]">
+                    <input
+                      type="checkbox"
+                      checked={s.on}
+                      onChange={(e) => {
+                        onServer(s.id, e.target.checked);
+                      }}
+                    />
+                    {s.name}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </fieldset>
+        )}
       </div>
     </section>
   );

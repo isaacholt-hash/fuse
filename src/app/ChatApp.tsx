@@ -20,7 +20,14 @@ import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { PythonRuntimeSection } from "@/ui/PythonRuntime";
 import { McpServersSection, type McpServerDraft, type McpServerView } from "@/ui/McpServers";
 import { joinCommand, splitCommand, type McpApi } from "@/mcp/api";
-import { addMcpServer, listMcpServers, removeMcpServer, setMcpServerNetwork } from "@/storage/mcp";
+import {
+  addMcpServer,
+  listMcpServers,
+  listProjectMcpServers,
+  removeMcpServer,
+  setMcpServerNetwork,
+  setProjectMcpServer,
+} from "@/storage/mcp";
 import {
   pythonPin,
   thisPlatform,
@@ -1107,6 +1114,8 @@ export function ChatApp({
   const [allowedCommands, setAllowedCommands] = useState<string[]>([]);
   // M9 step 1: tools the edited project switched off, for its settings.
   const [toolsOff, setToolsOff] = useState<Set<string>>(new Set());
+  // M9 step 9: the MCP servers the edited project uses.
+  const [projectServers, setProjectServers] = useState<Set<string>>(new Set());
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
@@ -2401,6 +2410,22 @@ export function ChatApp({
     })(),
     ...(execApi ? { exec: execApi } : {}),
     ...(gitApi ? { git: gitApi } : {}),
+    // M9 step 9: a project's MCP servers' tools.
+    ...(mcpApi?.tools && mcpApi.call
+      ? {
+          mcp: {
+            forProject: (pid: string) =>
+              listProjectMcpServers(db, tenant, pid).then((l) =>
+                l.map((s) => ({ id: s.id, name: s.name })),
+              ),
+            tools: (id: string) => mcpApi.tools?.(id) ?? Promise.resolve([]),
+            call: (id: string, name: string, args: Record<string, unknown>) =>
+              mcpApi.call
+                ? mcpApi.call(id, name, args)
+                : Promise.reject(new Error("MCP calls aren't available here.")),
+          },
+        }
+      : {}),
     // M9 step 6: run_python is offered once Python is installed (Settings).
     ...(pythonApi ? { pythonReady: () => pythonApi.status().then((r) => r !== null) } : {}),
     approve: (req: ApprovalRequest) =>
@@ -2473,6 +2498,9 @@ export function ChatApp({
     if (!projectDialog) return;
     listAllowedCommands(db, tenant, projectDialog).then(setAllowedCommands, report);
     projectToolsOff(db, tenant, projectDialog).then(setToolsOff, report);
+    listProjectMcpServers(db, tenant, projectDialog).then((l) => {
+      setProjectServers(new Set(l.map((s) => s.id)));
+    }, report);
   }, [db, tenant, projectDialog]);
   /**
    * A Claude project: found or made by name; its instructions fill an empty project's, and its
@@ -5052,6 +5080,19 @@ export function ChatApp({
                           switchProjectTool(db, tenant, editedProject.id, name, on)
                             .then(() => projectToolsOff(db, tenant, editedProject.id))
                             .then(setToolsOff)
+                            .catch(report);
+                        },
+                        servers: mcpServers.map((s) => ({
+                          id: s.id,
+                          name: s.name,
+                          on: projectServers.has(s.id),
+                        })),
+                        onServer: (id: string, on: boolean) => {
+                          setProjectMcpServer(db, tenant, editedProject.id, id, on)
+                            .then(() => listProjectMcpServers(db, tenant, editedProject.id))
+                            .then((l) => {
+                              setProjectServers(new Set(l.map((s) => s.id)));
+                            })
                             .catch(report);
                         },
                       },

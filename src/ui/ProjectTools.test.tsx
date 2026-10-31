@@ -34,3 +34,25 @@ test("tools are listed by kind, each with a switch; core ones stay on", async ()
     ["run_command", true],
   ]);
 });
+
+test("M9 step 9: the project's MCP servers, each with a switch", async () => {
+  const switched: [string, boolean][] = [];
+  render(
+    <ProjectToolsSection
+      tools={tools}
+      onSwitch={() => undefined}
+      servers={[
+        { id: "s1", name: "Notes", on: true },
+        { id: "s2", name: "GitHub", on: false },
+      ]}
+      onServer={(id, on) => {
+        switched.push([id, on]);
+      }}
+    />,
+  );
+  expect(screen.getByRole("group", { name: "MCP servers" })).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Notes" })).toBeChecked();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("checkbox", { name: "GitHub" }));
+  expect(switched).toEqual([["s2", true]]);
+});

@@ -140,3 +140,41 @@ export async function removeMcpServer(db: SqlDb, tenant: Tenant, id: string): Pr
     [now, now, tenant.workspaceId, id],
   );
 }
+
+/** M9 step 9: the servers a project switched on for its chats and runs. */
+export async function listProjectMcpServers(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+): Promise<McpServer[]> {
+  const rows = await db.select<Row>(
+    `SELECT s.id, s.name, s.transport, s.command, s.args, s.url, s.env_names, s.network
+     FROM project_mcp_servers p JOIN mcp_servers s ON s.id = p.server_id
+     WHERE p.workspace_id = ? AND p.project_id = ? AND s.deleted_at IS NULL
+     ORDER BY s.name COLLATE NOCASE`,
+    [tenant.workspaceId, projectId],
+  );
+  return rows.map(toServer);
+}
+
+export async function setProjectMcpServer(
+  db: SqlDb,
+  tenant: Tenant,
+  projectId: string,
+  serverId: string,
+  on: boolean,
+): Promise<void> {
+  if (!on) {
+    await db.execute(
+      "DELETE FROM project_mcp_servers WHERE workspace_id = ? AND project_id = ? AND server_id = ?",
+      [tenant.workspaceId, projectId, serverId],
+    );
+    return;
+  }
+  const now = Date.now();
+  await db.execute(
+    `INSERT OR IGNORE INTO project_mcp_servers (id, workspace_id, user_id, project_id, server_id,
+       created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+    [uuidv7(now), tenant.workspaceId, tenant.userId, projectId, serverId, now],
+  );
+}

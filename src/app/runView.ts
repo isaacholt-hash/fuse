@@ -49,8 +49,11 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Read ${path}`;
     case "search_files":
       return `Searched for “${str(input.query)}”${path ? ` in ${path}` : ""}`;
-    default:
-      return name;
+    default: {
+      // M9 step 9: mcp__<server>__<tool>.
+      const m = /^mcp__(.+?)__(.+)$/.exec(name);
+      return m ? `Used ${m[2] ?? ""} (${m[1] ?? ""})` : name;
+    }
   }
 }
 
@@ -112,6 +115,15 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   if (req.kind === "network") return { kind: "network", command: req.command };
   if (req.kind === "fetch") return { kind: "fetch", url: req.url, why: req.why };
+  if (req.kind === "mcp") {
+    return {
+      kind: "mcp",
+      server: req.server,
+      tool: req.tool,
+      input: req.input,
+      destructive: req.destructive,
+    };
+  }
   if (req.kind === "python") {
     return { kind: "python", script: req.script, keep: req.keep, network: req.network };
   }

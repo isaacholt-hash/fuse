@@ -21,7 +21,21 @@ export interface McpHealth {
   tools: McpTool[];
 }
 
+/** M9 step 9: what a tool call returned, as text and images (base64). */
+export interface McpCallResult {
+  parts: {
+    kind: "text" | "image";
+    text: string | null;
+    mime: string | null;
+    data: string | null;
+  }[];
+  isError: boolean;
+}
+
 export interface McpApi {
+  /** M9 step 9: its tools, starting it if it isn't running. */
+  tools?(serverId: string): Promise<McpTool[]>;
+  call?(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
   /** Starts the server (again), does the handshake and lists its tools. */
   check?(serverId: string): Promise<McpHealth>;
   stop?(serverId: string): Promise<void>;
@@ -36,6 +50,9 @@ export const tauriMcpApi: McpApi = {
   removeSecret: (serverId, name) => invoke("mcp_secret_delete", { serverId, name }),
   secretStatus: (serverId, names) => invoke<boolean[]>("mcp_secret_status", { serverId, names }),
   check: (serverId) => invoke<McpHealth>("mcp_check", { serverId }),
+  tools: (serverId) => invoke<McpTool[]>("mcp_tools", { serverId }),
+  call: (serverId, name, args) =>
+    invoke<McpCallResult>("mcp_call", { serverId, name, arguments: args }),
   stop: (serverId) => invoke("mcp_stop", { serverId }),
 };
 
