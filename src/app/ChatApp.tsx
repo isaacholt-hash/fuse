@@ -876,6 +876,9 @@ export function ChatApp({
   // RT-01: "next message only" is armed in the picker; the pick then goes here, not the chat.
   const [onceArmed, setOnceArmed] = useState(false);
   const [oneShot, setOneShot] = useState<RouteMode | null>(null);
+  // F6: a mode just picked for a saved chat, used until the chat list has reloaded with it. Without
+  // this, a message sent before the pin was saved and read back went out on the old mode.
+  const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
   const [view, setView] = useState<"chat" | "settings" | "usage">(
     import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
@@ -1400,7 +1403,11 @@ export function ChatApp({
   });
   const openThread = threads.find((t) => t.id === selectedId);
   /** Auto, a pinned tier, or a pinned model (RT-01): saved per chat. */
-  const savedMode: RouteMode = openThread ? modeOf(openThread) : draftMode;
+  const savedMode: RouteMode = openThread
+    ? pickedMode?.threadId === openThread.id
+      ? pickedMode.mode
+      : modeOf(openThread)
+    : draftMode;
   // RT-01: a pin for the next message only overrides the chat's mode, then clears.
   const mode: RouteMode = oneShot ?? savedMode;
   /** The chat keeps to its provider on a price tie (RT-06). */
@@ -1446,12 +1453,18 @@ export function ChatApp({
       setDraftMode(next);
       return;
     }
+    const picked = { threadId: openThread.id, mode: next };
+    setPickedMode(picked);
     setThreadPins(db, tenant, openThread.id, {
       tier: next.kind === "tier" ? next.tier : null,
       model: next.kind === "model" ? { provider: next.provider, id: next.id } : null,
     })
       .then(refreshThreads)
-      .catch(report);
+      .catch(report)
+      // A later pick keeps its own until its reload lands.
+      .finally(() => {
+        setPickedMode((p) => (p === picked ? null : p));
+      });
   };
   /** The model for one question under the current mode; null (with a message) if none can take it. */
   const routeFor = (
