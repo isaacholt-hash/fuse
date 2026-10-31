@@ -58,25 +58,20 @@ import {
   COMMAND_TOOL,
   commandOutput,
   EDIT_TOOL_NAMES,
-  EDIT_TOOLS,
   previewChange,
-  GIT_LOCAL_NAMES,
   GIT_READ_NAMES,
-  GIT_READ_TOOLS,
-  GIT_REMOTE_NAMES,
   GIT_WRITE_TOOLS,
   gitArgs,
   gitSummary,
   ORGANISE_TOOL,
-  READ_DOCUMENT_TOOL,
   checkMoves,
   type Move,
-  WRITE_DOCUMENT_TOOL,
-  READ_ONLY_TOOLS,
   readWhole,
   runTool,
   type FileChange,
 } from "./tools";
+import { kindOf, toolEntry, toolsIn } from "./registry";
+import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 
@@ -139,22 +134,16 @@ export function agentGuide(mode: RunMode, kind: RunKind = "code"): string {
 /** The read-only guide. */
 export const AGENT_GUIDE = agentGuide("plan");
 
-/** The run's tools: fixed for the whole run so the prompt cache holds. Work has no git (WF-01). */
-export const toolsFor = (mode: RunMode, kind: RunKind = "code") =>
-  kind === "work"
-    ? mode === "plan"
-      ? [...READ_ONLY_TOOLS, READ_DOCUMENT_TOOL]
-      : [
-          ...READ_ONLY_TOOLS,
-          READ_DOCUMENT_TOOL,
-          ...EDIT_TOOLS,
-          WRITE_DOCUMENT_TOOL,
-          ORGANISE_TOOL,
-          COMMAND_TOOL,
-        ]
-    : mode === "plan"
-      ? [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS]
-      : [...READ_ONLY_TOOLS, ...GIT_READ_TOOLS, ...EDIT_TOOLS, COMMAND_TOOL, ...GIT_WRITE_TOOLS];
+/**
+ * The run's tools, from the registry (M9 step 1): fixed for the whole run so the prompt cache
+ * holds. Work has no git (WF-01); a read-only run gets only the read ones; none the project
+ * switched off.
+ */
+export const toolsFor = (
+  mode: RunMode,
+  kind: RunKind = "code",
+  off: ReadonlySet<string> = new Set(),
+) => toolsIn(kind, { readOnly: mode === "plan", off });
 
 /**
  * The first argument of every file, command and git call: unused, since `forRun` scopes them to
@@ -448,6 +437,7 @@ async function work(
     }
     await withImages(deps, history, steps);
     const adapter = deps.adapterFor(model.provider);
+    const off = await projectToolsOff(db, tenant, run.projectId);
 
     const started = (deps.now ?? Date.now)();
     let text = "";
@@ -462,7 +452,7 @@ async function work(
           scope: scope(run),
           ...(system ? { system } : {}),
           maxOutputTokens: model.maxOutput,
-          tools: toolsFor(run.mode, run.kind),
+          tools: toolsFor(run.mode, run.kind, off),
         },
         input.signal,
       )) {
@@ -537,7 +527,7 @@ async function work(
     }
     // Every call gets a result, in call order (docs/providers.md, M6).
     for (const call of calls) {
-      const out = await handleCall(deps, run, call, input);
+      const out = await handleCall(deps, run, call, input, off);
       const kept = await keepImages(deps, run, out);
       const stepId = await addToolStep(db, tenant, runId, {
         call,
@@ -599,33 +589,32 @@ async function ask(
 const STOPPED: CallOutcome = { output: "Error: the run was stopped.", isError: true };
 
 /**
- * One tool call under the run's permission mode (CA-04): reads always go ahead; edits go ahead
- * in Auto-edit and ask in Ask; commands always ask unless always-allowed, and destructive ones
- * ask every time; a read-only run never edits or runs anything.
+ * One tool call under the run's permission mode (CA-04), going by the tool's kind (M9 step 1):
+ * reads always go ahead; edits go ahead in Auto-edit and ask in Ask; commands always ask unless
+ * always-allowed, and destructive ones ask every time; a read-only run only reads. A tool the run
+ * wasn't offered (another mode's, or one its project switched off) isn't run.
  */
 async function handleCall(
   deps: RunDeps,
   run: Run,
   call: ToolCall,
   input: Pick<RunInput, "signal" | "onProgress">,
+  off: ReadonlySet<string> = new Set(),
 ): Promise<CallOutcome> {
-  const isEdit = EDIT_TOOL_NAMES.has(call.name);
-  const isCommand = call.name === COMMAND_TOOL.name;
-  const isGit =
-    GIT_READ_NAMES.has(call.name) ||
-    GIT_LOCAL_NAMES.has(call.name) ||
-    GIT_REMOTE_NAMES.has(call.name);
-  if (
-    run.mode === "plan" &&
-    (isEdit || isCommand || GIT_LOCAL_NAMES.has(call.name) || GIT_REMOTE_NAMES.has(call.name))
-  ) {
+  const tool = toolEntry(call.name);
+  if (tool && !tool.places.includes(run.kind)) {
+    return { output: `Error: ${call.name} isn't available in this run.`, isError: true };
+  }
+  if (tool && tool.core !== true && off.has(call.name)) {
+    return { output: `Error: ${call.name} is switched off for this project.`, isError: true };
+  }
+  if (run.mode === "plan" && tool && tool.kind !== "read") {
     return { output: "Error: this run is read-only.", isError: true };
   }
-  if (isCommand) return runCommand(deps, run, call, input);
-  if (call.name === ORGANISE_TOOL.name) {
-    if (run.mode === "plan") return { output: "Error: this run is read-only.", isError: true };
-    return runOrganise(deps, run, call, input);
-  }
+  const isEdit = EDIT_TOOL_NAMES.has(call.name);
+  const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
+  if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
+  if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && run.mode === "ask") {
     const preview = await previewChange(deps.repo, HERE, call);
@@ -825,8 +814,11 @@ async function runGit(
   if (!deps.git) return { output: "Error: git isn't available here.", isError: true };
   const plan = gitArgs(call);
   if ("error" in plan) return { output: plan.error, isError: true };
-  const remote = GIT_REMOTE_NAMES.has(call.name);
-  const asks = remote || (GIT_LOCAL_NAMES.has(call.name) && run.mode === "ask");
+  // A push or pull request reaches someone else, so it always asks; a local branch or commit
+  // asks in Ask first.
+  const kind = kindOf(call.name);
+  const remote = kind === "send";
+  const asks = remote || (kind === "write" && run.mode === "ask");
   let approval: Approval = "auto";
   if (asks) {
     if (!deps.approve) {

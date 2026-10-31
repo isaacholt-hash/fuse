@@ -1,6 +1,8 @@
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
 import { allowNetwork, disallowNetwork, networkFolders } from "@/storage/network";
+import { projectToolsOff, switchProjectTool } from "@/storage/projectTools";
+import { KIND_LABEL, placesLabel, TOOLS } from "@/agent/registry";
 import { resolvePath } from "@/agent/folders";
 import { docKind, docxText, xlsxText } from "@/documents/read";
 import { getChange, listRunFolders } from "@/storage/runs";
@@ -997,6 +999,8 @@ export function ChatApp({
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   // CA-04: commands the edited project always allows, for its settings.
   const [allowedCommands, setAllowedCommands] = useState<string[]>([]);
+  // M9 step 1: tools the edited project switched off, for its settings.
+  const [toolsOff, setToolsOff] = useState<Set<string>>(new Set());
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
@@ -2360,6 +2364,7 @@ export function ChatApp({
   useEffect(() => {
     if (!projectDialog) return;
     listAllowedCommands(db, tenant, projectDialog).then(setAllowedCommands, report);
+    projectToolsOff(db, tenant, projectDialog).then(setToolsOff, report);
   }, [db, tenant, projectDialog]);
   /**
    * A Claude project: found or made by name; its instructions fill an empty project's, and its
@@ -4828,6 +4833,21 @@ export function ChatApp({
                   : {}),
                 ...(repoApi
                   ? {
+                      tools: {
+                        tools: TOOLS.map((t) => ({
+                          name: t.spec.name,
+                          kind: KIND_LABEL[t.kind],
+                          where: placesLabel(t.places),
+                          on: !toolsOff.has(t.spec.name),
+                          core: t.core === true,
+                        })),
+                        onSwitch: (name: string, on: boolean) => {
+                          switchProjectTool(db, tenant, editedProject.id, name, on)
+                            .then(() => projectToolsOff(db, tenant, editedProject.id))
+                            .then(setToolsOff)
+                            .catch(report);
+                        },
+                      },
                       repo: {
                         folders: (projectFolderMap[editedProject.id] ?? []).map((f) => ({
                           id: f.id,

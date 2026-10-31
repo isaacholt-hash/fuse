@@ -7,6 +7,8 @@ export interface AuditRowView {
   model: string;
   /** "Ran pnpm test", "Edited src/a.ts". */
   action: string;
+  /** M9 step 1: the tool's kind, "Reads", "Writes", …; empty for a tool FUSE no longer has. */
+  kind: string;
   /** "you", "always allowed", "needed nobody", "declined". */
   allowed: string;
   result: string;
@@ -49,7 +51,9 @@ export function AgentAuditSection({ rows }: { rows: AuditRowView[] }) {
                   <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">{r.when}</td>
                   <td className="min-w-48 px-2 py-1">
                     <span className="font-mono break-all">{r.action}</span>
-                    <span className="block text-[10px] text-muted-foreground">{r.project}</span>
+                    <span className="block text-[10px] text-muted-foreground">
+                      {r.kind ? `${r.kind} · ${r.project}` : r.project}
+                    </span>
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap">{r.allowed}</td>
                   <td

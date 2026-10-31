@@ -1,3 +1,4 @@
+import { ProjectToolsSection, type ProjectToolsProps } from "./ProjectTools";
 import { FileText, LoaderCircle, Paperclip, Trash2 } from "lucide-react";
 import { DecisionsSection, type DecisionsProps } from "./Decisions";
 import { TasksSection, type TasksProps } from "./Tasks";
@@ -167,8 +168,11 @@ export function ProjectDialog({
   tasks,
   privacy,
   repo,
+  tools,
   onExport,
 }: {
+  /** Only when editing: the tools its Code and Work runs may use (M9 step 1, AG-01). */
+  tools?: ProjectToolsProps;
   /** Only when editing: the folder the coding agent works in (CA-01). */
   repo?: ProjectRepoProps;
   /** Only when editing: saves this project as a FUSE export (PL-12); returns a line to show. */
@@ -331,6 +335,11 @@ export function ProjectDialog({
       {repo && (
         <div className="mt-4">
           <ProjectRepoSection {...repo} />
+        </div>
+      )}
+      {tools && (
+        <div className="mt-4">
+          <ProjectToolsSection {...tools} />
         </div>
       )}
       {privacy && (
