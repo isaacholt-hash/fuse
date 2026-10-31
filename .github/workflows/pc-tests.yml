@@ -21,7 +21,13 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
   issues: write
+
+# Windows PowerShell 5.1: every PC has it; PowerShell 7 isn't on Isaac's.
+defaults:
+  run:
+    shell: powershell
 
 jobs:
   pc:
@@ -44,29 +50,42 @@ jobs:
         with:
           node-version: lts/*
       - run: pnpm install --frozen-lockfile
+      # The test build from CI's run on the same commit, so this PC needs no Rust.
+      - name: Find CI's test build
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: ./scripts/pc/ci-run.ps1
+      - uses: actions/download-artifact@v8
+        with:
+          name: e2e-app
+          run-id: ${{ steps.ci.outputs.run }}
+          github-token: ${{ github.token }}
+          path: e2e-app
       - name: Click-through tests on this desktop
         id: e2e
         continue-on-error: true
         env:
-          VITE_E2E_FOLDER: C:\fuse-e2e
-          FUSE_E2E_APP: ${{ github.workspace }}\src-tauri\target\debug\fuse.exe
+          FUSE_E2E_APP: ${{ github.workspace }}\e2e-app\fuse.exe
           FUSE_E2E_FOLDER: C:\fuse-e2e
-        run: |
-          pnpm tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json
-          pnpm e2e
+        run: pnpm e2e
       - name: Update test
         id: update
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.update_test }}
         continue-on-error: true
-        shell: pwsh
         run: ./scripts/pc/update-test.ps1
       - name: Local model benchmark
         id: local
         continue-on-error: true
-        shell: pwsh
+        env:
+          FUSE_BIN: ${{ github.workspace }}\e2e-app\fuse.exe
         run: |
           if (Test-Path "$env:APPDATA\com.isaacholt.fuse\models\*.gguf") { pnpm local:bench }
-          else { "Local model benchmark skipped: no local model installed." | Tee-Object -Append $env:GITHUB_STEP_SUMMARY }
+          else {
+            Write-Host "Local model benchmark skipped: no local model installed."
+            [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "Local model benchmark skipped: no local model installed.`n")
+          }
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -75,16 +94,9 @@ jobs:
           if-no-files-found: ignore
       - name: Summary, and an issue if anything failed
         if: ${{ !cancelled() }}
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           E2E: ${{ steps.e2e.outcome }}
           UPDATE: ${{ steps.update.outcome }}
           LOCAL: ${{ steps.local.outcome }}
-        run: |
-          $rows = "| Check | Result |`n| --- | --- |`n| Click-through tests | $env:E2E |`n| Update test | $env:UPDATE |`n| Local model benchmark | $env:LOCAL |"
-          Add-Content $env:GITHUB_STEP_SUMMARY "`n$rows"
-          if ($env:E2E -eq "failure" -or $env:UPDATE -eq "failure" -or $env:LOCAL -eq "failure") {
-            $url = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
-            gh issue create --title "PC tests failed on $($env:GITHUB_SHA.Substring(0, 7))" --body "$rows`n`nRun: $url"
-          }
+        run: ./scripts/pc/summary.ps1

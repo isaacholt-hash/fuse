@@ -8,7 +8,7 @@ $summary = $env:GITHUB_STEP_SUMMARY
 
 function Say($line) {
   Write-Host $line
-  if ($summary) { Add-Content $summary $line }
+  if ($summary) { [IO.File]::AppendAllText($summary, "$line`n") }
 }
 
 # The click-through tests' build is fuse.exe too; only an installed FUSE counts as open.

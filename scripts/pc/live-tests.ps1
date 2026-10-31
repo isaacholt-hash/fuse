@@ -3,6 +3,8 @@
 # pass the secret scan, and only the result lines (pass or fail, turns, cost per model) are shown.
 $ErrorActionPreference = "Stop"
 $summary = $env:GITHUB_STEP_SUMMARY
+# pnpm writes UTF-8; Windows PowerShell would read it with the old console code page.
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
 
 # A key set with SetEnvironmentVariable(..., "User") reaches the runner once it restarts.
 foreach ($name in "FUSE_OPENAI_API_KEY", "FUSE_ANTHROPIC_API_KEY") {
@@ -19,8 +21,11 @@ $failed = $false
 $shown = @()
 foreach ($suite in "chat:live", "work:live") {
   $log = Join-Path $env:RUNNER_TEMP "$($suite -replace ':', '-').log"
+  # Windows PowerShell treats a program's stderr as an error when it's redirected, so not "Stop".
+  $ErrorActionPreference = "Continue"
   & pnpm $suite *> $log
   $ok = $LASTEXITCODE -eq 0
+  $ErrorActionPreference = "Stop"
   if (-not $ok) { $failed = $true }
   $text = Get-Content $log -Raw
   # The secret scan's pattern (scripts/secret-scan.sh), plus the keys themselves.
@@ -35,13 +40,15 @@ foreach ($suite in "chat:live", "work:live") {
     $failed = $true
     continue
   }
-  # The tables (provider, pass, turns, cost) and the PASSED / FAILED and gate lines.
+  # The tables (provider, pass, turns, cost) and the PASSED / FAILED and gate lines. The box
+  # characters are written as code points: Windows PowerShell reads this file as ANSI.
+  $box = "[" + [char]0x2502 + [char]0x250C + [char]0x2514 + [char]0x251C + "]"
   $lines = $text -split "`r?`n" | Where-Object {
-    $_ -match '[│┌└├]|^(PASSED|FAILED) |tasks passed|Tests +\d'
+    $_ -match $box -or $_ -match '^(PASSED|FAILED) |tasks passed|Tests +\d'
   }
   $shown += "## $($suite): $(if ($ok) { 'pass' } else { 'fail' })`n`n``````n$($lines -join "`n")`n``````"
 }
 $out = $shown -join "`n`n"
 Write-Host $out
-if ($summary) { Add-Content $summary $out }
+if ($summary) { [IO.File]::AppendAllText($summary, "$out`n") }
 if ($failed) { exit 1 }
