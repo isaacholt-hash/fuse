@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M8-work-in-folders.md`** — work only on what it lists (M0–M7 are built). Build steps start once Isaac approves the plan
+- **Current milestone: `docs/milestones/M9-tools-and-mcp.md`** — work only on what it lists (M0–M8 are built). Build steps start once Isaac approves the plan
 
 ## The 5 things that matter
 
