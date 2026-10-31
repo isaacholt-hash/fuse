@@ -79,10 +79,20 @@
     3. The same way, run `echo x> %USERPROFILE%\Documents\escape.txt`. It's denied, and no file appears there.
     4. The same way, run `curl.exe -sS -m 10 https://example.com`. It fails and asks about the network. Allow it for the chat: it runs again and succeeds.
     5. The same way, run `echo hidden>NUL && echo shown`. It prints "shown" (CI can't check this one: Windows Server denies the NUL device to every sandboxed app, Windows 10 and 11 don't).
-    6. The same way, run `ping -n 60 127.0.0.1` and press Stop. It ends at once. Task Manager shows no `PING.EXE` left.
+    6. The same way, run `for /l %i in (1,1,300000000) do @rem` (it keeps one core busy for about 100 s) and press Stop after a few seconds. It ends at once, and Task Manager shows no busy `cmd.exe` left. (`ping` can't be used: it doesn't run in the sandbox at all.)
     7. Settings → "Reset folder permissions". It says it put back 1 folder. The test folder's Properties → Security no longer lists the FUSE sandbox.
   - Also fixed: on Windows, commands started in `\\?\C:\…` (the form `canonicalize` gives), where cmd.exe can't start. They now get the plain path.
-  - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
+  - Known limits: programs installed under your user folder can't run in the sandbox, localhost can't be reached, a first grant on a large folder (with `node_modules`, say) takes a while, `ping` fails with "Unable to contact IP driver" (Windows doesn't let sandboxed apps send ICMP, even to localhost), and on Windows Server the NUL device is denied (so `>NUL` and Git fail there).
+  - **Result on Isaac's PC (2026-10-30, v0.1.126 and v0.1.127):** all 7 checks passed. It stays off by default until F2 lets you see each command's output, and after a few days of use in real chats.
+
+    | Check | Result |
+    | --- | --- |
+    | 2. write inside the folder | pass, after F1 (the first try went out as plain chat) |
+    | 3. write to Documents | pass: "Access is denied", exit 1 |
+    | 4. network | pass: blocked, asked, allowed for the chat, then "Example Domain" |
+    | 5. `>NUL` | pass: printed "shown", exit 0 |
+    | 6. Stop | pass: the card says Stopped and the audit log "[stopped by the user]". The first try used `ping`, which can't run in the sandbox |
+    | 7. reset | pass: "Put back 1 folder." |
 - [x] **10. Network per chat (WF-07).**
   - Sandboxed commands have **no network** unless the chat, or a folder of the run, was allowed it (migration 0045, `network_grants`).
   - When a sandboxed command fails with what looks like a network error (DNS or connect errors from common tools), the run asks: Allow for this chat, Allow for this folder, or No. Allowing runs it again, once. It's never allowed without asking.
@@ -125,6 +135,14 @@
 ## Fixes
 
 - [x] **F1. Work and Code stayed on for one message only in a new chat.** The switch, run mode and branch choice were kept under the draft. After the first message saved the chat, the next one went out as plain chat (found by Isaac running the step 9 checklist). They now carry over to the saved chat, as its folders already did. Also, an answer from a Code or Work run is marked as one in the history sent to the model, so a later answer without tools doesn't claim the run's changes never happened.
+
+- [ ] **F2. What the run card leaves out (found by Isaac running the step 9 checklist).**
+  - A "Ran …" row can't be opened, so the command's output, exit code and sandbox line can't be seen. Open it to show them.
+  - A failed command's red text repeats the command ("$ …"). Show its first line of output instead.
+  - "Always allow in this project" is offered in a chat with no project, where it can't be kept. Show it only in a project.
+  - The model isn't told which shell commands run in, and guessed bash on Windows. The command tool now names it.
+  - Settings → Coding agent activity squeezes the What column to a few letters.
+  - The Windows CI test for Stop used `ping`, which exits at once in the sandbox, so it never checked that a running command was killed. It now kills a busy loop and checks it was still running.
 
 ## Notes
 
