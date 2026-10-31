@@ -30,15 +30,52 @@ export class Session {
     socket.addEventListener("message", (e) => {
       const msg = JSON.parse(String(e.data)) as {
         id?: number;
+        method?: string;
+        params?: {
+          type?: string;
+          args?: { value?: unknown; description?: string }[];
+          exceptionDetails?: { text: string; exception?: { description?: string } };
+        };
         result?: unknown;
         error?: { message: string };
       };
-      if (msg.id === undefined) return;
+      if (msg.id === undefined) {
+        this.note(msg.method, msg.params);
+        return;
+      }
       const w = this.waiting.get(msg.id);
       this.waiting.delete(msg.id);
       if (msg.error) w?.fail(new Error(msg.error.message));
       else w?.ok(msg.result);
     });
+  }
+
+  /** The page's console and uncaught errors, with times, for e2e/screenshots/console.log. */
+  readonly console: string[] = [];
+  private readonly started = Date.now();
+
+  private note(
+    method: string | undefined,
+    params:
+      | {
+          type?: string;
+          args?: { value?: unknown; description?: string }[];
+          exceptionDetails?: { text: string; exception?: { description?: string } };
+        }
+      | undefined,
+  ) {
+    const at = `${((Date.now() - this.started) / 1000).toFixed(1)}s`;
+    if (method === "Runtime.consoleAPICalled") {
+      const text = (params?.args ?? [])
+        .map((a) =>
+          typeof a.value === "string" ? a.value : (a.description ?? JSON.stringify(a.value)),
+        )
+        .join(" ");
+      this.console.push(`${at} ${params?.type ?? "log"}: ${text}`);
+    } else if (method === "Runtime.exceptionThrown") {
+      const d = params?.exceptionDetails;
+      this.console.push(`${at} uncaught: ${d?.exception?.description ?? d?.text ?? "?"}`);
+    }
   }
 
   /** Starts the app and attaches to its window's page. */
@@ -63,6 +100,7 @@ export class Session {
       });
     });
     const session = new Session(app, socket);
+    await session.send("Runtime.enable");
     // A runner's window may sit behind others; keep the page running as if it had focus.
     await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     await session.send("Page.bringToFront");

@@ -71,7 +71,12 @@ const scriptedFetch: FetchLike = (url, init) => {
     );
   }
   if (!url.endsWith("/v1/messages")) return Promise.resolve(new Response("{}", { status: 404 }));
-  const turn = scriptedTurn(JSON.parse(init.body ?? "{}") as Body);
+  const body = JSON.parse(init.body ?? "{}") as Body;
+  const turn = scriptedTurn(body);
+  // For e2e/screenshots/console.log: which request got which turn, when.
+  console.info(
+    `e2e request ${String(turns + 1)}: ${String(body.messages.length)} messages, ${body.tools?.length ? "tools" : "no tools"} -> ${turn.calls?.length ? "tool call" : "text"}`,
+  );
   return Promise.resolve(
     new Response(anthropicTurn(turn, ++turns), {
       status: 200,

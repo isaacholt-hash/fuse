@@ -1,7 +1,7 @@
 // M8 step 14: FUSE driven like a person would use it, over WebView2's DevTools port, on the test build
 // (scripted models, fake keys and update; src/e2e/deps.ts). Run by CI on Windows: see
 // e2e/README.md. Each step leaves a screenshot in e2e/screenshots/.
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, version } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test } from "vitest";
@@ -59,6 +59,7 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(() => {
+  writeFileSync(join(SHOTS, "console.log"), app.console.join("\n"));
   app.quit();
 });
 
