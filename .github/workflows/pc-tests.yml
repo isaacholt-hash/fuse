@@ -69,6 +69,8 @@ jobs:
         env:
           FUSE_E2E_APP: ${{ github.workspace }}\e2e-app\fuse.exe
           FUSE_E2E_FOLDER: C:\fuse-e2e
+          # M9 step 6: install Python and run a script in the Windows sandbox (this PC only).
+          FUSE_E2E_PYTHON: "1"
         run: pnpm e2e
       - name: Update test
         id: update
