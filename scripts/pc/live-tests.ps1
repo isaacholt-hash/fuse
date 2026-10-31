@@ -40,9 +40,11 @@ foreach ($suite in "chat:live", "work:live") {
     $failed = $true
     continue
   }
-  # The tables (provider, pass, turns, cost) and the PASSED / FAILED and gate lines.
+  # The tables (provider, pass, turns, cost) and the PASSED / FAILED and gate lines. The box
+  # characters are written as code points: Windows PowerShell reads this file as ANSI.
+  $box = "[" + [char]0x2502 + [char]0x250C + [char]0x2514 + [char]0x251C + "]"
   $lines = $text -split "`r?`n" | Where-Object {
-    $_ -match '[│┌└├]|^(PASSED|FAILED) |tasks passed|Tests +\d'
+    $_ -match $box -or $_ -match '^(PASSED|FAILED) |tasks passed|Tests +\d'
   }
   $shown += "## $($suite): $(if ($ok) { 'pass' } else { 'fail' })`n`n``````n$($lines -join "`n")`n``````"
 }
