@@ -25,6 +25,25 @@ const CHECKS: Record<string, string> = {
 
 export const HELLO = "Hello from the FUSE test script.";
 
+/**
+ * M9 step 6: "E2E python" runs this in the Work run's folder (the test writes data.csv). It
+ * charts and totals the CSV, keeps the summary, and tries to write the folder, which it can't.
+ */
+const PYTHON_SCRIPT = [
+  "import os, pandas as pd, matplotlib.pyplot as plt",
+  'out = os.environ["FUSE_OUT"]',
+  'df = pd.read_csv("data.csv")',
+  'print("total", int(df.total.sum()))',
+  'df.plot.bar(x="region", y="total")',
+  'plt.savefig(os.path.join(out, "chart.png"))',
+  'df.to_csv(os.path.join(out, "summary.csv"), index=False)',
+  "try:",
+  '    open("sneaky.txt", "w").write("x")',
+  '    print("folder writable")',
+  "except OSError as e:",
+  '    print("folder read-only:", type(e).__name__)',
+].join("\n");
+
 interface Block {
   type: string;
   text?: string;
@@ -32,7 +51,7 @@ interface Block {
 }
 interface Body {
   messages: { role: string; content: string | Block[] }[];
-  tools?: unknown[];
+  tools?: { name?: string }[];
 }
 
 const blocks = (c: string | Block[]): Block[] =>
@@ -45,6 +64,27 @@ export function scriptedTurn(body: Body): Turn {
   const last = body.messages.at(-1);
   const result = last ? blocks(last.content).find((b) => b.type === "tool_result") : undefined;
   if (result) return { text: `Command result:\n\n${resultText(result)}` };
+  const lastAsked = body.messages
+    .flatMap((m) => (m.role === "user" ? blocks(m.content) : []))
+    .map((b) => b.text ?? "")
+    .findLast((t) => t.includes("E2E "));
+  if (lastAsked?.includes("E2E python")) {
+    if (!body.tools?.some((t) => t.name === "run_python")) {
+      return { text: "run_python wasn't offered." };
+    }
+    return {
+      calls: [
+        {
+          name: "run_python",
+          input: {
+            script: PYTHON_SCRIPT,
+            keep: [{ from: "summary.csv", to: "py-summary.csv" }],
+            timeout_seconds: null,
+          },
+        },
+      ],
+    };
+  }
   const asked = body.messages
     .flatMap((m) => (m.role === "user" ? blocks(m.content) : []))
     .map((b) => b.text ?? "")

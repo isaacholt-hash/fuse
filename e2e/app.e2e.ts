@@ -13,6 +13,8 @@ const SHOTS = join(import.meta.dirname, "screenshots");
 const HELLO = "Hello from the FUSE test script.";
 // Windows Server (GitHub's runners) denies the NUL device to sandboxed apps; 10 and 11 don't.
 const SERVER = /Server/i.test(version());
+/** M9 step 6: the Python check, on Isaac's PC only (it installs Python, a 47 MB download). */
+const PYTHON = process.env.FUSE_E2E_PYTHON === "1";
 
 let app: Session;
 let shot = 0;
@@ -42,6 +44,8 @@ async function nextAnswer(before: number): Promise<string> {
     const all = await answers();
     const last = all.at(before);
     if (last?.includes("Command result:") || last?.includes(HELLO)) return last;
+    // M9 step 6: the scripted model says so when run_python isn't offered.
+    if (last?.includes("wasn't offered")) return last;
     if (Date.now() > until) throw new Error(`No new answer; the page has ${String(all.length)}`);
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -187,3 +191,46 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     expect(out).toContain("exit code 0");
   });
 }, 300_000);
+
+test.skipIf(!PYTHON)(
+  "M9 step 6: Python installs, then a Work run's script runs in the Windows sandbox",
+  async () => {
+    for (const f of ["py-summary.csv", "sneaky.txt"]) rmSync(join(FOLDER, f), { force: true });
+    writeFileSync(join(FOLDER, "data.csv"), "region,total\nnorth,12\nsouth,30\n");
+    await step("python-install", async () => {
+      await app.chord(",");
+      await app.find('//section[@aria-label="Python for data work"]');
+      await app.run(
+        'document.querySelector(\'[aria-label="Python for data work"]\').scrollIntoView({ block: "center" }); return true;',
+      );
+      await app.click(
+        '//section[@aria-label="Python for data work"]//button[normalize-space()="Install"]',
+      );
+      // The download, then the libraries from PyPI.
+      await app.sees("is installed", 600_000);
+      await app.chord(",");
+      await app.find(composer);
+    });
+    await step("python-run", async () => {
+      await app.chord("n");
+      await app.click(button("Add a folder"));
+      await app.sees("fuse-e2e");
+      await app.click(button("Work run"));
+      await app.type(composer, "E2E python");
+      await app.press("Enter");
+      await app.click(
+        '//*[@aria-label="Run this Python script?"]//button[normalize-space()="Allow"]',
+        60_000,
+      );
+      const out = await nextAnswer(0);
+      expect(out).toContain("total 42");
+      expect(out).toContain("folder read-only: PermissionError");
+      expect(out).toContain("[sandboxed, network off]");
+      expect(out).toMatch(/chart\.png \(\d+ KB, shown\)/);
+      expect(out).toContain("Created py-summary.csv");
+      expect(readFileSync(join(FOLDER, "py-summary.csv"), "utf8")).toContain("south,30");
+      expect(existsSync(join(FOLDER, "sneaky.txt"))).toBe(false);
+    });
+  },
+  900_000,
+);
