@@ -99,7 +99,7 @@ test.skipIf(!LIVE)(
       const model = modelFor(provider);
       if (!model) throw new Error(`No ${provider} model found in data/models.json`);
       const adapter = adapterFor(provider);
-      for (const task of loadWorkTasks()) {
+      for (const task of loadWorkTasks().filter((w) => !w.requires)) {
         const dir = freshFolder();
         try {
           const { run, asked, db, t } = await workRun(adapter, model, dir, task.task);

@@ -109,6 +109,8 @@ function workGuide(mode: RunMode): string {
       : [
           "You can list, read and search files, create and change text files with write_file and edit_file, make Word, Excel and PDF files with write_document, rename and move one file with move_file or reorganise many with organise (one plan the user approves), delete them with delete_file, and run commands with run_command. The user approves each command and may decline.",
           "Do what was asked and nothing more. Prefer writing a new file over overwriting one the user made; never delete a file unless asked to.",
+          // M9 step 7 (FK-08): numbers from Python, not from the model's head.
+          "When run_python is among your tools, use it for anything numeric in spreadsheets and CSVs (totals, averages, counts, joins, comparisons) and for charts, rather than working numbers out yourself; say the numbers came from it. Save a chart or table the user should see with keep, so it appears in their folder with a preview.",
           mode === "ask"
             ? "The user approves each change before it happens, and may decline; if they do, take that into account. End with what you made or changed (each file and why)."
             : "End with what you made or changed (each file and why). The user sees every change and can undo it.",

@@ -41,7 +41,9 @@ export type Check =
   | { kind: "no_loose_files"; path: string }
   | { kind: "same_files"; path: string }
   // Checked by the benchmark itself, from the run's approvals.
-  | { kind: "one_organise_plan" };
+  | { kind: "one_organise_plan" }
+  // M9 step 7: checked by the benchmark itself, from the run's steps.
+  | { kind: "used_tool"; tool: string };
 
 export interface BenchTask {
   id: string;
@@ -89,6 +91,8 @@ export function freshFolder(): string {
 export interface WorkTask {
   id: string;
   task: string;
+  /** M9 step 7: "python" when the task needs FUSE's Python. */
+  requires?: "python";
   checks: Check[];
 }
 
@@ -258,6 +262,52 @@ export function nodeExec(dir: string): ExecApi {
   };
 }
 
+/**
+ * M9 step 7: run_python for the recorded benchmark, with the system python3 (standard library
+ * only) in `dir`, FUSE_OUT a fresh folder, and the files it wrote brought back. Not sandboxed:
+ * that's tested in src-tauri/src/exec.rs and on the PCs, not here.
+ */
+export function nodePython(dir: string): NonNullable<ExecApi["python"]> {
+  return (_p, script, { timeoutSecs }) =>
+    new Promise((done) => {
+      const started = Date.now();
+      const work = mkdtempSync(join(tmpdir(), "fuse-bench-py-"));
+      const out = join(work, "out");
+      mkdirSync(out);
+      const file = join(work, "script.py");
+      writeFileSync(file, script);
+      const child = spawn("python3", ["-I", file], {
+        cwd: dir,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { PATH: process.env.PATH ?? "", FUSE_OUT: out },
+      });
+      let output = "";
+      child.stdout.on("data", (b: Buffer) => (output += b.toString()));
+      child.stderr.on("data", (b: Buffer) => (output += b.toString()));
+      const timer = setTimeout(() => child.kill("SIGKILL"), (timeoutSecs ?? 120) * 1000);
+      child.on("close", (code) => {
+        clearTimeout(timer);
+        const files = readdirSync(out, { recursive: true, withFileTypes: true })
+          .filter((e) => e.isFile())
+          .map((e) => {
+            const path = join(e.parentPath, e.name);
+            return { path: relative(out, path).split(sep).join("/"), bytes: readFileSync(path) };
+          });
+        rmSync(work, { recursive: true, force: true });
+        done({
+          output,
+          exitCode: code,
+          timedOut: false,
+          stopped: false,
+          truncated: false,
+          elapsedMs: Date.now() - started,
+          files: files.map((f) => ({ path: f.path, bytes: new Uint8Array(f.bytes) })),
+          skipped: [],
+        });
+      });
+    });
+}
+
 /** git with an argument list; gh isn't there in the benchmark (no network). */
 export function nodeGit(dir: string): GitApi {
   return {
@@ -353,6 +403,7 @@ export function failedChecks(dir: string, checks: Check[]): string[] {
           fails.push(`${c.path} now holds ${now.join(", ")} (was ${before.join(", ")})`);
         break;
       }
+      case "used_tool":
       case "one_organise_plan":
         break;
     }

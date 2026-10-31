@@ -13,7 +13,14 @@ import { grantFolder } from "@/storage/folders";
 import { listSteps } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { startRun, type ApprovalRequest, type RunDeps } from "./run";
-import { dropRepo, failedChecks, freshFolder, loadWorkTasks, nodeRepo } from "./testing/bench";
+import {
+  dropRepo,
+  failedChecks,
+  freshFolder,
+  loadWorkTasks,
+  nodePython,
+  nodeRepo,
+} from "./testing/bench";
 import { anthropicTurn, openaiTurn, type Turn } from "./testing/turns";
 
 const block = (kind: string, text: string | null, rows: string[][] | null = null) => ({
@@ -121,6 +128,29 @@ const SCRIPTS: Record<string, Turn[]> = {
     },
     { text: "Sorted the 8 files into Invoices and receipts, Images and Notes." },
   ],
+  "python-total": [
+    {
+      text: "1. Total units times price with run_python.\n2. Keep the total.",
+      calls: [
+        {
+          name: "run_python",
+          input: {
+            script: [
+              "import csv, os",
+              'units = {r["product"]: int(r["units"]) for r in csv.DictReader(open("data/units.csv"))}',
+              'prices = {r["product"]: float(r["price"]) for r in csv.DictReader(open("data/prices.csv"))}',
+              "total = sum(units[p] * prices[p] for p in units)",
+              "print(total)",
+              'open(os.path.join(os.environ["FUSE_OUT"], "total.txt"), "w").write(f"{total:g}\\n")',
+            ].join("\n"),
+            keep: [{ from: "total.txt", to: "revenue-total.txt" }],
+            timeout_seconds: null,
+          },
+        },
+      ],
+    },
+    { text: "Total revenue is 7550, worked out with Python; it's in revenue-total.txt." },
+  ],
 };
 
 const catalog = parseCatalog({
@@ -165,6 +195,13 @@ describe.each(["anthropic", "openai"] as ProviderId[])("%s", (provider) => {
           catalog,
           adapterFor: () => adapter,
           repo: nodeRepo(dir),
+          // M9 step 7: the Python task's run_python (system python3; see nodePython).
+          exec: {
+            run: () => Promise.reject(new Error("no commands in this benchmark")),
+            sandboxKind: () => Promise.resolve("bubblewrap"),
+            python: nodePython(dir),
+          },
+          pythonReady: () => Promise.resolve(true),
           approve: (req) => {
             asked.push(req);
             return Promise.resolve(true);
@@ -186,6 +223,15 @@ describe.each(["anthropic", "openai"] as ProviderId[])("%s", (provider) => {
         expect(failedChecks(dir, task.checks)).toEqual([]);
         if (task.checks.some((c) => c.kind === "one_organise_plan")) {
           expect(asked.map((a) => a.kind)).toEqual(["organise"]);
+        }
+        const steps = await listSteps(db, t, run.id);
+        for (const c of task.checks) {
+          if (c.kind === "used_tool") {
+            expect(
+              steps.some((s) => s.kind === "tool" && s.call.name === c.tool),
+              c.tool,
+            ).toBe(true);
+          }
         }
         expect(f.sent).toHaveLength(turns.length);
         const failed = (await listSteps(db, t, run.id)).flatMap((s) =>
