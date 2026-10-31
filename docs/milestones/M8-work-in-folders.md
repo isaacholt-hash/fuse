@@ -129,7 +129,15 @@
     | anthropic/claude-sonnet-5-5 | pass, 4 turns | pass, 3 turns | pass, 3 turns | $0.064 |
     | openai/gpt-6.1-sol | pass, 4 turns | pass, 5 turns | pass, 4 turns | $0.027 |
 
-    None of the tasks reads a picture. Since F3, `pnpm work:live` also runs a second test: each model reads `data/work/image/gate.png` through read_file and writes the code it shows into a file. The code can't be guessed, so a pass means the image reached the model. Not yet run live.
+    None of the tasks reads a picture. Since F3, `pnpm work:live` also runs a second test: each model reads `data/work/image/gate.png` through read_file and writes the code it shows into a file. The code can't be guessed, so a pass means the image reached the model.
+  - **Live image result (2026-10-31, Isaac on HULK):** both providers passed, each using list_files, read_document and write_file, with the image in 1 tool result.
+
+    | Model | Result | Cost |
+    | --- | --- | --- |
+    | anthropic/claude-sonnet-5-5 | pass | $0.0137 |
+    | openai/gpt-6.1-sol | pass | $0.0026 |
+
+    The first try ran before #145, when the test had no image store, so no image was sent. Even so, OpenAI wrote the right code, and how it did that wasn't recorded.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
 ## Fixes
@@ -144,7 +152,7 @@
   - Settings → Coding agent activity squeezes the What column to a few letters.
   - The Windows CI test for Stop used `ping`, which exits at once in the sandbox, so it never checked that a running command was killed. It now kills a busy loop and checks it was still running.
 
-- [x] **F3. The Windows sandbox on by default, and a live check of images in tool results (Isaac, 2026-10-31).**
+- [x] **F3. The Windows sandbox on by default, and a live check of images in tool results (Isaac, 2026-10-31).** Both providers pass the image check (step 13).
   - The sandbox is on unless it was switched off in Settings. A saved "off" stays off; Isaac's saved "on" is kept. The "(testing)" label is gone.
   - `pnpm work:live` has a second test, "images in tool results": a Work run on a folder with only `gate.png`, a picture of the code HERON-4172. It passes when `code.txt` holds the code and a tool result carried the image.
 
