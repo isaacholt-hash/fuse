@@ -57,6 +57,8 @@ import { destructiveReason } from "./destructive";
 import {
   COMMAND_TOOL,
   commandOutput,
+  FETCH_URL_TOOL,
+  pageOutput,
   EDIT_TOOL_NAMES,
   previewChange,
   GIT_READ_NAMES,
@@ -72,6 +74,8 @@ import {
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { projectToolsOff } from "@/storage/projectTools";
+import type { WebApi } from "@/web/api";
+import { readable } from "@/web/readable";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 
@@ -159,6 +163,8 @@ export interface RunDeps extends ChatDeps {
   exec?: ExecApi;
   /** git and gh (CA-05); without it, the git tools are refused. */
   git?: GitApi;
+  /** Reads public web pages (M9 step 2); without it, fetch_url isn't offered. */
+  web?: WebApi;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
@@ -402,11 +408,8 @@ async function work(
       break;
     }
     // SE-13: the project's egress policy, read fresh each turn, before anything is built or sent.
-    const refused = egressRefusal(
-      await projectPolicy(db, tenant, run.projectId),
-      model.provider,
-      "chat",
-    );
+    const policy = await projectPolicy(db, tenant, run.projectId);
+    const refused = egressRefusal(policy, model.provider, "chat");
     if (refused) {
       await setRunStatus(db, tenant, runId, "error", refused);
       break;
@@ -438,6 +441,9 @@ async function work(
     await withImages(deps, history, steps);
     const adapter = deps.adapterFor(model.provider);
     const off = await projectToolsOff(db, tenant, run.projectId);
+    // A Local only project sends nothing out, not even an address to read.
+    const offered =
+      deps.web && policy.mode !== "local_only" ? off : new Set([...off, FETCH_URL_TOOL.name]);
 
     const started = (deps.now ?? Date.now)();
     let text = "";
@@ -452,7 +458,7 @@ async function work(
           scope: scope(run),
           ...(system ? { system } : {}),
           maxOutputTokens: model.maxOutput,
-          tools: toolsFor(run.mode, run.kind, off),
+          tools: toolsFor(run.mode, run.kind, offered),
         },
         input.signal,
       )) {
@@ -589,6 +595,42 @@ async function ask(
 const STOPPED: CallOutcome = { output: "Error: the run was stopped.", isError: true };
 
 /**
+ * M9 step 2: reads a public web page. Rust refuses local and private addresses, after DNS and on
+ * every redirect, and caps the size and time (FK-06). It's a read, so it doesn't ask.
+ */
+async function runFetch(deps: RunDeps, run: Run, call: ToolCall): Promise<CallOutcome> {
+  if (!deps.web) return { output: "Error: web pages can't be read here.", isError: true };
+  const policy = await projectPolicy(deps.db, deps.tenant, run.projectId);
+  if (policy.mode === "local_only") {
+    return {
+      output: "Error: this project is Local only, so FUSE doesn't read web pages for it.",
+      isError: true,
+    };
+  }
+  const url = typeof call.input.url === "string" ? call.input.url.trim() : "";
+  if (!url) return { output: "Error: give the page's address as url.", isError: true };
+  try {
+    const page = await deps.web.fetch(url);
+    const r = readable(page.body, page.contentType, page.url);
+    if (!r.text) return { output: `Error: ${page.url} has no readable text.`, isError: true };
+    return {
+      output: pageOutput({
+        url: page.url,
+        title: r.title,
+        text: r.text,
+        truncated: page.truncated,
+      }),
+      isError: false,
+    };
+  } catch (e) {
+    return {
+      output: `Error: couldn't read ${url}: ${e instanceof Error ? e.message : String(e)}`,
+      isError: true,
+    };
+  }
+}
+
+/**
  * One tool call under the run's permission mode (CA-04), going by the tool's kind (M9 step 1):
  * reads always go ahead; edits go ahead in Auto-edit and ask in Ask; commands always ask unless
  * always-allowed, and destructive ones ask every time; a read-only run only reads. A tool the run
@@ -614,6 +656,7 @@ async function handleCall(
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
+  if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
   if (isEdit && run.mode === "ask") {

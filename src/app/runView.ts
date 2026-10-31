@@ -23,6 +23,8 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Moved ${str(input.from)} → ${str(input.to)}`;
     case "run_command":
       return `Ran ${str(input.command)}`;
+    case "fetch_url":
+      return `Read ${str(input.url)}`;
     case "git_status":
       return "Checked git status";
     case "git_diff":
