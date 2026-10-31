@@ -1101,14 +1101,18 @@ export function ChatApp({
     [db, tenant],
   );
   /** Reloads a thread's messages if it's still the one on screen. */
+  // F5: reloads can overlap (one starts on an answer's first words, another when it ends), and
+  // only the newest may show: an older one landing last would put the answer back to streaming.
+  const reloads = useRef(0);
   const reload = useCallback(
     async (threadId: string) => {
+      const ticket = ++reloads.current;
       const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
         await loadThread(threadId);
       const runs: Awaited<ReturnType<typeof runsForThread>> = repoApi
         ? await runsForThread(db, tenant, threadId)
         : new Map<string, never>();
-      if (selectedRef.current === threadId) {
+      if (selectedRef.current === threadId && ticket === reloads.current) {
         setThreadRuns(
           new Map(
             [...runs].map(([id, r]) => [
