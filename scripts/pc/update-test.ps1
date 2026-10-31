@@ -26,17 +26,21 @@ $previous = $withSetup[1]
 $old = $previous.tag_name.TrimStart("v")
 Say "Update test: $old to $newest"
 
-$asset = $previous.assets | Where-Object { $_.name -like "*_x64-setup.exe" } | Select-Object -First 1
-$setup = Join-Path $env:RUNNER_TEMP $asset.name
-Invoke-WebRequest $asset.browser_download_url -OutFile $setup
-Start-Process $setup -ArgumentList "/S" -Wait
-
 function Installed {
   $keys = Get-ChildItem "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall", "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall" -ErrorAction SilentlyContinue
   $fuse = $keys | Get-ItemProperty | Where-Object { $_.DisplayName -eq "FUSE" } | Select-Object -First 1
   if (-not $fuse) { throw "FUSE isn't installed." }
   return $fuse
 }
+function Setup($release) {
+  $asset = $release.assets | Where-Object { $_.name -like "*_x64-setup.exe" } | Select-Object -First 1
+  $path = Join-Path $env:RUNNER_TEMP $asset.name
+  Invoke-WebRequest $asset.browser_download_url -OutFile $path
+  return $path
+}
+Start-Process (Setup $previous) -ArgumentList "/S" -Wait
+$exe = $null
+try {
 $entry = Installed
 if ($entry.DisplayVersion -ne $old) { throw "Installed $($entry.DisplayVersion), not $old." }
 # Tauri's installer records where it put FUSE; older entries only have the icon's path.
@@ -51,7 +55,19 @@ $byName = New-Object System.Windows.Automation.PropertyCondition ([System.Window
 $restart = $null
 $until = (Get-Date).AddMinutes(5)
 while (-not $restart) {
-  if ((Get-Date) -gt $until) { throw "No ""Restart now"" button within 5 minutes." }
+  if ((Get-Date) -gt $until) {
+    # What UI Automation could see, to tell "no update bar" from "can't reach the WebView".
+    $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe }).Count
+    $titles = $root.FindAll([System.Windows.Automation.TreeScope]::Children, [System.Windows.Automation.Condition]::TrueCondition) |
+      ForEach-Object { $_.Current.Name } | Where-Object { $_ }
+    Say "FUSE processes running: $running. Windows: $($titles -join ' | ')"
+    if ($window) {
+      $isButton = New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button)
+      $names = $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $isButton) | ForEach-Object { $_.Current.Name } | Select-Object -First 40
+      Say "Buttons in the FUSE window: $($names -join ' | ')"
+    }
+    throw "No ""Restart now"" button within 5 minutes."
+  }
   Start-Sleep -Seconds 3
   $window = $root.FindFirst([System.Windows.Automation.TreeScope]::Children, (New-Object System.Windows.Automation.PropertyCondition ([System.Windows.Automation.AutomationElement]::NameProperty, "FUSE")))
   if ($window) { $restart = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $byName) }
@@ -71,3 +87,11 @@ for (;;) {
 $version = (Get-Item $exe).VersionInfo.ProductVersion
 Say "Update test passed: FUSE $newest is installed and running (exe version $version)."
 Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process
+} finally {
+  # Pass or fail, Isaac's FUSE ends on the newest release and isn't left running.
+  if ($exe) { Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $exe } | Stop-Process -Force }
+  if ((Installed).DisplayVersion -ne $newest) {
+    Say "Putting FUSE $newest back."
+    Start-Process (Setup $withSetup[0]) -ArgumentList "/S" -Wait
+  }
+}
