@@ -214,6 +214,12 @@ test("a declined script doesn't run", async () => {
   });
 });
 
+test("Windows' AppContainer counts as a sandbox for it", async () => {
+  const { ran, r } = await setup({ sandbox: "app_container" });
+  expect(r.status).toBe("done");
+  expect(ran).toHaveLength(1);
+});
+
 test("it isn't offered without Python, without the sandbox, or in a Code run, and doesn't run if called", async () => {
   for (const opts of [{ ready: false }, { sandbox: "none" as const }, { kind: "code" as const }]) {
     const { db, tools, ran, asked, r } = await setup(opts);

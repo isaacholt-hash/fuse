@@ -7,6 +7,10 @@
 //!
 //! The folder permissions stay until `revoke` takes them off (Settings → "Reset folder
 //! permissions"), and `remove_profile` deletes the container itself.
+//!
+//! M9 step 6: Python scripts run in a second container of their own, so a folder commands may
+//! write stays read-only to Python: it gets read access to the folder, read-and-run access to the
+//! Python runtime, and write access only to its work folder. Its job also caps memory.
 #![cfg(windows)]
 
 use std::ffi::{OsStr, c_void};
@@ -45,8 +49,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
-    SetInformationJobObject, TerminateJobObject,
+    JOB_OBJECT_LIMIT_PROCESS_MEMORY, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
 };
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
@@ -58,10 +62,36 @@ use windows_sys::Win32::System::Threading::{
     TerminateProcess, UpdateProcThreadAttribute, WaitForSingleObject,
 };
 
-/// The container every sandboxed command runs in.
-const PROFILE: &str = "FUSE.Sandbox";
+/// Which container: commands run in one, Python scripts in another (M9 step 6), each with its
+/// own identity and so its own folder permissions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Container {
+    Commands,
+    Python,
+}
+
+impl Container {
+    fn profile(self) -> &'static str {
+        match self {
+            Container::Commands => "FUSE.Sandbox",
+            Container::Python => "FUSE.Python",
+        }
+    }
+
+    fn describe(self) -> (&'static str, &'static str) {
+        match self {
+            Container::Commands => ("FUSE sandbox", "Commands FUSE runs for you"),
+            Container::Python => ("FUSE Python sandbox", "Python scripts FUSE runs for you"),
+        }
+    }
+}
+
 /// What a granted folder allows: read, write, run and delete, but not changing its permissions.
 const ACCESS: u32 = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE | DELETE;
+/// M9 step 6: write access, as commands get on the chat's folders.
+pub const WRITE: u32 = ACCESS;
+/// M9 step 6: read and run, nothing else: Python's access to the folder and the runtime.
+pub const READ: u32 = FILE_GENERIC_READ | FILE_GENERIC_EXECUTE;
 /// An ACE's flag for "inherited from the parent", not set on the folder itself.
 const INHERITED_ACE: u8 = 0x10;
 const ACCESS_ALLOWED_ACE_TYPE: u8 = 0;
@@ -132,15 +162,16 @@ impl Drop for Sid {
 }
 
 /// The container, made the first time.
-fn container() -> io::Result<Sid> {
-    let name = wide(PROFILE);
+fn container(c: Container) -> io::Result<Sid> {
+    let name = wide(c.profile());
+    let (label, about) = c.describe();
     let mut sid: PSID = null_mut();
     // SAFETY: valid strings, no capabilities, and an out pointer for the SID.
     let made = unsafe {
         CreateAppContainerProfile(
             name.as_ptr(),
-            wide("FUSE sandbox").as_ptr(),
-            wide("Commands FUSE runs for you").as_ptr(),
+            wide(label).as_ptr(),
+            wide(about).as_ptr(),
             null(),
             0,
             &mut sid,
@@ -158,7 +189,7 @@ fn container() -> io::Result<Sid> {
 
 /// Whether commands can run in the container here (it can be made, or already exists).
 pub fn available() -> bool {
-    container().is_ok()
+    container(Container::Commands).is_ok()
 }
 
 /// The container's own folder (its TEMP), which only it and you can write.
@@ -214,8 +245,8 @@ fn dacl(path: &[u16]) -> io::Result<Dacl> {
     Ok(Dacl { sd, acl })
 }
 
-/// Whether `path` itself has the container's write entry (not just one inherited).
-fn granted(path: &[u16], sid: &Sid) -> io::Result<bool> {
+/// Whether `path` itself has the container's entry with `access` (not just one inherited).
+fn granted(path: &[u16], sid: &Sid, access: u32) -> io::Result<bool> {
     let d = dacl(path)?;
     if d.acl.is_null() {
         return Ok(false);
@@ -250,7 +281,7 @@ fn granted(path: &[u16], sid: &Sid) -> io::Result<bool> {
             let ace_sid = (&allowed.SidStart as *const u32)
                 .cast_mut()
                 .cast::<c_void>();
-            if EqualSid(ace_sid, sid.0) != 0 && allowed.Mask & ACCESS == ACCESS {
+            if EqualSid(ace_sid, sid.0) != 0 && allowed.Mask & access == access {
                 return Ok(true);
             }
         }
@@ -258,10 +289,10 @@ fn granted(path: &[u16], sid: &Sid) -> io::Result<bool> {
     Ok(false)
 }
 
-fn set_entry(path: &[u16], sid: &Sid, mode: i32) -> io::Result<()> {
+fn set_entry(path: &[u16], sid: &Sid, mode: i32, access: u32) -> io::Result<()> {
     let d = dacl(path)?;
     let entry = EXPLICIT_ACCESS_W {
-        grfAccessPermissions: ACCESS,
+        grfAccessPermissions: access,
         grfAccessMode: mode,
         grfInheritance: SUB_CONTAINERS_AND_OBJECTS_INHERIT,
         Trustee: TRUSTEE_W {
@@ -296,26 +327,42 @@ fn set_entry(path: &[u16], sid: &Sid, mode: i32) -> io::Result<()> {
 /// anything (false when the folder already had it). On a large folder the first grant takes a
 /// while: Windows writes the entry onto every file inside.
 pub fn grant(path: &Path) -> io::Result<bool> {
-    let sid = container()?;
+    grant_to(Container::Commands, path, WRITE)
+}
+
+/// M9 step 6: gives container `c` `access` (`READ` or `WRITE`) to `path` and everything inside.
+/// Returns whether it changed anything.
+pub fn grant_to(c: Container, path: &Path, access: u32) -> io::Result<bool> {
+    let sid = container(c)?;
     let p = wide(plain(path));
-    if granted(&p, &sid)? {
+    if granted(&p, &sid, access)? {
         return Ok(false);
     }
-    set_entry(&p, &sid, GRANT_ACCESS)?;
+    set_entry(&p, &sid, GRANT_ACCESS, access)?;
     Ok(true)
 }
 
-/// Takes the container's entries off `path` (and so off everything inside it).
+/// Takes the commands container's entries off `path` (and so off everything inside it).
 pub fn revoke(path: &Path) -> io::Result<()> {
-    let sid = container()?;
-    set_entry(&wide(plain(path)), &sid, REVOKE_ACCESS)
+    revoke_from(Container::Commands, path)
 }
 
-/// Deletes the container and its own folder. Revoke folders first: their entries would stay,
-/// naming a container that no longer exists.
+/// Takes container `c`'s entries off `path`; harmless where it had none.
+pub fn revoke_from(c: Container, path: &Path) -> io::Result<()> {
+    let sid = container(c)?;
+    set_entry(&wide(plain(path)), &sid, REVOKE_ACCESS, ACCESS)
+}
+
+/// Deletes the commands container and its own folder. Revoke folders first: their entries
+/// would stay, naming a container that no longer exists.
 pub fn remove_profile() -> io::Result<()> {
+    remove_profile_of(Container::Commands)
+}
+
+/// Deletes container `c` and its own folder.
+pub fn remove_profile_of(c: Container) -> io::Result<()> {
     // SAFETY: a valid string.
-    hr(unsafe { DeleteAppContainerProfile(wide(PROFILE).as_ptr()) })
+    hr(unsafe { DeleteAppContainerProfile(wide(c.profile()).as_ptr()) })
 }
 
 /// Ends a sandboxed command and everything it started.
@@ -368,18 +415,30 @@ pub struct Spawn<'a> {
     pub network: bool,
     /// Variables not passed on (provider keys).
     pub env_remove: &'a [&'a str],
+    /// M9 step 6: which container it runs in.
+    pub container: Container,
+    /// M9 step 6: variables set for it (`FUSE_OUT` for Python).
+    pub env_set: &'a [(&'a str, &'a str)],
+    /// M9 step 6: the most memory any one of its processes may commit.
+    pub memory_bytes: Option<usize>,
 }
 
-/// The environment block: FUSE's own, less `remove`, with TEMP and TMP in the container's folder.
-fn environment(remove: &[&str], temp: &Path) -> Vec<u16> {
+/// The environment block: FUSE's own, less `remove`, plus `set`, with TEMP and TMP in the
+/// container's folder.
+fn environment(remove: &[&str], set: &[(&str, &str)], temp: &Path) -> Vec<u16> {
     let mut vars: Vec<(String, String)> = std::env::vars_os()
         .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
         .filter(|(k, _)| {
             !remove.iter().any(|r| r.eq_ignore_ascii_case(k))
                 && !k.eq_ignore_ascii_case("TEMP")
                 && !k.eq_ignore_ascii_case("TMP")
+                && !set.iter().any(|(s, _)| s.eq_ignore_ascii_case(k))
         })
         .collect();
+    vars.extend(
+        set.iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+    );
     let temp = temp.to_string_lossy().into_owned();
     vars.push(("TEMP".into(), temp.clone()));
     vars.push(("TMP".into(), temp));
@@ -403,7 +462,7 @@ fn inheritable() -> SECURITY_ATTRIBUTES {
 
 /// Starts `cmd.exe /D /S /C <command>` in the container, inside a new job object.
 pub fn spawn(s: &Spawn) -> io::Result<Child> {
-    let sid = container()?;
+    let sid = container(s.container)?;
     let temp = container_folder(&sid)?;
 
     // The network capabilities, only when allowed. Without them the container has no network.
@@ -522,6 +581,10 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
     // SAFETY: plain data, zeroed, then the one flag set.
     let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    if let Some(bytes) = s.memory_bytes {
+        limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+        limits.ProcessMemoryLimit = bytes;
+    }
     // SAFETY: the job from above and a struct of the size given.
     check(unsafe {
         SetInformationJobObject(
@@ -537,7 +600,7 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
     let app = wide(&cmd);
     // /S: what follows /C is run as written, between the outer quotes.
     let mut line = wide(format!("\"{}\" /D /S /C \"{}\"", cmd.display(), s.command));
-    let env = environment(s.env_remove, &temp);
+    let env = environment(s.env_remove, s.env_set, &temp);
     let cwd = wide(plain(s.cwd));
     // SAFETY: zeroed, then filled by CreateProcessW.
     let mut pi: PROCESS_INFORMATION = unsafe { std::mem::zeroed() };
@@ -614,6 +677,9 @@ mod tests {
             command,
             network,
             env_remove: &[],
+            container: Container::Commands,
+            env_set: &[],
+            memory_bytes: None,
         })
         .unwrap();
         let mut out = String::new();
@@ -721,6 +787,9 @@ mod tests {
             command: "echo started& start /b cmd /d /c \"for /l %i in (1,1,2000000000) do @rem\" & for /l %j in (1,1,2000000000) do @rem",
             network: false,
             env_remove: &[],
+            container: Container::Commands,
+            env_set: &[],
+            memory_bytes: None,
         })
         .unwrap();
         let mut output = child.take_output().unwrap();
@@ -749,6 +818,9 @@ mod tests {
             command: "echo key=%FUSE_TEST_SECRET% & exit 3",
             network: false,
             env_remove: &["FUSE_TEST_SECRET"],
+            container: Container::Commands,
+            env_set: &[],
+            memory_bytes: None,
         })
         .unwrap();
         let mut out = String::new();
@@ -759,6 +831,82 @@ mod tests {
             .unwrap();
         assert_eq!(child.wait().unwrap(), 3);
         assert!(out.contains("key=%FUSE_TEST_SECRET%"), "{out}");
+    }
+
+    /// Runs `command` in the Python container in `dir`, with `vars` set.
+    fn run_python_box(dir: &Path, command: &str, vars: &[(&str, &str)]) -> (String, u32) {
+        let mut child = spawn(&Spawn {
+            cwd: dir,
+            command,
+            network: false,
+            env_remove: &[],
+            container: Container::Python,
+            env_set: vars,
+            memory_bytes: Some(512 * 1024 * 1024),
+        })
+        .unwrap();
+        let mut out = String::new();
+        child
+            .take_output()
+            .unwrap()
+            .read_to_string(&mut out)
+            .unwrap();
+        let code = child.wait().unwrap();
+        (out, code)
+    }
+
+    #[test]
+    fn python_reads_a_folder_commands_may_write_but_writes_only_its_own() {
+        let folder = fresh_dir("py-folder");
+        std::fs::write(folder.join("data.csv"), "x\r\n1\r\n").unwrap();
+        let work = fresh_dir("py-work");
+        // Commands may write the folder; that doesn't let Python.
+        grant(&folder).unwrap();
+        assert!(grant_to(Container::Python, &folder, READ).unwrap());
+        assert!(
+            !grant_to(Container::Python, &folder, READ).unwrap(),
+            "a second grant changes nothing"
+        );
+        grant_to(Container::Python, &work, WRITE).unwrap();
+        let out_dir = work.to_string_lossy().into_owned();
+        let (out, _) = run_python_box(
+            &folder,
+            "type data.csv & echo x> sneaky.txt & echo made> \"%FUSE_OUT%\\made.txt\" & echo out=%FUSE_OUT%",
+            &[("FUSE_OUT", &out_dir)],
+        );
+        assert!(out.contains('1'), "{out}");
+        assert!(out.contains(&format!("out={out_dir}")), "{out}");
+        assert!(!folder.join("sneaky.txt").exists(), "{out}");
+        assert_eq!(
+            std::fs::read_to_string(work.join("made.txt"))
+                .unwrap()
+                .trim(),
+            "made"
+        );
+        revoke_from(Container::Python, &folder).unwrap();
+        revoke_from(Container::Python, &work).unwrap();
+        revoke(&folder).unwrap();
+    }
+
+    #[test]
+    fn python_container_has_no_access_without_a_grant() {
+        let folder = fresh_dir("py-none");
+        std::fs::write(folder.join("secret.txt"), "hidden").unwrap();
+        // It may not even start there, which is as good.
+        if let Ok(mut child) = spawn(&Spawn {
+            cwd: &folder,
+            command: "type secret.txt",
+            network: false,
+            env_remove: &[],
+            container: Container::Python,
+            env_set: &[],
+            memory_bytes: None,
+        }) {
+            let mut out = String::new();
+            let _ = child.take_output().unwrap().read_to_string(&mut out);
+            let _ = child.wait();
+            assert!(!out.contains("hidden"), "{out}");
+        }
     }
 
     #[test]
@@ -772,6 +920,9 @@ mod tests {
             command: "echo x> after.txt",
             network: false,
             env_remove: &[],
+            container: Container::Commands,
+            env_set: &[],
+            memory_bytes: None,
         }) {
             let mut out = String::new();
             let _ = child.take_output().unwrap().read_to_string(&mut out);
