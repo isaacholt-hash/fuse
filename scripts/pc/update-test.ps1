@@ -18,6 +18,16 @@ if ($open) {
   exit 0
 }
 
+# UI Automation only sees windows on the desktop it runs on: the runner must be in Isaac's own
+# logged-in session (where Explorer runs), not started apart from it.
+$mine = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+$desktop = @(Get-Process -Name "explorer" -ErrorAction SilentlyContinue | ForEach-Object { $_.SessionId } | Select-Object -Unique)
+Say "Runner session $mine; desktop session(s) $($desktop -join ', '); interactive: $([Environment]::UserInteractive)"
+if ($desktop -notcontains $mine) {
+  Say "Update test skipped: the runner isn't running on your desktop, so it can't see FUSE's window. See docs/windows-test-runner.md, step 4 (the task must run only when you're logged on)."
+  exit 0
+}
+
 # A locked PC shows the lock screen on its own desktop, so UI Automation can't see FUSE's window.
 if (Get-Process -Name "LogonUI" -ErrorAction SilentlyContinue) {
   Say "Update test skipped: the PC was locked, so its windows can't be reached. Run the workflow again while you're logged in."
