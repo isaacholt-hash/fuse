@@ -232,6 +232,7 @@ export function SettingsView({
   modelDefaults,
   keyCaps,
   local,
+  python,
   quickCapture,
   data,
   appLock,
@@ -277,6 +278,8 @@ export function SettingsView({
   keyCaps?: ReactNode;
   /** Settings → Local model (M7, LL-03). */
   local?: ReactNode;
+  /** M9 step 5: the Python runtime for data work. */
+  python?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -361,6 +364,7 @@ export function SettingsView({
         {keyCaps}
         {models}
         {local}
+        {python}
         {prices}
         {appLock}
         {quickCapture}

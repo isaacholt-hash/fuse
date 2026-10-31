@@ -1,4 +1,5 @@
 import { tauriLocalApi, type LocalApi } from "@/local/api";
+import { tauriPythonApi, type PythonApi } from "@/python/runtime";
 import { createLocalAdapter } from "@/providers/local/adapter";
 import { tauriLocalBackend } from "@/providers/local/tauri";
 import { localModels } from "@/local/models";
@@ -77,6 +78,8 @@ interface Props {
   backups?: BackupsApi;
   /** The local model: hardware, install, run (M7). */
   local?: LocalApi;
+  /** The Python runtime for data work (M9 step 5). */
+  python?: PythonApi;
   quickCapture?: QuickCaptureApi;
   /** Sets the webview zoom for the text size (PL-10). */
   zoom?: ZoomApi;
@@ -105,6 +108,7 @@ export default function App({
   git = tauriGit,
   backups = tauriBackupsApi,
   local = tauriLocalApi,
+  python = tauriPythonApi,
   quickCapture = tauriQuickCapture,
   zoom = tauriZoom,
   hello = tauriHello,
@@ -172,6 +176,7 @@ export default function App({
       gitApi={git}
       backups={backups}
       localApi={local}
+      pythonApi={python}
       quickCapture={quickCapture}
       zoom={zoom}
       hello={hello}
