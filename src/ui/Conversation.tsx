@@ -28,11 +28,12 @@ import {
   FolderOpen,
   FolderPlus,
   Columns2,
+  Ellipsis,
   FolderTree,
   SquareTerminal,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { fuzzyScore } from "./fuzzy";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
@@ -1097,6 +1098,194 @@ export function Composer({
   const filtered = models.filter((item) =>
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
   );
+  // F4: the row never overflows. When it would, run mode, New branch, Think and Compare move into
+  // "More". It goes back to one row once there's room for everything (`needed`), and measures
+  // again whenever what the row holds changes.
+  const row = useRef<HTMLDivElement>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const needed = useRef(0);
+  const holds = [
+    folders.map((f) => f.id).join(","),
+    code,
+    work,
+    codeMode,
+    Boolean(compare && compare.options.length >= 2),
+    modeLabel ?? model.name,
+    preview,
+  ].join("|");
+  const [measuredFor, setMeasuredFor] = useState(holds);
+  if (measuredFor !== holds) {
+    setMeasuredFor(holds);
+    setCollapsed(false);
+  }
+  useLayoutEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const fit = () => {
+      if (!collapsed && el.scrollWidth > el.clientWidth + 1) {
+        needed.current = el.scrollWidth;
+        setCollapsed(true);
+      } else if (collapsed && el.clientWidth >= needed.current) {
+        setCollapsed(false);
+      }
+    };
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => {
+      watch.disconnect();
+    };
+  });
+  const showMode = Boolean(onToggleCode && (code || work) && onCodeMode);
+  const showBranch = Boolean(onToggleCode && code && onCodeBranch && codeMode !== "plan");
+  const showCompare = Boolean(compare && compare.options.length >= 2);
+  const compareList = compare && (
+    <>
+      <span className="mb-1 text-[11px] text-muted-foreground">
+        Pick two or three; the next message goes to each.
+      </span>
+      {compare.options.map((o) => {
+        const on = compare.selected.includes(o.key);
+        return (
+          <label key={o.key} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={on}
+              disabled={!on && compare.selected.length >= 3}
+              onChange={() => {
+                compare.onChange(
+                  on ? compare.selected.filter((k) => k !== o.key) : [...compare.selected, o.key],
+                );
+              }}
+            />
+            {o.label}
+          </label>
+        );
+      })}
+    </>
+  );
+  /** Run mode, New branch, Think and Compare: in the row, or (`menu`) listed in "More". */
+  const extras = (menu: boolean) => (
+    <>
+      {showMode && onCodeMode && (
+        <select
+          aria-label="What the coding run may do"
+          className="h-7 shrink-0 rounded-md border border-input bg-background px-1.5 text-xs"
+          value={codeMode}
+          onChange={(e) => {
+            const v = e.target.value;
+            onCodeMode(v === "auto_edit" ? "auto_edit" : v === "plan" ? "plan" : "ask");
+          }}
+        >
+          <option value="plan">Read-only</option>
+          <option value="ask">Ask first</option>
+          <option value="auto_edit">Can edit files</option>
+        </select>
+      )}
+      {showBranch && onCodeBranch && (
+        <label className="flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={codeBranch}
+            onChange={(e) => {
+              onCodeBranch(e.target.checked);
+            }}
+          />
+          New branch
+        </label>
+      )}
+      <Tip
+        label={
+          thinkHarder
+            ? "Think harder: maximum reasoning for this message (slower, more output tokens)"
+            : "Think harder for this message"
+        }
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Think harder"
+          aria-pressed={thinkHarder}
+          className={`shrink-0 gap-1.5 text-xs ${menu ? "justify-start" : ""} ${thinkHarder ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+          onClick={() => {
+            setThinkHarder((on) => !on);
+          }}
+        >
+          <Brain className="size-3.5" />
+          <span className={menu ? "" : "hidden min-[900px]:inline"}>
+            {menu ? `Think harder${thinkHarder ? " · on" : ""}` : "Think"}
+          </span>
+        </Button>
+      </Tip>
+      {showCompare &&
+        compare &&
+        (menu ? (
+          <div
+            role="group"
+            aria-label="Models to compare"
+            className="flex flex-col gap-1 border-t pt-2 text-xs"
+          >
+            <span className="flex items-center gap-1.5 font-medium">
+              <Columns2 className="size-3.5" />
+              Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
+            </span>
+            {compareList}
+          </div>
+        ) : (
+          <span className="relative shrink-0">
+            <Tip label="Send the next message to two or three models and compare the answers">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="Compare models"
+                aria-expanded={compareOpen}
+                aria-pressed={comparing}
+                className={`gap-1.5 text-xs ${comparing ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                onClick={() => {
+                  setCompareOpen((o) => !o);
+                }}
+              >
+                <Columns2 className="size-3.5" />
+                <span className="hidden min-[900px]:inline">
+                  Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
+                </span>
+              </Button>
+            </Tip>
+          </span>
+        ))}
+    </>
+  );
+  // Something in "More" is on, so its button says so.
+  const moreOn = thinkHarder || comparing;
+  const moreMenu = (
+    <Popover.Root open={moreOpen} onOpenChange={setMoreOpen}>
+      <Popover.Trigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="More options"
+          className={`shrink-0 gap-1.5 text-xs ${moreOn ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+        >
+          <Ellipsis className="size-3.5" />
+          {moreOn && <span className="size-1.5 rounded-full bg-foreground" aria-hidden />}
+        </Button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          side="top"
+          sideOffset={8}
+          collisionPadding={16}
+          aria-label="More options"
+          className="z-30 flex w-64 flex-col gap-2 rounded-lg border bg-popover p-2 text-popover-foreground shadow-lg"
+        >
+          {extras(true)}
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
+  );
   return (
     <footer className="shrink-0 px-8 pt-2 pb-3 max-[800px]:px-5">
       <div
@@ -1287,8 +1476,12 @@ export function Composer({
             {blocked}
           </p>
         )}
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
+        <div className="relative mt-1 flex items-center justify-between gap-2">
+          <div
+            ref={row}
+            data-composer-row
+            className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
+          >
             {onAddFiles && (
               <>
                 <input
@@ -1509,7 +1702,7 @@ export function Composer({
             {folders.map((f) => (
               <span
                 key={f.id}
-                className="flex max-w-40 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                className="flex min-w-0 max-w-40 shrink items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
                 title={f.own ? f.path : `${f.path} (from the project)`}
               >
                 <FolderOpen className="size-3 shrink-0" />
@@ -1586,110 +1779,20 @@ export function Composer({
                 </Button>
               </Tip>
             )}
-            {onToggleCode && (code || work) && onCodeMode && (
-              <select
-                aria-label="What the coding run may do"
-                className="h-7 rounded-md border border-input bg-background px-1.5 text-xs"
-                value={codeMode}
-                onChange={(e) => {
-                  const v = e.target.value;
-                  onCodeMode(v === "auto_edit" ? "auto_edit" : v === "plan" ? "plan" : "ask");
-                }}
-              >
-                <option value="plan">Read-only</option>
-                <option value="ask">Ask first</option>
-                <option value="auto_edit">Can edit files</option>
-              </select>
-            )}
-            {onToggleCode && code && onCodeBranch && codeMode !== "plan" && (
-              <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={codeBranch}
-                  onChange={(e) => {
-                    onCodeBranch(e.target.checked);
-                  }}
-                />
-                New branch
-              </label>
-            )}
-            <Tip
-              label={
-                thinkHarder
-                  ? "Think harder: maximum reasoning for this message (slower, more output tokens)"
-                  : "Think harder for this message"
-              }
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Think harder"
-                aria-pressed={thinkHarder}
-                className={`gap-1.5 text-xs ${thinkHarder ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                onClick={() => {
-                  setThinkHarder((on) => !on);
-                }}
-              >
-                <Brain className="size-3.5" />
-                <span className="hidden min-[900px]:inline">Think</span>
-              </Button>
-            </Tip>
-            {compare && compare.options.length >= 2 && (
-              <span className="relative">
-                <Tip label="Send the next message to two or three models and compare the answers">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Compare models"
-                    aria-expanded={compareOpen}
-                    aria-pressed={comparing}
-                    className={`gap-1.5 text-xs ${comparing ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                    onClick={() => {
-                      setCompareOpen((o) => !o);
-                    }}
-                  >
-                    <Columns2 className="size-3.5" />
-                    <span className="hidden min-[900px]:inline">
-                      Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
-                    </span>
-                  </Button>
-                </Tip>
-                {compareOpen && (
-                  <span
-                    role="group"
-                    aria-label="Models to compare"
-                    className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
-                  >
-                    <span className="mb-1 text-[11px] text-muted-foreground">
-                      Pick two or three; the next message goes to each.
-                    </span>
-                    {compare.options.map((o) => {
-                      const on = compare.selected.includes(o.key);
-                      return (
-                        <label key={o.key} className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={on}
-                            disabled={!on && compare.selected.length >= 3}
-                            onChange={() => {
-                              compare.onChange(
-                                on
-                                  ? compare.selected.filter((k) => k !== o.key)
-                                  : [...compare.selected, o.key],
-                              );
-                            }}
-                          />
-                          {o.label}
-                        </label>
-                      );
-                    })}
-                  </span>
-                )}
-              </span>
-            )}
+            {collapsed ? moreMenu : extras(false)}
           </div>
+          {/* Outside the row, which clips what spills out of it. */}
+          {!collapsed && showCompare && compareOpen && (
+            <span
+              role="group"
+              aria-label="Models to compare"
+              className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
+            >
+              {compareList}
+            </span>
+          )}
           {streaming ? (
-            <Button size="sm" variant="outline" onClick={onStop}>
+            <Button size="sm" variant="outline" className="shrink-0" onClick={onStop}>
               <Square className="size-3 fill-current" />
               Stop<Hint>Esc</Hint>
             </Button>
@@ -1697,7 +1800,7 @@ export function Composer({
             <Tip label="Send message · Enter">
               <Button
                 size="icon"
-                className="rounded-xl"
+                className="shrink-0 rounded-xl"
                 aria-label="Send message (Enter)"
                 disabled={Boolean(missingKey) || !canSend}
                 onClick={send}

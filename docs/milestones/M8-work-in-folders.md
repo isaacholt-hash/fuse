@@ -140,6 +140,10 @@
     The first try ran before #145, when the test had no image store, so no image was sent. Even so, OpenAI wrote the right code, and how it did that wasn't recorded.
   - The turn streamers the M6 benchmark used now live in `src/agent/testing/turns.ts`, shared by both benchmarks.
 
+- [x] **F4. The composer's buttons spill out of its box (Isaac, 2026-10-31).** Do this before step 14.
+  - With Code on and a folder chip shown, the row is wider than the composer. New branch wraps onto two lines, and Think, Compare and Send sit outside the box's right edge.
+  - Fix: the row never overflows at any window width. The main controls stay visible (attach, model, Search, folders, Code / Work, Send). The rest (run mode, New branch, Think, Compare) move into a "More" menu when space runs out, and each shows its state there. Send stays inside the box, on the right.
+  - Tests check the row at a narrow, a medium and a wide width, and step 14 screenshots it.
 - [ ] **14. Click-through tests on Windows in CI (Isaac, 2026-10-31).**
   - The app is driven like a person would use it, through `tauri-driver` and Edge's WebDriver, on GitHub's Windows machines on every PR. It uses scripted model turns and a fake update source, with no keys and no network calls to providers.
   - Covers at least: send a message and see its cost, switch models, open Settings, see the update bar appear and Dismiss it (F1 of M7), and a Work run on a test folder that does checks 2, 3 and 5 of the step 9 checklist.
