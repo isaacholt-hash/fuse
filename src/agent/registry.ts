@@ -11,6 +11,7 @@ import {
   ORGANISE_TOOL,
   READ_DOCUMENT_TOOL,
   READ_ONLY_TOOLS,
+  RUN_PYTHON_TOOL,
   WRITE_DOCUMENT_TOOL,
 } from "./tools";
 
@@ -50,6 +51,7 @@ export const TOOLS: readonly ToolEntry[] = [
   entry(WRITE_DOCUMENT_TOOL, "write", ["work"]),
   entry(ORGANISE_TOOL, "write", ["work"]),
   entry(COMMAND_TOOL, "command", BOTH),
+  entry(RUN_PYTHON_TOOL, "command", ["work"]),
   ...GIT_WRITE_TOOLS.map((t) =>
     entry(t, t.name === "git_push" || t.name === "open_pull_request" ? "send" : "write", ["code"]),
   ),

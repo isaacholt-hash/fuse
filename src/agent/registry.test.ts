@@ -45,6 +45,7 @@ test("runs are offered the same tools, in the same order, as before the registry
     "write_document",
     "organise",
     "run_command",
+    "run_python",
   ]);
   expect(names("work", { readOnly: true })).toEqual([
     "list_files",

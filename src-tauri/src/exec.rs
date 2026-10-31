@@ -46,7 +46,30 @@ pub enum ExecMsg {
     },
     #[serde(rename_all = "camelCase")]
     Error { message: String },
+    /// M9 step 6: what a Python script left in its output folder, sent just before `Done`.
+    #[serde(rename_all = "camelCase")]
+    Files {
+        files: Vec<OutFile>,
+        /// Files left out for size or number, so the model can be told.
+        skipped: Vec<String>,
+    },
 }
+
+/// One file a Python script wrote, by its path inside the output folder.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct OutFile {
+    pub path: String,
+    pub bytes: Vec<u8>,
+}
+
+/// M9 step 6: the most files, and bytes in all, a script's output brings back.
+pub const MAX_OUT_FILES: usize = 50;
+pub const MAX_OUT_BYTES: u64 = 20 * 1024 * 1024;
+/// M9 step 6: the address space a script may use, in KB (4 GB): pandas and matplotlib fit well
+/// within it, a runaway loop doesn't take the computer down.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub const PYTHON_MEMORY_KB: u64 = 4 * 1024 * 1024;
 
 fn shell(command: &str) -> tokio::process::Command {
     #[cfg(windows)]
@@ -225,6 +248,110 @@ fn command_for(root: &Path, command: &str, sandbox: Option<&Sandbox>) -> tokio::
     shell(command)
 }
 
+/// M9 step 6: the runtime's Python running `script` in bubblewrap. Everything is read-only
+/// (the run's folders too: a script reads them, FUSE saves what it keeps), with a fresh /dev,
+/// /proc and /tmp; only `out` is writable, and it's `FUSE_OUT`. No network unless allowed, a
+/// memory cap, and it dies with FUSE. None where bubblewrap can't run: Python then doesn't run.
+#[cfg(target_os = "linux")]
+pub fn python_command(
+    root: &Path,
+    python: &Path,
+    script: &Path,
+    out: &Path,
+    network: bool,
+) -> Option<tokio::process::Command> {
+    if sandbox_kind() != SandboxKind::Bubblewrap {
+        return None;
+    }
+    let bwrap = bwrap_path()?;
+    let mut c = tokio::process::Command::new(bwrap);
+    c.args([
+        "--ro-bind",
+        "/",
+        "/",
+        "--dev",
+        "/dev",
+        "--proc",
+        "/proc",
+        "--tmpfs",
+        "/tmp",
+    ]);
+    // Bound back after the private /tmp, so a folder or script that lives under /tmp is still
+    // there (read-only); then the output folder, writable.
+    c.arg("--ro-bind").arg(root).arg(root);
+    c.arg("--ro-bind").arg(script).arg(script);
+    // The runtime's folder (`python/`, above `bin/python3`), read-only.
+    if let Some(runtime) = python.parent().and_then(Path::parent) {
+        c.arg("--ro-bind").arg(runtime).arg(runtime);
+    }
+    c.arg("--bind").arg(out).arg(out);
+    if !network {
+        c.arg("--unshare-net");
+    }
+    c.arg("--die-with-parent").arg("--chdir").arg(root);
+    c.arg("--setenv").arg("FUSE_OUT").arg(out);
+    for (k, v) in [
+        ("HOME", "/tmp"),
+        ("MPLBACKEND", "Agg"),
+        ("MPLCONFIGDIR", "/tmp/matplotlib"),
+        ("OPENBLAS_NUM_THREADS", "2"),
+        ("PYTHONDONTWRITEBYTECODE", "1"),
+        ("PYTHONUNBUFFERED", "1"),
+    ] {
+        c.args(["--setenv", k, v]);
+    }
+    c.args(["--", "/bin/sh", "-c"])
+        .arg(format!("ulimit -v {PYTHON_MEMORY_KB}; exec \"$@\""))
+        .arg("sh")
+        .arg(python)
+        .arg("-I")
+        .arg(script);
+    Some(c)
+}
+
+/// The files a script wrote in `out`, by relative path with `/`, up to the caps; the rest are
+/// named in `skipped`. Links aren't followed.
+pub fn collect_outputs(out: &Path) -> (Vec<OutFile>, Vec<String>) {
+    fn walk(dir: &Path, base: &Path, found: &mut Vec<(String, PathBuf, u64)>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut entries: Vec<_> = entries.filter_map(Result::ok).collect();
+        entries.sort_by_key(std::fs::DirEntry::file_name);
+        for e in entries {
+            let Ok(t) = e.file_type() else { continue };
+            let path = e.path();
+            if t.is_dir() {
+                walk(&path, base, found);
+            } else if t.is_file() {
+                let rel = path
+                    .strip_prefix(base)
+                    .map(|r| r.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                let size = e.metadata().map_or(0, |m| m.len());
+                found.push((rel, path, size));
+            }
+        }
+    }
+    let mut found = vec![];
+    walk(out, out, &mut found);
+    let (mut files, mut skipped, mut total) = (vec![], vec![], 0u64);
+    for (rel, path, size) in found {
+        if files.len() >= MAX_OUT_FILES || total + size > MAX_OUT_BYTES {
+            skipped.push(rel);
+            continue;
+        }
+        match std::fs::read(&path) {
+            Ok(bytes) => {
+                total += size;
+                files.push(OutFile { path: rel, bytes });
+            }
+            Err(_) => skipped.push(rel),
+        }
+    }
+    (files, skipped)
+}
+
 /// Runs `command` in `root`, sending output to `on` as it comes, then one `Done` (or `Error`).
 /// `stop` ends it early. With `sandbox`, it runs sandboxed where this computer can (WF-07).
 pub async fn run(
@@ -233,8 +360,10 @@ pub async fn run(
     timeout: Duration,
     stop: oneshot::Receiver<()>,
     sandbox: Option<&Sandbox>,
-    mut on: impl FnMut(ExecMsg),
+    on: impl FnMut(ExecMsg),
 ) {
+    #[cfg(windows)]
+    let mut on = on;
     let started = Instant::now();
     let timeout = timeout.min(MAX_TIMEOUT);
     // `canonicalize` gives `\\?\C:\...`, where cmd.exe can't start.
@@ -286,7 +415,27 @@ pub async fn run(
         supervise(started, timeout, stop, rx, wait, move || killer.kill(), on).await;
         return;
     }
-    let mut cmd = command_for(root, command, sandbox);
+    run_process(
+        root,
+        command_for(root, command, sandbox),
+        started,
+        timeout,
+        stop,
+        on,
+    )
+    .await;
+}
+
+/// Starts `cmd` in `root` and supervises it: output to `on`, the time limit and Stop end the
+/// whole process tree, then one `Done` (or `Error`). No input, and no provider keys.
+async fn run_process(
+    root: &Path,
+    mut cmd: tokio::process::Command,
+    started: Instant,
+    timeout: Duration,
+    stop: oneshot::Receiver<()>,
+    mut on: impl FnMut(ExecMsg),
+) {
     cmd.current_dir(root)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -555,6 +704,85 @@ pub mod commands {
         Ok(id)
     }
 
+    /// M9 step 6: runs `script` with FUSE's Python runtime in the run's first folder (from the
+    /// database), sandboxed. Output, then the files it wrote (`Files`), then `Done`, arrive on
+    /// `on_event`; returns an id for `repo_exec_stop`. Refused where it can't be sandboxed.
+    #[allow(clippy::too_many_arguments)]
+    #[tauri::command]
+    pub async fn python_run(
+        app: tauri::AppHandle,
+        db: State<'_, Database>,
+        execs: State<'_, Execs>,
+        folder_id: String,
+        script: String,
+        timeout_secs: Option<u64>,
+        network: bool,
+        on_event: Channel<ExecMsg>,
+    ) -> Result<u32, String> {
+        use tauri::Manager;
+        if script.trim().is_empty() {
+            return Err("Give a script to run.".into());
+        }
+        let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
+        let runtime = data.join("python-runtime");
+        let python = crate::python_runtime::python_exe(&runtime.join("python"));
+        if crate::python_runtime::status(&runtime).is_none() {
+            return Err(
+                "Python isn't installed. Install it in Settings → Python for data work.".into(),
+            );
+        }
+        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
+        let root = std::fs::canonicalize(&root)
+            .map_err(|e| format!("The linked folder is missing: {e}"))?;
+        let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
+        let work = runtime.join("work").join(id.to_string());
+        let _ = std::fs::remove_dir_all(&work);
+        let out = work.join("out");
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        let script_path = work.join("script.py");
+        std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
+        #[cfg(target_os = "linux")]
+        let cmd = python_command(&root, &python, &script_path, &out, network);
+        #[cfg(not(target_os = "linux"))]
+        let cmd: Option<tokio::process::Command> = {
+            let _ = (&python, network);
+            None
+        };
+        let Some(cmd) = cmd else {
+            let _ = std::fs::remove_dir_all(&work);
+            return Err(
+                "Python runs only in the sandbox, and FUSE can't sandbox it on this computer yet."
+                    .into(),
+            );
+        };
+        let (stop_tx, stop_rx) = oneshot::channel();
+        execs
+            .running
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(id, stop_tx);
+        let timeout = timeout_secs
+            .map(Duration::from_secs)
+            .unwrap_or(DEFAULT_TIMEOUT);
+        tauri::async_runtime::spawn(async move {
+            let mut done = None;
+            run_process(&root, cmd, Instant::now(), timeout, stop_rx, |m| match m {
+                ExecMsg::Done { .. } => done = Some(m),
+                other => {
+                    let _ = on_event.send(other);
+                }
+            })
+            .await;
+            let (files, skipped) = collect_outputs(&out);
+            let _ = on_event.send(ExecMsg::Files { files, skipped });
+            if let Some(d) = done {
+                let _ = on_event.send(d);
+            }
+            let _ = std::fs::remove_dir_all(&work);
+        });
+        Ok(id)
+    }
+
     #[derive(serde::Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct SandboxIn {
@@ -621,6 +849,117 @@ pub mod commands {
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
+
+    fn fresh(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("fuse-py-test-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::canonicalize(&d).unwrap()
+    }
+
+    #[test]
+    fn outputs_are_collected_by_path_up_to_the_caps() {
+        let out = fresh("outputs");
+        std::fs::create_dir_all(out.join("charts")).unwrap();
+        std::fs::write(out.join("charts").join("a.png"), b"png").unwrap();
+        std::fs::write(out.join("summary.csv"), b"a,b\n1,2\n").unwrap();
+        let (files, skipped) = collect_outputs(&out);
+        assert_eq!(
+            files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+            ["charts/a.png", "summary.csv"]
+        );
+        assert_eq!(files[1].bytes, b"a,b\n1,2\n");
+        assert!(skipped.is_empty());
+
+        for i in 0..MAX_OUT_FILES {
+            std::fs::write(out.join(format!("n{i:03}.txt")), b"x").unwrap();
+        }
+        let (files, skipped) = collect_outputs(&out);
+        assert_eq!(files.len(), MAX_OUT_FILES);
+        assert_eq!(skipped.len(), 2);
+        let _ = std::fs::remove_dir_all(&out);
+    }
+
+    /// Runs `script` with the system's python3 as FUSE runs the runtime's; None where
+    /// bubblewrap or python3 isn't here (skipped).
+    #[cfg(target_os = "linux")]
+    async fn python(
+        script: &str,
+        network: bool,
+    ) -> Option<(String, Option<i32>, PathBuf, PathBuf)> {
+        let py = Path::new("/usr/bin/python3");
+        if sandbox_kind() != SandboxKind::Bubblewrap || !py.exists() {
+            eprintln!("bubblewrap or python3 isn't here; Python sandbox test skipped");
+            return None;
+        }
+        let root = fresh(&format!("root-{}", script.len()));
+        std::fs::write(root.join("data.csv"), b"x\n1\n2\n").unwrap();
+        let work = fresh(&format!("work-{}", script.len()));
+        let out = work.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let script_path = work.join("script.py");
+        std::fs::write(&script_path, script).unwrap();
+        let cmd = python_command(&root, py, &script_path, &out, network)?;
+        let (_tx, rx) = oneshot::channel();
+        let mut text = String::new();
+        let mut code = None;
+        run_process(
+            &root,
+            cmd,
+            Instant::now(),
+            DEFAULT_TIMEOUT,
+            rx,
+            |m| match m {
+                ExecMsg::Out { text: t } => text.push_str(&t),
+                ExecMsg::Done { exit_code, .. } => code = exit_code,
+                _ => {}
+            },
+        )
+        .await;
+        Some((text, code, root, out))
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn python_reads_the_folder_writes_only_its_output_and_has_no_network() {
+        let script = r#"
+import os, socket
+print("rows", sum(1 for _ in open("data.csv")) - 1)
+open(os.path.join(os.environ["FUSE_OUT"], "made.txt"), "w").write("made")
+try:
+    open("sneaky.txt", "w").write("x")
+    print("wrote the folder")
+except OSError as e:
+    print("folder read-only:", type(e).__name__)
+try:
+    socket.create_connection(("1.1.1.1", 53), timeout=3)
+    print("network on")
+except OSError:
+    print("network off")
+"#;
+        let Some((text, code, root, out)) = python(script, false).await else {
+            return;
+        };
+        assert_eq!(code, Some(0), "{text}");
+        assert!(text.contains("rows 2"), "{text}");
+        assert!(text.contains("folder read-only"), "{text}");
+        assert!(text.contains("network off"), "{text}");
+        assert!(!root.join("sneaky.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(out.join("made.txt")).unwrap(),
+            "made"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn python_runs_out_of_memory_past_the_cap() {
+        let script = "try:\n    b = bytearray(6 * 1024**3)\n    print('got 6 GB')\nexcept MemoryError:\n    print('memory capped')\n";
+        let Some((text, _, _, _)) = python(script, false).await else {
+            return;
+        };
+        assert!(text.contains("memory capped"), "{text}");
+    }
 
     /// Runs `command` sandboxed in a fresh folder; None where bubblewrap can't run (it's skipped).
     async fn sandboxed(command: &str, network: bool) -> Option<(PathBuf, String, ExecMsg)> {

@@ -105,3 +105,29 @@ test("M9 step 4: a flagged approval shows the passage and where it came from, an
   expect(screen.getByRole("button", { name: "Allow for this chat" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Allow for this folder" })).toBeNull();
 });
+
+test("M9 step 6: a Python script's approval shows the script, what it saves, and no always-allow", () => {
+  const onApprove = vi.fn();
+  show(
+    {
+      ...base,
+      inProject: true,
+      approval: {
+        kind: "python",
+        script: "import pandas as pd\nprint(pd.read_csv('sales.csv').total.sum())",
+        keep: ["reports/summary.csv"],
+        network: false,
+      },
+    },
+    onApprove,
+  );
+  const card = screen.getByRole("alertdialog", { name: "Run this Python script?" });
+  expect(card).toHaveTextContent("print(pd.read_csv('sales.csv').total.sum())");
+  expect(card).toHaveTextContent(
+    "it can read the files but not change them, and it has no network",
+  );
+  expect(card).toHaveTextContent("Then it saves reports/summary.csv into the folder");
+  expect(screen.queryByRole("button", { name: "Always allow in this project" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Allow" }));
+  expect(onApprove).toHaveBeenCalledWith("r1", "yes");
+});

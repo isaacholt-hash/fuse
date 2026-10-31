@@ -81,6 +81,7 @@ pub fn run() {
             repo::commands::repo_delete,
             repo::commands::repo_move,
             exec::commands::repo_exec,
+            exec::commands::python_run,
             exec::commands::repo_exec_stop,
             exec::commands::sandbox_status,
             exec::commands::sandbox_windows_available,
