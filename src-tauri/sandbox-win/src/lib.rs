@@ -795,6 +795,7 @@ mod tests {
 
     // TEMPORARY: which environments let a contained command start (error 203 otherwise).
     #[test]
+    #[allow(clippy::type_complexity)]
     fn zz_diag_env() {
         let dir = fresh_dir("diag");
         grant_to(Container::Mcp, &dir, WRITE).unwrap();
