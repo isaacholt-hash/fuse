@@ -1099,12 +1099,13 @@ export function Composer({
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
   );
   // F4: the row never overflows. When it would, run mode, New branch, Think and Compare move into
-  // "More". It goes back to one row once there's room for everything (`needed`), and measures
-  // again whenever what the row holds changes.
+  // "More" (level 1); if it still would, Search goes there too (level 2). Each level goes back
+  // once there's room for what it took away (`needed`), and the row measures again whenever what
+  // it holds changes.
   const row = useRef<HTMLDivElement>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const [level, setLevel] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
-  const needed = useRef(0);
+  const needed = useRef<number[]>([]);
   const holds = [
     folders.map((f) => f.id).join(","),
     code,
@@ -1117,17 +1118,17 @@ export function Composer({
   const [measuredFor, setMeasuredFor] = useState(holds);
   if (measuredFor !== holds) {
     setMeasuredFor(holds);
-    setCollapsed(false);
+    setLevel(0);
   }
   useLayoutEffect(() => {
     const el = row.current;
     if (!el) return;
     const fit = () => {
-      if (!collapsed && el.scrollWidth > el.clientWidth + 1) {
-        needed.current = el.scrollWidth;
-        setCollapsed(true);
-      } else if (collapsed && el.clientWidth >= needed.current) {
-        setCollapsed(false);
+      if (level < 2 && el.scrollWidth > el.clientWidth + 1) {
+        needed.current[level] = el.scrollWidth;
+        setLevel(level + 1);
+      } else if (level > 0 && el.clientWidth >= (needed.current[level - 1] ?? Infinity)) {
+        setLevel(level - 1);
       }
     };
     fit();
@@ -1138,6 +1139,36 @@ export function Composer({
       watch.disconnect();
     };
   });
+  const collapsed = level > 0;
+  const tight = level > 1;
+  /** Web search on or off: in the row, or (`menu`) in "More" when even the main row is tight. */
+  const searchButton = (menu: boolean) =>
+    onToggleWebSearch && (
+      <Tip
+        label={
+          webSearch === null
+            ? `${model.name} can't search the web`
+            : webSearch
+              ? "Web search on: the model may search (billed per search)"
+              : "Web search off"
+        }
+      >
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Search the web"
+          aria-pressed={webSearch === true}
+          disabled={webSearch === null}
+          className={`shrink-0 gap-1.5 text-xs ${menu ? "justify-start" : ""} ${webSearch ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+          onClick={onToggleWebSearch}
+        >
+          <Globe className="size-3.5" />
+          <span className={menu ? "" : "hidden min-[900px]:inline"}>
+            {menu ? `Search the web${webSearch ? " · on" : ""}` : "Search"}
+          </span>
+        </Button>
+      </Tip>
+    );
   const showMode = Boolean(onToggleCode && (code || work) && onCodeMode);
   const showBranch = Boolean(onToggleCode && code && onCodeBranch && codeMode !== "plan");
   const showCompare = Boolean(compare && compare.options.length >= 2);
@@ -1258,7 +1289,7 @@ export function Composer({
     </>
   );
   // Something in "More" is on, so its button says so.
-  const moreOn = thinkHarder || comparing;
+  const moreOn = thinkHarder || comparing || (tight && webSearch === true);
   const moreMenu = (
     <Popover.Root open={moreOpen} onOpenChange={setMoreOpen}>
       <Popover.Trigger asChild>
@@ -1281,6 +1312,7 @@ export function Composer({
           aria-label="More options"
           className="z-30 flex w-64 flex-col gap-2 rounded-lg border bg-popover p-2 text-popover-foreground shadow-lg"
         >
+          {tight && searchButton(true)}
           {extras(true)}
         </Popover.Content>
       </Popover.Portal>
@@ -1675,30 +1707,7 @@ export function Composer({
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
-            {onToggleWebSearch && (
-              <Tip
-                label={
-                  webSearch === null
-                    ? `${model.name} can't search the web`
-                    : webSearch
-                      ? "Web search on: the model may search (billed per search)"
-                      : "Web search off"
-                }
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Search the web"
-                  aria-pressed={webSearch === true}
-                  disabled={webSearch === null}
-                  className={`gap-1.5 text-xs ${webSearch ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                  onClick={onToggleWebSearch}
-                >
-                  <Globe className="size-3.5" />
-                  <span className="hidden min-[900px]:inline">Search</span>
-                </Button>
-              </Tip>
-            )}
+            {!tight && searchButton(false)}
             {folders.map((f) => (
               <span
                 key={f.id}

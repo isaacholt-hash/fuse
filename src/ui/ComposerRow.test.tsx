@@ -2,13 +2,26 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { Tooltip } from "radix-ui";
 import { Composer } from "./Conversation";
 
-// jsdom has no layout, so the row's widths are stubbed: everything in one row needs 700 px, and
-// with "More" it needs 450 px.
+// jsdom has no layout, so the row's widths are stubbed: everything in one row needs 700 px, with
+// "More" 450 px, and with Search in "More" too 380 px.
 let width = 0;
 const content = (el: HTMLElement) =>
-  el.parentElement?.querySelector('[aria-label="More options"]') ? 450 : 700;
+  !el.parentElement?.querySelector('[aria-label="More options"]')
+    ? 700
+    : el.querySelector('[aria-label="Search the web"]')
+      ? 450
+      : 380;
 const row = (el: HTMLElement) => el.dataset.composerRow !== undefined;
+const hadObserver = "ResizeObserver" in globalThis;
 beforeAll(() => {
+  // jsdom has none; Radix's popover measures with one.
+  if (!hadObserver) {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
   Object.defineProperty(HTMLElement.prototype, "clientWidth", {
     configurable: true,
     get(this: HTMLElement) {
@@ -23,6 +36,7 @@ beforeAll(() => {
   });
 });
 afterAll(() => {
+  if (!hadObserver) Reflect.deleteProperty(globalThis, "ResizeObserver");
   // Back to jsdom's own (0) for the other tests in this worker.
   Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
   Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
@@ -83,11 +97,11 @@ function show(at: number) {
   return { ...utils, onCodeBranch };
 }
 
-/** The controls that always stay in the row. */
-function mainControls() {
+/** The controls that stay in the row (Search too, unless the row is very narrow). */
+function mainControls(search = true) {
   for (const name of [
     "Choose model (Ctrl+K)",
-    "Search the web",
+    ...(search ? ["Search the web"] : []),
     "Remove folder lighthouse",
     "Add a folder",
     "Coding run",
@@ -111,7 +125,7 @@ test("F4: wide, everything fits in one row", () => {
 for (const at of [600, 400]) {
   test(`F4: at ${String(at)} px, run mode, New branch, Think and Compare move into More`, () => {
     const { onCodeBranch } = show(at);
-    mainControls();
+    mainControls(at > 450);
     expect(screen.queryByRole("button", { name: "Think harder" })).toBeNull();
     expect(screen.queryByLabelText("New branch")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More options" }));
@@ -129,3 +143,11 @@ for (const at of [600, 400]) {
     expect(more.getByRole("group", { name: "Models to compare" })).toBeTruthy();
   });
 }
+
+test("F4: very narrow, Search moves into More as well, and shows its state there", () => {
+  show(400);
+  expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "More options" }));
+  const more = within(screen.getByRole("dialog", { name: "More options" }));
+  expect(more.getByRole("button", { name: "Search the web" }).textContent).toBe("Search the web");
+});

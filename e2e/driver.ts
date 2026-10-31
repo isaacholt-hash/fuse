@@ -62,7 +62,11 @@ export class Session {
         fail(new Error("Couldn't open the DevTools socket"));
       });
     });
-    return new Session(app, socket);
+    const session = new Session(app, socket);
+    // A runner's window may sit behind others; keep the page running as if it had focus.
+    await session.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    await session.send("Page.bringToFront");
+    return session;
   }
 
   private send<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
