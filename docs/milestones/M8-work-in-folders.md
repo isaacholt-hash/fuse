@@ -169,9 +169,16 @@
     - The silent downgrade works.
     - The click-through tests pass on the real desktop, including check 5, once F5 was fixed and the test build's data is cleared before each run (a reused PC kept the last chat open).
     - The update test can't reach FUSE's window while the PC is locked, which is the case at night. It now skips then, and says so.
-  - **Not yet run:** it needs Isaac to set up the runner. Unchecked until then:
-    - whether "Restart now" is reachable through UI Automation in the release build
-  - **Isaac must also** set Settings → Actions → General → fork pull request approval to "Require approval for all external contributors". It's "first-time contributors" today, which isn't enough with a runner on his PC.
+  - **The runner was a service at first.** It had been set up as a Windows service running as NETWORK SERVICE, in session 0. So the update test skipped itself ("the runner isn't running on your desktop"), and the service couldn't have seen the keys for step 16. On 2026-10-31 Isaac stopped and disabled the service, and the runner now starts from the "FUSE test runner" scheduled task at his login (`docs/windows-test-runner.md`), in his desktop session.
+  - **First full run (2026-10-31, run 41210970905):** all passed.
+
+    | Check | Result |
+    | --- | --- |
+    | Click-through tests | pass |
+    | Update test | pass: 0.1.137 found 0.1.138, Restart now was pressed through UI Automation, and 0.1.138 is installed and running |
+    | Local model benchmark | skipped, no local model installed |
+
+  - Isaac set fork pull request approval to "Require approval for all external contributors" (2026-10-31).
 - [x] **16. Live-key test button (Isaac, 2026-10-31).**
   - A workflow started by hand only, never on a schedule. It runs on Isaac's PC: `pnpm work:live` and a short chat on each provider, with keys from his own Windows environment (`FUSE_OPENAI_API_KEY`, `FUSE_ANTHROPIC_API_KEY`). Nothing else ever reads them.
   - The log is put through the secret scan before it's uploaded, and shows only pass or fail, turns and cost per model.
@@ -179,7 +186,15 @@
     - `.github/workflows/live-tests.yml`, started by hand only, on `fuse-windows`.
     - `scripts/pc/live-tests.ps1` runs `pnpm chat:live` (new: one short chat per provider, `src/chat/chat.live.test.ts`) and `pnpm work:live`. Each suite's output goes to a file, never straight to the job log. That file must pass the secret scan's pattern, and must not contain either key; otherwise nothing from it is shown. The script then shows only the result tables and PASSED / FAILED lines in the job log and summary.
     - The live tests share one helper for keys and adapters (`src/agent/testing/live.ts`).
-  - **Not run yet:** Isaac starts it from Actions → Live-key tests → Run workflow, after setting the keys as in `docs/windows-test-runner.md`.
+  - **First run (2026-10-31, run 41209344834, Isaac on TCHALLA):** all passed, for about $0.13 in all.
+
+    | Test | anthropic/claude-sonnet-5-5 | openai/gpt-6.1-sol |
+    | --- | --- | --- |
+    | chat:live | pass, $0.0001 | pass, $0.0001 |
+    | summarise-to-docx | pass, 4 turns, $0.0244 | pass, 4 turns, $0.0113 |
+    | xlsx-from-csvs | pass, 3 turns, $0.0182 | pass, 4 turns, $0.0048 |
+    | organise-messy | pass, 3 turns, $0.0212 | pass, 4 turns, $0.0108 |
+    | images in tool results | pass, $0.0332 | pass, $0.0027 |
 
 ## Fixes
 
