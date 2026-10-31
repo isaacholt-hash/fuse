@@ -32,7 +32,7 @@
 
 ## Fixes
 
-- [ ] **F6. The Windows click-through test "switch models" is flaky (found 2026-10-31).** On main after #161 it timed out waiting for "Switched to Claude Opus 5.5" while the other four tests passed, and a re-run passed. The job failed 8 of its last 27 runs (some while M8 step 14 was being built). A failure on main leaves no test build, so the PC tests can't run. Find the cause from the run's `console.log` and screenshots, and fix it rather than adding retries. Isaac picks where it goes in the queue.
+- [x] **F6. A model picked just before sending wasn't used (found 2026-10-31 by the Windows click-through test "switch models", which failed 8 of its last 27 runs).** Picking a model in a saved chat saved the pin, and the send read the chat's mode from the chat list, which only had the pin once it was saved and read back. On a slow database (1 to 2 s writes in CI), a message sent straight away went out on the old mode, while the picker already showed the new model. Now the picked mode is used at once for that chat, until the list has reloaded with it. A test holds the pin's save and checks the answer comes from the picked model. Not a test fix: it could happen to Isaac too.
 
 ## Notes
 

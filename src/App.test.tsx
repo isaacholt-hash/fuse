@@ -483,6 +483,45 @@ test("switching model mid-thread: divider shown, the new model gets the whole hi
   ]);
 });
 
+test("F6: a model picked just before sending is the one used, even while its pin is still saving", async () => {
+  // The pin's save is held until the answer is in, as a slow database did in the Windows CI test.
+  let hold = false;
+  let release = () => {};
+  const held = new Promise<void>((r) => {
+    release = r;
+  });
+  const { user } = setup(
+    { openai: [() => answer("From GPT.")] },
+    undefined,
+    {},
+    {
+      wrapDb: (db) => ({
+        execute: async (sql, params) => {
+          if (hold && sql.includes("SET pinned_tier")) await held;
+          return db.execute(sql, params);
+        },
+        select: (sql, params) => db.select(sql, params),
+      }),
+    },
+  );
+  await user.type(await composer(), "First question{Enter}");
+  await screen.findByText("Hello there.");
+
+  hold = true;
+  await user.keyboard("{Control>}k{/Control}");
+  await user.click(await screen.findByRole("button", { name: /Test GPT/ }));
+  await user.type(await composer(), "Second question{Enter}");
+
+  expect(await screen.findByText("From GPT.")).toBeInTheDocument();
+  expect(screen.getByText("Switched to Test GPT · full history sent")).toBeInTheDocument();
+  release();
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Choose model (Ctrl+K)" })).toHaveTextContent(
+      "Test GPT",
+    );
+  });
+});
+
 describe("auto routing", () => {
   const modeButton = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
   const HARD =
