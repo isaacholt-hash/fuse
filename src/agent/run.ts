@@ -78,7 +78,7 @@ import {
 } from "./tools";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
-import type { McpCallResult, McpTool } from "@/mcp/api";
+import { mcpToolsFor, type McpOffered } from "./mcpTools";
 import type { ToolSpec } from "@/providers/types";
 import { addressCarries, findInstructions, localFlags, scansOutput } from "./injection";
 import { projectToolsOff } from "@/storage/projectTools";
@@ -172,47 +172,11 @@ export interface RunDeps extends ChatDeps {
   git?: GitApi;
   /** M9 step 6: whether FUSE's Python is installed; without it, run_python isn't offered. */
   pythonReady?: () => Promise<boolean>;
-  /** M9 step 9: MCP servers; without it, a project's servers aren't offered. */
-  mcp?: McpRunApi;
   /**
    * Asks the user before a command runs; true = go ahead. Without it, commands are refused:
    * nothing runs that nobody approved.
    */
   approve?: (request: ApprovalRequest) => Promise<boolean | ApprovalAnswer>;
-}
-
-/** M9 step 9: what a run needs of MCP servers. */
-export interface McpRunApi {
-  /** The servers a project switched on. */
-  forProject(projectId: string): Promise<{ id: string; name: string }[]>;
-  tools(serverId: string): Promise<McpTool[]>;
-  call(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
-}
-
-/** M9 step 9: an MCP tool as a run offers it. */
-interface McpOffered {
-  serverId: string;
-  serverName: string;
-  tool: string;
-  readOnly: boolean;
-  destructive: boolean;
-}
-
-const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "x";
-
-/**
- * A provider-safe name for a server's tool, `mcp__<server>__<tool>`, at most 64 characters and
- * unique in the run (a suffix when two would meet).
- */
-export function mcpToolName(server: string, tool: string, taken: Set<string>): string {
-  const base = `mcp__${slug(server).slice(0, 20)}__${slug(tool)}`.slice(0, 64);
-  let name = base;
-  for (let n = 2; taken.has(name); n++) {
-    const suffix = `_${String(n)}`;
-    name = base.slice(0, 64 - suffix.length) + suffix;
-  }
-  taken.add(name);
-  return name;
 }
 
 /**
@@ -225,43 +189,13 @@ async function mcpFor(
   run: Run,
   input: Pick<RunInput, "signal" | "onProgress">,
 ): Promise<{ specs: ToolSpec[]; byName: Map<string, McpOffered> }> {
-  const byName = new Map<string, McpOffered>();
-  const specs: ToolSpec[] = [];
-  if (!deps.mcp || !run.projectId) return { specs, byName };
-  const taken = new Set<string>();
-  for (const server of await deps.mcp.forProject(run.projectId)) {
-    let tools: McpTool[];
-    try {
-      tools = await deps.mcp.tools(server.id);
-    } catch (e) {
-      await progress(
-        deps,
-        run.id,
-        input,
-        `The MCP server ${server.name} isn't available: ${e instanceof Error ? e.message : String(e)}`,
-      );
-      continue;
-    }
-    for (const t of tools) {
-      if (run.mode === "plan" && !t.readOnly) continue;
-      const name = mcpToolName(server.name, t.name, taken);
-      byName.set(name, {
-        serverId: server.id,
-        serverName: server.name,
-        tool: t.name,
-        readOnly: t.readOnly,
-        destructive: t.destructive === true,
-      });
-      specs.push({
-        name,
-        description: `[${server.name}, an MCP server] ${t.description}`.slice(0, 1024),
-        schema: { type: "object", ...t.inputSchema },
-        strict: false,
-      });
-    }
-  }
-  return { specs, byName };
+  if (!deps.mcp || !run.projectId) return { specs: [], byName: new Map() };
+  return mcpToolsFor(deps.mcp, run.projectId, run.mode === "plan", (server, e) =>
+    progress(deps, run.id, input, `The MCP server ${server} isn't available: ${e}`),
+  );
 }
+
+export { mcpToolName, type McpRunApi } from "./mcpTools";
 
 /** What a run wants to do that needs your say-so. */
 /** The two things a run can ask about. */
