@@ -4,7 +4,27 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
+/** M9 step 8: one tool a server offers; `readOnly` from its annotations, else it writes. */
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  readOnly: boolean;
+  destructive: boolean | null;
+}
+
+/** A server that answered the handshake, and its tools. */
+export interface McpHealth {
+  serverName: string;
+  serverVersion: string;
+  protocol: string;
+  tools: McpTool[];
+}
+
 export interface McpApi {
+  /** Starts the server (again), does the handshake and lists its tools. */
+  check?(serverId: string): Promise<McpHealth>;
+  stop?(serverId: string): Promise<void>;
   setSecret(serverId: string, name: string, value: string): Promise<void>;
   removeSecret(serverId: string, name: string): Promise<void>;
   /** Which of these variables have a value kept, in order. */
@@ -15,6 +35,8 @@ export const tauriMcpApi: McpApi = {
   setSecret: (serverId, name, value) => invoke("mcp_secret_set", { serverId, name, value }),
   removeSecret: (serverId, name) => invoke("mcp_secret_delete", { serverId, name }),
   secretStatus: (serverId, names) => invoke<boolean[]>("mcp_secret_status", { serverId, names }),
+  check: (serverId) => invoke<McpHealth>("mcp_check", { serverId }),
+  stop: (serverId) => invoke("mcp_stop", { serverId }),
 };
 
 /**

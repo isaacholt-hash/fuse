@@ -295,6 +295,22 @@ pub fn mcp_account(server_id: &str, name: &str) -> Result<String, String> {
     }
 }
 
+/// M9 step 8: an MCP server's variables, from the keychain, for starting it. Never sent to the
+/// webview. A name without a value is left out.
+pub(crate) fn mcp_env_for(
+    keys: &Keys,
+    server_id: &str,
+    names: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let mut out = vec![];
+    for n in names {
+        if let Some(v) = keys.store.get(&mcp_account(server_id, n)?)? {
+            out.push((n.clone(), v));
+        }
+    }
+    Ok(out)
+}
+
 pub mod commands {
     use super::*;
     use tauri::State;

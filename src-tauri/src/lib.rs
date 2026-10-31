@@ -10,6 +10,7 @@ mod hello;
 mod keys;
 mod local;
 pub mod local_worker;
+mod mcp;
 mod model_files;
 mod preview;
 mod python_runtime;
@@ -38,6 +39,7 @@ pub fn run() {
         .manage(local::Local::default())
         .manage(model_files::Downloads::default())
         .manage(python_runtime::PyInstall::default())
+        .manage(mcp::McpServers::default())
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
             use tauri::Manager;
@@ -100,6 +102,8 @@ pub fn run() {
             keys::commands::mcp_secret_set,
             keys::commands::mcp_secret_delete,
             keys::commands::mcp_secret_status,
+            mcp::commands::mcp_check,
+            mcp::commands::mcp_stop,
             python_runtime::commands::python_install,
             python_runtime::commands::python_install_cancel,
             python_runtime::commands::python_status,

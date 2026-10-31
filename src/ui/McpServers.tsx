@@ -14,6 +14,11 @@ export interface McpServerView {
   network: boolean;
   /** "GITHUB_TOKEN (set)", "API_KEY (not set)". */
   variables: { name: string; set: boolean }[];
+  /** M9 step 8: the last check, while it runs, or none yet. */
+  health?:
+    | "checking"
+    | { error: string }
+    | { server: string; tools: { name: string; kind: string; description: string }[] };
 }
 
 export interface McpServerDraft {
@@ -42,12 +47,15 @@ export function McpServersSection({
   onAdd,
   onRemove,
   onNetwork,
+  onCheck,
 }: {
   servers: McpServerView[];
   /** Resolves to a problem to show, or null once it's added. */
   onAdd: (draft: McpServerDraft) => Promise<string | null>;
   onRemove: (id: string) => void;
   onNetwork: (id: string, on: boolean) => void;
+  /** M9 step 8: starts it and lists its tools. */
+  onCheck?: (id: string) => void;
 }) {
   const [draft, setDraft] = useState<McpServerDraft | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -76,9 +84,21 @@ export function McpServersSection({
               <span className="truncate font-mono text-[10px] text-muted-foreground">
                 {s.detail}
               </span>
+              {onCheck && (
+                <button
+                  type="button"
+                  className="ml-auto text-[11px] hover:underline disabled:opacity-50"
+                  disabled={s.health === "checking"}
+                  onClick={() => {
+                    onCheck(s.id);
+                  }}
+                >
+                  {s.health === "checking" ? "Checking…" : "Check"}
+                </button>
+              )}
               <button
                 type="button"
-                className="ml-auto text-[11px] text-destructive hover:underline"
+                className={`${onCheck ? "" : "ml-auto "}text-[11px] text-destructive hover:underline`}
                 onClick={() => {
                   onRemove(s.id);
                 }}
@@ -86,6 +106,26 @@ export function McpServersSection({
                 Remove
               </button>
             </div>
+            {s.health && s.health !== "checking" && "error" in s.health && (
+              <p role="alert" className="mt-1 whitespace-pre-wrap text-destructive">
+                {s.health.error}
+              </p>
+            )}
+            {s.health && s.health !== "checking" && "server" in s.health && (
+              <div className="mt-1" aria-label={`${s.name} tools`}>
+                <p className="text-emerald-700 dark:text-emerald-400">
+                  Running: {s.health.server} · {String(s.health.tools.length)} tools
+                </p>
+                <ul className="mt-0.5 grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+                  {s.health.tools.map((t) => (
+                    <li key={t.name} title={t.description}>
+                      <span className="font-mono">{t.name}</span>{" "}
+                      <span className="text-[10px] text-muted-foreground">{t.kind}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {s.variables.length > 0 && (
               <p className="mt-1 text-[10px] text-muted-foreground">
                 Variables:{" "}

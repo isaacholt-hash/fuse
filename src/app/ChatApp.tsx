@@ -813,6 +813,7 @@ export function ChatApp({
   const [pyError, setPyError] = useState<string | null>(null);
   // M9 step 8: MCP servers, as Settings shows them.
   const [mcpServers, setMcpServers] = useState<McpServerView[]>([]);
+  const [mcpHealth, setMcpHealth] = useState<Record<string, McpServerView["health"]>>({});
   const refreshMcp = async () => {
     const list = await listMcpServers(db, tenant);
     setMcpServers(
@@ -4100,13 +4101,42 @@ export function ChatApp({
               mcp={
                 mcpApi && (
                   <McpServersSection
-                    servers={mcpServers}
+                    servers={mcpServers.map((s) => {
+                      const health = mcpHealth[s.id];
+                      return health ? { ...s, health } : s;
+                    })}
                     onAdd={addMcp}
+                    {...(mcpApi.check
+                      ? {
+                          onCheck: (id: string) => {
+                            setMcpHealth((h) => ({ ...h, [id]: "checking" }));
+                            mcpApi.check?.(id).then(
+                              (r) => {
+                                setMcpHealth((h) => ({
+                                  ...h,
+                                  [id]: {
+                                    server: `${r.serverName || "a server"}${r.serverVersion ? ` ${r.serverVersion}` : ""}`,
+                                    tools: r.tools.map((t) => ({
+                                      name: t.name,
+                                      kind: t.readOnly ? "Reads" : "Writes",
+                                      description: t.description,
+                                    })),
+                                  },
+                                }));
+                              },
+                              (e: unknown) => {
+                                setMcpHealth((h) => ({ ...h, [id]: { error: String(e) } }));
+                              },
+                            );
+                          },
+                        }
+                      : {})}
                     onRemove={(id) => {
                       const server = mcpServers.find((s) => s.id === id);
                       Promise.all(
                         (server?.variables ?? []).map((v) => mcpApi.removeSecret(id, v.name)),
                       )
+                        .then(() => mcpApi.stop?.(id))
                         .then(() => removeMcpServer(db, tenant, id))
                         .then(refreshMcp)
                         .catch(report);
