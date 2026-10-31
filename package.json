@@ -21,6 +21,7 @@
     "coding:live": "vitest run --mode coding src/agent/coding.live.test.ts",
     "work:live": "vitest run --mode work src/agent/work.live.test.ts",
     "chat:live": "vitest run --mode chat src/chat/chat.live.test.ts",
+    "tools:live": "vitest run --mode tools src/agent/tools.live.test.ts",
     "local:bench": "vitest run --mode localbench src/local/local.bench.test.ts"
   },
   "dependencies": {
