@@ -450,8 +450,9 @@ pub struct Spawn<'a> {
     /// one pipe out.
     pub piped: bool,
     /// When set, only these of FUSE's variables are passed on (before `env_set`), not all. The
-    /// environment must still have USERPROFILE, APPDATA or LOCALAPPDATA (here or in `env_set`):
-    /// without one, Windows won't start a process in an AppContainer (error 203).
+    /// environment must still have the profile's folders (USERPROFILE, APPDATA, LOCALAPPDATA,
+    /// here or in `env_set`): without them, Windows won't start a process in an AppContainer
+    /// (error 203; tested with all three, the way an MCP server gets them).
     pub env_only: Option<&'a [&'a str]>,
 }
 
@@ -768,10 +769,28 @@ mod tests {
             network: false,
             env_remove: &[],
             container: Container::Mcp,
-            env_set: &[("USERPROFILE", &d), ("FUSE_MCP_TEST", "1")],
+            env_set: &[
+                ("USERPROFILE", &d),
+                ("APPDATA", &d),
+                ("LOCALAPPDATA", &d),
+                ("FUSE_MCP_TEST", "1"),
+            ],
             memory_bytes: None,
             piped: true,
-            env_only: Some(&["PATH", "SystemRoot"]),
+            // As an MCP server gets them (WINDOWS_ENV in the app).
+            env_only: Some(&[
+                "PATH",
+                "PATHEXT",
+                "SystemRoot",
+                "SystemDrive",
+                "windir",
+                "ComSpec",
+                "OS",
+                "NUMBER_OF_PROCESSORS",
+                "PROCESSOR_ARCHITECTURE",
+                "ProgramFiles",
+                "ProgramData",
+            ]),
         })
         .unwrap();
         let mut input = child.take_input().unwrap();
