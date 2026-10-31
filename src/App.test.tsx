@@ -3112,10 +3112,14 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
 
   const ask = within(await screen.findByRole("alertdialog", { name: "Run this command?" }));
   expect(ask.getByText("pnpm test")).toBeInTheDocument();
+  expect(ask.getByRole("button", { name: "Always allow in this project" })).toBeInTheDocument();
   expect(ran).toEqual([]);
   await user.click(ask.getByRole("button", { name: "Allow" }));
   expect(await screen.findByText("All 3 tests pass.")).toBeInTheDocument();
   expect(ran).toEqual(["pnpm test"]);
+  // F2: the command's row opens what it printed.
+  await user.click(screen.getByRole("button", { name: "Ran pnpm test" }));
+  expect(screen.getByLabelText("Output of Ran pnpm test")).toHaveTextContent("3 passed");
   expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
     "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]\n[not sandboxed: this computer can't sandbox commands]",
   );

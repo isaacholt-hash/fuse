@@ -714,19 +714,25 @@ mod tests {
     fn killing_ends_the_whole_tree() {
         let dir = fresh_dir("kill");
         grant(&dir).unwrap();
+        // Two busy loops of about 10 minutes each, one in the background. (Not `ping`: it can't
+        // run in an AppContainer, so it exits at once and a kill would prove nothing.)
         let mut child = spawn(&Spawn {
             cwd: &dir,
-            command: "start /b ping -n 60 127.0.0.1 >NUL & ping -n 60 127.0.0.1",
+            command: "echo started& start /b cmd /d /c \"for /l %i in (1,1,2000000000) do @rem\" & for /l %j in (1,1,2000000000) do @rem",
             network: false,
             env_remove: &[],
         })
         .unwrap();
         let mut output = child.take_output().unwrap();
+        let mut first = [0u8; 7];
+        output.read_exact(&mut first).unwrap();
+        assert_eq!(&first, b"started");
         std::thread::sleep(Duration::from_millis(500));
         let t = Instant::now();
         child.killer().kill();
-        child.wait().unwrap();
-        // The output ends only when the background ping, which shares it, has gone too.
+        // 1 is the code the kill gives; a loop that ran to its end would give 0.
+        assert_eq!(child.wait().unwrap(), 1);
+        // The output ends only when the background loop, which shares it, has gone too.
         let mut rest = Vec::new();
         let _ = output.read_to_end(&mut rest);
         assert!(t.elapsed() < Duration::from_secs(10));

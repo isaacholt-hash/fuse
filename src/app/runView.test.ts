@@ -79,6 +79,7 @@ test("steps read as plain lines; the finished run's last turn is the answer, not
     modeLabel: "read-only",
     branch: null,
     changes: [],
+    inProject: true,
     steps: [
       { id: "s1", kind: "note", label: "1. Find the code.", error: null },
       { id: "s2", kind: "tool", label: "Searched for “tide”", error: null },
@@ -172,4 +173,31 @@ test("WF-06: a plan's moves show as one row that lists them", () => {
   expect(views.map((v) => v.label)).toEqual(["Organised 2 files", "Moved x → y"]);
   expect(views[0]?.id).toBe("1");
   expect(views[0]?.lines.map((l) => l.text)).toEqual(["a.jpg → P/a.jpg", "b.jpg → P/b.jpg"]);
+});
+
+test("F2: a command keeps its whole result, and its error is the output, not the command", () => {
+  const output =
+    "$ ping -n 1 127.0.0.1\nUnable to contact IP driver. General failure.\n[exit code 1, 0.1 s]\n[sandboxed, network off]";
+  const view = runView({ ...run, projectId: null, status: "running" }, [
+    {
+      kind: "tool",
+      id: "c1",
+      seq: 1,
+      call: { id: "t1", name: "run_command", input: { command: "ping -n 1 127.0.0.1" } },
+      output,
+      isError: true,
+      approval: "you",
+      images: [],
+    },
+  ]);
+  expect(view.inProject).toBe(false);
+  expect(view.steps).toEqual([
+    {
+      id: "c1",
+      kind: "tool",
+      label: "Ran ping -n 1 127.0.0.1",
+      error: "Unable to contact IP driver. General failure.",
+      output,
+    },
+  ]);
 });

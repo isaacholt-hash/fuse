@@ -47,13 +47,13 @@ export function AgentAuditSection({ rows }: { rows: AuditRowView[] }) {
               {rows.map((r) => (
                 <tr key={r.id} className="border-t align-top">
                   <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">{r.when}</td>
-                  <td className="px-2 py-1">
+                  <td className="min-w-48 px-2 py-1">
                     <span className="font-mono break-all">{r.action}</span>
                     <span className="block text-[10px] text-muted-foreground">{r.project}</span>
                   </td>
                   <td className="px-2 py-1 whitespace-nowrap">{r.allowed}</td>
                   <td
-                    className={`max-w-64 truncate px-2 py-1 font-mono ${r.failed ? "text-destructive" : ""}`}
+                    className={`max-w-48 truncate px-2 py-1 font-mono ${r.failed ? "text-destructive" : ""}`}
                     title={r.result}
                   >
                     {r.result}

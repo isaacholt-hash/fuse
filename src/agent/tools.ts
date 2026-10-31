@@ -513,11 +513,21 @@ export function gitSummary(call: ToolCall): string {
   }
 }
 
+/**
+ * F2: the shell commands run in, as exec.rs picks it: cmd.exe on Windows, bash (or sh) elsewhere.
+ * Fixed for the app's life, so the tool list stays cacheable.
+ */
+export const COMMAND_SHELL = /Windows/.test(
+  typeof navigator === "undefined" ? "" : navigator.userAgent,
+)
+  ? "Windows cmd.exe (not PowerShell, not bash)"
+  : "bash (sh where bash isn't installed)";
+
 /** CA-03: one shell command in the repository. Each one asks you first. */
 export const COMMAND_TOOL: ToolSpec = {
   name: "run_command",
   description:
-    "Run one shell command in the repository's root folder, e.g. the tests or a build. The " +
+    `Run one shell command in the repository's root folder, e.g. the tests or a build. It runs in ${COMMAND_SHELL}. The ` +
     "user approves each command before it runs and may decline. There's no input: commands " +
     "that ask a question fail. Output and the exit code come back; long output keeps its start " +
     "and end. The time limit is 2 minutes unless you ask for more (up to 10).",
