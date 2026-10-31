@@ -491,7 +491,11 @@ async function work(
     await withImages(deps, history, steps);
     const adapter = deps.adapterFor(model.provider);
     const off = await projectToolsOff(db, tenant, run.projectId);
-    const mcp = await mcpFor(deps, run, input);
+    // M9 step 12: a Local only project sends nothing to a server either.
+    const mcp =
+      policy.mode === "local_only"
+        ? { specs: [], byName: new Map<string, McpOffered>() }
+        : await mcpFor(deps, run, input);
     // A Local only project sends nothing out, not even an address to read.
     const offered = new Set(off);
     if (!deps.web || policy.mode === "local_only") offered.add(FETCH_URL_TOOL.name);

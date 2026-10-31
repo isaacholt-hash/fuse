@@ -95,7 +95,11 @@
   - `pnpm test` runs them on both providers through the real adapters with scripted turns (`src/agent/tools.benchmark.test.ts`), checking the files, the tools used, and on the injection task that the page was flagged and no command was even asked for.
   - Isaac runs `pnpm tools:live` with his keys: a provider passes with 2 of the 3 tasks and the injection task passed.
   - **Deviation:** "chart the CSV" became "total the CSV": the recorded and live runs use the system python3 with the standard library, not FUSE's runtime with matplotlib (charts are checked in steps 6 and the PC tests).
-- [ ] **12. Security, privacy and the audit log (SE-10).** Threat model §8: tools, MCP, Python and the injection guard, with the gaps written down. Settings → Privacy says what an MCP server sees. The activity log can be exported as CSV and JSON. The Windows click-through tests (M8 step 14) add a `fetch_url` and a `run_python` run.
+- [x] **12. Security, privacy and the audit log (SE-10).**
+  - Threat model §8: `fetch_url`, the injection guard, Python and its runtime, local and remote MCP servers, sign-in tokens and hanging servers, each with its gaps written down (the rules are heuristics; reads after a flag run freely; a script or local server can read what you can; a server's annotations are trusted; a remote server sees what the model sends its tools).
+  - Settings → Privacy says what a page read, Python and an MCP server see, and that none of it happens in a Local only project. Fixed on the way: Code and Work runs in a Local only project no longer get MCP tools either (chat already didn't).
+  - Settings → Coding agent activity → Export CSV or Export JSON: every tool call, with its kind, input, who allowed it, flags, result and run cost.
+  - The Windows click-through tests read https://example.com through `fetch_url` in the Work chat, on every PR; `run_python` is in the PC tests (step 6).
 
 ## Fixes
 
