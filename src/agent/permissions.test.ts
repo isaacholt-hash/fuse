@@ -158,6 +158,7 @@ test("Ask: an edit shows its diff first; declined, the file stays as it was", as
   expect(asked).toEqual([
     {
       runId: r.id,
+      signal: expect.any(AbortSignal) as AbortSignal,
       kind: "edit",
       change: { path: "a.ts", fromPath: null, before: "const a = 1;\n", after: "const a = 2;\n" },
     },

@@ -129,6 +129,8 @@ test("allowed: it runs in the repo, and the model gets the output and exit code"
   expect(asked).toEqual([
     {
       runId: expect.any(String) as string,
+      // M10 step 11: every question carries the run's own signal, so Stop withdraws it.
+      signal: expect.any(AbortSignal) as AbortSignal,
       kind: "command",
       command: "pnpm test",
       destructive: null,
