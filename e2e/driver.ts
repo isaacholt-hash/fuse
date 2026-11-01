@@ -1,7 +1,7 @@
 // M8 step 14: drives the test build over WebView2's DevTools port (the test build opens it,
 // src-tauri/tauri.e2e.conf.json). Not msedgedriver: from WebView2 133 on, it crashes the WebView
 // it launches (MicrosoftEdge/WebView2Feedback#5415). Clicks and keys are real input events.
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 const PORT = 9222;
@@ -81,9 +81,27 @@ export class Session {
     }
   }
 
+  /**
+   * Waits until no page answers on the DevTools port, so a second test file never attaches to the
+   * window of an app the first one is still closing.
+   */
+  static async portFree(ms = 30_000): Promise<void> {
+    const until = Date.now() + ms;
+    for (;;) {
+      const open = await fetch(`http://127.0.0.1:${String(PORT)}/json/version`)
+        .then(() => true)
+        .catch(() => false);
+      if (!open) return;
+      if (Date.now() > until)
+        throw new Error(`Port ${String(PORT)} still open after ${String(ms)} ms`);
+      await sleep(500);
+    }
+  }
+
   /** Starts the app and attaches to its window's page. */
-  static async start(application: string): Promise<Session> {
-    const app = spawn(application, [], { stdio: "inherit" });
+  static async start(application: string, args: string[] = []): Promise<Session> {
+    await Session.portFree();
+    const app = spawn(application, args, { stdio: "inherit" });
     const failed: { error?: Error } = {};
     app.on("error", (e) => {
       failed.error = e;
@@ -206,6 +224,31 @@ export class Session {
     await this.send("Input.insertText", { text });
   }
 
+  /** Picks the option with this text in the select with this label, as a person would. */
+  async choose(label: string, option: string): Promise<void> {
+    await this.find(byLabel(label));
+    const ok = await this.run<boolean>(`
+      const s = document.querySelector('select[aria-label=${JSON.stringify(label)}]');
+      const o = [...s.options].find((x) => x.text.trim() === ${JSON.stringify(option)});
+      if (!o) return false;
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(s, o.value);
+      s.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;`);
+    if (!ok) throw new Error(`No option “${option}” in ${label}`);
+  }
+
+  /** Empties a text field the way React sees it. */
+  async clear(xpath: string): Promise<void> {
+    await this.find(xpath);
+    await this.run(`
+      const el = document.evaluate(${JSON.stringify(xpath)}, document, null,
+        XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+      const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement : HTMLInputElement;
+      Object.getOwnPropertyDescriptor(proto.prototype, "value").set.call(el, "");
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      return true;`);
+  }
+
   async text(xpath: string, ms?: number): Promise<string> {
     return (await this.find(xpath, ms)).text;
   }
@@ -258,6 +301,12 @@ export class Session {
     return this.press(name, true);
   }
 
+  /** Opens this address in the page (the web test's browser starts on a blank tab). */
+  async navigate(url: string): Promise<void> {
+    await this.send("Page.enable");
+    await this.send("Page.navigate", { url });
+  }
+
   /** Lays the page out at this size, as a window of it would. */
   async resize(width: number, height: number): Promise<void> {
     await this.send("Emulation.setDeviceMetricsOverride", {
@@ -279,9 +328,14 @@ export class Session {
     writeFileSync(path, Buffer.from(data, "base64"));
   }
 
+  /** Closes the app and, on Windows, its WebView2 processes, which hold its data folder. */
   quit(): void {
     this.socket.close();
-    this.app.kill();
+    if (process.platform === "win32" && this.app.pid !== undefined) {
+      spawnSync("taskkill", ["/pid", String(this.app.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      this.app.kill();
+    }
   }
 }
 

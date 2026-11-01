@@ -3485,6 +3485,8 @@ test("M10 step 17: Continue in Code opens a session in the same project, linked 
   });
   await user.type(box, "fix it{Enter}");
   await within(await screen.findByRole("region", { name: "Coding run" })).findByText("Done");
+  // Sent: the saved session's composer is empty, not holding the brief again.
+  expect(((await composer()) as HTMLTextAreaElement).value).toBe("");
 
   const threads = await listThreads(db, DEFAULT_TENANT);
   const chat = threads.find((t) => t.kind === "chat");

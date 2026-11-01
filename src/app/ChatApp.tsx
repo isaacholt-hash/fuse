@@ -1107,8 +1107,15 @@ export function ChatApp({
   // Search across chats (CH-02), and the message a result opened at.
   const [searchOpen, setSearchOpen] = useState(false);
   const [focusId, setFocusId] = useState<string | null>(null);
-  // An answer quoted into the composer; `key` changes on every quote.
-  const [quote, setQuote] = useState<{ text: string; key: number } | null>(null);
+  // Text put into the composer (a quoted answer, a prompt, a handoff brief); `key` changes on
+  // every one. It belongs to one chat (`for`, null for a draft) and goes once that chat sends:
+  // the composer remounts when a draft is saved or the chat changes, and would add it again.
+  const [quote, setQuote] = useState<{ text: string; key: number; for: string | null } | null>(
+    null,
+  );
+  const putInComposer = (text: string, forId: string | null = selectedId) => {
+    setQuote((q) => ({ text, key: (q?.key ?? 0) + 1, for: forId }));
+  };
   // The composer's mode for a chat that hasn't been saved yet (RT-01); saved chats keep theirs.
   const [draftMode, setDraftMode] = useState<RouteMode>(AUTO);
   // RT-01: "next message only" is armed in the picker; the pick then goes here, not the chat.
@@ -1555,6 +1562,8 @@ export function ChatApp({
     (projectId: string | null = null, incognito = false) => {
       setSelectedId(null);
       selectedRef.current = null;
+      // A new draft starts empty (a handoff puts its brief in after this).
+      setQuote(null);
       setMessages([]);
       setThreadArtifacts([]);
       setOpenArtifact(null);
@@ -2112,6 +2121,8 @@ export function ChatApp({
     thinkHarder = false,
     confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
   ) => {
+    // What was put in the composer is in this message now: don't add it again on a remount.
+    setQuote(null);
     // M10 step 16: a desktop session set to run on HULK hands the message over as its task.
     if (runKind && !webApp && runsWhere === "hulk") {
       runOnHulk(text);
@@ -3500,7 +3511,7 @@ export function ChatApp({
     setView("chat");
     newChat(from.projectId);
     setDraftHandoff(from.id);
-    setQuote((q) => ({ text: brief, key: (q?.key ?? 0) + 1 }));
+    putInComposer(brief, null);
   };
   const handedFrom = thread?.handoffFromId
     ? threads.find((t) => t.id === thread.handoffFromId)
@@ -3800,7 +3811,7 @@ export function ChatApp({
       return;
     }
     setView("chat");
-    setQuote((q) => ({ text: prompt.body, key: (q?.key ?? 0) + 1 }));
+    putInComposer(prompt.body);
   };
   const refreshPrompts = () => listPrompts(db, tenant).then(setPrompts);
   // RT-12: the models compare mode can send to: Balanced and Best, from providers with a key.
@@ -5890,7 +5901,7 @@ export function ChatApp({
                         .catch(report);
                     }}
                     onQuote={(text) => {
-                      setQuote((q) => ({ text: quoteOf(text), key: (q?.key ?? 0) + 1 }));
+                      putInComposer(quoteOf(text));
                     }}
                   />
                   {incognito && (
@@ -5965,7 +5976,7 @@ export function ChatApp({
                     onSelectModel={(o) => {
                       chooseMode({ kind: "model", provider: o.provider, id: o.id });
                     }}
-                    insert={quote}
+                    insert={quote && quote.for === selectedId ? quote : null}
                     {...(messages.length > 0
                       ? {
                           context: {
@@ -6510,7 +6521,7 @@ export function ChatApp({
               const text = fillPrompt(filling.body, values);
               setFilling(null);
               setView("chat");
-              setQuote((q) => ({ text, key: (q?.key ?? 0) + 1 }));
+              putInComposer(text);
             }}
           />
         )}

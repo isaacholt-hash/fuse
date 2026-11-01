@@ -50,6 +50,7 @@ interface Block {
   content?: string | { type: string; text?: string }[];
 }
 interface Body {
+  system?: string | { text?: string }[];
   messages: { role: string; content: string | Block[] }[];
   tools?: { name?: string }[];
 }
@@ -61,19 +62,40 @@ const resultText = (b: Block) =>
 
 /** The next turn for a request: a command for a check, then its result as the answer. */
 export function scriptedTurn(body: Body): Turn {
+  // M10 checklist: a chat or session is titled with its first message, so the test can find it.
+  const system =
+    typeof body.system === "string" ? body.system : (body.system ?? []).map((b) => b.text).join("");
+  if (system.includes("Write a short title")) {
+    const input = body.messages.flatMap((m) => blocks(m.content)).map((b) => b.text ?? "");
+    const asked = /<user_message>\s*([^\n]+)/.exec(input.join("\n"))?.[1];
+    return { text: (asked ?? "A chat").slice(0, 60) };
+  }
   const last = body.messages.at(-1);
   const result = last ? blocks(last.content).find((b) => b.type === "tool_result") : undefined;
   if (result) return { text: `Command result:\n\n${resultText(result)}` };
-  const lastAsked = body.messages
-    .flatMap((m) => (m.role === "user" ? blocks(m.content) : []))
-    .map((b) => b.text ?? "")
-    .findLast((t) => t.includes("E2E "));
+  const lastAsked = askedIn(body);
   // M9 step 12: "E2E fetch" reads a public page through fetch_url.
   if (lastAsked?.includes("E2E fetch")) {
     if (!body.tools?.length) return { text: "1. Read the page." };
     if (!body.tools.some((t) => t.name === "fetch_url"))
       return { text: "fetch_url wasn't offered." };
     return { calls: [{ name: "fetch_url", input: { url: "https://example.com/" } }] };
+  }
+  // M10 checklist (e2e/checklist.e2e.ts): a Code session's run writes one file, for the Files
+  // panel and its Undo. "E2E slow" and "E2E stall" answer like any other ask; scriptedFetch
+  // holds them back.
+  if (lastAsked?.includes("E2E edit")) {
+    if (!body.tools?.length) return { text: "1. Write checklist.txt." };
+    if (!body.tools.some((t) => t.name === "write_file"))
+      return { text: "write_file wasn't offered." };
+    return {
+      calls: [
+        {
+          name: "write_file",
+          input: { path: "checklist.txt", content: "Made by the checklist.\n" },
+        },
+      ],
+    };
   }
   if (lastAsked?.includes("E2E python")) {
     // The planner asks without tools: it gets a plan.
@@ -107,33 +129,54 @@ export function scriptedTurn(body: Body): Turn {
   return { text: HELLO };
 }
 
+/** The task a request is for: the last user text that names an E2E script. */
+const askedIn = (body: Body) =>
+  body.messages
+    .flatMap((m) => (m.role === "user" ? blocks(m.content) : []))
+    .map((b) => b.text ?? "")
+    .findLast((t) => t.includes("E2E "));
+
+/**
+ * M10 checklist: "E2E slow" answers after 6 s, so the sidebar shows the run going; "E2E stall"
+ * never answers, so the watchdog stops the run. Both end early when the run is stopped.
+ */
+function held(body: Body, signal: AbortSignal | undefined): Promise<void> {
+  const asked = askedIn(body);
+  const ms = asked?.includes("E2E stall") ? Infinity : asked?.includes("E2E slow") ? 6000 : 0;
+  if (ms === 0) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timer = ms === Infinity ? undefined : setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    });
+  });
+}
+
 let turns = 0;
-const scriptedFetch: FetchLike = (url, init) => {
+const scriptedFetch: FetchLike = async (url, init) => {
   if (init.method === "GET") {
-    return Promise.resolve(
-      Response.json({
-        data: [
-          { id: "claude-sonnet-5-5", display_name: "Claude Sonnet 5.5" },
-          { id: "claude-opus-5-5", display_name: "Claude Opus 5.5" },
-          { id: "claude-haiku-5-5", display_name: "Claude Haiku 5.5" },
-        ],
-        has_more: false,
-      }),
-    );
+    return Response.json({
+      data: [
+        { id: "claude-sonnet-5-5", display_name: "Claude Sonnet 5.5" },
+        { id: "claude-opus-5-5", display_name: "Claude Opus 5.5" },
+        { id: "claude-haiku-5-5", display_name: "Claude Haiku 5.5" },
+      ],
+      has_more: false,
+    });
   }
-  if (!url.endsWith("/v1/messages")) return Promise.resolve(new Response("{}", { status: 404 }));
+  if (!url.endsWith("/v1/messages")) return new Response("{}", { status: 404 });
   const body = JSON.parse(init.body ?? "{}") as Body;
+  await held(body, init.signal);
   const turn = scriptedTurn(body);
   // For e2e/screenshots/console.log: which request got which turn, when.
   console.info(
     `e2e request ${String(turns + 1)}: ${String(body.messages.length)} messages, ${body.tools?.length ? "tools" : "no tools"} -> ${turn.calls?.length ? "tool call" : "text"}`,
   );
-  return Promise.resolve(
-    new Response(anthropicTurn(turn, ++turns), {
-      status: 200,
-      headers: { "content-type": "text/event-stream" },
-    }),
-  );
+  return new Response(anthropicTurn(turn, ++turns), {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
 };
 
 const keysApi: KeysApi = {

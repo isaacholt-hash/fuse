@@ -445,6 +445,8 @@ async function work(
   deps: RunDeps,
   runId: string,
   outer: Pick<RunInput, "signal" | "onProgress" | "wallMinutes" | "idleMinutes">,
+  /** What comes before the first turn (the plan), watched by the same limits. */
+  before?: (signal: AbortSignal) => Promise<void>,
 ): Promise<Run> {
   const { db, tenant } = deps;
   const scope = (run: Run) =>
@@ -477,6 +479,11 @@ async function work(
   const stopNote = () => tripped ?? "Stopped.";
   dog.start();
   try {
+    if (before) {
+      await before(inner.signal);
+      dog.progress();
+      await progress(deps, runId, input);
+    }
     await workTurns(deps, runId, input, scope, stopNote);
   } finally {
     dog.stop();
@@ -1488,12 +1495,16 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
       return failed;
     }
   }
-  if (
+  const planner =
     input.planner &&
     (input.planner.provider !== input.model.provider || input.planner.id !== input.model.id)
-  ) {
-    await progress(deps, run.id, input, `Planning on ${input.planner.displayName}…`);
-    await writePlan(deps, run, input.planner, input.signal);
+      ? input.planner
+      : null;
+  if (planner) {
+    await progress(deps, run.id, input, `Planning on ${planner.displayName}…`);
+    // The checklist found a planner that never answers holding a run forever: the plan is
+    // watched by the run's limits too.
+    return work(deps, run.id, input, (signal) => writePlan(deps, run, planner, signal));
   }
   await progress(deps, run.id, input);
   return work(deps, run.id, input);
