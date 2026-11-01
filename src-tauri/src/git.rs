@@ -136,22 +136,31 @@ pub async fn run(root: &Path, program: &str, args: &[String]) -> Result<GitResul
     })
 }
 
+pub(crate) async fn repo_git(
+    ctx: &crate::ctx::Ctx,
+    folder_id: String,
+    program: String,
+    args: Vec<String>,
+) -> Result<GitResult, String> {
+    let (root, _) = crate::repo::folder_root(&ctx.db.pool()?, &folder_id).await?;
+    let root =
+        std::fs::canonicalize(&root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    run(&root, &program, &args).await
+}
+
 pub mod commands {
     use super::*;
-    use crate::db::Database;
+    use crate::ctx::Ctx;
     use tauri::State;
 
     #[tauri::command]
     pub async fn repo_git(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         program: String,
         args: Vec<String>,
     ) -> Result<GitResult, String> {
-        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
-        let root = std::fs::canonicalize(&root)
-            .map_err(|e| format!("The linked folder is missing: {e}"))?;
-        run(&root, &program, &args).await
+        super::repo_git(&ctx, folder_id, program, args).await
     }
 }
 

@@ -319,7 +319,7 @@ pub mod commands {
     #[allow(clippy::too_many_arguments)]
     pub async fn local_generate(
         app: AppHandle,
-        local: State<'_, Local>,
+        ctx: State<'_, crate::ctx::Ctx>,
         file: String,
         system: String,
         messages: Vec<TurnIn>,
@@ -346,7 +346,7 @@ pub mod commands {
                 content: t.content,
             })
             .collect();
-        local
+        ctx.local
             .generate(
                 &Launch::this_app()?,
                 &path,
@@ -362,23 +362,24 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub async fn local_cancel(local: State<'_, Local>) -> Result<(), String> {
-        local.cancel().await;
+    pub async fn local_cancel(ctx: State<'_, crate::ctx::Ctx>) -> Result<(), String> {
+        ctx.local.cancel().await;
         Ok(())
     }
 
     /// The model file the worker has loaded (its name only), or null when none is.
     #[tauri::command]
-    pub async fn local_status(local: State<'_, Local>) -> Result<Option<String>, String> {
-        Ok(local
+    pub async fn local_status(ctx: State<'_, crate::ctx::Ctx>) -> Result<Option<String>, String> {
+        Ok(ctx
+            .local
             .loaded()
             .await
             .and_then(|p| p.file_name().map(|f| f.to_string_lossy().into_owned())))
     }
 
     #[tauri::command]
-    pub async fn local_unload(local: State<'_, Local>) -> Result<(), String> {
-        local.unload().await;
+    pub async fn local_unload(ctx: State<'_, crate::ctx::Ctx>) -> Result<(), String> {
+        ctx.local.unload().await;
         Ok(())
     }
 }

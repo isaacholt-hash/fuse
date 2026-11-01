@@ -173,12 +173,14 @@ async fn read(start: &str) -> Result<WebPage, String> {
     Err("Too many redirects.".into())
 }
 
-pub mod commands {
-    use super::*;
+pub(crate) async fn url_fetch(url: String) -> Result<WebPage, String> {
+    read(&url).await
+}
 
+pub mod commands {
     #[tauri::command]
-    pub async fn url_fetch(url: String) -> Result<WebPage, String> {
-        read(&url).await
+    pub async fn url_fetch(url: String) -> Result<super::WebPage, String> {
+        super::url_fetch(url).await
     }
 }
 

@@ -9,6 +9,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use tauri::http::{Request, Response, StatusCode};
 
+use crate::ctx::Ctx;
+
 /// The policy every preview is served with: nothing leaves the frame.
 pub const PREVIEW_CSP: &str = "default-src 'none'; script-src 'unsafe-inline'; \
     style-src 'unsafe-inline'; img-src data: blob:; font-src data:; media-src data: blob:; \
@@ -87,19 +89,23 @@ pub fn respond(previews: &Previews, request: &Request<Vec<u8>>) -> Response<Vec<
     }
 }
 
+/// Stores a page for preview; returns the id to load as `preview://localhost/<id>`.
+/// `cdn` lets this page load the listed CDNs; without it, nothing leaves the frame.
+pub(crate) fn preview_put(ctx: &Ctx, html: String, cdn: Option<bool>) -> Result<String, String> {
+    ctx.previews.put(html, cdn.unwrap_or(false))
+}
+
 pub mod commands {
     use super::*;
     use tauri::State;
 
-    /// Stores a page for preview; returns the id to load as `preview://localhost/<id>`.
-    /// `cdn` lets this page load the listed CDNs; without it, nothing leaves the frame.
     #[tauri::command]
     pub fn preview_put(
-        previews: State<'_, Previews>,
+        ctx: State<'_, Ctx>,
         html: String,
         cdn: Option<bool>,
     ) -> Result<String, String> {
-        previews.put(html, cdn.unwrap_or(false))
+        super::preview_put(&ctx, html, cdn)
     }
 }
 

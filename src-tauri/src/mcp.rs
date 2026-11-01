@@ -21,6 +21,9 @@ use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::ctx::Ctx;
+use crate::keys::Keys;
+
 /// The protocol version FUSE asks for; a server answers with the one it speaks.
 pub const PROTOCOL: &str = "2025-06-18";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
@@ -847,208 +850,238 @@ pub struct McpServers {
     running: Mutex<HashMap<String, (Server, McpHealth)>>,
 }
 
-pub mod commands {
-    use super::*;
-    use crate::db::Database;
-    use crate::keys::Keys;
-    use sqlx::Row;
-    use tauri::{AppHandle, Manager, State};
+// The commands' bodies (M10 step 2), without Tauri.
 
-    /// The running server, or a fresh start of it: handshake and tools. A server that died is
-    /// started again.
-    async fn ensure(
-        app: &AppHandle,
-        db: &Database,
-        keys: &Keys,
-        servers: &McpServers,
-        server_id: &str,
-    ) -> Result<(Server, McpHealth), String> {
-        let mut running = servers.running.lock().await;
-        if let Some((client, health)) = running.get(server_id) {
-            if !client.ended() {
-                return Ok((client.clone(), health.clone()));
-            }
-            running.remove(server_id);
+/// The running server, or a fresh start of it: handshake and tools. A server that died is
+/// started again.
+async fn ensure(ctx: &Ctx, server_id: &str) -> Result<(Server, McpHealth), String> {
+    use sqlx::Row;
+    let keys = &ctx.keys;
+    let mut running = ctx.mcp.running.lock().await;
+    if let Some((client, health)) = running.get(server_id) {
+        if !client.ended() {
+            return Ok((client.clone(), health.clone()));
         }
-        let row = sqlx::query(
-            "SELECT transport, command, args, url, env_names, network FROM mcp_servers
-             WHERE id = ? AND deleted_at IS NULL",
-        )
-        .bind(server_id)
-        .fetch_optional(&db.pool()?)
-        .await
-        .map_err(|e| format!("Couldn't read the server: {e}"))?
-        .ok_or("That server isn't in FUSE.")?;
-        let transport: String = row.get("transport");
-        if transport == "http" {
-            let url: String = row.get::<Option<String>, _>("url").unwrap_or_default();
-            // M9 step 10: signed in, its token (refreshed first when it's about to expire).
-            let mut tokens = load_tokens(keys, server_id)?;
-            let http = oauth_http()?;
-            if let Some(t) = &tokens
-                && t.stale(crate::mcp_oauth::now_secs())
-                && t.refresh_token.is_some()
-            {
-                let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
-                save_tokens(keys, server_id, &fresh)?;
-                tokens = Some(fresh);
-            }
-            let mut client = Server::Http(Arc::new(HttpClient::new(
+        running.remove(server_id);
+    }
+    let row = sqlx::query(
+        "SELECT transport, command, args, url, env_names, network FROM mcp_servers
+         WHERE id = ? AND deleted_at IS NULL",
+    )
+    .bind(server_id)
+    .fetch_optional(&ctx.db.pool()?)
+    .await
+    .map_err(|e| format!("Couldn't read the server: {e}"))?
+    .ok_or("That server isn't in FUSE.")?;
+    let transport: String = row.get("transport");
+    if transport == "http" {
+        let url: String = row.get::<Option<String>, _>("url").unwrap_or_default();
+        // M9 step 10: signed in, its token (refreshed first when it's about to expire).
+        let mut tokens = load_tokens(keys, server_id)?;
+        let http = oauth_http()?;
+        if let Some(t) = &tokens
+            && t.stale(crate::mcp_oauth::now_secs())
+            && t.refresh_token.is_some()
+        {
+            let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
+            save_tokens(keys, server_id, &fresh)?;
+            tokens = Some(fresh);
+        }
+        let mut client = Server::Http(Arc::new(HttpClient::new(
+            &url,
+            tokens.as_ref().map(|t| t.access_token.clone()),
+        )?));
+        let mut first = client.initialize().await;
+        // A token the server no longer takes is refreshed once.
+        if let (Err(e), Some(t)) = (&first, &tokens)
+            && e.contains("sign in")
+            && t.refresh_token.is_some()
+        {
+            let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
+            save_tokens(keys, server_id, &fresh)?;
+            client = Server::Http(Arc::new(HttpClient::new(
                 &url,
-                tokens.as_ref().map(|t| t.access_token.clone()),
+                Some(fresh.access_token.clone()),
             )?));
-            let mut first = client.initialize().await;
-            // A token the server no longer takes is refreshed once.
-            if let (Err(e), Some(t)) = (&first, &tokens)
-                && e.contains("sign in")
-                && t.refresh_token.is_some()
-            {
-                let fresh = crate::mcp_oauth::refresh(&http, t, &url).await?;
-                save_tokens(keys, server_id, &fresh)?;
-                client = Server::Http(Arc::new(HttpClient::new(
-                    &url,
-                    Some(fresh.access_token.clone()),
-                )?));
-                first = client.initialize().await;
-            }
-            let (server_name, server_version, protocol) = first.map_err(|e| {
-                if e.contains("sign in") {
-                    "This server wants you to sign in: Settings → MCP servers → Sign in."
-                        .to_string()
-                } else {
-                    e
-                }
-            })?;
-            let tools = client.list_tools().await?;
-            let health = McpHealth {
-                server_name,
-                server_version,
-                protocol,
-                tools,
-            };
-            running.insert(server_id.to_string(), (client.clone(), health.clone()));
-            return Ok((client, health));
+            first = client.initialize().await;
         }
-        let command: String = row.get::<Option<String>, _>("command").unwrap_or_default();
-        let args: Vec<String> =
-            serde_json::from_str(&row.get::<String, _>("args")).map_err(|e| e.to_string())?;
-        let names: Vec<String> =
-            serde_json::from_str(&row.get::<String, _>("env_names")).map_err(|e| e.to_string())?;
-        let network = row.get::<i64, _>("network") == 1;
-        let env = crate::keys::mcp_env_for(keys, server_id, &names)?;
-        let work = app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?
-            .join("mcp")
-            .join(server_id);
-        std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
-        #[cfg(target_os = "linux")]
-        let spawned = stdio_command(&command, &args, &work, network, &env)
-            .map(Client::spawn)
-            .transpose()?;
-        #[cfg(windows)]
-        let spawned = {
-            let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-            let (c, a, w, e) = (command.clone(), args.clone(), work.clone(), env.clone());
-            tokio::task::spawn_blocking(move || stdio_contained(&data, &c, &a, &w, network, &e))
-                .await
-                .map_err(|e| e.to_string())??
+        let (server_name, server_version, protocol) = first.map_err(|e| {
+            if e.contains("sign in") {
+                "This server wants you to sign in: Settings → MCP servers → Sign in.".to_string()
+            } else {
+                e
+            }
+        })?;
+        let tools = client.list_tools().await?;
+        let health = McpHealth {
+            server_name,
+            server_version,
+            protocol,
+            tools,
         };
-        #[cfg(not(any(target_os = "linux", windows)))]
-        let spawned: Option<Arc<Client>> = {
-            let _ = (&command, &args, network, &env);
-            None
-        };
-        let client = Server::Stdio(spawned.ok_or(
-            "Local servers run only in the sandbox, and it isn't on here: on Windows, switch it on in Settings → Sandbox.",
-        )?);
-        let started = async {
-            let (server_name, server_version, protocol) = client.initialize().await?;
-            let tools = client.list_tools().await?;
-            Ok::<_, String>(McpHealth {
-                server_name,
-                server_version,
-                protocol,
-                tools,
+        running.insert(server_id.to_string(), (client.clone(), health.clone()));
+        return Ok((client, health));
+    }
+    let command: String = row.get::<Option<String>, _>("command").unwrap_or_default();
+    let args: Vec<String> =
+        serde_json::from_str(&row.get::<String, _>("args")).map_err(|e| e.to_string())?;
+    let names: Vec<String> =
+        serde_json::from_str(&row.get::<String, _>("env_names")).map_err(|e| e.to_string())?;
+    let network = row.get::<i64, _>("network") == 1;
+    let env = crate::keys::mcp_env_for(keys, server_id, &names)?;
+    let work = ctx.data_dir.join("mcp").join(server_id);
+    std::fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    let spawned = stdio_command(&command, &args, &work, network, &env)
+        .map(Client::spawn)
+        .transpose()?;
+    #[cfg(windows)]
+    let spawned = {
+        let data = ctx.data_dir.clone();
+        let (c, a, w, e) = (command.clone(), args.clone(), work.clone(), env.clone());
+        tokio::task::spawn_blocking(move || stdio_contained(&data, &c, &a, &w, network, &e))
+            .await
+            .map_err(|e| e.to_string())??
+    };
+    #[cfg(not(any(target_os = "linux", windows)))]
+    let spawned: Option<Arc<Client>> = {
+        let _ = (&command, &args, network, &env);
+        None
+    };
+    let client = Server::Stdio(spawned.ok_or(
+        "Local servers run only in the sandbox, and it isn't on here: on Windows, switch it on in Settings → Sandbox.",
+    )?);
+    let started = async {
+        let (server_name, server_version, protocol) = client.initialize().await?;
+        let tools = client.list_tools().await?;
+        Ok::<_, String>(McpHealth {
+            server_name,
+            server_version,
+            protocol,
+            tools,
+        })
+    }
+    .await;
+    match started {
+        Ok(health) => {
+            running.insert(server_id.to_string(), (client.clone(), health.clone()));
+            Ok((client, health))
+        }
+        Err(e) => {
+            let more = client.stderr();
+            client.stop().await;
+            Err(if more.is_empty() || e.contains(&more) {
+                e
+            } else {
+                format!("{e}\n{more}")
             })
         }
-        .await;
-        match started {
-            Ok(health) => {
-                running.insert(server_id.to_string(), (client.clone(), health.clone()));
-                Ok((client, health))
-            }
-            Err(e) => {
-                let more = client.stderr();
-                client.stop().await;
-                Err(if more.is_empty() || e.contains(&more) {
-                    e
-                } else {
-                    format!("{e}\n{more}")
-                })
-            }
-        }
     }
+}
 
-    /// Starts the server again, does the handshake and lists its tools (Settings → Check).
+/// Starts the server again, does the handshake and lists its tools (Settings → Check).
+pub(crate) async fn mcp_check(ctx: &Ctx, server_id: String) -> Result<McpHealth, String> {
+    if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
+        old.stop().await;
+    }
+    Ok(ensure(ctx, &server_id).await?.1)
+}
+
+/// M9 step 9: the server's tools, starting it if it isn't running.
+pub(crate) async fn mcp_tools(ctx: &Ctx, server_id: String) -> Result<Vec<McpTool>, String> {
+    Ok(ensure(ctx, &server_id).await?.1.tools)
+}
+
+/// M9 step 9: calls one of its tools.
+pub(crate) async fn mcp_call(
+    ctx: &Ctx,
+    server_id: String,
+    name: String,
+    arguments: Value,
+) -> Result<McpCallResult, String> {
+    let (client, _) = ensure(ctx, &server_id).await?;
+    client.call(&name, arguments).await
+}
+
+/// M9 step 10: forgets a remote server's tokens.
+pub(crate) async fn mcp_sign_out(ctx: &Ctx, server_id: String) -> Result<(), String> {
+    crate::keys::mcp_oauth_delete(&ctx.keys, &server_id)?;
+    if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
+        old.stop().await;
+    }
+    Ok(())
+}
+
+/// M9 step 10: whether there are tokens for it.
+pub(crate) fn mcp_signed_in(ctx: &Ctx, server_id: String) -> Result<bool, String> {
+    Ok(crate::keys::mcp_oauth_get(&ctx.keys, &server_id)?.is_some())
+}
+
+/// Stops a running server; nothing if it isn't.
+pub(crate) async fn mcp_stop(ctx: &Ctx, server_id: String) -> Result<(), String> {
+    if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
+        old.stop().await;
+    }
+    Ok(())
+}
+
+fn oauth_http() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| e.to_string())
+}
+
+fn load_tokens(keys: &Keys, server_id: &str) -> Result<Option<crate::mcp_oauth::Tokens>, String> {
+    Ok(crate::keys::mcp_oauth_get(keys, server_id)?.and_then(|j| serde_json::from_str(&j).ok()))
+}
+
+fn save_tokens(keys: &Keys, server_id: &str, t: &crate::mcp_oauth::Tokens) -> Result<(), String> {
+    crate::keys::mcp_oauth_set(
+        keys,
+        server_id,
+        &serde_json::to_string(t).map_err(|e| e.to_string())?,
+    )
+}
+
+pub mod commands {
+    use super::*;
+    use sqlx::Row;
+    use tauri::{AppHandle, State};
+
     #[tauri::command]
-    pub async fn mcp_check(
-        app: AppHandle,
-        db: State<'_, Database>,
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
-        server_id: String,
-    ) -> Result<McpHealth, String> {
-        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
-            old.stop().await;
-        }
-        Ok(ensure(&app, &db, &keys, &servers, &server_id).await?.1)
+    pub async fn mcp_check(ctx: State<'_, Ctx>, server_id: String) -> Result<McpHealth, String> {
+        super::mcp_check(&ctx, server_id).await
     }
 
-    /// M9 step 9: the server's tools, starting it if it isn't running.
     #[tauri::command]
-    pub async fn mcp_tools(
-        app: AppHandle,
-        db: State<'_, Database>,
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
-        server_id: String,
-    ) -> Result<Vec<McpTool>, String> {
-        Ok(ensure(&app, &db, &keys, &servers, &server_id)
-            .await?
-            .1
-            .tools)
+    pub async fn mcp_tools(ctx: State<'_, Ctx>, server_id: String) -> Result<Vec<McpTool>, String> {
+        super::mcp_tools(&ctx, server_id).await
     }
 
-    /// M9 step 9: calls one of its tools.
     #[tauri::command]
     pub async fn mcp_call(
-        app: AppHandle,
-        db: State<'_, Database>,
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
+        ctx: State<'_, Ctx>,
         server_id: String,
         name: String,
         arguments: Value,
     ) -> Result<McpCallResult, String> {
-        let (client, _) = ensure(&app, &db, &keys, &servers, &server_id).await?;
-        client.call(&name, arguments).await
+        super::mcp_call(&ctx, server_id, name, arguments).await
     }
 
     /// M9 step 10: signs in to a remote server in the system browser and keeps the tokens.
+    /// Desktop only: the sign-in comes back to a loopback port on this computer.
     #[tauri::command]
     pub async fn mcp_sign_in(
         app: AppHandle,
-        db: State<'_, Database>,
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
+        ctx: State<'_, Ctx>,
         server_id: String,
     ) -> Result<(), String> {
         use tauri_plugin_opener::OpenerExt;
         let row = sqlx::query("SELECT url FROM mcp_servers WHERE id = ? AND transport = 'http' AND deleted_at IS NULL")
             .bind(&server_id)
-            .fetch_optional(&db.pool()?)
+            .fetch_optional(&ctx.db.pool()?)
             .await
             .map_err(|e| format!("Couldn't read the server: {e}"))?
             .ok_or("That isn't a remote server in FUSE.")?;
@@ -1082,70 +1115,26 @@ pub mod commands {
                 .map_err(|e| format!("Couldn't open the browser: {e}"))
         })
         .await?;
-        save_tokens(&keys, &server_id, &tokens)?;
-        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
+        save_tokens(&ctx.keys, &server_id, &tokens)?;
+        if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
             old.stop().await;
         }
         Ok(())
     }
 
-    /// M9 step 10: forgets a remote server's tokens.
     #[tauri::command]
-    pub async fn mcp_sign_out(
-        keys: State<'_, Keys>,
-        servers: State<'_, McpServers>,
-        server_id: String,
-    ) -> Result<(), String> {
-        crate::keys::mcp_oauth_delete(&keys, &server_id)?;
-        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
-            old.stop().await;
-        }
-        Ok(())
+    pub async fn mcp_sign_out(ctx: State<'_, Ctx>, server_id: String) -> Result<(), String> {
+        super::mcp_sign_out(&ctx, server_id).await
     }
 
-    /// M9 step 10: whether there are tokens for it.
     #[tauri::command]
-    pub fn mcp_signed_in(keys: State<'_, Keys>, server_id: String) -> Result<bool, String> {
-        Ok(crate::keys::mcp_oauth_get(&keys, &server_id)?.is_some())
+    pub fn mcp_signed_in(ctx: State<'_, Ctx>, server_id: String) -> Result<bool, String> {
+        super::mcp_signed_in(&ctx, server_id)
     }
 
-    fn oauth_http() -> Result<reqwest::Client, String> {
-        reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(Duration::from_secs(30))
-            .build()
-            .map_err(|e| e.to_string())
-    }
-
-    fn load_tokens(
-        keys: &Keys,
-        server_id: &str,
-    ) -> Result<Option<crate::mcp_oauth::Tokens>, String> {
-        Ok(
-            crate::keys::mcp_oauth_get(keys, server_id)?
-                .and_then(|j| serde_json::from_str(&j).ok()),
-        )
-    }
-
-    fn save_tokens(
-        keys: &Keys,
-        server_id: &str,
-        t: &crate::mcp_oauth::Tokens,
-    ) -> Result<(), String> {
-        crate::keys::mcp_oauth_set(
-            keys,
-            server_id,
-            &serde_json::to_string(t).map_err(|e| e.to_string())?,
-        )
-    }
-
-    /// Stops a running server; nothing if it isn't.
     #[tauri::command]
-    pub async fn mcp_stop(servers: State<'_, McpServers>, server_id: String) -> Result<(), String> {
-        if let Some((old, _)) = servers.running.lock().await.remove(&server_id) {
-            old.stop().await;
-        }
-        Ok(())
+    pub async fn mcp_stop(ctx: State<'_, Ctx>, server_id: String) -> Result<(), String> {
+        super::mcp_stop(&ctx, server_id).await
     }
 }
 

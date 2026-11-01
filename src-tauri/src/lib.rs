@@ -1,4 +1,8 @@
+// The command table fuse-server will serve (M10 step 3); only its tests use it so far.
+#[allow(dead_code)]
+mod api;
 mod backup;
+mod ctx;
 mod db;
 mod egress;
 mod exec;
@@ -32,19 +36,22 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // Global quick capture; the app sets the shortcut from Settings (src/quick.rs).
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(db::Database::default())
-        .manage(keys::Keys::default())
-        .manage(transport::Transport::default())
-        .manage(exec::Execs::default())
-        .manage(preview::Previews::default())
-        .manage(local::Local::default())
-        .manage(model_files::Downloads::default())
-        .manage(python_runtime::PyInstall::default())
-        .manage(mcp::McpServers::default())
+        // M10 step 2: the folders and state every command runs with (src/ctx.rs).
+        .setup(|app| {
+            use tauri::Manager;
+            let path = app.path();
+            let ctx = ctx::Ctx::new(
+                path.app_data_dir()?,
+                path.app_config_dir()?,
+                keys::Keys::default(),
+            );
+            app.manage(ctx);
+            Ok(())
+        })
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
             use tauri::Manager;
-            preview::respond(&ctx.app_handle().state::<preview::Previews>(), &request)
+            preview::respond(&ctx.app_handle().state::<ctx::Ctx>().previews, &request)
         })
         .invoke_handler(tauri::generate_handler![
             keys::commands::key_status,
