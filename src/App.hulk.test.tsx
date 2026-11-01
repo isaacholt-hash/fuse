@@ -134,7 +134,19 @@ async function codeInProject(user: ReturnType<typeof userEvent.setup>) {
   await user.click(settings.getByRole("button", { name: "Link a folder…" }));
   await settings.findByText("/home/me/site");
   await user.keyboard("{Escape}");
+  // M10 step 16: a session in the Code area; the project comes along.
+  await user.keyboard("{Control>}2{/Control}");
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
+}
+
+/** M10 step 16: Where = HULK, then the task is sent: it's handed over, not run here. */
+async function sendToHulk(user: ReturnType<typeof userEvent.setup>, task: string) {
+  await user.click(
+    within(await screen.findByRole("group", { name: "Where it runs" })).getByRole("button", {
+      name: "HULK",
+    }),
+  );
+  await user.type(await screen.findByRole("textbox", { name: "Message" }), `${task}{Enter}`);
 }
 
 beforeEach(() => {
@@ -177,11 +189,13 @@ test("Settings → HULK pairs with a code (the server's error shows), then unpai
   expect(hulk.state.status.paired).toBe(false);
 });
 
-test("not paired, Run on HULK is greyed with the reason", async () => {
+test("not paired, HULK as the place to run is greyed with the reason", async () => {
   const { user } = start(fakeHulk(false).api);
   await codeInProject(user);
-  await user.type(await screen.findByRole("textbox", { name: "Message" }), "Add a footer");
-  const button = await screen.findByRole("button", { name: "Run on HULK" });
+  const button = within(await screen.findByRole("group", { name: "Where it runs" })).getByRole(
+    "button",
+    { name: "HULK" },
+  );
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("title", "Pair with HULK in Settings first");
   expect(screen.getByText("Pair with HULK in Settings first")).toBeInTheDocument();
@@ -191,20 +205,18 @@ test("a repository with unpushed work is refused, with repoOrigin's words", asyn
   const hulk = fakeHulk(true);
   const { user } = start(hulk.api, fakeGit("2"));
   await codeInProject(user);
-  await user.type(await screen.findByRole("textbox", { name: "Message" }), "Add a footer");
-  await user.click(await screen.findByRole("button", { name: "Run on HULK" }));
+  await sendToHulk(user, "Add a footer");
   expect(
     await screen.findByText(/Push main first: HULK works from what's on origin\./),
   ).toBeInTheDocument();
   expect(await hulk.state.db.select("SELECT id FROM run_requests")).toEqual([]);
 });
 
-test("Run on HULK hands the task over, the card follows it, and a change is a notification", async () => {
+test("a session on HULK hands its task over, the card follows it, and a change is a notification", async () => {
   const hulk = fakeHulk(true);
   const { user, shown } = start(hulk.api);
   await codeInProject(user);
-  await user.type(await screen.findByRole("textbox", { name: "Message" }), "Add a footer note");
-  await user.click(await screen.findByRole("button", { name: "Run on HULK" }));
+  await sendToHulk(user, "Add a footer note");
 
   // The request on HULK: the task, the routed model, the composer's mode, the repo's origin.
   await waitFor(async () => {

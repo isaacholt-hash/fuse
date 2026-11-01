@@ -3037,6 +3037,8 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   expect(settings.getByText("lighthouse: a git repository.")).toBeInTheDocument();
   await user.keyboard("{Escape}");
 
+  // M10 step 16: runs start in the Code area; the project comes along.
+  await user.keyboard("{Control>}2{/Control}");
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.type(await composer(), "What is this project called?{Enter}");
   const card = within(await screen.findByRole("region", { name: "Coding run" }));
@@ -3103,7 +3105,7 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
       turn: { provider: "anthropic", model: "x", items: [] },
     };
   }
-  const { user, options } = setup(
+  const { user, options, db } = setup(
     {
       anthropic: [() => answer("1. Edit the tide."), edit, () => answer("Changed the tide to 4.")],
     },
@@ -3121,6 +3123,8 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   await settings.findByText("/home/me/lighthouse");
   await user.keyboard("{Escape}");
 
+  // M10 step 16: runs start in the Code area; the project comes along.
+  await user.keyboard("{Control>}2{/Control}");
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
   await user.type(await composer(), "Make the tide 4{Enter}");
@@ -3137,6 +3141,17 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
     "true",
   );
   expect(screen.getByLabelText("What the coding run may do")).toHaveValue("auto_edit");
+  // M10 step 16: the session's strip says where and in what, and its settings were saved on it.
+  const strip = within(screen.getByRole("group", { name: "Session" }));
+  expect(strip.getByText("On this computer")).toBeInTheDocument();
+  expect(strip.getByText("lighthouse")).toBeInTheDocument();
+  expect(strip.getByLabelText("What this session's runs may do")).toHaveValue("auto_edit");
+  const [saved] = await listThreads(db, DEFAULT_TENANT);
+  expect(saved).toMatchObject({ kind: "code", session: { mode: "auto_edit" } });
+  // The Files panel lists what its runs changed.
+  await user.click(strip.getByRole("button", { name: /^Files/ }));
+  const panel = within(screen.getByRole("complementary", { name: "Session files" }));
+  expect(panel.getByText("Edited src/tide.ts")).toBeInTheDocument();
 
   await user.click(card.getByRole("button", { name: "Edited src/tide.ts" }));
   expect(card.getByText("export const tide = 4;")).toBeInTheDocument();
@@ -3207,6 +3222,8 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   await user.click(settings.getByRole("button", { name: "Link a folder…" }));
   await settings.findByText("/home/me/lighthouse");
   await user.keyboard("{Escape}");
+  // M10 step 16: runs start in the Code area; the project comes along.
+  await user.keyboard("{Control>}2{/Control}");
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
   await user.type(await composer(), "Run the tests{Enter}");
@@ -3297,6 +3314,8 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
   expect(settings.getByLabelText("Coding runs start as")).toHaveValue("ask");
   await user.keyboard("{Escape}");
 
+  // M10 step 16: runs start in the Code area; the project comes along.
+  await user.keyboard("{Control>}2{/Control}");
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   expect(screen.getByLabelText("What the coding run may do")).toHaveValue("ask");
   await user.type(await composer(), "Set a to 2{Enter}");
@@ -3333,8 +3352,14 @@ test("M8: the Windows sandbox is on unless it was switched off", async () => {
   expect(set).toHaveBeenLastCalledWith(false);
 });
 
+/** M10 step 16: a session works in a folder; this one picks /home/me/lighthouse. */
+const pickingRepo: RepoApi = {
+  ...noRepo,
+  pick: () => Promise.resolve({ root: "/home/me/lighthouse", name: "lighthouse", isGit: true }),
+};
+
 test("M10 step 12: two areas: each lists its own threads, has its own empty state, and reopens its own last one", async () => {
-  const { user, db } = setup();
+  const { user, db } = setup({}, undefined, {}, { repo: pickingRepo });
   // A chat in the Chat area.
   await user.type(await composer(), "Plan the week{Enter}");
   await screen.findByText("Hello there.");
@@ -3350,9 +3375,16 @@ test("M10 step 12: two areas: each lists its own threads, has its own empty stat
   expect(screen.getAllByRole("button", { name: /^New session/ }).length).toBeGreaterThan(0);
   expect(screen.getAllByText("No sessions yet").length).toBeGreaterThan(0);
 
-  // A thread written here is a session, listed here and not in Chat.
+  // A thread written here is a session, listed here and not in Chat. It needs a folder first.
+  expect(
+    screen.getAllByText(/Pick a project with a folder, or add a folder/).length,
+  ).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Add a folder" }));
+  await screen.findByRole("button", { name: /lighthouse/ });
   await user.type(await composer(), "Why is the build red{Enter}");
-  await screen.findByText("Hello there.");
+  expect(
+    await within(await screen.findByRole("region", { name: "Coding run" })).findByText("Done"),
+  ).toBeInTheDocument();
   const kinds = Object.fromEntries(
     (await listThreads(db, DEFAULT_TENANT)).map((t) => [t.title, t.kind]),
   );
@@ -3382,10 +3414,15 @@ test("M10 step 12: two areas: each lists its own threads, has its own empty stat
 });
 
 test("M10 step 12: the app reopens in the area it was left in, on that area's last thread", async () => {
-  const first = setup();
+  const first = setup({}, undefined, {}, { repo: pickingRepo });
   await first.user.keyboard("{Control>}2{/Control}");
+  await first.user.click(await screen.findByRole("button", { name: "Add a folder" }));
+  await screen.findByRole("button", { name: /lighthouse/ });
   await first.user.type(await composer(), "Tidy the README{Enter}");
-  await screen.findByText("Hello there.");
+  const card = await screen.findByRole("region", { name: "Coding run" });
+  await waitFor(() => {
+    expect(card.textContent).toMatch(/Done/u);
+  });
   expect(localStorage.getItem("fuse.area")).toBe("code");
   const threads = await listThreads(first.db, DEFAULT_TENANT);
   expect(localStorage.getItem("fuse.lastThread.code")).toBe(threads[0]?.id);
@@ -3400,4 +3437,23 @@ test("M10 step 15: on a desktop not paired with HULK, the Scheduled page says wh
     await screen.findByText(/Pair this computer with HULK in Settings to see them here/),
   ).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "New task" })).toBeNull();
+});
+
+test("M10 step 16: a chat in a project with a repository never starts a run", async () => {
+  const { user, db } = setup({}, undefined, {}, { repo: pickingRepo });
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  await user.keyboard("{Escape}");
+  // The Chat composer has no run controls and no folders.
+  expect(screen.queryByRole("button", { name: "Coding run" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a folder" })).toBeNull();
+  await user.type(await composer(), "Change the tide to 4{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
 });

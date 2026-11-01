@@ -281,6 +281,7 @@ import {
   setThreadPins,
   setThreadProject,
   setThreadWebSearch,
+  setThreadSession,
   markThreadSeen,
   markThreadUnread,
   settleSeen,
@@ -422,6 +423,9 @@ import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
+import { NewSessionBar } from "@/ui/NewSession";
+import { SessionStrip } from "@/ui/SessionStrip";
+import { FilesPanel } from "@/ui/FilesPanel";
 import { Home } from "@/ui/Home";
 import { EMPTY_HOME, homeView } from "./homeView";
 import { AreaTabs } from "@/ui/AreaTabs";
@@ -1280,6 +1284,10 @@ export function ChatApp({
   const [codeMode, setCodeMode] = useState<Record<string, RunMode>>({});
   // CA-05: start runs on a branch of their own, per chat.
   const [codeBranch, setCodeBranch] = useState<Record<string, boolean>>({});
+  // M10 step 16: a new session's place and cap (saved on it when it's made), and the Files panel.
+  const [draftWhere, setDraftWhere] = useState<"local" | "hulk">(webApp ? "hulk" : "local");
+  const [draftCap, setDraftCap] = useState<number | null>(null);
+  const [filesOpen, setFilesOpen] = useState(false);
   // AG-04: recent coding-run tool calls, for Settings.
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   // CA-04: commands the edited project always allows, for its settings.
@@ -1895,7 +1903,13 @@ export function ChatApp({
     job: Job,
     webSearch = false,
     /** Start a run (Code) instead of answering; the project is null outside one (WF-02). */
-    runIn: { projectId: string | null; kind: "code" | "work" } | null = null,
+    runIn: {
+      projectId: string | null;
+      kind: "code" | "work";
+      mode?: RunMode;
+      newBranch?: boolean;
+      capMicroUsd?: number;
+    } | null = null,
   ) => {
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
@@ -1959,10 +1973,14 @@ export function ChatApp({
     };
     try {
       const runMode =
+        runIn?.mode ??
         codeMode[threadId] ??
         codeMode.draft ??
         projects.find((p) => p.id === runIn?.projectId)?.runMode ??
         "ask";
+      // M10 step 16: the session's branch choice and cap.
+      const runBranch = runIn?.newBranch ?? codeBranch[threadId] ?? codeBranch.draft ?? false;
+      const runCap = runIn?.capMicroUsd;
       // RT-14: on Auto, the cheapest Best model plans; a pinned tier or model does it all.
       const planner = routed.info.mode === "auto" ? routed.info.best : null;
       const result = await (runIn && repoApi && job.kind === "send" && webApp
@@ -1974,8 +1992,9 @@ export function ChatApp({
               task: job.text,
               model: { provider: routed.model.provider, id: routed.model.id },
               mode: runMode,
-              newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
+              newBranch: runBranch,
               planner: planner ? { provider: planner.provider, id: planner.id } : null,
+              ...(runCap !== undefined ? { capMicroUsd: runCap } : {}),
             },
             controller.signal,
           ).then(() => ({ status: "complete" as const, failedOverFrom: undefined }))
@@ -1987,8 +2006,9 @@ export function ChatApp({
               task: job.text,
               model: routed.model,
               mode: runMode,
-              newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
+              newBranch: runBranch,
               planner,
+              ...(runCap !== undefined ? { capMicroUsd: runCap } : {}),
               signal: controller.signal,
               onProgress: (answerId, p) => {
                 setThreadRuns((m) => new Map(m).set(answerId, p));
@@ -2056,15 +2076,21 @@ export function ChatApp({
     const last = readLastThread(next);
     const found = last ? threads.find((t) => t.id === last && areaOf(t.kind) === next) : null;
     if (found) select(found.id);
-    else newChat();
+    // M10 step 16: a fresh draft stays in the project you were in.
+    else newChat(activeProjectId ?? null);
   };
 
   /** The open chat, or a new one made from the draft's settings. */
-  const threadForSend = async (search: boolean): Promise<string> => {
+  const threadForSend = async (search: boolean, task?: string): Promise<string> => {
     if (selectedId !== null) return selectedId;
     // M10 step 12: a draft belongs to the area it was written in; Work when that switch is on.
     const kind = area === "code" ? (codeOn.draft === "work" ? "work" : "code") : "chat";
-    const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito, kind);
+    // M10 step 16: a session is named for its first task (runs aren't auto-titled like chats).
+    const title =
+      kind !== "chat" && task
+        ? task.replace(/\s+/g, " ").trim().slice(0, 60) || undefined
+        : undefined;
+    const thread = await createThread(db, tenant, title, draftProject, draftIncognito, kind);
     const threadId = thread.id;
     if (search) await setThreadWebSearch(db, tenant, threadId, true);
     if (draftInstructions) {
@@ -2092,6 +2118,15 @@ export function ChatApp({
     setCodeOn(fromDraft);
     setCodeMode(fromDraft);
     setCodeBranch(fromDraft);
+    // M10 step 16: a new session keeps what its bar and composer showed.
+    if (kind !== "chat") {
+      await setThreadSession(db, tenant, threadId, {
+        mode: codeMode.draft ?? null,
+        newBranch: codeBranch.draft ?? null,
+        where: webApp ? null : draftWhere,
+        capMicroUsd: draftCap,
+      });
+    }
     setSelectedId(threadId);
     selectedRef.current = threadId;
     await refreshThreads();
@@ -2103,6 +2138,11 @@ export function ChatApp({
     thinkHarder = false,
     confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
   ) => {
+    // M10 step 16: a desktop session set to run on HULK hands the message over as its task.
+    if (runKind && !webApp && runsWhere === "hulk") {
+      runOnHulk(text);
+      return;
+    }
     const ready = confirmed.dropFiles
       ? []
       : attachments.pending.flatMap((p) =>
@@ -2233,13 +2273,21 @@ export function ChatApp({
     setOnceArmed(false);
     if (confirmed.dropFiles) attachments.clear();
     try {
-      const threadId = await threadForSend(search);
+      const threadId = await threadForSend(search, text);
       await stream(
         threadId,
         routed,
         { kind: "send", text, files: sent },
         search,
-        runKind ? { projectId: activeProjectId ?? null, kind: runKind } : null,
+        runKind
+          ? {
+              projectId: activeProjectId ?? null,
+              kind: runKind,
+              mode: sessionMode,
+              newBranch: sessionBranch,
+              capMicroUsd: sessionCap,
+            }
+          : null,
       );
       if (compareMode) {
         setCompareKeys([]);
@@ -2707,17 +2755,43 @@ export function ChatApp({
       }),
   });
   const codeKey = selectedId ?? "draft";
-  // M10 step 12: a session runs as its kind unless the switch says otherwise; a Code-area draft
-  // starts as a Code run. (Step 16 retires the switch.)
-  const defaultRun: "code" | "work" | false = thread
-    ? thread.kind === "chat"
-      ? false
-      : thread.kind
-    : area === "code"
-      ? "code"
-      : false;
-  const runKind = codeAvailable ? (codeOn[codeKey] ?? defaultRun) || null : null;
+  // M10 step 16 (CH-19): only the Code area runs. A chat there never starts one (its composer has
+  // no run controls); a session runs as its kind, or the Kind its composer shows for a draft.
+  const sessionKind: "code" | "work" =
+    thread && thread.kind !== "chat" ? codeOn[codeKey] || thread.kind : codeOn[codeKey] || "code";
+  const runKind = area === "code" && codeAvailable ? sessionKind : null;
   const codeActive = runKind !== null;
+  // A session's settings: what its composer shows, then what's saved on it, then the project's.
+  const sessionMode: RunMode =
+    codeMode[codeKey] ?? thread?.session.mode ?? activeProject?.runMode ?? "ask";
+  // Off unless asked for: a branch can't be made in a folder that isn't a git repository, and
+  // the run would fail on it (plan decision 7 changed, M10 step 16).
+  const sessionBranch = codeBranch[codeKey] ?? thread?.session.newBranch ?? false;
+  const sessionWhere: "local" | "hulk" = webApp
+    ? "hulk"
+    : thread
+      ? (thread.session.where ?? "local")
+      : draftWhere;
+  const sessionCap =
+    (thread ? thread.session.capMicroUsd : draftCap) ??
+    activeProject?.runLimits.capMicroUsd ??
+    DEFAULT_RUN_CAP_MICRO_USD;
+  /** M10 step 16: what the session's runs may do, shown in its composer and strip, and saved. */
+  const setSessionMode = (m: RunMode) => {
+    setCodeMode((all) => ({ ...all, [codeKey]: m }));
+    if (selectedId)
+      setThreadSession(db, tenant, selectedId, { mode: m }).then(refreshThreads).catch(report);
+  };
+  /** CA-02: puts one file a run changed back as it was (run cards and the Files panel). */
+  const undoChangeHere = (changeId: string) => {
+    if (!repoApi || !selectedId) return;
+    const threadId = selectedId;
+    undoChange(runDeps(repoApi), changeId)
+      .catch((e: unknown) => {
+        setProblem(e instanceof Error ? e.message : String(e));
+      })
+      .finally(() => void reload(threadId).catch(report));
+  };
   /** M6: goes on with a paused or stopped run in the open chat. */
   const continueRunHere = (runId: string, raise: boolean) => {
     if (!repoApi || !selectedId) return;
@@ -2978,17 +3052,37 @@ export function ChatApp({
   }, [hulkLink, hulkPaired, allKey, tenant, notify, notifyMs]);
   /** "Run on HULK": the draft goes to HULK as a Code run in the project's repository. */
   const repoFolder = sharedFolders[0];
+  // M10 step 16: where a session can run, and why not when it can't (PL-02).
+  const whereReasons: { local: string | null; hulk: string | null } = webApp
+    ? { local: WEB_REASONS.runHere, hulk: null }
+    : {
+        local: null,
+        hulk: !hulkLink
+          ? "HULK needs the desktop app."
+          : !hulkPaired
+            ? "Pair with HULK in Settings first"
+            : !activeProjectId || !repoFolder
+              ? "HULK works from a project's repository with a remote: link one in the project's settings."
+              : sessionKind === "work"
+                ? "HULK takes Code sessions; Work runs on this computer."
+                : null,
+      };
+  const runsWhere: "local" | "hulk" = webApp
+    ? "hulk"
+    : sessionWhere === "hulk" && whereReasons.hulk === null
+      ? "hulk"
+      : "local";
   const runOnHulk = (task: string) => {
     if (!hulkLink || !gitApi || !activeProjectId || !repoFolder) return;
     const projectId = activeProjectId;
     const routed = routeFor(task, [], messages, false);
     if (!routed) return;
     const planner = routed.info.mode === "auto" ? routed.info.best : null;
-    // The mode the composer shows for this chat.
-    const mode = codeMode[codeKey] ?? activeProject?.runMode ?? "ask";
+    // The session's mode and cap.
+    const mode = sessionMode;
     void (async () => {
       try {
-        const threadId = await threadForSend(false);
+        const threadId = await threadForSend(false, task);
         const requestId = await handOver(
           { db, tenant, files: filesApi, git: gitApi, hulk: hulkLink },
           {
@@ -2998,6 +3092,7 @@ export function ChatApp({
             model: { provider: routed.model.provider, id: routed.model.id },
             planner: planner ? { provider: planner.provider, id: planner.id } : null,
             mode,
+            capMicroUsd: sessionCap,
           },
         );
         setHandovers(addHandover({ requestId, threadId, task, at: Date.now() }));
@@ -3413,6 +3508,8 @@ export function ChatApp({
     selectedId !== null &&
     (selectedId in live ||
       (webApp && [...threadRuns.values()].some((r) => r.run.status === "running")));
+  // M10 step 16: every file the session's runs changed, oldest first, for the Files panel.
+  const sessionChanges = withEscalation.flatMap((m) => m.run?.changes ?? []);
   const openSaved = threadArtifacts.find((a) => a.key === openArtifact);
   useEffect(() => {
     if (!openSaved) return;
@@ -3813,11 +3910,13 @@ export function ChatApp({
   );
   const withSecrets = attachments.pending.find((p) => p.secrets);
   const blocked =
-    sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
-      ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
-      : withSecrets
-        ? `${withSecrets.name} looks like it holds ${describeSecrets(withSecrets.secrets ?? { lines: [], kinds: [] })}. Remove those lines or send it anyway.`
-        : null;
+    area === "code" && !codeAvailable
+      ? "Pick a project with a folder, or add a folder, first: a session works in one."
+      : sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
+        ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
+        : withSecrets
+          ? `${withSecrets.name} looks like it holds ${describeSecrets(withSecrets.secrets ?? { lines: [], kinds: [] })}. Remove those lines or send it anyway.`
+          : null;
 
   useEffect(() => {
     listBudgets(db, tenant).then(setBudgets, report);
@@ -5608,6 +5707,27 @@ export function ChatApp({
                   </>
                 )}
               </header>
+              {thread && thread.kind !== "chat" && (
+                <SessionStrip
+                  where={runsWhere}
+                  folders={chatFolders.map((f) => folderName(f.path))}
+                  branch={
+                    [...threadRuns.values()]
+                      .map((r) => r.run)
+                      .filter((r) => r.branch)
+                      .sort((a, b) => b.createdAt - a.createdAt)[0]?.branch ?? null
+                  }
+                  mode={sessionMode}
+                  onMode={setSessionMode}
+                  spentMicro={thread.costMicroUsd}
+                  capMicro={sessionCap}
+                  files={sessionChanges.length + threadArtifacts.length}
+                  filesOpen={filesOpen}
+                  onFiles={() => {
+                    setFilesOpen((open) => !open);
+                  }}
+                />
+              )}
               <div className="flex min-h-0 flex-1">
                 <div className="flex min-w-0 flex-1 flex-col">
                   <Messages
@@ -5669,15 +5789,7 @@ export function ChatApp({
                     onPreviewChange={(changeId) => {
                       previewChange(changeId).catch(report);
                     }}
-                    onUndoChange={(changeId) => {
-                      if (!repoApi || !selectedId) return;
-                      const threadId = selectedId;
-                      undoChange(runDeps(repoApi), changeId)
-                        .catch((e: unknown) => {
-                          setProblem(e instanceof Error ? e.message : String(e));
-                        })
-                        .finally(() => void reload(threadId).catch(report));
-                    }}
+                    onUndoChange={undoChangeHere}
                     onUndoRun={(runId) => {
                       if (!repoApi || !selectedId) return;
                       const threadId = selectedId;
@@ -5736,6 +5848,25 @@ export function ChatApp({
                       };
                     })}
                   />
+                  {area === "code" && selectedId === null && (
+                    <NewSessionBar
+                      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                      projectId={activeProjectId}
+                      onProject={(projectId) => {
+                        newChat(projectId);
+                      }}
+                      where={runsWhere}
+                      onWhere={setDraftWhere}
+                      whereReasons={whereReasons}
+                      capMicroUsd={draftCap}
+                      defaultCapMicroUsd={
+                        activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD
+                      }
+                      onCap={setDraftCap}
+                      // The composer says what to do when there's no folder yet.
+                      noFolder={null}
+                    />
+                  )}
                   <Composer
                     key={`composer-${selectedId ?? "new"}`}
                     model={modelOption(model)}
@@ -5804,7 +5935,7 @@ export function ChatApp({
                     {...(web ? { onAddLink: attachments.addLink } : {})}
                     webSearch={model.capabilities.includes("web_search") ? searchOn : null}
                     onToggleWebSearch={toggleSearch}
-                    {...(repoApi
+                    {...(repoApi && area === "code"
                       ? {
                           folders: chatFolders.map((f) => ({
                             id: f.id,
@@ -5816,40 +5947,50 @@ export function ChatApp({
                           onRemoveFolder: removeChatFolder,
                         }
                       : {})}
-                    {...(hulkLink && repoFolder && activeProjectId
+                    {...(area === "code" && codeAvailable
                       ? {
-                          onRunOnHulk: runOnHulk,
-                          runOnHulkReason: hulkPaired ? null : "Pair with HULK in Settings first",
-                        }
-                      : {})}
-                    {...(codeAvailable
-                      ? {
-                          codeMode: codeMode[codeKey] ?? activeProject?.runMode ?? "ask",
-                          onCodeMode: (m: RunMode) => {
-                            setCodeMode((all) => ({ ...all, [codeKey]: m }));
-                          },
-                          codeBranch: codeBranch[codeKey] ?? false,
+                          // M10 step 16: in the Code area these are the session's Kind, mode and
+                          // branch; a session always runs, so Kind picks Code or Work, never off.
+                          codeMode: sessionMode,
+                          onCodeMode: setSessionMode,
+                          codeBranch: sessionBranch,
                           onCodeBranch: (on: boolean) => {
                             setCodeBranch((all) => ({ ...all, [codeKey]: on }));
+                            if (selectedId)
+                              setThreadSession(db, tenant, selectedId, { newBranch: on })
+                                .then(refreshThreads)
+                                .catch(report);
                           },
                           code: runKind === "code",
                           onToggleCode: () => {
-                            setCodeOn((all) => ({
-                              ...all,
-                              [codeKey]: runKind === "code" ? false : "code",
-                            }));
+                            setCodeOn((all) => ({ ...all, [codeKey]: "code" }));
                           },
                           work: runKind === "work",
                           onToggleWork: () => {
                             setCodeOn((all) => ({
                               ...all,
-                              [codeKey]: runKind === "work" ? false : "work",
+                              [codeKey]: runKind === "work" ? "code" : "work",
                             }));
                           },
                         }
                       : {})}
                   />
                 </div>
+                {!viewer && !panelArtifact && filesOpen && thread && thread.kind !== "chat" && (
+                  <FilesPanel
+                    changes={sessionChanges}
+                    artifacts={threadArtifacts.map((a) => ({ key: a.key, title: a.title }))}
+                    busy={streaming}
+                    {...(repoApi ? { onUndo: undoChangeHere } : {})}
+                    onPreview={(changeId) => {
+                      previewChange(changeId).catch(report);
+                    }}
+                    onOpenArtifact={showArtifact}
+                    onClose={() => {
+                      setFilesOpen(false);
+                    }}
+                  />
+                )}
                 {viewer && (
                   <FileViewer
                     file={viewer}
