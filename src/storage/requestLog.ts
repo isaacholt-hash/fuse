@@ -54,14 +54,23 @@ interface RequestLogRow extends UsageRow {
   created_at: number;
 }
 
+/** M10 step 17: where this process's requests come from; set once at start. */
+export type RequestSurface = "desktop" | "web" | "runner";
+let surface: RequestSurface | null = null;
+
+/** Called once at start by the desktop app, the web app and HULK's runner. */
+export function setRequestSurface(s: RequestSurface | null): void {
+  surface = s;
+}
+
 export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry): Promise<string> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO request_log (id, workspace_id, user_id, thread_id, message_id, purpose, provider,
        model, attempt, ${USAGE_COLUMNS}, http_status, error_code, error_message,
-       provider_request_id, tier, route_rule_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       provider_request_id, tier, route_rule_id, surface, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -79,6 +88,7 @@ export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry):
       e.providerRequestId,
       e.tier ?? null,
       e.routeRuleId ?? null,
+      surface,
       now,
       now,
     ],

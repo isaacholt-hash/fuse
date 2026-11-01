@@ -20,7 +20,6 @@ import {
   Pencil,
   Pin,
   PinOff,
-  Play,
   Plus,
   Search,
   Settings,
@@ -62,9 +61,6 @@ interface Props {
   onUsage?: () => void;
   /** M10 step 15: the Scheduled page (the Code area). */
   onScheduled?: () => void;
-  /** M10 step 6: the web app's Runs list, and (step 8) how many runs want a look. */
-  onRuns?: () => void;
-  runsBadge?: number;
 }
 
 const sectionTitle =
@@ -92,8 +88,6 @@ export function Sidebar({
   onSearch,
   onUsage,
   onScheduled,
-  onRuns,
-  runsBadge = 0,
 }: Props) {
   const [tag, setTag] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -145,9 +139,18 @@ export function Sidebar({
   );
   const code = area === "code";
   const none = code ? "No sessions yet" : "No chats yet";
+  // M10 step 17: the Code area's runs at a glance (what the Runs page was): rows waiting for you,
+  // going, or with a new result; a chip shows only those.
+  const [stateFilter, setStateFilter] = useState<NonNullable<ThreadState> | null>(null);
+  const counts = { waiting: 0, going: 0, unseen: 0 };
+  for (const t of threads) if (t.state && !t.archived) counts[t.state] += 1;
+  const shownFilter = code && stateFilter && counts[stateFilter] > 0 ? stateFilter : null;
   const tags = [...new Set(threads.filter((t) => !t.archived).flatMap((t) => t.tags))].sort();
   const filter = tag !== null && tags.includes(tag) ? tag : null;
-  const shown = (t: ThreadView) => !t.archived && (filter === null || t.tags.includes(filter));
+  const shown = (t: ThreadView) =>
+    !t.archived &&
+    (filter === null || t.tags.includes(filter)) &&
+    (shownFilter === null || t.state === shownFilter);
   // Pinned chats show once, at the top, instead of in their project or date group.
   const listed = (t: ThreadView) => shown(t) && !t.pinned;
   const pinned = threads.filter((t) => shown(t) && t.pinned);
@@ -155,7 +158,7 @@ export function Sidebar({
   const loose = threads.filter((t) => t.projectId === null && listed(t));
   const visibleProjects = projects
     .map((p) => ({ ...p, threads: p.threads.filter(listed) }))
-    .filter((p) => filter === null || p.threads.length > 0);
+    .filter((p) => (filter === null && shownFilter === null) || p.threads.length > 0);
   return (
     <aside
       className="flex h-full w-[248px] shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground max-[800px]:w-[218px]"
@@ -218,6 +221,30 @@ export function Sidebar({
             <CalendarClock className="size-3.5" />
             Scheduled
           </Button>
+        )}
+        {code && (
+          <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter by state">
+            {(
+              [
+                ["waiting", "Waiting"],
+                ["going", "Going"],
+                ["unseen", "New"],
+              ] as const
+            ).map(([state, label]) => (
+              <button
+                key={state}
+                type="button"
+                aria-pressed={shownFilter === state}
+                disabled={counts[state] === 0}
+                className={`rounded-full border px-2 py-0.5 text-[10px] disabled:opacity-40 ${shownFilter === state ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
+                onClick={() => {
+                  setStateFilter(shownFilter === state ? null : state);
+                }}
+              >
+                {label} {counts[state]}
+              </button>
+            ))}
+          </div>
         )}
         {tags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter by tag">
@@ -364,22 +391,6 @@ export function Sidebar({
         )}
       </nav>
       <div className="mx-4 border-t py-3">
-        {onRuns && (
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-2.5 text-xs text-muted-foreground"
-            onClick={onRuns}
-            aria-label={runsBadge > 0 ? `Runs, ${String(runsBadge)} new` : "Runs"}
-          >
-            <Play className="size-4" />
-            Runs
-            {runsBadge > 0 && (
-              <span className="ml-auto rounded-full bg-foreground px-1.5 py-px text-[10px] font-medium text-background">
-                {runsBadge}
-              </span>
-            )}
-          </Button>
-        )}
         {onUsage && (
           <Button
             variant="ghost"

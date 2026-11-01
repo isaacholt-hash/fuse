@@ -13,6 +13,10 @@ export interface UsageRecord {
   projectId: string | null;
   /** What the classifier read (Auto answers only). */
   intent: string | null;
+  /** M10 step 17: the area of its chat ("chat" or "code"); null without a chat. */
+  area: string | null;
+  /** M10 step 17: desktop, web, runner or scheduled; null before 0054. */
+  surface: string | null;
   costMicro: number;
 }
 
@@ -25,10 +29,13 @@ export async function listUsage(db: SqlDb, tenant: Tenant, since: number): Promi
     purpose: string;
     project_id: string | null;
     route_intent: string | null;
+    kind: string | null;
+    surface: string | null;
+    schedule_id: string | null;
     cost_micro_usd: number;
   }>(
     `SELECT r.created_at, r.provider, r.model, r.tier, r.purpose, t.project_id, m.route_intent,
-            r.cost_micro_usd
+            t.kind, r.surface, t.schedule_id, r.cost_micro_usd
      FROM request_log r
      LEFT JOIN threads t ON t.id = r.thread_id
      LEFT JOIN messages m ON m.id = r.message_id
@@ -44,6 +51,8 @@ export async function listUsage(db: SqlDb, tenant: Tenant, since: number): Promi
     purpose: r.purpose,
     projectId: r.project_id,
     intent: r.route_intent,
+    area: r.kind === null ? null : r.kind === "chat" ? "chat" : "code",
+    surface: r.surface === "runner" && r.schedule_id ? "scheduled" : r.surface,
     costMicro: r.cost_micro_usd,
   }));
 }

@@ -19,7 +19,8 @@ export interface Group {
   calls: number;
 }
 
-export type Dimension = "provider" | "model" | "tier" | "project" | "intent" | "purpose";
+export type Dimension =
+  "provider" | "model" | "tier" | "project" | "intent" | "purpose" | "area" | "surface";
 
 export interface UsageReport {
   from: number;
@@ -52,6 +53,8 @@ const keyOf: Record<Dimension, (r: UsageRecord) => string | null> = {
   project: (r) => r.projectId,
   intent: (r) => r.intent,
   purpose: (r) => r.purpose,
+  area: (r) => r.area,
+  surface: (r) => r.surface,
 };
 
 function groupBy(rows: readonly UsageRecord[], dim: Dimension): Group[] {
@@ -91,7 +94,16 @@ export function usageReport(
     const b = buckets[Math.min(buckets.length - 1, Math.max(0, i))];
     if (b) b.micro += r.costMicro;
   }
-  const dims: Dimension[] = ["provider", "model", "tier", "project", "intent", "purpose"];
+  const dims: Dimension[] = [
+    "provider",
+    "model",
+    "tier",
+    "project",
+    "intent",
+    "purpose",
+    "area",
+    "surface",
+  ];
   return {
     from,
     to,

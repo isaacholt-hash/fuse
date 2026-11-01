@@ -35,7 +35,16 @@ import {
   type PythonMsg,
   type PythonRuntime,
 } from "@/python/runtime";
-import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
+import {
+  ArrowRightLeft,
+  CircleAlert,
+  EyeOff,
+  Folder,
+  PanelLeft,
+  Pencil,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { Tooltip } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { WebFolderDialog } from "@/ui/WebFolder";
@@ -109,7 +118,6 @@ import {
   recentRuns,
   recentToolCalls,
   runStatesForThread,
-  runsEndedSince,
   runsForThread,
   latestRunByThread,
   type AuditEntry,
@@ -126,7 +134,6 @@ import {
   openApprovals,
   type StartInput,
 } from "@/storage/runQueue";
-import { RunsScreen, type RunListRow } from "@/ui/Runs";
 import {
   createSchedule,
   deleteSchedule,
@@ -282,6 +289,7 @@ import {
   setThreadProject,
   setThreadWebSearch,
   setThreadSession,
+  setThreadHandoff,
   markThreadSeen,
   markThreadUnread,
   settleSeen,
@@ -428,6 +436,7 @@ import { SessionStrip } from "@/ui/SessionStrip";
 import { FilesPanel } from "@/ui/FilesPanel";
 import { Home } from "@/ui/Home";
 import { EMPTY_HOME, homeView } from "./homeView";
+import { asksForAChange, chatBrief, codeBrief } from "./handoff";
 import { AreaTabs } from "@/ui/AreaTabs";
 import { TagsDialog } from "@/ui/Tags";
 import { KeyCapsSection } from "@/ui/KeyCaps";
@@ -580,54 +589,10 @@ const HULK_CARD_MS = 5000;
 const HULK_NOTIFY_MS = 30_000;
 /** M10 step 14: how often the home screen reads what's happening while it shows. */
 const HOME_POLL_MS = 5000;
-/** M10 step 8: when the Runs list was last opened; runs that ended since then are new. */
-const RUNS_SEEN_KEY = "fuse.runsSeenAt";
-
-function readRunsSeen(): number {
-  try {
-    return Number(localStorage.getItem(RUNS_SEEN_KEY) ?? "0") || 0;
-  } catch {
-    return 0;
-  }
-}
-
-function saveRunsSeen(at: number): void {
-  try {
-    localStorage.setItem(RUNS_SEEN_KEY, String(at));
-  } catch {
-    // the badge just counts from the last time it could be remembered
-  }
-}
-
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
-
-/** A row of the Runs list: "waiting" when it has a question no one has answered. */
-function runListRow(r: RecentRun, waiting: boolean): RunListRow {
-  return {
-    id: r.id,
-    task: r.task,
-    chat: r.threadTitle,
-    threadId: r.threadTitle === null ? null : r.threadId,
-    status: waiting
-      ? "waiting"
-      : r.status === "running"
-        ? "going"
-        : r.status === "error"
-          ? "failed"
-          : r.status,
-    note: r.note,
-    when: new Date(r.updatedAt).toLocaleString(undefined, {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-    activeSince: r.status === "running" ? r.startedAt + r.waitedMs : null,
-  };
-}
 
 /** The area's last thread; before M10 step 12 there was one key for both, read as a fallback. */
 function readLastThread(area: Area): string | null {
@@ -1152,7 +1117,7 @@ export function ChatApp({
   // F6: a mode just picked for a saved chat, used until the chat list has reloaded with it. Without
   // this, a message sent before the pin was saved and read back went out on the old mode.
   const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
-  const [view, setView] = useState<"chat" | "settings" | "usage" | "runs" | "scheduled">(
+  const [view, setView] = useState<"chat" | "settings" | "usage" | "scheduled">(
     import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
       : import.meta.env.VITE_FUSE_VIEW === "usage"
@@ -1288,6 +1253,9 @@ export function ChatApp({
   const [draftWhere, setDraftWhere] = useState<"local" | "hulk">(webApp ? "hulk" : "local");
   const [draftCap, setDraftCap] = useState<number | null>(null);
   const [filesOpen, setFilesOpen] = useState(false);
+  // M10 step 17: the thread a new draft was handed off from, and the chat to suggest Code for.
+  const [draftHandoff, setDraftHandoff] = useState<string | null>(null);
+  const [changeHint, setChangeHint] = useState<string | null>(null);
   // AG-04: recent coding-run tool calls, for Settings.
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   // CA-04: commands the edited project always allows, for its settings.
@@ -1603,6 +1571,7 @@ export function ChatApp({
       setOnceArmed(false);
       setDraftInstructions("");
       setDraftProject(projectId);
+      setDraftHandoff(null);
       // A project's default model pins new chats in it; otherwise they start on Auto.
       const project = projects.find((p) => p.id === projectId);
       const preferred = project?.defaultModel;
@@ -2118,6 +2087,11 @@ export function ChatApp({
     setCodeOn(fromDraft);
     setCodeMode(fromDraft);
     setCodeBranch(fromDraft);
+    // M10 step 17: a handed-off draft remembers where it began.
+    if (draftHandoff) {
+      await setThreadHandoff(db, tenant, threadId, draftHandoff);
+      setDraftHandoff(null);
+    }
     // M10 step 16: a new session keeps what its bar and composer showed.
     if (kind !== "chat") {
       await setThreadSession(db, tenant, threadId, {
@@ -2274,6 +2248,14 @@ export function ChatApp({
     if (confirmed.dropFiles) attachments.clear();
     try {
       const threadId = await threadForSend(search, text);
+      // M10 step 17: a chat asking for a change to a project's files is offered Code.
+      if (
+        area === "chat" &&
+        chatFolders.length > 0 &&
+        (routed.info.intent === null || routed.info.intent === "coding") &&
+        asksForAChange(text)
+      )
+        setChangeHint(threadId);
       await stream(
         threadId,
         routed,
@@ -2842,12 +2824,6 @@ export function ChatApp({
 
   // M10 steps 6 and 8: what the web app shows of the runner's work, read every second: the
   // questions waiting for anyone, the Runs list and its badge, and the open chat's runs.
-  const [serverRuns, setServerRuns] = useState<{
-    recent: RecentRun[];
-    waiting: Set<string>;
-    ended: number;
-  } | null>(null);
-  const runsSeenAt = useRef(readRunsSeen());
   const follow = useRef({ reload, refreshThreads, report });
   useEffect(() => {
     follow.current = { reload, refreshThreads, report };
@@ -2866,14 +2842,12 @@ export function ChatApp({
     const tick = async () => {
       const open = await openApprovals<ApprovalRequest>(db, tenant);
       const recent = await recentRuns(db, tenant, 50);
-      const ended = await runsEndedSince(db, tenant, runsSeenAt.current);
       if (gone()) return;
       // Only a change re-renders the app.
-      const runsNow = `${recent.map((r) => `${r.id}:${r.status}:${String(r.updatedAt)}`).join()}|${open.map((a) => a.runId).join()}|${String(ended)}`;
+      const runsNow = `${recent.map((r) => `${r.id}:${r.status}:${String(r.updatedAt)}`).join()}|${open.map((a) => a.runId).join()}`;
       if (runsNow !== shownRuns) {
         shownRuns = runsNow;
-        setServerRuns({ recent, waiting: new Set(open.map((a) => a.runId)), ended });
-        // M10 step 13: the sidebar's dots follow the runs.
+        // M10 steps 13 and 17: the sidebar's dots and chips follow the runs.
         void follow.current.refreshThreads().catch(follow.current.report);
       }
       const questions = open.map((a) => a.id).join();
@@ -2953,14 +2927,6 @@ export function ChatApp({
       clearInterval(timer);
     };
   }, [webApp, selectedId, db, tenant]);
-  const openRuns = () => {
-    const at = Date.now();
-    runsSeenAt.current = at;
-    saveRunsSeen(at);
-    setServerRuns((s) => (s ? { ...s, ended: 0 } : s));
-    setView("runs");
-  };
-  const runsBadge = serverRuns ? serverRuns.waiting.size + serverRuns.ended : 0;
   // M10 steps 7 and 8, desktop only: the link to HULK, the runs this desktop handed over (by
   // chat, remembered in localStorage) and how each is going there.
   const hulkLink = webApp ? undefined : hulk;
@@ -3510,6 +3476,36 @@ export function ChatApp({
       (webApp && [...threadRuns.values()].some((r) => r.run.status === "running")));
   // M10 step 16: every file the session's runs changed, oldest first, for the Files panel.
   const sessionChanges = withEscalation.flatMap((m) => m.run?.changes ?? []);
+  /**
+   * M10 step 17 (CH-19): Continue in Code, or Discuss in Chat. The other area opens on a new draft
+   * in the same project, its composer holding a brief to read and change before anything is
+   * sent; the new thread remembers this one.
+   */
+  const handOffTo = (to: Area) => {
+    if (!thread) return;
+    const from = thread;
+    const turns = messages.flatMap((m) =>
+      m.role === "user" || m.role === "assistant" ? [{ role: m.role, content: m.content }] : [],
+    );
+    const brief =
+      to === "code"
+        ? codeBrief(from.title, turns)
+        : chatBrief(
+            from.title,
+            turns.findLast((t) => t.role === "assistant")?.content ?? null,
+            sessionChanges.filter((c) => !c.undone).map((c) => c.label),
+          );
+    setChangeHint(null);
+    setArea(to);
+    setView("chat");
+    newChat(from.projectId);
+    setDraftHandoff(from.id);
+    setQuote((q) => ({ text: brief, key: (q?.key ?? 0) + 1 }));
+  };
+  const handedFrom = thread?.handoffFromId
+    ? threads.find((t) => t.id === thread.handoffFromId)
+    : undefined;
+  const handedTo = thread ? threads.filter((t) => t.handoffFromId === thread.id) : [];
   const openSaved = threadArtifacts.find((a) => a.key === openArtifact);
   useEffect(() => {
     if (!openSaved) return;
@@ -4105,8 +4101,22 @@ export function ChatApp({
         k ? (projects.find((p) => p.id === k)?.name ?? "Deleted project") : "No project",
       intent: (k) => (k ? (intentLabels[k] ?? k) : "Not classified"),
       purpose: (k) => purposeLabels[k] ?? k,
+      // M10 step 17: the two areas, and where each request came from.
+      area: (k) => (k === "chat" ? "Chat" : k === "code" ? "Code" : "No chat"),
+      surface: (k) =>
+        k === "desktop"
+          ? "Desktop app"
+          : k === "web"
+            ? "Web app"
+            : k === "runner"
+              ? "Runs on HULK"
+              : k === "scheduled"
+                ? "Scheduled tasks"
+                : "Unknown (before this was recorded)",
     };
     const titles: [Dimension, string][] = [
+      ["area", "area"],
+      ["surface", "where it ran"],
       ["model", "model"],
       ["tier", "tier"],
       ["project", "project"],
@@ -4533,6 +4543,36 @@ export function ChatApp({
               </Button>
             </div>
           ))}
+        {changeHint !== null && changeHint === selectedId && area === "chat" && (
+          <div
+            aria-label="Continue in Code"
+            className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
+          >
+            <ArrowRightLeft className="size-3.5 text-sky-600" />
+            <span className="flex-1">
+              This looks like a change to files. A chat reads them but doesn&apos;t change them.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                handOffTo("code");
+              }}
+            >
+              Continue in Code
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Dismiss Continue in Code"
+              onClick={() => {
+                setChangeHint(null);
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+        )}
         {!suggestionNoticeOff && ruleSuggestions[0] && (
           <div
             aria-label="Routing suggestion"
@@ -4686,7 +4726,6 @@ export function ChatApp({
               }}
               onUsage={openUsage}
               {...(area === "code" ? { onScheduled: openScheduled } : {})}
-              {...(webApp && area === "code" ? { onRuns: openRuns, runsBadge } : {})}
             />
           )}
           {view === "scheduled" ? (
@@ -4729,18 +4768,6 @@ export function ChatApp({
                   .catch(report);
               }}
               onOpenChat={select}
-              onBack={() => {
-                setView("chat");
-              }}
-            />
-          ) : view === "runs" ? (
-            <RunsScreen
-              rows={
-                serverRuns
-                  ? serverRuns.recent.map((r) => runListRow(r, serverRuns.waiting.has(r.id)))
-                  : null
-              }
-              onOpen={select}
               onBack={() => {
                 setView("chat");
               }}
@@ -5658,6 +5685,21 @@ export function ChatApp({
                     </Tip>
                     {!thread.incognito && (
                       <ThreadMenu
+                        handoff={
+                          thread.kind === "chat"
+                            ? {
+                                label: "Continue in Code",
+                                onSelect: () => {
+                                  handOffTo("code");
+                                },
+                              }
+                            : {
+                                label: "Discuss in Chat",
+                                onSelect: () => {
+                                  handOffTo("chat");
+                                },
+                              }
+                        }
                         projects={projects}
                         projectId={thread.projectId}
                         onMove={moveThread}
@@ -5707,6 +5749,43 @@ export function ChatApp({
                   </>
                 )}
               </header>
+              {thread && (handedFrom || handedTo.length > 0) && (
+                <div
+                  role="group"
+                  aria-label="Handoff"
+                  className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-1 text-[11px] text-muted-foreground"
+                >
+                  <ArrowRightLeft className="size-3" />
+                  {handedFrom && (
+                    <span>
+                      From{" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-2 hover:text-foreground"
+                        onClick={() => {
+                          select(handedFrom.id);
+                        }}
+                      >
+                        {handedFrom.title}
+                      </button>
+                    </span>
+                  )}
+                  {handedTo.map((t) => (
+                    <span key={t.id}>
+                      Continued in{" "}
+                      <button
+                        type="button"
+                        className="underline underline-offset-2 hover:text-foreground"
+                        onClick={() => {
+                          select(t.id);
+                        }}
+                      >
+                        {t.title}
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               {thread && thread.kind !== "chat" && (
                 <SessionStrip
                   where={runsWhere}

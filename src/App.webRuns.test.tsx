@@ -193,10 +193,10 @@ test("a Code run in the web app is asked of the runner; its question is answered
   // It waits on the page's one-second poll a few times.
 }, 20_000);
 
-test("the Runs list shows each run's status, and its badge counts waiting and newly ended runs", async () => {
+test("M10 step 17: the Code sidebar's chips show sessions waiting, going and with a new result", async () => {
   const db = openTestDb();
-  const chat = await createThread(db, t, "Lighthouse docs");
-  const run = async (task: string, status: Run["status"] | null, note?: string) => {
+  const session = async (title: string, status: Run["status"] | null) => {
+    const chat = await createThread(db, t, title, null, false, "code");
     const answer = await addMessage(db, t, {
       threadId: chat.id,
       parentId: null,
@@ -207,51 +207,43 @@ test("the Runs list shows each run's status, and its badge counts waiting and ne
       projectId: null,
       threadId: chat.id,
       messageId: answer,
-      task,
+      task: title,
       provider: "anthropic",
       model: "m",
       capMicroUsd: 1_000_000,
     });
-    if (status) await setRunStatus(db, t, r.id, status, note);
+    if (status) await setRunStatus(db, t, r.id, status);
     return r;
   };
-  const waiting = await run("Deploy the docs", null);
+  const waiting = await session("Deploy the docs", null);
   await addApproval(db, t, waiting.id, { kind: "command", command: "git push", runId: waiting.id });
-  await run("Write the README", "done");
-  await run("Fix the build", "error", "No Anthropic key yet.");
-  await run("Tidy the folder", "stopped");
-  await run("Check the links", null);
-
+  await session("Check the links", null);
+  const readme = await session("Write the README", null);
   const user = start(db);
-  // M10 step 12: Runs lives in the Code area.
   await screen.findByRole("group", { name: "Area" }, SLOW);
+  // The chips (and the old Runs page) live in the Code area only.
+  expect(screen.queryByRole("group", { name: "Filter by state" })).toBeNull();
   expect(screen.queryByRole("button", { name: /^Runs/ })).toBeNull();
   await user.keyboard("{Control>}2{/Control}");
-  // One waiting, two ended since the list was last opened (never): 3.
-  const runs = await screen.findByRole("button", { name: "Runs, 3 new" }, SLOW);
-  await user.click(runs);
-  const list = within(await screen.findByRole("list", { name: "Recent runs" }));
-  expect(
-    list.getByRole("button", { name: "Deploy the docs: Waiting for you" }),
-  ).toBeInTheDocument();
-  expect(list.getByRole("button", { name: "Write the README: Done" })).toBeInTheDocument();
-  expect(list.getByRole("button", { name: "Fix the build: Failed" })).toBeInTheDocument();
-  expect(list.getByText("No Anthropic key yet.")).toBeInTheDocument();
-  expect(list.getByRole("button", { name: "Tidy the folder: Stopped" })).toBeInTheDocument();
-  expect(list.getByRole("button", { name: "Check the links: Going" })).toBeInTheDocument();
-  expect(list.getAllByText(/Lighthouse docs/)).toHaveLength(5);
-
-  // Opening the list counts as seeing the ended ones; the waiting one still counts.
-  expect(await screen.findByRole("button", { name: "Runs, 1 new" }, SLOW)).toBeInTheDocument();
-  await new Promise((r) => setTimeout(r, 5));
-  await run("Rename the files", "done");
-  expect(await screen.findByRole("button", { name: "Runs, 2 new" }, SLOW)).toBeInTheDocument();
-
-  // A row opens its chat.
-  await user.click(list.getByRole("button", { name: "Deploy the docs: Waiting for you" }));
-  expect(await screen.findByRole("textbox", { name: "Message" })).toBeInTheDocument();
-  expect(screen.queryByRole("list", { name: "Recent runs" })).toBeNull();
-  // It waits on the page's one-second poll a few times.
+  const chips = within(await screen.findByRole("group", { name: "Filter by state" }, SLOW));
+  await waitFor(() => {
+    expect(chips.getByRole("button", { name: "Waiting 1" })).toBeEnabled();
+  }, SLOW);
+  expect(chips.getByRole("button", { name: "Going 2" })).toBeEnabled();
+  // One ends while the app is open and its session isn't: a new result.
+  await setRunStatus(db, t, readme.id, "done");
+  await waitFor(() => {
+    expect(chips.getByRole("button", { name: "New 1" })).toBeEnabled();
+  }, SLOW);
+  expect(chips.getByRole("button", { name: "Going 1" })).toBeEnabled();
+  const nav = () => within(screen.getByRole("navigation", { name: "Conversations" }));
+  await user.click(chips.getByRole("button", { name: "Waiting 1" }));
+  expect(nav().getAllByRole("button", { name: /Deploy the docs/ }).length).toBeGreaterThan(0);
+  expect(nav().queryByRole("button", { name: /Check the links/ })).toBeNull();
+  expect(nav().queryByRole("button", { name: /Write the README/ })).toBeNull();
+  // Again shows them all.
+  await user.click(chips.getByRole("button", { name: "Waiting 1" }));
+  expect(nav().getAllByRole("button", { name: /Write the README/ }).length).toBeGreaterThan(0);
 }, 20_000);
 
 test("M10 step 13: Code rows show a run going, waiting for you, or a new result, and where it runs", async () => {

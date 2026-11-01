@@ -16,6 +16,8 @@ const row = (
   purpose: "chat",
   projectId: null,
   intent: "chat",
+  area: "chat",
+  surface: "desktop",
   costMicro,
   ...extra,
 });
@@ -70,4 +72,23 @@ test("thirty days leaves out older calls", () => {
   const r = usageReport(rows, "month", now);
   expect(r.current).toBe(7350);
   expect(r.previous).toBe(9999);
+});
+
+test("M10 step 17: spend by area and by where it ran", () => {
+  const r = usageReport(
+    [
+      row(0, 1000),
+      row(0, 4000, { area: "code", surface: "runner" }),
+      row(0, 2000, { area: "code", surface: "scheduled" }),
+      row(0, 500, { area: null, surface: null }),
+    ],
+    "day",
+    now,
+  );
+  expect(r.groups.area.map((g) => [g.key, g.micro])).toEqual([
+    ["code", 6000],
+    ["chat", 1000],
+    ["", 500],
+  ]);
+  expect(r.groups.surface.map((g) => g.key)).toEqual(["runner", "scheduled", "desktop", ""]);
 });

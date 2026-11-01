@@ -3457,3 +3457,46 @@ test("M10 step 16: a chat in a project with a repository never starts a run", as
   expect(await screen.findByText("Hello there.")).toBeInTheDocument();
   expect(await db.select("SELECT id FROM runs")).toEqual([]);
 });
+
+test("M10 step 17: Continue in Code opens a session in the same project, linked both ways", async () => {
+  const { user, db } = setup({}, undefined, {}, { repo: pickingRepo });
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  await user.keyboard("{Escape}");
+  await user.type(await composer(), "The footer link is wrong{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+
+  await user.click(screen.getByRole("button", { name: "Conversation actions" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Continue in Code" }));
+  // The Code area, in the same project, with a brief to read before sending.
+  expect(
+    within(screen.getByRole("group", { name: "Area" })).getByRole("button", { name: "Code" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "Project: Lighthouse" })).toBeInTheDocument();
+  const box = await composer();
+  await waitFor(() => {
+    expect((box as HTMLTextAreaElement).value).toMatch(/^Continuing from the chat/);
+  });
+  await user.type(box, "fix it{Enter}");
+  await within(await screen.findByRole("region", { name: "Coding run" })).findByText("Done");
+
+  const threads = await listThreads(db, DEFAULT_TENANT);
+  const chat = threads.find((t) => t.kind === "chat");
+  const session = threads.find((t) => t.kind === "code");
+  expect(session?.handoffFromId).toBe(chat?.id);
+  expect(session?.projectId).toBe(chat?.projectId);
+  const link = within(screen.getByRole("group", { name: "Handoff" }));
+  await user.click(link.getByRole("button", { name: chat?.title ?? "" }));
+  // Back in the chat, which says where it went.
+  expect(
+    await within(screen.getByRole("group", { name: "Handoff" })).findByRole("button", {
+      name: session?.title ?? "",
+    }),
+  ).toBeInTheDocument();
+});

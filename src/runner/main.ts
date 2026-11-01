@@ -10,6 +10,7 @@ import { tauriFilesApi } from "@/files/api";
 import { tauriKeysApi } from "@/keys/api";
 import { tauriMcpApi } from "@/mcp/api";
 import { configureHttp } from "@/platform/http";
+import { setRequestSurface } from "@/storage/requestLog";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import type { ProviderAdapter } from "@/providers/types";
@@ -34,6 +35,8 @@ if (!base || !token) {
   process.exit(2);
 }
 configureHttp({ base, token });
+// M10 step 17: Usage counts the runner's requests (and scheduled tasks') apart.
+setRequestSurface("runner");
 
 // Keys stay on the server: provider requests go through its transport, which adds them.
 const adapters: Partial<Record<ProviderId, ProviderAdapter>> = {
