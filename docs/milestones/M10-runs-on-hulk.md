@@ -56,7 +56,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
 - [x] **2. Rust core without Tauri.**
   - A `Ctx` (data folder, key store, database, run and process registries) and an `EventSink` trait replace `State`, `AppHandle` and `Channel` inside the command bodies.
   - Tauri commands become thin wrappers. No behaviour change.
-- [ ] **3. fuse-server.**
+- [x] **3. fuse-server.**
   - The `server` feature and `src-tauri/src/bin/fuse-server.rs`.
   - It serves the UI and has the command allowlist (desktop-only commands are refused). Streams use a WebSocket.
   - Data lives in `~/.local/share/fuse-server`, and keys in systemd-creds.

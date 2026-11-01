@@ -59,7 +59,9 @@ jobs:
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo fmt --manifest-path src-tauri/sandbox-win/Cargo.toml --check
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
-      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      # fuse-server (M10): Linux only, behind the `server` feature.
+      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features server -- -D warnings
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --features server
 
   # M8 step 9: the Windows sandbox, tested where it runs (HULK can't), and the app checked on
   # Windows so its Windows-only code is linted before it merges, not first built at release.
