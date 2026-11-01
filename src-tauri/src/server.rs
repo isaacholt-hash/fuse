@@ -39,6 +39,9 @@ pub struct Config {
     pub ui: PathBuf,
     /// Where the server keeps everything: `data/`, `config/` (the database) and `creds/`.
     pub home: PathBuf,
+    /// The runner (`pnpm build:runner`), started with `node`; without it, nothing runs runs.
+    pub runner: Option<PathBuf>,
+    pub node: PathBuf,
 }
 
 /// Messages waiting for a page's WebSocket, created by whichever comes first: the socket or
@@ -478,6 +481,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Config, String> 
         port: DEFAULT_PORT,
         ui: PathBuf::from("dist-web"),
         home: default_home(),
+        runner: None,
+        node: PathBuf::from("node"),
     };
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -485,9 +490,11 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Config, String> 
             "--port" => config.port = value()?.parse().map_err(|_| "--port needs a number")?,
             "--ui" => config.ui = value()?.into(),
             "--home" => config.home = value()?.into(),
+            "--runner" => config.runner = Some(value()?.into()),
+            "--node" => config.node = value()?.into(),
             _ => {
                 return Err(format!(
-                    "Unknown option {arg}. Options: --port, --ui, --home."
+                    "Unknown option {arg}. Options: --port, --ui, --home, --runner, --node."
                 ));
             }
         }
@@ -529,12 +536,110 @@ async fn serve(config: Config) -> Result<(), String> {
         .await
         .map_err(|e| format!("Couldn't listen on {addr}: {e}"))?;
     println!("fuse-server {} on http://{addr}", env!("CARGO_PKG_VERSION"));
+    let runner = match &config.runner {
+        Some(script) => Some(Runner::start(
+            config.node.clone(),
+            script.clone(),
+            format!("http://{addr}"),
+            server.auth.runner_token()?,
+        )),
+        None => {
+            println!("fuse-server: no --runner, so runs can't be started here");
+            None
+        }
+    };
     axum::serve(listener, router(server, &config.ui))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            // The runner saves its runs as stopped, through the server, before the server goes.
+            if let Some(r) = runner {
+                r.stop().await;
+            }
         })
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Ctrl-C, or SIGTERM from systemd.
+async fn shutdown_signal() {
+    use tokio::signal::unix::{SignalKind, signal};
+    match signal(SignalKind::terminate()) {
+        Ok(mut term) => {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = term.recv() => {}
+            }
+        }
+        Err(_) => {
+            let _ = tokio::signal::ctrl_c().await;
+        }
+    }
+}
+
+const RUNNER_RESTART: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The runner (M10 step 6): Node running dist-runner/runner.mjs, with only what it needs in its
+/// environment (no keys: its provider requests go through the server). Started again 5 s after
+/// it exits, until the server stops.
+struct Runner {
+    stop: tokio::sync::oneshot::Sender<()>,
+    done: tokio::task::JoinHandle<()>,
+}
+
+impl Runner {
+    fn start(node: PathBuf, script: PathBuf, server: String, token: String) -> Self {
+        let (stop, mut stopping) = tokio::sync::oneshot::channel::<()>();
+        let done = tokio::spawn(async move {
+            loop {
+                let mut cmd = tokio::process::Command::new(&node);
+                cmd.arg(&script).env_clear().kill_on_drop(true);
+                for var in ["PATH", "HOME", "LANG", "TZ"] {
+                    if let Some(v) = std::env::var_os(var) {
+                        cmd.env(var, v);
+                    }
+                }
+                cmd.env("FUSE_SERVER_URL", &server)
+                    .env("FUSE_RUNNER_TOKEN", &token);
+                match cmd.spawn() {
+                    Ok(mut child) => {
+                        tokio::select! {
+                            status = child.wait() => {
+                                let how = status.map(|s| s.to_string()).unwrap_or_else(|e| e.to_string());
+                                eprintln!("fuse-server: the runner stopped ({how}); starting it again");
+                            }
+                            _ = &mut stopping => {
+                                if let Some(pid) = child.id().and_then(|p| i32::try_from(p).ok()) {
+                                    // SIGTERM: the runner stops its runs, saved as stopped.
+                                    // SAFETY: kill() only sends a signal to the child we started.
+                                    unsafe { libc::kill(pid, libc::SIGTERM) };
+                                }
+                                let ended = tokio::time::timeout(
+                                    std::time::Duration::from_secs(15),
+                                    child.wait(),
+                                )
+                                .await;
+                                if ended.is_err() {
+                                    let _ = child.kill().await;
+                                }
+                                return;
+                            }
+                        }
+                    }
+                    Err(e) => eprintln!("fuse-server: couldn't start the runner: {e}"),
+                }
+                tokio::select! {
+                    _ = tokio::time::sleep(RUNNER_RESTART) => {}
+                    _ = &mut stopping => return,
+                }
+            }
+        });
+        Runner { stop, done }
+    }
+
+    async fn stop(self) {
+        let _ = self.stop.send(());
+        let _ = self.done.await;
+    }
 }
 
 #[cfg(test)]
@@ -807,6 +912,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!((c.port, c.ui), (4200, PathBuf::from("/srv/ui")));
+        assert_eq!((c.runner, c.node), (None, PathBuf::from("node")));
+        let c = parse_args(
+            ["--runner", "r.mjs", "--node", "/usr/bin/node"]
+                .map(String::from)
+                .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(
+            (c.runner, c.node),
+            (Some(PathBuf::from("r.mjs")), PathBuf::from("/usr/bin/node"))
+        );
         assert!(parse_args(["--bogus"].map(String::from).into_iter()).is_err());
         assert!(parse_args(["--port"].map(String::from).into_iter()).is_err());
     }
