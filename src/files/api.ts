@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** Attachment bytes on disk (src-tauri/src/files.rs), content-addressed by SHA-256. */
 export interface FilesApi {

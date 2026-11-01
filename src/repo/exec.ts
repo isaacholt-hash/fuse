@@ -1,6 +1,6 @@
 // Commands in the linked repository (CA-03), through Rust (src-tauri/src/exec.rs): the folder
 // comes from the project, input is closed, and a time limit and Stop end the whole process tree.
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@/platform/core";
 
 type ExecMsg =
   | { type: "out"; text: string }

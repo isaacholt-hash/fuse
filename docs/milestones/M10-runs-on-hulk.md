@@ -48,7 +48,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
 ## Steps (one PR each, in order)
 
 - [x] **0. M10 plan.** This file, the requirements notes (§3, §11, §11b, §18), and CLAUDE.md pointed here.
-- [ ] **1. Frontend platform seam.**
+- [x] **1. Frontend platform seam.**
   - `src/platform` holds `invoke` and `channel`, implemented by Tauri or by HTTP and WebSocket.
   - Every api module goes through it.
   - A test checks that nothing outside `src/platform` imports `@tauri-apps/api/core`.

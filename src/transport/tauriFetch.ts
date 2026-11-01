@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@/platform/core";
 import type { ProviderId } from "@/catalog/catalog";
 import { SCOPE_HEADER, type FetchLike } from "@/providers/types";
 

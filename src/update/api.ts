@@ -1,7 +1,5 @@
-import { getVersion } from "@tauri-apps/api/app";
-import { isTauri } from "@tauri-apps/api/core";
-import { relaunch } from "@tauri-apps/plugin-process";
-import { check, type Update } from "@tauri-apps/plugin-updater";
+import { getVersion, relaunch, check, type Update } from "@/platform/desktop";
+import { isDesktop as isTauri } from "@/platform/core";
 
 /**
  * Auto-update (M1 C3, docs/releases.md): each merge to main publishes a signed release; the app

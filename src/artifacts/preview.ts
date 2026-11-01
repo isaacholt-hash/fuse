@@ -2,7 +2,7 @@
  * Live previews (AR-05). HTML goes to the Rust `preview:` scheme, which serves it with a policy
  * that allows no network; SVG and Mermaid render as images, which can't run scripts at all.
  */
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@/platform/core";
 
 export interface PreviewApi {
   /**

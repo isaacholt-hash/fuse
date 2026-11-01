@@ -1,5 +1,5 @@
 /** The local model's worker on desktop (src-tauri/src/local.rs). */
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@/platform/core";
 import type { LocalBackend, LocalMsg } from "./adapter";
 
 export const tauriLocalBackend: LocalBackend = {

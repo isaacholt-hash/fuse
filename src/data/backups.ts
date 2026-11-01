@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** One copy of the encrypted database in the app's `backups/` folder (PL-11). */
 export interface BackupInfo {

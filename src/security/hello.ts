@@ -1,5 +1,5 @@
 // Windows Hello for the app lock (SE-03): asked through Rust (src-tauri/src/hello.rs).
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** Settings key: "on" offers Windows Hello on the lock screen. */
 export const HELLO_SETTING = "lock.hello";

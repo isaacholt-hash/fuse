@@ -3,7 +3,7 @@
  * build per platform and a lock of its libraries with hashes. Installed only when you ask, by the
  * Rust side (src-tauri/src/python_runtime.rs). Nothing runs scripts until step 6.
  */
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@/platform/core";
 import raw from "../../data/python.json";
 import linuxLock from "../../data/python/requirements-linux.txt?raw";
 import windowsLock from "../../data/python/requirements-windows.txt?raw";

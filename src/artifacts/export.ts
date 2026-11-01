@@ -2,7 +2,7 @@
  * Exports (AR-04): an artifact saved as its natural file, and Markdown also as .docx or .pdf.
  * Conversions run here; the save dialog and the write happen in Rust (src-tauri/src/export.rs).
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 import { strToU8, zipSync } from "fflate";
 import type { ArtifactType } from "./parse";
 

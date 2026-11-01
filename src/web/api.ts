@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** A web page as read by the Rust side (src-tauri/src/web.rs): public addresses only, capped. */
 export interface WebPage {
