@@ -20,6 +20,7 @@ import type {
   RouteView,
   SourceView,
   ThreadGroup,
+  ThreadState,
   ThreadView,
   UsageView,
 } from "@/ui/types";
@@ -81,6 +82,38 @@ export function emptyState(area: Area): { kicker: string; heading: string; blurb
         blurb:
           "A fresh conversation. The right model for each message. Every answer, accounted for.",
       };
+}
+
+/**
+ * M10 step 13: a sidebar row's state. Waiting for your answer comes first, then a run going
+ * (here, or a handover on HULK), then a result you haven't opened: one marked unread, or a run
+ * that ended after the thread was last opened (or made, if it never was).
+ */
+export function threadState(input: {
+  latest: { runId: string; status: string; updatedAt: number } | undefined;
+  /** Run ids with a question nobody has answered. */
+  waiting: ReadonlySet<string>;
+  seenAt: number | null;
+  createdAt: number;
+  /** How its handovers to HULK are going, from this desktop's last look. */
+  hulk?: readonly string[];
+}): ThreadState {
+  const { latest, waiting, seenAt, createdAt, hulk = [] } = input;
+  if ((latest && waiting.has(latest.runId)) || hulk.includes("waiting")) return "waiting";
+  if (latest?.status === "running" || hulk.includes("going") || hulk.includes("starting"))
+    return "going";
+  if (seenAt === 0) return "unseen";
+  if (latest && latest.updatedAt > (seenAt ?? createdAt)) return "unseen";
+  return null;
+}
+
+const URGENCY: Record<NonNullable<ThreadState>, number> = { waiting: 3, going: 2, unseen: 1 };
+
+/** M10 step 13: the most urgent of several states (a project's row). */
+export function worstState(states: readonly ThreadState[]): ThreadState {
+  let worst: ThreadState = null;
+  for (const s of states) if (s && (!worst || URGENCY[s] > URGENCY[worst])) worst = s;
+  return worst;
 }
 
 export function threadView(t: Thread, now: number): ThreadView {

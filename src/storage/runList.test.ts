@@ -55,3 +55,30 @@ test("recent runs come newest first with their chat's title; ended ones are coun
     },
   ]);
 });
+
+test("M10 step 13: each thread's latest run, in one query", async () => {
+  const db = openTestDb();
+  const a = await createThread(db, t, "A");
+  const b = await createThread(db, t, "B");
+  const make = (threadId: string, task: string) =>
+    createRun(db, t, {
+      projectId: null,
+      threadId,
+      messageId: null,
+      task,
+      provider: "anthropic",
+      model: "m",
+      capMicroUsd: 1,
+    });
+  const first = await make(a.id, "one");
+  await setRunStatus(db, t, first.id, "done");
+  await new Promise((r) => setTimeout(r, 2));
+  const second = await make(a.id, "two");
+  const other = await make(b.id, "three");
+  await setRunStatus(db, t, other.id, "error");
+  const { latestRunByThread } = await import("./runs");
+  const latest = await latestRunByThread(db, t);
+  expect(latest.get(a.id)).toMatchObject({ runId: second.id, status: "running" });
+  expect(latest.get(b.id)).toMatchObject({ runId: other.id, status: "error" });
+  expect(latest.size).toBe(2);
+});

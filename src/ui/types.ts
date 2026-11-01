@@ -239,11 +239,21 @@ export interface SourceView {
 /** M10 step 12 (CH-19): the two areas. Work sessions live in Code. */
 export type Area = "chat" | "code";
 
+/** M10 step 13: what a sidebar row's dot says, most urgent first. */
+export type ThreadState = "waiting" | "going" | "unseen" | null;
+
 export interface ThreadView {
   id: string;
   title: string;
   /** M10 step 12: a chat, or a Code or Work session. */
   kind: "chat" | "code" | "work";
+  /**
+   * M10 step 13: its run is going, it waits for your answer, or it has a result you haven't
+   * opened yet; null when none of these.
+   */
+  state?: ThreadState;
+  /** M10 step 13: where its runs go: this computer, or HULK. */
+  place?: "local" | "hulk";
   group: ThreadGroup;
   costMicro: number;
   projectId: string | null;
@@ -306,6 +316,8 @@ export interface ProjectView {
   name: string;
   threads: ThreadView[];
   costMicro: number;
+  /** M10 step 13: the most urgent state among its threads. */
+  state?: ThreadState;
 }
 
 /** The fields of the project dialog. */

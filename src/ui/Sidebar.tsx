@@ -3,6 +3,11 @@ import {
   Archive,
   ArchiveRestore,
   BarChart3,
+  FileText,
+  Laptop,
+  MailOpen,
+  Server,
+  SquareTerminal,
   Check,
   ChevronDown,
   ChevronRight,
@@ -25,7 +30,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint, Mark, Tip } from "./primitives";
 import { AreaTabs } from "./AreaTabs";
-import type { Area, ProjectView, ThreadView } from "./types";
+import type { Area, ProjectView, ThreadState, ThreadView } from "./types";
 
 interface Props {
   /** M10 step 12 (CH-19): the area shown, and the switch. The threads given are its own. */
@@ -48,6 +53,8 @@ interface Props {
   /** CH-02: pin to the top, or archive out of the list (each toggles). */
   onPin: (thread: ThreadView) => void;
   onArchive: (thread: ThreadView) => void;
+  /** M10 step 13: bold again until it's next opened. */
+  onMarkUnread?: (thread: ThreadView) => void;
   /** Opens search across all chats (CH-02). */
   onSearch?: () => void;
   /** Opens the usage dashboard (CO-02). */
@@ -78,6 +85,7 @@ export function Sidebar({
   onDelete,
   onPin,
   onArchive,
+  onMarkUnread,
   onSearch,
   onUsage,
   onRuns,
@@ -118,6 +126,14 @@ export function Sidebar({
       onPin={() => {
         onPin(thread);
       }}
+      code={code}
+      {...(onMarkUnread
+        ? {
+            onMarkUnread: () => {
+              onMarkUnread(thread);
+            },
+          }
+        : {})}
       onArchive={() => {
         onArchive(thread);
       }}
@@ -256,6 +272,7 @@ export function Sidebar({
                       <Folder className="size-3.5 shrink-0" />
                     )}
                     <span className="truncate text-[12px] font-medium">{project.name}</span>
+                    {project.state && <StateDot state={project.state} />}
                     <span className="ml-auto font-mono text-[10px] text-muted-foreground">
                       {project.threads.length}
                     </span>
@@ -398,9 +415,14 @@ function ThreadRow({
   onDelete,
   onPin,
   onArchive,
+  onMarkUnread,
+  code = false,
 }: {
   thread: ThreadView;
   selected: boolean;
+  /** M10 step 13: rows in the Code area show where they run and their kind. */
+  code?: boolean;
+  onMarkUnread?: () => void;
   editing: boolean;
   title: string;
   onTitle: (title: string) => void;
@@ -447,7 +469,28 @@ function ThreadRow({
             aria-current={selected ? "page" : undefined}
             onClick={onSelect}
           >
-            <span className="block truncate pr-1 text-[12px] font-medium">{thread.title}</span>
+            <span className="flex items-center gap-1.5 pr-1">
+              {thread.state && <StateDot state={thread.state} />}
+              <span
+                className={`min-w-0 flex-1 truncate text-[12px] ${thread.state === "unseen" ? "font-semibold" : "font-medium"}`}
+              >
+                {thread.title}
+              </span>
+              {code && thread.kind !== "chat" && (
+                <span className="flex shrink-0 items-center gap-1 text-muted-foreground">
+                  {thread.kind === "work" ? (
+                    <FileText className="size-3" aria-label="Work session" />
+                  ) : (
+                    <SquareTerminal className="size-3" aria-label="Code session" />
+                  )}
+                  {thread.place === "hulk" ? (
+                    <Server className="size-3" aria-label="Runs on HULK" />
+                  ) : (
+                    <Laptop className="size-3" aria-label="Runs on this computer" />
+                  )}
+                </span>
+              )}
+            </span>
             <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
               {money(thread.costMicro)}
               {thread.tags.map((t) => (
@@ -488,6 +531,16 @@ function ThreadRow({
                 <Archive className="size-3" />
               )}
             </Button>
+            {onMarkUnread && thread.state !== "unseen" && (
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label={`Mark ${thread.title} as unread`}
+                onClick={onMarkUnread}
+              >
+                <MailOpen className="size-3" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon-xs"
@@ -500,5 +553,24 @@ function ThreadRow({
         </>
       )}
     </div>
+  );
+}
+
+const DOT: Record<NonNullable<ThreadState>, { label: string; className: string }> = {
+  waiting: { label: "Waiting for you", className: "bg-amber-500" },
+  going: { label: "Going", className: "animate-pulse bg-sky-500" },
+  unseen: { label: "New result", className: "bg-foreground" },
+};
+
+/** M10 step 13: a row's state, as a dot with its words for screen readers. */
+function StateDot({ state }: { state: NonNullable<ThreadState> }) {
+  const look = DOT[state];
+  return (
+    <span
+      role="img"
+      aria-label={look.label}
+      title={look.label}
+      className={`inline-block size-2 shrink-0 rounded-full ${look.className}`}
+    />
   );
 }

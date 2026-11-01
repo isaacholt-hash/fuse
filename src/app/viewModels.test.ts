@@ -306,3 +306,26 @@ test("M10 step 12: chats live in Chat; Code and Work sessions in Code, each with
   expect(emptyState("chat").heading).toBe("What are you working on?");
   expect(emptyState("code").heading).toBe("Describe a task");
 });
+
+test("M10 step 13: a row waits, goes, or has a new result, most urgent first", async () => {
+  const { threadState, worstState } = await import("./viewModels");
+  const none = new Set<string>();
+  const run = (status: string, updatedAt = 50) => ({ runId: "r", status, updatedAt });
+  const base = { waiting: none, seenAt: 100, createdAt: 10 };
+  expect(threadState({ ...base, latest: undefined })).toBeNull();
+  expect(threadState({ ...base, latest: run("running") })).toBe("going");
+  expect(threadState({ ...base, latest: run("running"), waiting: new Set(["r"]) })).toBe("waiting");
+  // Ended before it was last opened: nothing new. After: new.
+  expect(threadState({ ...base, latest: run("done", 50) })).toBeNull();
+  expect(threadState({ ...base, latest: run("done", 150) })).toBe("unseen");
+  // Never opened here (a scheduled task's chat): a result after it was made is new.
+  expect(threadState({ ...base, seenAt: null, latest: run("done", 50) })).toBe("unseen");
+  // Marked unread.
+  expect(threadState({ ...base, seenAt: 0, latest: undefined })).toBe("unseen");
+  // A handover on HULK, from this desktop's last look.
+  expect(threadState({ ...base, latest: undefined, hulk: ["starting"] })).toBe("going");
+  expect(threadState({ ...base, latest: undefined, hulk: ["done", "waiting"] })).toBe("waiting");
+  expect(worstState([null, "unseen", "going"])).toBe("going");
+  expect(worstState(["unseen", "waiting", "going"])).toBe("waiting");
+  expect(worstState([null, null])).toBeNull();
+});

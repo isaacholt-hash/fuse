@@ -111,7 +111,9 @@ import {
   runStatesForThread,
   runsEndedSince,
   runsForThread,
+  latestRunByThread,
   type AuditEntry,
+  type LatestRun,
   type RecentRun,
 } from "@/storage/runs";
 import {
@@ -277,6 +279,9 @@ import {
   setThreadPins,
   setThreadProject,
   setThreadWebSearch,
+  markThreadSeen,
+  markThreadUnread,
+  settleSeen,
   type Thread,
 } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
@@ -483,6 +488,8 @@ import {
   cacheHitRate,
   emptyState,
   inArea,
+  threadState,
+  worstState,
   messageViews,
   modelOption,
   requestRow,
@@ -1298,9 +1305,12 @@ export function ChatApp({
       },
     );
   }, [db, tenant]);
+  // M10 step 13: each thread's latest run, for the sidebar's dots.
+  const [latestRuns, setLatestRuns] = useState<Map<string, LatestRun>>(new Map());
   const refreshThreads = useCallback(async () => {
     const list = await listThreads(db, tenant);
     setThreadList({ threads: list, at: Date.now() });
+    setLatestRuns(await latestRunByThread(db, tenant));
   }, [db, tenant]);
   const refreshMemory = useCallback(async () => {
     setMemories(await listMemories(db, tenant));
@@ -1420,9 +1430,11 @@ export function ChatApp({
   useEffect(() => {
     // Incognito chats left by a crash or a forced close go before anything is listed.
     purgeIncognito(db, tenant)
+      .then(() => settleSeen(db, tenant))
       .then(() => listThreads(db, tenant))
       .then(async (list) => {
         setThreadList({ threads: list, at: Date.now() });
+        setLatestRuns(await latestRunByThread(db, tenant));
         // Reopen on the thread that was open last time, if it still exists.
         const last = lastThread ? list.find((t) => t.id === lastThread) : undefined;
         if (!last) return;
@@ -1468,6 +1480,10 @@ export function ChatApp({
     // M10 step 12: a thread from the other area (search, the palette, Runs) brings its area along.
     const kind = threads.find((t) => t.id === id)?.kind;
     if (kind && areaOf(kind) !== area) setArea(areaOf(kind));
+    // M10 step 13: opened, so what it has is seen.
+    markThreadSeen(db, tenant, id)
+      .then(refreshThreads)
+      .catch(() => undefined);
     setFocusId(null);
     setOneShot(null);
     setOnceArmed(false);
@@ -2777,6 +2793,8 @@ export function ChatApp({
       if (runsNow !== shownRuns) {
         shownRuns = runsNow;
         setServerRuns({ recent, waiting: new Set(open.map((a) => a.runId)), ended });
+        // M10 step 13: the sidebar's dots follow the runs.
+        void follow.current.refreshThreads().catch(follow.current.report);
       }
       const questions = open.map((a) => a.id).join();
       if (questions !== shownQuestions) {
@@ -2925,7 +2943,13 @@ export function ChatApp({
             const now = lookOf(s);
             const said = notifyFor(notified.current.get(id), now);
             notified.current.set(id, now);
+            // M10 step 13: every handover's state feeds its chat's dot.
+            setHulkStates((m) => new Map(m).set(id, s));
             if (!said) return;
+            // A result from HULK is new until its chat is opened.
+            const threadId = handovers.find((h) => h.requestId === id)?.threadId;
+            if (threadId && threadId !== selectedRef.current && now !== "waiting")
+              void markThreadUnread(db, tenant, threadId).then(refreshThreads, () => undefined);
             const title = `FUSE on HULK: ${said}`;
             const show = notify ?? (() => Promise.resolve(false));
             void show(title, task).then((shown) => {
@@ -3522,9 +3546,43 @@ export function ChatApp({
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
+  // M10 step 13: questions waiting (this app's runs, or every page's on the web), and how each
+  // chat's handovers to HULK are going.
+  const waitingRuns = new Set(approvals.keys());
+  const hulkLooks = new Map<string, string[]>();
+  for (const h of handovers) {
+    const s = hulkStates.get(h.requestId);
+    if (s) hulkLooks.set(h.threadId, [...(hulkLooks.get(h.threadId) ?? []), lookOf(s)]);
+  }
+  const handedThreads = new Set(handovers.map((h) => h.threadId));
+  // M10 step 13: when a run in the open chat starts or ends, the sidebar's dots look again.
+  const runStatusKey = [...threadRuns.values()].map((r) => `${r.run.id}:${r.run.status}`).join();
+  useEffect(() => {
+    if (runStatusKey) void refreshThreads().catch(() => undefined);
+  }, [runStatusKey, refreshThreads]);
+  // The open chat's result is seen as it arrives (Mark as unread, seenAt 0, is left alone).
+  const openLatest = selectedId ? latestRuns.get(selectedId) : undefined;
+  const openSeenAt = selectedId ? threads.find((t) => t.id === selectedId)?.seenAt : undefined;
+  useEffect(() => {
+    if (!selectedId || !openLatest || openLatest.status === "running") return;
+    if (openSeenAt === 0 || (openSeenAt ?? 0) >= openLatest.updatedAt) return;
+    markThreadSeen(db, tenant, selectedId)
+      .then(refreshThreads)
+      .catch(() => undefined);
+  }, [selectedId, openLatest, openSeenAt, db, tenant, refreshThreads]);
   const threadViews = threads
     .filter((t) => !t.incognito && inArea(t, area))
-    .map((t) => threadView(t, at));
+    .map((t) => ({
+      ...threadView(t, at),
+      state: threadState({
+        latest: latestRuns.get(t.id),
+        waiting: waitingRuns,
+        seenAt: t.seenAt,
+        createdAt: t.createdAt,
+        ...(hulkLooks.has(t.id) ? { hulk: hulkLooks.get(t.id) ?? [] } : {}),
+      }),
+      place: webApp || handedThreads.has(t.id) ? ("hulk" as const) : ("local" as const),
+    }));
   const togglePin = (t: { id: string; pinned: boolean }) => {
     setThreadPinned(db, tenant, t.id, !t.pinned).then(refreshThreads).catch(report);
   };
@@ -3629,6 +3687,7 @@ export function ChatApp({
       name: p.name,
       threads: inside,
       costMicro: inside.reduce((sum, t) => sum + t.costMicro, 0),
+      state: worstState(inside.map((t) => t.state ?? null)),
     };
   });
   const options = catalog.models.map(modelOption);
@@ -4433,6 +4492,9 @@ export function ChatApp({
               onDelete={setDeleting}
               onPin={togglePin}
               onArchive={toggleArchive}
+              onMarkUnread={(t) => {
+                markThreadUnread(db, tenant, t.id).then(refreshThreads).catch(report);
+              }}
               onSearch={() => {
                 setSearchOpen(true);
               }}
