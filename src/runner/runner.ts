@@ -14,10 +14,15 @@ import {
   finishRequest,
   setLive,
   takeRequest,
+  type Handover,
   type ModelRef,
   type RunRequest,
 } from "@/storage/runQueue";
-import { markInterruptedRuns, type Run } from "@/storage/runs";
+import { readFuseExport, applyRestore } from "@/data/restore";
+import { cloneOnServer } from "@/handover/api";
+import { grantFolder, linkThreadFolder } from "@/storage/folders";
+import { getRun, markInterruptedRuns, setRunStatus, type Run } from "@/storage/runs";
+import { createThread } from "@/storage/threads";
 
 export interface RunnerOptions {
   /** What every run gets, built fresh for each (keys may have been added since); not `approve`. */
@@ -31,6 +36,8 @@ export interface RunnerOptions {
   continue?: typeof continueChatRun;
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
+  /** M10 step 7: the server's clone of a handed-over run's repository (tests pass a fake). */
+  clone?: (remote: string, branch: string) => Promise<string>;
 }
 
 const wait = (ms: number) =>
@@ -139,11 +146,14 @@ export class Runner {
     const input = request.input;
     const model = modelFor(base, input.model);
     const planner = input.planner ? modelFor(base, input.planner) : null;
+    const handed = input.handover ? await this.takeOver(base, input.handover, input) : null;
+    const threadId = handed?.threadId ?? input.threadId;
+    if (!threadId) throw new Error("No chat to run in.");
     let runId: string | null = null;
     const live = this.live(deps);
     this.track(
       this.start(deps, {
-        threadId: input.threadId,
+        threadId,
         projectId: input.projectId,
         task: input.task,
         model,
@@ -162,13 +172,62 @@ export class Runner {
           live(answerId, p);
         },
       }).then(
-        (run: Run) => this.ended(deps, run.id),
+        async (run: Run) => {
+          if (handed && input.handover)
+            await this.push(deps, run.id, handed.folderId, input.handover);
+          await this.ended(deps, run.id);
+        },
         async (e: unknown) => {
           if (runId) await this.failed(deps, runId, e);
           else await finishRequest(db, tenant, request.id, { error: message(e) });
         },
       ),
     );
+  }
+
+  /**
+   * A handover: the desktop's project is restored here (same ids; what's already here is kept),
+   * the repository is cloned or fetched into the server's own copy, and the run gets a new chat
+   * in the project with only that copy as its folder (the project's other folders are the
+   * desktop's).
+   */
+  private async takeOver(
+    base: RunDeps,
+    handover: Handover,
+    input: { projectId: string | null; task: string },
+  ): Promise<{ threadId: string; folderId: string }> {
+    const { db, tenant } = base;
+    if (!base.files) throw new Error("The server has no file store for the project's export.");
+    const parsed = await readFuseExport(await base.files.get(handover.exportSha));
+    await applyRestore(db, tenant, parsed, base.files);
+    const path = await (this.options.clone ?? cloneOnServer)(handover.remote, handover.branch);
+    const folder = await grantFolder(db, tenant, path);
+    const title = input.task.replace(/\s+/g, " ").trim().slice(0, 60) || "Handed over";
+    const thread = await createThread(db, tenant, `${title} (from the desktop)`, input.projectId);
+    await linkThreadFolder(db, tenant, thread.id, folder.id);
+    this.log(`took over a run on ${handover.remote} (${handover.branch})`);
+    return { threadId: thread.id, folderId: folder.id };
+  }
+
+  /** A handed-over run that finished on its branch asks to push it (a send), then says how. */
+  private async push(deps: RunDeps, runId: string, folderId: string, handover: Handover) {
+    const run = await getRun(deps.db, deps.tenant, runId);
+    if (run?.status !== "done" || !run.branch || !deps.git || !deps.approve) return;
+    const yes = await deps.approve({
+      kind: "git",
+      summary: `Push ${run.branch} to ${handover.remote}`,
+      remote: true,
+      runId,
+    });
+    let note: string;
+    if (yes === "yes" || yes === "always" || yes === true) {
+      const r = await deps.git.run(folderId, "git", ["push", "-u", "origin", run.branch]);
+      note =
+        r.exitCode === 0
+          ? `Pushed ${run.branch} to ${handover.remote}.`
+          : `Couldn't push ${run.branch}: ${r.output.trim()}`;
+    } else note = `Not pushed: ${run.branch} is on HULK's copy only.`;
+    await setRunStatus(deps.db, deps.tenant, runId, "done", note);
   }
 
   /** Saves the streaming text every `liveMs`, and always when a turn ends. */

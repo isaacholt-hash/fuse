@@ -14,7 +14,8 @@ export interface ModelRef {
 
 /** A chat run to start, as the page asks for it (`ChatRunInput` without the callbacks). */
 export interface StartInput {
-  threadId: string;
+  /** Null for a handover: the runner makes the chat. */
+  threadId: string | null;
   projectId: string | null;
   task: string;
   model: ModelRef;
@@ -23,6 +24,18 @@ export interface StartInput {
   newBranch?: boolean;
   planner?: ModelRef | null;
   capMicroUsd?: number;
+  /** M10 step 7: a run handed over from a desktop. */
+  handover?: Handover;
+}
+
+/**
+ * A desktop's handover: its project's export (uploaded to the server's files), and where the
+ * runner gets the repository. The run works on a `fuse/…` branch and asks before pushing it.
+ */
+export interface Handover {
+  exportSha: string;
+  remote: string;
+  branch: string;
 }
 
 type Ask =

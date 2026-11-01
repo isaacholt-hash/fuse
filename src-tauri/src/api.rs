@@ -67,6 +67,8 @@ pub const WEB_COMMANDS: &[&str] = &[
     "python_install_cancel",
     "python_status",
     "python_remove",
+    // M10 step 7: only the server has it (src/clone.rs).
+    "repo_clone",
 ];
 
 /// What a command gives back: JSON, or raw bytes (`file_get`, `repo_read_bytes`).
@@ -422,6 +424,12 @@ pub async fn dispatch(
         "python_status" => json(blocking(ctx, python_runtime::python_status).await),
         "python_remove" => json(blocking(ctx, python_runtime::python_remove).await),
 
+        // Handover (clone.rs)
+        "repo_clone" => {
+            args!(name, args, remote: String, branch: String);
+            json(crate::clone::repo_clone(ctx, remote, branch).await)
+        }
+
         _ => Err(unknown(name)),
     }
 }
@@ -470,7 +478,16 @@ mod tests {
         "local_installed",
         "local_remove",
         "mcp_sign_in",
+        // M10 step 7: the desktop's link to HULK.
+        "hulk_status",
+        "hulk_pair",
+        "hulk_unpair",
+        "hulk_invoke",
+        "hulk_put_file",
     ];
+
+    /// Served by fuse-server but not a desktop command.
+    const SERVER_ONLY: &[&str] = &["repo_clone"];
 
     fn temp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!("fuse-api-test-{name}-{}", std::process::id()));
@@ -547,8 +564,11 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 67 commands in lib.rs: those the server runs and those only the desktop has.
-        assert_eq!(WEB_COMMANDS.len() + DESKTOP_ONLY.len(), 67);
+        // 72 commands in lib.rs: those the server runs too and those only the desktop has.
+        assert_eq!(
+            WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
+            72
+        );
     }
 
     #[tokio::test]
