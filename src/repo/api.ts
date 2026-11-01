@@ -1,6 +1,6 @@
 // Folders FUSE may work in (CA-01, WF-02), through Rust: every path is checked there against the
 // granted folder's root from the database, so nothing here can reach outside it (src-tauri/src/repo.rs).
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 export interface RepoInfo {
   root: string;

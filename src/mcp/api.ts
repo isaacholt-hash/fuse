@@ -2,7 +2,7 @@
  * MCP servers' Rust side (M9 step 8). Their variables' values go to the OS keychain and are
  * never read back here: the app only learns which are set.
  */
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** M9 step 8: one tool a server offers; `readOnly` from its annotations, else it writes. */
 export interface McpTool {

@@ -1,5 +1,5 @@
-import { isTauri } from "@tauri-apps/api/core";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { isDesktop as isTauri } from "@/platform/core";
+import { openUrl } from "@/platform/desktop";
 
 /** Opens http(s)/mailto links in the system browser; anything else is ignored. */
 export function openExternal(href: string | undefined): void {

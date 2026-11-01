@@ -1,7 +1,7 @@
 // Global quick capture (CH-08, PL-07): the shortcut lives in Rust (src-tauri/src/quick.rs);
 // pressing it brings FUSE forward and the app opens a new chat.
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@/platform/core";
+import { listen } from "@/platform/desktop";
 
 export const DEFAULT_SHORTCUT = "Ctrl+Alt+Space";
 /** Settings key; the value "off" turns it off. */

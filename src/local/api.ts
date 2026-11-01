@@ -1,5 +1,5 @@
 /** The local model's Rust side (src-tauri/src/local.rs, hardware.rs, model_files.rs). */
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@/platform/core";
 import type { Hardware } from "./hardware";
 import type { InstalledFile, InstallMsg } from "./install";
 import type { LocalProfile } from "./models";

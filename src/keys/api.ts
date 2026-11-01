@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@/platform/core";
 
 /** Mirrors src-tauri/src/keys.rs. The key itself only ever travels frontend → Rust, on save. */
 export type Provider = "openai" | "anthropic";

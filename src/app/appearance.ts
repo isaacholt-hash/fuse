@@ -1,5 +1,5 @@
 // Text size and reduced motion (PL-10), remembered on this device like the theme.
-import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWebview } from "@/platform/desktop";
 import { useEffect, useState } from "react";
 import type { Motion, TextSize } from "@/ui/types";
 
