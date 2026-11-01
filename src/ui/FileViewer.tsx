@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { PAGE_MARKER } from "@/files/pdfText";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "./Markdown";
+import { Greyed } from "./primitives";
 
 export interface FileViewerView {
   name: string;
@@ -13,6 +14,8 @@ export interface FileViewerView {
   /** WF-05: a file in a chat's folder can open in its app or show in its folder. */
   onOpen?: () => void;
   onReveal?: () => void;
+  /** PL-02: why those two are greyed (the web app on HULK); shown instead of `onOpen`. */
+  openReason?: string;
   /** Images: a blob: URL. */
   url?: string;
   /** Text files (and long PDFs read as text). */
@@ -43,10 +46,25 @@ export function FileViewer({ file, onClose }: { file: FileViewerView; onClose: (
             Show in folder
           </Button>
         )}
+        {file.openReason && (
+          <>
+            <Button variant="ghost" size="sm" className="text-xs max-sm:hidden" disabled>
+              Open in its app
+            </Button>
+            <Button variant="ghost" size="sm" className="text-xs max-sm:hidden" disabled>
+              Show in folder
+            </Button>
+          </>
+        )}
         <Button variant="ghost" size="icon-sm" aria-label="Close file" onClick={onClose}>
           <X />
         </Button>
       </header>
+      {file.openReason && (
+        <div className="shrink-0 border-b px-4 pb-2">
+          <Greyed>{file.openReason}</Greyed>
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {file.kind === "image" && file.url ? (
           <img src={file.url} alt={file.name} className="mx-auto max-w-full p-4" />

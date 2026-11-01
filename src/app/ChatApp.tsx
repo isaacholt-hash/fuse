@@ -37,7 +37,9 @@ import {
 } from "@/python/runtime";
 import { CircleAlert, EyeOff, Folder, PanelLeft, Pencil, Sparkles, X } from "lucide-react";
 import { Tooltip } from "radix-ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { WebFolderDialog } from "@/ui/WebFolder";
+import { WEB_REASONS } from "@/ui/webReasons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -74,7 +76,7 @@ import {
 } from "@/catalog/prices";
 import { priceToMicro } from "@/cost/cost";
 import type { FilesApi } from "@/files/api";
-import type { RepoApi } from "@/repo/api";
+import type { RepoApi, RepoInfo } from "@/repo/api";
 import { WINDOWS_SANDBOX_SETTING, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
 import type { RepoInstruction } from "@/repo/instructions";
@@ -478,6 +480,13 @@ export interface ChatAppProps {
   hello?: HelloApi;
   /** Starts the app over (after delete-all); a page reload by default. */
   onRestart?: () => void;
+  /**
+   * M10 step 5: this is the web app on HULK (`!isDesktop()`). Desktop-only features are greyed
+   * with their reason (PL-02), and folders are typed in rather than picked in a native dialog.
+   */
+  webApp?: boolean;
+  /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
+  server?: ReactNode;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -654,6 +663,8 @@ export function ChatApp({
   onRestart = () => {
     window.location.reload();
   },
+  webApp = false,
+  server,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -2391,11 +2402,19 @@ export function ChatApp({
     if (selectedId) loadChatFolders(selectedId).catch(report);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the chat changes
   }, [selectedId]);
+  // M10 step 5: the web app's folder dialog, waiting for a path on HULK; null when closed.
+  const [folderAsk, setFolderAsk] = useState<((info: RepoInfo | null) => void) | null>(null);
+  /** The native folder picker on the desktop; on the web, a folder on HULK typed in. */
+  const pickFolder = (api: RepoApi): Promise<RepoInfo | null> =>
+    webApp
+      ? new Promise((resolve) => {
+          setFolderAsk(() => resolve);
+        })
+      : api.pick();
   /** WF-02: pick a folder on this computer for this chat (or the draft). */
   const addChatFolder = () => {
     if (!repoApi) return;
-    repoApi
-      .pick()
+    pickFolder(repoApi)
       .then(async (info) => {
         if (!info) return;
         const folder = await grantFolder(db, tenant, info.root);
@@ -2889,16 +2908,18 @@ export function ChatApp({
     const { folder, rel } = resolvePath(folders, change.path);
     const base = {
       name: change.path,
-      ...(repoApi.open
-        ? {
-            onOpen: () => {
-              repoApi.open?.(folder.folderId, rel, false).catch(report);
-            },
-            onReveal: () => {
-              repoApi.open?.(folder.folderId, rel, true).catch(report);
-            },
-          }
-        : {}),
+      ...(webApp
+        ? { openReason: WEB_REASONS.open }
+        : repoApi.open
+          ? {
+              onOpen: () => {
+                repoApi.open?.(folder.folderId, rel, false).catch(report);
+              },
+              onReveal: () => {
+                repoApi.open?.(folder.folderId, rel, true).catch(report);
+              },
+            }
+          : {}),
     };
     const kind = docKind(change.path);
     const bytes =
@@ -3676,7 +3697,8 @@ export function ChatApp({
 
   return (
     <Tooltip.Provider>
-      <div className="flex h-dvh min-h-[480px] min-w-[640px] flex-col overflow-hidden bg-background text-foreground">
+      {/* The desktop window is at least 640 wide; a phone's browser can be narrower (M10). */}
+      <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground sm:min-w-[640px]">
         <UpdateBar
           update={appUpdate.update}
           onRestart={appUpdate.restart}
@@ -3903,6 +3925,8 @@ export function ChatApp({
             />
           ) : view === "settings" ? (
             <SettingsView
+              web={webApp}
+              {...(server ? { server } : {})}
               keys={keys.keys}
               version={appUpdate.version}
               onCheckUpdates={async () => {
@@ -3925,6 +3949,7 @@ export function ChatApp({
               }
               appLock={
                 <AppLockSection
+                  web={webApp}
                   enabled={Boolean(lock.hash)}
                   idleMinutes={lock.idleMinutes}
                   {...(lock.helloAvailable
@@ -4042,6 +4067,14 @@ export function ChatApp({
                       }}
                     />
                   )}
+                  {webApp && (
+                    <WindowsSandboxSection
+                      web
+                      on
+                      onToggle={() => undefined}
+                      onReset={() => Promise.resolve("")}
+                    />
+                  )}
                 </>
               }
               privacy={
@@ -4065,6 +4098,7 @@ export function ChatApp({
                 exporter && (
                   <DataSection
                     {...(backups ? { backups } : {})}
+                    {...(webApp ? { backupRestoreReason: WEB_REASONS.restore } : {})}
                     restore={{
                       read: async (file) => {
                         const parsed = await readFuseExport(
@@ -4135,21 +4169,32 @@ export function ChatApp({
                 )
               }
               quickCapture={
-                quickCapture && (
+                webApp ? (
                   <QuickCaptureSection
-                    key={shortcut.shortcut ?? "off"}
-                    shortcut={shortcut.shortcut}
-                    mayNotWork={shortcut.mayNotWork}
-                    error={shortcut.error}
-                    onSave={(value) => {
-                      void applyShortcut(value, true);
-                    }}
+                    web
+                    shortcut={null}
+                    mayNotWork={false}
+                    error={null}
+                    onSave={() => undefined}
                   />
+                ) : (
+                  quickCapture && (
+                    <QuickCaptureSection
+                      key={shortcut.shortcut ?? "off"}
+                      shortcut={shortcut.shortcut}
+                      mayNotWork={shortcut.mayNotWork}
+                      error={shortcut.error}
+                      onSave={(value) => {
+                        void applyShortcut(value, true);
+                      }}
+                    />
+                  )
                 )
               }
               mcp={
                 mcpApi && (
                   <McpServersSection
+                    {...(webApp ? { signInReason: WEB_REASONS.mcpSignIn } : {})}
                     servers={mcpServers.map((s) => {
                       const health = mcpHealth[s.id];
                       return health ? { ...s, health } : s;
@@ -4260,43 +4305,47 @@ export function ChatApp({
                 )
               }
               local={
-                localApi && (
-                  <LocalModelSection
-                    view={localModelView(
-                      localHardware,
-                      localInstalled,
-                      localJob,
-                      localInstallError,
-                    )}
-                    error={localError}
-                    onInstall={() => {
-                      const choice =
-                        localHardware && pickProfile(localHardware, localModels.profiles);
-                      if (choice?.profile) installLocal(choice.profile);
-                    }}
-                    onPause={() => {
-                      localApi.cancelInstall().catch(report);
-                    }}
-                    enabled={localOn}
-                    shadow={
-                      shadow && shadow.checks > 0
-                        ? `Shadow checks: ${String(shadow.checks)}, the same answer as the cloud model in ${String(Math.round((shadow.same / shadow.checks) * 100))}%. Median time ${((shadow.localP50 ?? 0) / 1000).toFixed(1)} s here, ${((shadow.cloudP50 ?? 0) / 1000).toFixed(1)} s in the cloud.`
-                        : shadowRate > 0
-                          ? "Shadow checks are on for its first week: about 1 in 10 of its jobs also runs on a cheap cloud model to compare (timings and agreement only, never the text)."
-                          : null
-                    }
-                    onEnabled={(on) => {
-                      setLocalOn(on);
-                      setSetting(db, tenant, "local.enabled", on ? "on" : "off").catch(report);
-                    }}
-                    onRemove={(file) => {
-                      setLocalInstallError(null);
-                      localApi
-                        .remove(file)
-                        .then(() => refreshLocalInstalled())
-                        .catch(report);
-                    }}
-                  />
+                webApp ? (
+                  <LocalModelSection view={null} web />
+                ) : (
+                  localApi && (
+                    <LocalModelSection
+                      view={localModelView(
+                        localHardware,
+                        localInstalled,
+                        localJob,
+                        localInstallError,
+                      )}
+                      error={localError}
+                      onInstall={() => {
+                        const choice =
+                          localHardware && pickProfile(localHardware, localModels.profiles);
+                        if (choice?.profile) installLocal(choice.profile);
+                      }}
+                      onPause={() => {
+                        localApi.cancelInstall().catch(report);
+                      }}
+                      enabled={localOn}
+                      shadow={
+                        shadow && shadow.checks > 0
+                          ? `Shadow checks: ${String(shadow.checks)}, the same answer as the cloud model in ${String(Math.round((shadow.same / shadow.checks) * 100))}%. Median time ${((shadow.localP50 ?? 0) / 1000).toFixed(1)} s here, ${((shadow.cloudP50 ?? 0) / 1000).toFixed(1)} s in the cloud.`
+                          : shadowRate > 0
+                            ? "Shadow checks are on for its first week: about 1 in 10 of its jobs also runs on a cheap cloud model to compare (timings and agreement only, never the text)."
+                            : null
+                      }
+                      onEnabled={(on) => {
+                        setLocalOn(on);
+                        setSetting(db, tenant, "local.enabled", on ? "on" : "off").catch(report);
+                      }}
+                      onRemove={(file) => {
+                        setLocalInstallError(null);
+                        localApi
+                          .remove(file)
+                          .then(() => refreshLocalInstalled())
+                          .catch(report);
+                      }}
+                    />
+                  )
                 )
               }
               keyCaps={
@@ -5170,8 +5219,7 @@ export function ChatApp({
                         },
                         note: repoNote,
                         onAdd: () => {
-                          repoApi
-                            .pick()
+                          pickFolder(repoApi)
                             .then(async (info) => {
                               if (!info) return;
                               const folder = await grantFolder(db, tenant, info.root);
@@ -5540,6 +5588,16 @@ export function ChatApp({
             )}
           </div>
         </Modal>
+        {webApp && repoApi && (
+          <WebFolderDialog
+            open={folderAsk !== null}
+            check={(path) => repoApi.check(path)}
+            onDone={(info) => {
+              folderAsk?.(info);
+              setFolderAsk(null);
+            }}
+          />
+        )}
         <Modal
           open={renaming}
           onOpenChange={setRenaming}

@@ -16,7 +16,7 @@ import {
 } from "@/data/backups";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal } from "./primitives";
+import { Greyed, Modal } from "./primitives";
 
 /** What has to be typed before everything is deleted. */
 export const DELETE_PHRASE = "delete everything";
@@ -27,7 +27,7 @@ const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * Backups (PL-11): copies of the encrypted database, made before every update and on request.
  * A restore happens at the next start; the data it replaces is kept as a backup too.
  */
-function Backups({ api }: { api: BackupsApi }) {
+function Backups({ api, restoreReason }: { api: BackupsApi; restoreReason?: string }) {
   const [list, setList] = useState<BackupInfo[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
@@ -114,6 +114,7 @@ function Backups({ api }: { api: BackupsApi }) {
                 variant="ghost"
                 size="sm"
                 aria-label={`Restore ${describeBackup(b)}`}
+                disabled={Boolean(restoreReason)}
                 onClick={() => {
                   setRestoring(b);
                 }}
@@ -127,6 +128,7 @@ function Backups({ api }: { api: BackupsApi }) {
       ) : (
         <p className="mt-2 text-[11px] text-muted-foreground">No backups yet.</p>
       )}
+      {restoreReason && <Greyed>{restoreReason}</Greyed>}
       <Modal
         open={restoring !== null}
         onOpenChange={(open) => {
@@ -317,8 +319,11 @@ export function DataSection({
   onDeleteAll,
   backups,
   restore,
+  backupRestoreReason,
 }: {
   restore?: RestoreApi;
+  /** PL-02: why restoring a backup is greyed here (the web app on HULK). */
+  backupRestoreReason?: string;
   /** Builds and saves the export; returns a line to show, or null if cancelled. */
   onExport: () => Promise<string | null>;
   /** Wipes all data (and the keys, when asked); the app then starts over empty. */
@@ -374,7 +379,12 @@ export function DataSection({
         </p>
       )}
       {restore && <Restore api={restore} />}
-      {backups && <Backups api={backups} />}
+      {backups && (
+        <Backups
+          api={backups}
+          {...(backupRestoreReason ? { restoreReason: backupRestoreReason } : {})}
+        />
+      )}
       {onDeleteAll && (
         <>
           <Button

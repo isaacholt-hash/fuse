@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Greyed } from "./primitives";
+import { WEB_REASONS } from "./webReasons";
 
 /**
  * Settings → Sandbox on Windows (M8 step 9, WF-07): on unless switched off. On, commands from Code and Work runs run in an AppContainer that can write only in
@@ -10,7 +12,10 @@ export function WindowsSandboxSection({
   on,
   onToggle,
   onReset,
+  web = false,
 }: {
+  /** PL-02: the web app on HULK, where this switch doesn't apply: shown, greyed, with the reason. */
+  web?: boolean;
   on: boolean;
   onToggle: (on: boolean) => void;
   /** Resolves to what to say: how many folders were put back, or what failed. */
@@ -41,18 +46,20 @@ export function WindowsSandboxSection({
         <input
           type="checkbox"
           checked={on}
+          disabled={web}
           onChange={(e) => {
             onToggle(e.target.checked);
           }}
         />
         Run commands in the sandbox
       </label>
+      {web && <Greyed>{WEB_REASONS.windowsSandbox}</Greyed>}
       <div className="mt-3 flex items-center gap-3">
         <Button
           variant="outline"
           size="sm"
           className="text-xs"
-          disabled={busy}
+          disabled={busy || web}
           onClick={() => {
             setBusy(true);
             setSaid(null);

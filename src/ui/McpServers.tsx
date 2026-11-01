@@ -4,6 +4,7 @@
 import { useId, useState } from "react";
 import { Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Greyed } from "./primitives";
 
 export interface McpServerView {
   id: string;
@@ -52,7 +53,10 @@ export function McpServersSection({
   onCheck,
   onSignIn,
   onSignOut,
+  signInReason,
 }: {
+  /** PL-02: why Sign in is greyed here (the web app on HULK has no OAuth sign-in yet). */
+  signInReason?: string;
   servers: McpServerView[];
   /** Resolves to a problem to show, or null once it's added. */
   onAdd: (draft: McpServerDraft) => Promise<string | null>;
@@ -160,6 +164,16 @@ export function McpServersSection({
                   </button>
                 )}
               </p>
+            )}
+            {s.signedIn === false && signInReason && (
+              <>
+                <p className="mt-1">
+                  <button type="button" disabled className="opacity-50">
+                    Sign in
+                  </button>
+                </p>
+                <Greyed>{signInReason}</Greyed>
+              </>
             )}
             {s.variables.length > 0 && (
               <p className="mt-1 text-[10px] text-muted-foreground">

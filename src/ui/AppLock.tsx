@@ -2,7 +2,8 @@ import { Fingerprint, Lock, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Mark } from "./primitives";
+import { Greyed, Mark } from "./primitives";
+import { WEB_REASONS } from "./webReasons";
 
 /** The lock screen (SE-03). Nothing of the app is rendered behind it. */
 export function LockScreen({
@@ -136,10 +137,13 @@ export function AppLockSection({
   onIdle,
   hello,
   onHello,
+  web = false,
 }: {
   /** Windows Hello is turned on; both unset when it isn't set up on this PC. */
   hello?: boolean;
   onHello?: (on: boolean) => void;
+  /** PL-02: the web app on HULK, behind the server's passphrase: shown, greyed, with the reason. */
+  web?: boolean;
   enabled: boolean;
   idleMinutes: number;
   minLength: number;
@@ -173,100 +177,117 @@ export function AppLockSection({
         of the passcode is stored. There&apos;s no way to recover a forgotten one except Delete
         everything.
       </p>
-      <div className="grid max-w-sm gap-2">
-        {enabled && (
-          <Input
-            type="password"
-            aria-label="Current passcode"
-            placeholder="Current passcode"
-            value={current}
-            onChange={(e) => {
-              setCurrent(e.target.value);
-            }}
-          />
-        )}
-        <Input
-          type="password"
-          aria-label="New passcode"
-          placeholder={`New passcode (at least ${String(minLength)} characters)`}
-          value={next}
-          onChange={(e) => {
-            setNext(e.target.value);
-          }}
-        />
-        <Input
-          type="password"
-          aria-label="New passcode again"
-          placeholder="New passcode again"
-          value={again}
-          onChange={(e) => {
-            setAgain(e.target.value);
-          }}
-        />
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!ok}
-            onClick={() => {
-              void onSet(next, enabled ? current : null).then((m) => {
-                done(m, enabled ? "Passcode changed." : "App lock is on.");
-              });
-            }}
-          >
-            {enabled ? "Change passcode" : "Turn on app lock"}
-          </Button>
-          {enabled && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={!current}
-              onClick={() => {
-                void onRemove(current).then((m) => {
-                  done(m, "App lock is off.");
-                });
-              }}
-            >
-              Turn off
+      {web ? (
+        <>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" disabled>
+              Turn on app lock
             </Button>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" disabled checked={false} readOnly />
+              Unlock with Windows Hello
+            </label>
+          </div>
+          <Greyed>{WEB_REASONS.appLock}</Greyed>
+        </>
+      ) : (
+        <>
+          <div className="grid max-w-sm gap-2">
+            {enabled && (
+              <Input
+                type="password"
+                aria-label="Current passcode"
+                placeholder="Current passcode"
+                value={current}
+                onChange={(e) => {
+                  setCurrent(e.target.value);
+                }}
+              />
+            )}
+            <Input
+              type="password"
+              aria-label="New passcode"
+              placeholder={`New passcode (at least ${String(minLength)} characters)`}
+              value={next}
+              onChange={(e) => {
+                setNext(e.target.value);
+              }}
+            />
+            <Input
+              type="password"
+              aria-label="New passcode again"
+              placeholder="New passcode again"
+              value={again}
+              onChange={(e) => {
+                setAgain(e.target.value);
+              }}
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!ok}
+                onClick={() => {
+                  void onSet(next, enabled ? current : null).then((m) => {
+                    done(m, enabled ? "Passcode changed." : "App lock is on.");
+                  });
+                }}
+              >
+                {enabled ? "Change passcode" : "Turn on app lock"}
+              </Button>
+              {enabled && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={!current}
+                  onClick={() => {
+                    void onRemove(current).then((m) => {
+                      done(m, "App lock is off.");
+                    });
+                  }}
+                >
+                  Turn off
+                </Button>
+              )}
+            </div>
+          </div>
+          {enabled && (
+            <label className="mt-3 flex items-center gap-2 text-xs">
+              Lock after
+              <select
+                aria-label="Lock after"
+                className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
+                value={idleMinutes}
+                onChange={(e) => {
+                  onIdle(Number(e.target.value));
+                }}
+              >
+                {IDLE_CHOICES.map((c) => (
+                  <option key={c.minutes} value={c.minutes}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              of no use
+            </label>
           )}
-        </div>
-      </div>
-      {enabled && (
-        <label className="mt-3 flex items-center gap-2 text-xs">
-          Lock after
-          <select
-            aria-label="Lock after"
-            className="h-8 rounded-lg border border-input bg-background px-2 text-xs"
-            value={idleMinutes}
-            onChange={(e) => {
-              onIdle(Number(e.target.value));
-            }}
-          >
-            {IDLE_CHOICES.map((c) => (
-              <option key={c.minutes} value={c.minutes}>
-                {c.label}
-              </option>
-            ))}
-          </select>
-          of no use
-        </label>
+          {enabled && onHello && (
+            <label className="mt-2 flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={hello ?? false}
+                onChange={(e) => {
+                  onHello(e.target.checked);
+                }}
+              />
+              Unlock with Windows Hello (face, fingerprint or PIN); the passcode still works
+            </label>
+          )}
+          <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+            {status ?? (enabled ? "App lock is on." : "App lock is off.")}
+          </p>
+        </>
       )}
-      {enabled && onHello && (
-        <label className="mt-2 flex items-center gap-2 text-xs">
-          <input
-            type="checkbox"
-            checked={hello ?? false}
-            onChange={(e) => {
-              onHello(e.target.checked);
-            }}
-          />
-          Unlock with Windows Hello (face, fingerprint or PIN); the passcode still works
-        </label>
-      )}
-      <p role="status" className="mt-2 text-[11px] text-muted-foreground">
-        {status ?? (enabled ? "App lock is on." : "App lock is off.")}
-      </p>
     </section>
   );
 }

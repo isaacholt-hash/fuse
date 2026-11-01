@@ -2,6 +2,8 @@ import { Keyboard } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Greyed } from "./primitives";
+import { WEB_REASONS } from "./webReasons";
 
 /** Settings → Quick capture (CH-08, PL-07). */
 export function QuickCaptureSection({
@@ -9,12 +11,15 @@ export function QuickCaptureSection({
   mayNotWork,
   error,
   onSave,
+  web = false,
 }: {
   /** The active shortcut, or null when it's off. */
   shortcut: string | null;
   mayNotWork: boolean;
   error: string | null;
   onSave: (shortcut: string | null) => void;
+  /** PL-02: the web app on HULK, which has no global shortcut: shown, greyed, with the reason. */
+  web?: boolean;
 }) {
   const [draft, setDraft] = useState(shortcut ?? "");
   return (
@@ -31,7 +36,7 @@ export function QuickCaptureSection({
         className="flex items-center gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          onSave(draft.trim() || null);
+          if (!web) onSave(draft.trim() || null);
         }}
       >
         <Input
@@ -39,14 +44,15 @@ export function QuickCaptureSection({
           className="h-8 w-48 text-xs"
           value={draft}
           placeholder="Off"
+          disabled={web}
           onChange={(e) => {
             setDraft(e.target.value);
           }}
         />
-        <Button type="submit" size="sm" variant="outline">
+        <Button type="submit" size="sm" variant="outline" disabled={web}>
           Save
         </Button>
-        {shortcut && (
+        {shortcut && !web && (
           <Button
             type="button"
             size="sm"
@@ -60,10 +66,14 @@ export function QuickCaptureSection({
           </Button>
         )}
       </form>
-      <p role="status" className="mt-2 text-[11px] text-muted-foreground">
-        {error ?? (shortcut ? `On: ${shortcut}` : "Off")}
-      </p>
-      {mayNotWork && shortcut && (
+      {web ? (
+        <Greyed>{WEB_REASONS.hotkey}</Greyed>
+      ) : (
+        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+          {error ?? (shortcut ? `On: ${shortcut}` : "Off")}
+        </p>
+      )}
+      {mayNotWork && shortcut && !web && (
         <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
           This desktop runs Wayland, which may not pass global shortcuts to apps. If it doesn&apos;t
           work, set one in your desktop&apos;s keyboard settings that opens FUSE.

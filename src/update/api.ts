@@ -41,5 +41,15 @@ export const noUpdates: UpdateApi = {
   installAndRestart: () => Promise.resolve(),
 };
 
+/**
+ * The web app on HULK (M10 step 5): it's updated with the server, never by itself, and shows
+ * the server's version (PL-06).
+ */
+export const serverUpdates = (version: string): UpdateApi => ({
+  version: () => Promise.resolve(version),
+  prepare: () => Promise.resolve(null),
+  installAndRestart: () => Promise.resolve(),
+});
+
 export const defaultUpdateApi = (): UpdateApi =>
   isTauri() && !import.meta.env.DEV ? tauriUpdateApi() : noUpdates;

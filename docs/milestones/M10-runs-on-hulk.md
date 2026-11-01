@@ -66,7 +66,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - Device pairing codes and tokens, with Settings → Devices and Revoke.
   - Threat model: the web app on HULK.
   - Done in the server; the sign-in and Devices screens come with the web build (step 5).
-- [ ] **5. Web UI.**
+- [x] **5. Web UI.**
   - `pnpm build:web` builds the same app on the HTTP platform.
   - OS-only features are greyed with a reason (PL-02): hotkey, updater, Windows Hello. The native folder dialog becomes a picker under the server's allowed folders.
   - Settings shows the server version (PL-06).
