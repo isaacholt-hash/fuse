@@ -60,11 +60,20 @@ beforeAll(async () => {
   for (const f of readdirSync(SHOTS, { withFileTypes: true })) {
     if (f.isFile()) rmSync(join(SHOTS, f.name));
   }
-  rmSync(FOLDER, { recursive: true, force: true });
+  rmSync(FOLDER, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   mkdirSync(FOLDER, { recursive: true });
   // A fresh start each run: the test build's own data (never FUSE's), which a reused PC keeps.
+  // checklist.e2e.ts's app may still be closing: wait for it to let go of the data folder.
+  await Session.portFree();
   for (const base of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
-    if (base) rmSync(join(base, "com.isaacholt.fuse.e2e"), { recursive: true, force: true });
+    if (base) {
+      rmSync(join(base, "com.isaacholt.fuse.e2e"), {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 500,
+      });
+    }
   }
   app = await Session.start(APP);
   await app.find(composer, 60_000);

@@ -1,7 +1,7 @@
 // M8 step 14: drives the test build over WebView2's DevTools port (the test build opens it,
 // src-tauri/tauri.e2e.conf.json). Not msedgedriver: from WebView2 133 on, it crashes the WebView
 // it launches (MicrosoftEdge/WebView2Feedback#5415). Clicks and keys are real input events.
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
 const PORT = 9222;
@@ -328,9 +328,14 @@ export class Session {
     writeFileSync(path, Buffer.from(data, "base64"));
   }
 
+  /** Closes the app and, on Windows, its WebView2 processes, which hold its data folder. */
   quit(): void {
     this.socket.close();
-    this.app.kill();
+    if (process.platform === "win32" && this.app.pid !== undefined) {
+      spawnSync("taskkill", ["/pid", String(this.app.pid), "/T", "/F"], { stdio: "ignore" });
+    } else {
+      this.app.kill();
+    }
   }
 }
 

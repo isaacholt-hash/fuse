@@ -100,7 +100,7 @@ beforeAll(async () => {
   await Session.portFree();
   rmSync(FOLDER, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   mkdirSync(FOLDER, { recursive: true });
-  writeFileSync(join(FOLDER, "notes.txt"), "A notes file with a tpyo.\n");
+  writeFileSync(join(FOLDER, "greet.ts"), 'export const greet = () => "helo";\n');
   for (const base of [process.env.APPDATA, process.env.LOCALAPPDATA]) {
     if (base) {
       rmSync(join(base, "com.isaacholt.fuse.e2e"), {
@@ -157,15 +157,18 @@ test("2. a chat in the project offers Continue in Code for a change, and edits n
   await step("chat-change", async () => {
     await app.chord("1");
     await app.click(button(`New chat in ${PROJECT}`));
-    await send("Fix the typo in notes.txt");
+    // Worded as a code change: the hint only follows messages routed as coding (or unsure).
+    await send("Fix the bug in greet.ts");
     expect(await nextAnswer(0)).toContain(HELLO);
     await app.find(byLabel("Continue in Code"));
     // A chat reads files but never changes them: no change was asked for, and nothing moved.
     expect(
       await app.run<boolean>(`return !document.querySelector('[aria-label="Make this change?"]');`),
     ).toBe(true);
-    expect(readdirSync(FOLDER)).toEqual(["notes.txt"]);
-    expect(readFileSync(join(FOLDER, "notes.txt"), "utf8")).toBe("A notes file with a tpyo.\n");
+    expect(readdirSync(FOLDER)).toEqual(["greet.ts"]);
+    expect(readFileSync(join(FOLDER, "greet.ts"), "utf8")).toBe(
+      'export const greet = () => "helo";\n',
+    );
     chatTitle = await settledTitle();
   });
   await step("continue-in-code", async () => {
@@ -180,7 +183,7 @@ test("2. a chat in the project offers Continue in Code for a change, and edits n
       `return document.querySelector('textarea[aria-label="Message"]').value;`,
     );
     expect(brief).toContain("Continuing from the chat");
-    expect(brief).toContain("Fix the typo in notes.txt");
+    expect(brief).toContain("Fix the bug in greet.ts");
   });
 });
 
