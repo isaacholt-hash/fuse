@@ -134,6 +134,18 @@ import {
   type Schedule,
 } from "@/storage/schedules";
 import { ScheduledTasksSection, type ScheduleDefaults } from "@/ui/Schedules";
+import type { HulkApi, HulkStatus } from "@/handover/api";
+import { handOver, handoverState, type HandoverState } from "@/handover/handover";
+import {
+  addHandover,
+  lookOf,
+  notifyFor,
+  readHandovers,
+  type HandedOver,
+  type HandoverLook,
+  type Notifier,
+} from "@/handover/watch";
+import { HulkRuns, HulkSection } from "@/ui/Hulk";
 import { AgentAuditSection } from "@/ui/AgentAudit";
 import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -518,12 +530,21 @@ export interface ChatAppProps {
   webApp?: boolean;
   /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
   server?: ReactNode;
+  /** M10 step 7 (desktop only): the link to FUSE on HULK, for handing runs over. */
+  hulk?: HulkApi;
+  /** M10 step 8: a system notification when a handed-over run needs a look. */
+  notify?: Notifier;
+  /** How often HULK is asked about the open chat's runs, and about all of them; tests go faster. */
+  hulkPollMs?: { card: number; notify: number };
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
 
 /** M10 step 6: how often the web app reads the runner's progress, questions and requests. */
 const WEB_POLL_MS = 1000;
+/** M10 steps 7 and 8 (desktop): a chat's runs on HULK, and every one for notifications. */
+const HULK_CARD_MS = 5000;
+const HULK_NOTIFY_MS = 30_000;
 /** M10 step 8: when the Runs list was last opened; runs that ended since then are new. */
 const RUNS_SEEN_KEY = "fuse.runsSeenAt";
 
@@ -746,6 +767,9 @@ export function ChatApp({
   },
   webApp = false,
   server,
+  hulk,
+  notify,
+  hulkPollMs,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -2745,6 +2769,120 @@ export function ChatApp({
     setView("runs");
   };
   const runsBadge = serverRuns ? serverRuns.waiting.size + serverRuns.ended : 0;
+  // M10 steps 7 and 8, desktop only: the link to HULK, the runs this desktop handed over (by
+  // chat, remembered in localStorage) and how each is going there.
+  const hulkLink = webApp ? undefined : hulk;
+  const cardMs = hulkPollMs?.card ?? HULK_CARD_MS;
+  const notifyMs = hulkPollMs?.notify ?? HULK_NOTIFY_MS;
+  const [hulkStatus, setHulkStatus] = useState<HulkStatus | null>(null);
+  const [handovers, setHandovers] = useState<HandedOver[]>(() => readHandovers());
+  const [hulkStates, setHulkStates] = useState<Map<string, HandoverState>>(new Map());
+  useEffect(() => {
+    if (!hulkLink) return;
+    hulkLink.status().then(setHulkStatus, () => {
+      setHulkStatus({ address: null, paired: false });
+    });
+  }, [hulkLink]);
+  const hulkPaired = Boolean(hulkStatus?.paired);
+  // The open chat's runs on HULK, every 5 s while it's open.
+  const handoversHere = selectedId ? handovers.filter((h) => h.threadId === selectedId) : [];
+  const hereKey = handoversHere.map((h) => h.requestId).join();
+  useEffect(() => {
+    if (!hulkLink || !hulkPaired || !hereKey) return;
+    let live = true;
+    const ids = hereKey.split(",");
+    const look = () => {
+      void Promise.all(
+        ids.map((id) =>
+          handoverState(hulkLink, tenant, id).then(
+            (s) => [id, s] as const,
+            () => null,
+          ),
+        ),
+      ).then((got) => {
+        if (!live) return;
+        setHulkStates((m) => {
+          const next = new Map(m);
+          for (const g of got) if (g) next.set(g[0], g[1]);
+          return next;
+        });
+      });
+    };
+    look();
+    const timer = setInterval(look, cardMs);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [hulkLink, hulkPaired, hereKey, tenant, cardMs]);
+  // Every handed-over run, every 30 s while the app is open: a system notification when one
+  // that was going is now waiting for you, done or failed (step 8).
+  const allKey = handovers.map((h) => h.requestId).join();
+  const notified = useRef(new Map<string, HandoverLook>());
+  useEffect(() => {
+    if (!hulkLink || !hulkPaired || !allKey) return;
+    let live = true;
+    const tasks = new Map(handovers.map((h) => [h.requestId, h.task]));
+    const look = () => {
+      for (const [id, task] of tasks) {
+        handoverState(hulkLink, tenant, id).then(
+          (s) => {
+            if (!live) return;
+            const now = lookOf(s);
+            const said = notifyFor(notified.current.get(id), now);
+            notified.current.set(id, now);
+            if (!said) return;
+            const title = `FUSE on HULK: ${said}`;
+            const show = notify ?? (() => Promise.resolve(false));
+            void show(title, task).then((shown) => {
+              // Where the webview can't show one, the app says so itself.
+              if (!shown && live) setAlerts((a) => [...a, `${title}: ${task}`]);
+            });
+          },
+          () => undefined,
+        );
+      }
+    };
+    look();
+    const timer = setInterval(look, notifyMs);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+    // `handovers` is read through `allKey`: the same runs, the same poll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hulkLink, hulkPaired, allKey, tenant, notify, notifyMs]);
+  /** "Run on HULK": the draft goes to HULK as a Code run in the project's repository. */
+  const repoFolder = sharedFolders[0];
+  const runOnHulk = (task: string) => {
+    if (!hulkLink || !gitApi || !activeProjectId || !repoFolder) return;
+    const projectId = activeProjectId;
+    const routed = routeFor(task, [], messages, false);
+    if (!routed) return;
+    const planner = routed.info.mode === "auto" ? routed.info.best : null;
+    // The mode the composer shows for this chat.
+    const mode = codeMode[codeKey] ?? activeProject?.runMode ?? "ask";
+    void (async () => {
+      try {
+        const threadId = await threadForSend(false);
+        const requestId = await handOver(
+          { db, tenant, files: filesApi, git: gitApi, hulk: hulkLink },
+          {
+            projectId,
+            folderId: repoFolder.id,
+            task,
+            model: { provider: routed.model.provider, id: routed.model.id },
+            planner: planner ? { provider: planner.provider, id: planner.id } : null,
+            mode,
+          },
+        );
+        setHandovers(addHandover({ requestId, threadId, task, at: Date.now() }));
+      } catch (e) {
+        // repoOrigin's refusals ("Push main first: …") and HULK's own errors, as they come.
+        report(e);
+      }
+    })();
+  };
   const instructionParts = effectiveInstructions(
     globalInstructions ?? NO_INSTRUCTIONS,
     activeProject?.instructions ?? "",
@@ -4222,6 +4360,32 @@ export function ChatApp({
             <SettingsView
               web={webApp}
               {...(server ? { server } : {})}
+              {...(hulkLink
+                ? {
+                    hulk: (
+                      <HulkSection
+                        key={hulkStatus?.paired ? "paired" : "not paired"}
+                        status={hulkStatus}
+                        onPair={async (address, code, name) => {
+                          try {
+                            setHulkStatus(await hulkLink.pair(address, code, name));
+                            return null;
+                          } catch (e) {
+                            return e instanceof Error ? e.message : String(e);
+                          }
+                        }}
+                        onUnpair={async () => {
+                          try {
+                            setHulkStatus(await hulkLink.unpair());
+                            return null;
+                          } catch (e) {
+                            return e instanceof Error ? e.message : String(e);
+                          }
+                        }}
+                      />
+                    ),
+                  }
+                : {})}
               keys={keys.keys}
               version={appUpdate.version}
               onCheckUpdates={async () => {
@@ -5210,6 +5374,19 @@ export function ChatApp({
                       setSkippedSecrets([]);
                     }}
                   />
+                  <HulkRuns
+                    address={hulkStatus?.address ?? null}
+                    runs={handoversHere.map((h) => {
+                      const s = hulkStates.get(h.requestId);
+                      return {
+                        requestId: h.requestId,
+                        task: h.task,
+                        look: s ? lookOf(s) : null,
+                        note: s?.note ?? null,
+                        branch: s?.branch ?? null,
+                      };
+                    })}
+                  />
                   <Composer
                     key={`composer-${selectedId ?? "new"}`}
                     model={modelOption(model)}
@@ -5288,6 +5465,12 @@ export function ChatApp({
                           })),
                           onAddFolder: addChatFolder,
                           onRemoveFolder: removeChatFolder,
+                        }
+                      : {})}
+                    {...(hulkLink && repoFolder && activeProjectId
+                      ? {
+                          onRunOnHulk: runOnHulk,
+                          runOnHulkReason: hulkPaired ? null : "Pair with HULK in Settings first",
                         }
                       : {})}
                     {...(codeAvailable

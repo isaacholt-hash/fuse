@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). Isaac approved the plan and asked for it to be built unattended: merge each step once green and go on to the next
+- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). All 11 steps are built and merged (2026-11-01). Next is Isaac's deploy (`docs/hulk-server.md`) and live check; after that, back to one step at a time, stopping after each merge
 
 ## The 5 things that matter
 

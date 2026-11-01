@@ -87,6 +87,8 @@ export interface HandoverState {
   status: "queued" | "failed" | RunStatus;
   note: string | null;
   branch: string | null;
+  /** The run has a question no one has answered yet ("Waiting for you"). */
+  waiting: boolean;
 }
 
 /** How a handed-over run is going, read from HULK. */
@@ -97,13 +99,20 @@ export async function handoverState(
 ): Promise<HandoverState> {
   const db = hulkDb(hulk);
   const req = await getRequest(db, tenant, requestId);
-  if (!req) return { status: "failed", note: "HULK doesn't have this request.", branch: null };
-  if (req.status === "failed") return { status: "failed", note: req.error, branch: null };
-  if (!req.runId) return { status: "queued", note: null, branch: null };
+  const none = { branch: null, waiting: false };
+  if (!req) return { status: "failed", note: "HULK doesn't have this request.", ...none };
+  if (req.status === "failed") return { status: "failed", note: req.error, ...none };
+  if (!req.runId) return { status: "queued", note: null, ...none };
   const rows = await db.select<{ status: RunStatus; note: string | null; branch: string | null }>(
     "SELECT status, note, branch FROM runs WHERE workspace_id = ? AND id = ?",
     [tenant.workspaceId, req.runId],
   );
   const run = rows[0];
-  return run ? { ...run } : { status: "queued", note: null, branch: null };
+  if (!run) return { status: "queued", note: null, ...none };
+  const open = await db.select<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM run_approvals
+     WHERE workspace_id = ? AND run_id = ? AND answered_at IS NULL`,
+    [tenant.workspaceId, req.runId],
+  );
+  return { ...run, waiting: (open[0]?.n ?? 0) > 0 };
 }

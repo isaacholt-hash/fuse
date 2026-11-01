@@ -87,7 +87,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - Questions waiting for anyone (`openApprovals`) show on their run's card, as on the desktop. Answering writes `answerApproval`; if another page answered first, the card just goes. Stop and Continue are requests too.
     - Runs (in the sidebar, web only) lists recent runs across chats: Going, Waiting for you, Done, Stopped, Paused, or Failed with its note. A row opens its chat.
     - The poll stops when the chat changes or the app closes.
-- [ ] **7. Handover from the desktop (CA-15, part 2).**
+- [x] **7. Handover from the desktop (CA-15, part 2).**
   - Settings → HULK: the address and a pairing code.
   - "Run on HULK" in the Code composer and on a stopped run. It sends the project's export, the repo's remote and base branch, and the prompt and mode. The server works on `fuse/<run-id>` and pushes it.
   - The desktop shows the run's status and opens it in the browser.
@@ -95,12 +95,16 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - The desktop pairs with HULK in Rust (`src-tauri/src/hulk.rs`): the address must be https (or this computer, for tests), and the device token from the pairing code goes in the keychain, never to the webview. `hulk_invoke` calls only `db_open`, `db_select`, `db_execute` and `key_status` on HULK, and `hulk_put_file` uploads the project's export.
     - `src/handover/handover.ts` checks the repository first (an `origin` remote, a branch checked out, nothing uncommitted or unpushed, since HULK works from what's on origin), uploads the project's PL-12 export, and asks HULK's runner to start a Code run on a new branch with the handover's details.
     - The runner restores the project (same ids; what's already there is kept), has the server clone or fetch the repository into its own copy (`repo_clone`, server only: https, ssh or `user@host:path` remotes, or a repository under the server's home; a copy with changes left in it is refused), and runs in a new chat in the project with only that copy as its folder. When the run is done on its branch, it asks to push it, as a send, and says what happened.
-  - Part 2 (next): Settings → HULK and "Run on HULK" in the desktop's Code composer, with the run's status.
+  - Part 2 done (the desktop):
+    - Settings → HULK pairs this desktop with HULK's address and a one-time code from HULK's Settings → Devices, under a name ("This desktop" unless changed); the server's error shows when it says no. Paired, it shows the address, Open HULK and Unpair, which says to revoke the device on HULK too.
+    - "Run on HULK" in the Code composer, for a chat in a project with a repository folder, hands the draft over (`handOver`) with the routed model, the composer's mode and the planner, as a send would. `repoOrigin`'s refusals show as they come ("Push main first: …"). Not paired, it's greyed: "Pair with HULK in Settings first".
+    - The chat then shows "Running on HULK: <task>" with its status from `handoverState` every 5 s while it's open (Starting, Going, Waiting for you, Done or Failed), its branch once known, and Open HULK. The request ids are kept by chat in localStorage, so the card survives a reload.
+    - `handoverState` also says when the run has a question waiting.
 - [x] **8. Notify and follow (CA-16 core).**
   - When a run finishes, fails or starts waiting, the web Runs list shows a badge.
   - A paired desktop shows a system notification.
   - Done (the badge): Runs in the sidebar counts the runs waiting for you, and those that finished or failed since you last opened the list (remembered in this browser).
-  - The paired desktop's system notification moves to step 7, where the desktop first talks to HULK.
+  - The paired desktop's system notification moved to step 7, and is done there: while the desktop app is open and paired, it asks HULK every 30 s about the runs it handed over, and when one that was starting, going or waiting is now waiting for you, done or failed, it shows a system notification through the webview's own Notification API (no new plugin). Where the webview can't show one, the app shows the same line in its alert bar.
 - [x] **9. Scheduled tasks (AG-07).**
   - Per project: a saved prompt with mode, tools and cost cap, run once at a time, or daily or weekly at a time, by the runner.
   - The result lands in a thread with a notice; a failure reports its last step.
@@ -110,7 +114,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - When a task is due, the runner gives it a new chat in its project, named for it, and starts its run like any page's request. It keeps how the last run ended; a run that didn't finish keeps its note and its last step.
     - Project settings → Scheduled tasks (web app): each task's name, when it repeats, its next run in local time and how its last run went, with a link to its chat. Each has an on/off switch, Edit and Delete (asked first). "Add a task" picks the name, prompt, Code or Work, mode, model (the project's, or the Balanced tier's usual one), cost cap and repeat. The time zone shown is the browser's for now.
     - On the desktop the section is greyed: scheduled tasks run in the web app on HULK until sync.
-- [ ] **10. Runs-on-HULK benchmark and deploy kit.**
+- [x] **10. Runs-on-HULK benchmark and deploy kit.**
   - The recorded e2e above, against a throwaway fuse-server with provider fixtures and no keys.
   - `scripts/deploy-server.sh` and the `fuse-server.service` user unit, plus the exact commands Isaac runs: enabling linger, `tailscale serve`, the first passphrase, and entering keys in the web Settings.
   - Part 1 done (the benchmark):
