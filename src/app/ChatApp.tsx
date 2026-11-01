@@ -131,11 +131,13 @@ import {
   createSchedule,
   deleteSchedule,
   listSchedules,
+  lastRunCosts,
   setScheduleEnabled,
   updateSchedule,
   type Schedule,
 } from "@/storage/schedules";
 import { ScheduledTasksSection, type ScheduleDefaults } from "@/ui/Schedules";
+import { ScheduledScreen, type ScheduledRow } from "@/ui/Scheduled";
 import { hulkDb, type HulkApi, type HulkStatus } from "@/handover/api";
 import { handOver, handoverState, type HandoverState } from "@/handover/handover";
 import {
@@ -572,6 +574,8 @@ const WEB_POLL_MS = 1000;
 /** M10 steps 7 and 8 (desktop): a chat's runs on HULK, and every one for notifications. */
 const HULK_CARD_MS = 5000;
 const HULK_NOTIFY_MS = 30_000;
+/** M10 step 14: how often the home screen reads what's happening while it shows. */
+const HOME_POLL_MS = 5000;
 /** M10 step 8: when the Runs list was last opened; runs that ended since then are new. */
 const RUNS_SEEN_KEY = "fuse.runsSeenAt";
 
@@ -1144,7 +1148,7 @@ export function ChatApp({
   // F6: a mode just picked for a saved chat, used until the chat list has reloaded with it. Without
   // this, a message sent before the pin was saved and read back went out on the old mode.
   const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
-  const [view, setView] = useState<"chat" | "settings" | "usage" | "runs">(
+  const [view, setView] = useState<"chat" | "settings" | "usage" | "runs" | "scheduled">(
     import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
       : import.meta.env.VITE_FUSE_VIEW === "usage"
@@ -3041,15 +3045,16 @@ export function ChatApp({
     });
   }, [refreshSchedules]);
   /** A new task starts on the project's model, or the Balanced tier's usual one. */
-  const scheduleDefaults = (): ScheduleDefaults => {
+  const scheduleDefaults = (projectId?: string): ScheduleDefaults => {
     // With no key saved yet (a new server), any provider will do: it only picks the default.
     const providers: ProviderId[] =
       savedProviders.length > 0 ? savedProviders : ["anthropic", "openai"];
     const balanced = tierModels(policy, catalog, "balanced", { providers })[0];
-    const m = editedProject?.defaultModel ?? balanced ?? catalog.models[0];
+    const project = projectId ? projects.find((p) => p.id === projectId) : editedProject;
+    const m = project?.defaultModel ?? balanced ?? catalog.models[0];
     return {
       kind: "code",
-      mode: editedProject?.runMode ?? "ask",
+      mode: project?.runMode ?? "ask",
       model: { provider: m?.provider ?? "anthropic", id: m?.id ?? "" },
       capMicroUsd: DEFAULT_RUN_CAP_MICRO_USD,
     };
@@ -3557,6 +3562,53 @@ export function ChatApp({
     if (s) hulkLooks.set(h.threadId, [...(hulkLooks.get(h.threadId) ?? []), lookOf(s)]);
   }
   const handedThreads = new Set(handovers.map((h) => h.threadId));
+  // M10 step 15: the Scheduled page: the web app's own tasks, or HULK's (read-only) on a paired
+  // desktop. `scheduledAt` reloads it after a change.
+  const [scheduledRows, setScheduledRows] = useState<ScheduledRow[] | null>(null);
+  const [scheduledAt, setScheduledAt] = useState(0);
+  const scheduledSource = useMemo(
+    () => (webApp ? db : hulkLink && hulkPaired ? hulkDb(hulkLink) : null),
+    [webApp, db, hulkLink, hulkPaired],
+  );
+  useEffect(() => {
+    if (view !== "scheduled" || !scheduledSource) return;
+    const life = { live: true };
+    void (async () => {
+      const tasks = await listSchedules(scheduledSource, tenant);
+      const names = new Map(
+        (await listProjects(scheduledSource, tenant)).map((p) => [p.id, p.name]),
+      );
+      const costs = await lastRunCosts(
+        scheduledSource,
+        tenant,
+        tasks.flatMap((t) => (t.lastRunId ? [t.lastRunId] : [])),
+      );
+      const rows: ScheduledRow[] = tasks.map((task) => ({
+        task,
+        project: names.get(task.projectId) ?? "A project on HULK",
+        lastCostMicro: task.lastRunId ? (costs.get(task.lastRunId) ?? null) : null,
+        // Only the web app can open them: they're its own chats.
+        runs: webApp
+          ? threads
+              .filter((t) => t.scheduleId === task.id || t.id === task.lastThreadId)
+              .map((t) => ({ threadId: t.id, title: t.title }))
+          : [],
+      }));
+      if (life.live) setScheduledRows(rows);
+    })().catch((e: unknown) => {
+      if (life.live) setProblem(e instanceof Error ? e.message : String(e));
+    });
+    return () => {
+      life.live = false;
+    };
+    // `threads` is read when the page loads or a task changes; a new chat needn't reload it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, scheduledSource, tenant, scheduledAt, webApp]);
+  const openScheduled = () => {
+    setArea("code");
+    setView("scheduled");
+  };
+
   // M10 step 14: a new chat or session opens on what's happening, read again every few seconds
   // while it shows. The desktop reads HULK's scheduled tasks when it's paired.
   const homeShown = view === "chat" && selectedId === null;
@@ -3583,12 +3635,12 @@ export function ChatApp({
       load().catch(() => undefined);
     };
     again();
-    const timer = setInterval(again, cardMs);
+    const timer = setInterval(again, HOME_POLL_MS);
     return () => {
       live = false;
       clearInterval(timer);
     };
-  }, [homeShown, db, tenant, webApp, hulkLink, hulkPaired, cardMs]);
+  }, [homeShown, db, tenant, webApp, hulkLink, hulkPaired]);
   // M10 step 13: when a run in the open chat starts or ends, the sidebar's dots look again.
   const runStatusKey = [...threadRuns.values()].map((r) => `${r.run.id}:${r.run.status}`).join();
   useEffect(() => {
@@ -4232,6 +4284,7 @@ export function ChatApp({
       },
     },
     { id: "usage", group: "View", label: "Usage and savings", run: openUsage },
+    { id: "scheduled", group: "View", label: "Scheduled tasks", run: openScheduled },
     ...(["light", "dark", "system"] as const).map((t) => ({
       id: `theme-${t}`,
       group: "View",
@@ -4533,10 +4586,55 @@ export function ChatApp({
                 setSearchOpen(true);
               }}
               onUsage={openUsage}
+              {...(area === "code" ? { onScheduled: openScheduled } : {})}
               {...(webApp && area === "code" ? { onRuns: openRuns, runsBadge } : {})}
             />
           )}
-          {view === "runs" ? (
+          {view === "scheduled" ? (
+            <ScheduledScreen
+              rows={scheduledSource ? scheduledRows : []}
+              editable={webApp}
+              unavailable={
+                scheduledSource
+                  ? null
+                  : "Scheduled tasks run on HULK. Pair this computer with HULK in Settings to see them here."
+              }
+              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+              prompts={prompts.map((p) => ({ id: p.id, name: p.name, body: p.body }))}
+              models={options}
+              defaultsFor={scheduleDefaults}
+              timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+              onSave={async (id, projectId, draft) => {
+                const input = { ...draft, projectId };
+                try {
+                  if (id) await updateSchedule(db, tenant, id, input);
+                  else await createSchedule(db, tenant, input);
+                } catch (e) {
+                  return e instanceof Error ? e.message : String(e);
+                }
+                setScheduledAt(Date.now());
+                return null;
+              }}
+              onToggle={(id, on) => {
+                setScheduleEnabled(db, tenant, id, on)
+                  .then(() => {
+                    setScheduledAt(Date.now());
+                  })
+                  .catch(report);
+              }}
+              onDelete={(id) => {
+                deleteSchedule(db, tenant, id)
+                  .then(() => {
+                    setScheduledAt(Date.now());
+                  })
+                  .catch(report);
+              }}
+              onOpenChat={select}
+              onBack={() => {
+                setView("chat");
+              }}
+            />
+          ) : view === "runs" ? (
             <RunsScreen
               rows={
                 serverRuns
@@ -5900,6 +5998,10 @@ export function ChatApp({
                     onOpenChat={(threadId) => {
                       setProjectDialog(null);
                       select(threadId);
+                    }}
+                    onOpenPage={() => {
+                      setProjectDialog(null);
+                      openScheduled();
                     }}
                   />
                 ),

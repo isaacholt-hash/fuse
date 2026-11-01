@@ -3,6 +3,7 @@ import {
   Archive,
   ArchiveRestore,
   BarChart3,
+  CalendarClock,
   FileText,
   Laptop,
   MailOpen,
@@ -59,6 +60,8 @@ interface Props {
   onSearch?: () => void;
   /** Opens the usage dashboard (CO-02). */
   onUsage?: () => void;
+  /** M10 step 15: the Scheduled page (the Code area). */
+  onScheduled?: () => void;
   /** M10 step 6: the web app's Runs list, and (step 8) how many runs want a look. */
   onRuns?: () => void;
   runsBadge?: number;
@@ -88,6 +91,7 @@ export function Sidebar({
   onMarkUnread,
   onSearch,
   onUsage,
+  onScheduled,
   onRuns,
   runsBadge = 0,
 }: Props) {
@@ -203,6 +207,16 @@ export function Sidebar({
             <span className="ml-auto">
               <Hint>Ctrl ⇧ F</Hint>
             </span>
+          </Button>
+        )}
+        {onScheduled && (
+          <Button
+            variant="ghost"
+            className="h-8 w-full justify-start gap-2.5 text-muted-foreground"
+            onClick={onScheduled}
+          >
+            <CalendarClock className="size-3.5" />
+            Scheduled
           </Button>
         )}
         {tags.length > 0 && (

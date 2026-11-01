@@ -339,3 +339,18 @@ export async function setScheduleOutcome(
     [status, note, Date.now(), tenant.workspaceId, id],
   );
 }
+
+/** M10 step 15: what each task's last run spent, by run id (none for a task never run). */
+export async function lastRunCosts(
+  db: SqlDb,
+  tenant: Tenant,
+  runIds: readonly string[],
+): Promise<Map<string, number>> {
+  if (runIds.length === 0) return new Map();
+  const rows = await db.select<{ id: string; spent_micro_usd: number }>(
+    `SELECT id, spent_micro_usd FROM runs
+     WHERE workspace_id = ? AND id IN (${runIds.map(() => "?").join(", ")})`,
+    [tenant.workspaceId, ...runIds],
+  );
+  return new Map(rows.map((r) => [r.id, r.spent_micro_usd]));
+}

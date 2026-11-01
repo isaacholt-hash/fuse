@@ -31,7 +31,7 @@ import {
   type RunStep,
 } from "@/storage/runs";
 import { dueSchedules, markStarted, setScheduleOutcome, setScheduleRun } from "@/storage/schedules";
-import { createThread } from "@/storage/threads";
+import { createThread, setThreadSchedule } from "@/storage/threads";
 
 export interface RunnerOptions {
   /** What every run gets, built fresh for each (keys may have been added since); not `approve`. */
@@ -145,6 +145,7 @@ export class Runner {
         false,
         s.kind,
       );
+      await setThreadSchedule(base.db, base.tenant, thread.id, s.id);
       await markStarted(base.db, base.tenant, s, thread.id, now);
       await askToStart(base.db, base.tenant, {
         threadId: thread.id,

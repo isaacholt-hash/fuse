@@ -18,6 +18,8 @@ export interface Thread {
    * (a result after it was made counts as new).
    */
   seenAt: number | null;
+  /** M10 step 15: the scheduled task it was made for, if any. */
+  scheduleId: string | null;
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -56,6 +58,7 @@ interface ThreadRow {
   title_source: "user" | "auto";
   kind: ThreadKind;
   seen_at: number | null;
+  schedule_id: string | null;
   last_message_at: number | null;
   created_at: number;
   updated_at: number;
@@ -84,6 +87,7 @@ const toThread = (r: ThreadRow): Thread => ({
   titleSource: r.title_source,
   kind: r.kind,
   seenAt: r.seen_at,
+  scheduleId: r.schedule_id,
   lastMessageAt: r.last_message_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -107,7 +111,7 @@ const toThread = (r: ThreadRow): Thread => ({
 });
 
 const SELECT_THREAD = `
-  SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.last_message_at, t.created_at, t.updated_at,
+  SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.schedule_id, t.last_message_at, t.created_at, t.updated_at,
          t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
@@ -451,4 +455,18 @@ export async function settleSeen(db: SqlDb, tenant: Tenant, now = Date.now()): P
     tenant.workspaceId,
   ]);
   await setSetting(db, tenant, SEEN_SINCE_KEY, String(now));
+}
+
+/** M10 step 15: the scheduled task a thread was made for, so every run of a task can be found. */
+export async function setThreadSchedule(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  scheduleId: string,
+): Promise<void> {
+  await db.execute("UPDATE threads SET schedule_id = ? WHERE workspace_id = ? AND id = ?", [
+    scheduleId,
+    tenant.workspaceId,
+    id,
+  ]);
 }

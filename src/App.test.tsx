@@ -3390,3 +3390,14 @@ test("M10 step 12: the app reopens in the area it was left in, on that area's la
   const threads = await listThreads(first.db, DEFAULT_TENANT);
   expect(localStorage.getItem("fuse.lastThread.code")).toBe(threads[0]?.id);
 });
+
+test("M10 step 15: on a desktop not paired with HULK, the Scheduled page says why it's empty", async () => {
+  const { user } = setup();
+  await screen.findByRole("group", { name: "Area" });
+  await user.keyboard("{Control>}2{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Scheduled" }));
+  expect(
+    await screen.findByText(/Pair this computer with HULK in Settings to see them here/),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "New task" })).toBeNull();
+});
