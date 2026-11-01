@@ -230,3 +230,61 @@ test("the Runs list shows each run's status, and its badge counts waiting and ne
   expect(screen.queryByRole("list", { name: "Recent runs" })).toBeNull();
   // It waits on the page's one-second poll a few times.
 }, 20_000);
+
+test("M10 step 13: Code rows show a run going, waiting for you, or a new result, and where it runs", async () => {
+  const db = openTestDb();
+  const session = await createThread(db, t, "Fix the build", null, false, "code");
+  const answer = await addMessage(db, t, {
+    threadId: session.id,
+    parentId: null,
+    role: "assistant",
+    content: "",
+  });
+  const run = await createRun(db, t, {
+    projectId: null,
+    threadId: session.id,
+    messageId: answer,
+    task: "Fix the build",
+    provider: "anthropic",
+    model: "m",
+    capMicroUsd: 1_000_000,
+  });
+  const user = start(db);
+  await screen.findByRole("group", { name: "Area" }, SLOW);
+  await user.keyboard("{Control>}2{/Control}");
+  // The row itself (its hover buttons carry their own labels: Pin, Rename, …).
+  const row = () => {
+    const found = within(screen.getByRole("navigation", { name: "Conversations" }))
+      .getAllByRole("button", { name: /Fix the build/ })
+      .find((b) => !b.hasAttribute("aria-label"));
+    if (!found) throw new Error("no row for Fix the build");
+    return found;
+  };
+  // Going, on HULK (the web app's runs all are), a Code session.
+  await waitFor(() => {
+    expect(within(row()).getByRole("img", { name: "Going" })).toBeInTheDocument();
+  }, SLOW);
+  expect(within(row()).getByLabelText("Runs on HULK")).toBeInTheDocument();
+  expect(within(row()).getByLabelText("Code session")).toBeInTheDocument();
+  // A question nobody has answered: waiting for you.
+  await addApproval(db, t, run.id, { kind: "command", command: "git push", runId: run.id });
+  await waitFor(() => {
+    expect(within(row()).getByRole("img", { name: "Waiting for you" })).toBeInTheDocument();
+  }, SLOW);
+  // It ends while the chat isn't open: a new result, until it's opened.
+  const { answerApproval, openApprovals } = await import("@/storage/runQueue");
+  for (const a of await openApprovals(db, t)) await answerApproval(db, t, a.id, "no");
+  await setRunStatus(db, t, run.id, "done");
+  await waitFor(() => {
+    expect(within(row()).getByRole("img", { name: "New result" })).toBeInTheDocument();
+  }, SLOW);
+  await user.click(row());
+  await waitFor(() => {
+    expect(within(row()).queryByRole("img")).toBeNull();
+  }, SLOW);
+  // Mark as unread brings it back.
+  await user.click(screen.getByRole("button", { name: "Mark Fix the build as unread" }));
+  await waitFor(() => {
+    expect(within(row()).getByRole("img", { name: "New result" })).toBeInTheDocument();
+  }, SLOW);
+}, 20_000);

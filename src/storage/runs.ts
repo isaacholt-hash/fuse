@@ -758,3 +758,32 @@ export async function runStatesForThread(
     updatedAt: r.updated_at,
   }));
 }
+
+/** M10 step 13: a thread's latest run, as the sidebar shows it. */
+export interface LatestRun {
+  runId: string;
+  status: RunStatus;
+  updatedAt: number;
+}
+
+/** M10 step 13: every thread's latest run in one query, by thread id. */
+export async function latestRunByThread(
+  db: SqlDb,
+  tenant: Tenant,
+): Promise<Map<string, LatestRun>> {
+  const rows = await db.select<{
+    thread_id: string;
+    id: string;
+    status: RunStatus;
+    updated_at: number;
+  }>(
+    `SELECT r.thread_id, r.id, r.status, r.updated_at FROM runs r
+     WHERE r.workspace_id = ? AND r.thread_id IS NOT NULL
+       AND r.id = (SELECT r2.id FROM runs r2 WHERE r2.thread_id = r.thread_id
+                   ORDER BY r2.created_at DESC, r2.id DESC LIMIT 1)`,
+    [tenant.workspaceId],
+  );
+  return new Map(
+    rows.map((r) => [r.thread_id, { runId: r.id, status: r.status, updatedAt: r.updated_at }]),
+  );
+}

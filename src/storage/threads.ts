@@ -1,6 +1,7 @@
 import type { ProviderId } from "@/catalog/catalog";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
+import { getSetting, setSetting } from "./settings";
 import type { SqlDb } from "./sql";
 
 /** M10 step 12 (CH-19): a chat, or a Code or Work session (the Code area). */
@@ -12,6 +13,11 @@ export interface Thread {
   titleSource: "user" | "auto";
   /** Which area it lives in. Threads that held a run before 0053 became sessions. */
   kind: ThreadKind;
+  /**
+   * M10 step 13: when it was last opened. 0 means marked unread; null means never opened here
+   * (a result after it was made counts as new).
+   */
+  seenAt: number | null;
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -49,6 +55,7 @@ interface ThreadRow {
   title: string;
   title_source: "user" | "auto";
   kind: ThreadKind;
+  seen_at: number | null;
   last_message_at: number | null;
   created_at: number;
   updated_at: number;
@@ -76,6 +83,7 @@ const toThread = (r: ThreadRow): Thread => ({
   title: r.title,
   titleSource: r.title_source,
   kind: r.kind,
+  seenAt: r.seen_at,
   lastMessageAt: r.last_message_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -99,7 +107,7 @@ const toThread = (r: ThreadRow): Thread => ({
 });
 
 const SELECT_THREAD = `
-  SELECT t.id, t.title, t.title_source, t.kind, t.last_message_at, t.created_at, t.updated_at,
+  SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.last_message_at, t.created_at, t.updated_at,
          t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
@@ -405,4 +413,42 @@ export async function purgeIncognito(db: SqlDb, tenant: Tenant): Promise<void> {
     [tenant.workspaceId],
   );
   for (const r of rows) await purgeThread(db, tenant, r.id);
+}
+
+/** M10 step 13: the thread was opened; results up to now have been seen. */
+export async function markThreadSeen(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  at = Date.now(),
+): Promise<void> {
+  await db.execute("UPDATE threads SET seen_at = ? WHERE workspace_id = ? AND id = ?", [
+    at,
+    tenant.workspaceId,
+    id,
+  ]);
+}
+
+/** M10 step 13: "Mark as unread": bold in the sidebar until it's opened again. */
+export async function markThreadUnread(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  await db.execute("UPDATE threads SET seen_at = 0 WHERE workspace_id = ? AND id = ?", [
+    tenant.workspaceId,
+    id,
+  ]);
+}
+
+const SEEN_SINCE_KEY = "threads.seenSince";
+
+/**
+ * M10 step 13: once per database, every thread already here counts as seen, so the first start
+ * with unread marks doesn't make every old chat with a run look new. Threads made afterwards
+ * (a scheduled task's, say) start unseen.
+ */
+export async function settleSeen(db: SqlDb, tenant: Tenant, now = Date.now()): Promise<void> {
+  if (await getSetting(db, tenant, SEEN_SINCE_KEY)) return;
+  await db.execute("UPDATE threads SET seen_at = ? WHERE workspace_id = ? AND seen_at IS NULL", [
+    now,
+    tenant.workspaceId,
+  ]);
+  await setSetting(db, tenant, SEEN_SINCE_KEY, String(now));
 }

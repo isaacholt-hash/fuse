@@ -69,3 +69,20 @@ test("M10 step 12: a thread is made with its kind; sessions are named as session
   expect(work).toMatchObject({ kind: "work", title: "New session" });
   expect((await getThread(db, t, work.id))?.kind).toBe("work");
 });
+
+test("M10 step 13: opened, marked unread, and the one-time settle of old threads", async () => {
+  const { markThreadSeen, markThreadUnread, settleSeen } = await import("./threads");
+  const db = openTestDb();
+  const old = await createThread(db, t, "Old");
+  expect(old.seenAt).toBeNull();
+  await settleSeen(db, t, 500);
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(500);
+  // Once per database: a thread made later stays never-opened.
+  const later = await createThread(db, t, "Later");
+  await settleSeen(db, t, 900);
+  expect((await getThread(db, t, later.id))?.seenAt).toBeNull();
+  await markThreadUnread(db, t, old.id);
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(0);
+  await markThreadSeen(db, t, old.id, 1000);
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(1000);
+});
