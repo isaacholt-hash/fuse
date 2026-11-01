@@ -281,6 +281,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "mcp_servers",
         sql: include_str!("../migrations/0049_mcp_servers.sql"),
     },
+    MigrationFile {
+        version: 50,
+        description: "run_queue",
+        sql: include_str!("../migrations/0050_run_queue.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the

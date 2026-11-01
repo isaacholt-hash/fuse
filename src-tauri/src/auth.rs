@@ -76,6 +76,9 @@ pub struct Device {
     hash: String,
     pub created_at: u64,
     pub last_used_at: Option<u64>,
+    /// The server's own runner (M10 step 6): made at each start, not listed or revocable.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    internal: bool,
 }
 
 #[derive(Serialize, Deserialize, Default, Clone)]
@@ -310,6 +313,7 @@ impl Auth {
             hash: sha256(&token),
             created_at: t,
             last_used_at: None,
+            internal: false,
         };
         let mut stored = self.lock();
         stored.devices.push(device.clone());
@@ -327,6 +331,7 @@ impl Auth {
         self.lock()
             .devices
             .iter()
+            .filter(|d| !d.internal)
             .map(|d| Device {
                 hash: String::new(),
                 ..d.clone()
@@ -334,10 +339,27 @@ impl Auth {
             .collect()
     }
 
+    /// A token for the server's runner, replacing the one from its last start.
+    pub fn runner_token(&self) -> Result<String, String> {
+        let token = random_hex(32)?;
+        let mut stored = self.lock();
+        stored.devices.retain(|d| !d.internal);
+        stored.devices.push(Device {
+            id: "runner".into(),
+            name: "Runner (this server)".into(),
+            hash: sha256(&token),
+            created_at: now(),
+            last_used_at: None,
+            internal: true,
+        });
+        self.save(&stored)?;
+        Ok(token)
+    }
+
     pub fn revoke(&self, id: &str) -> Result<bool, String> {
         let mut stored = self.lock();
         let before = stored.devices.len();
-        stored.devices.retain(|d| d.id != id);
+        stored.devices.retain(|d| d.id != id || d.internal);
         let removed = stored.devices.len() != before;
         self.save(&stored)?;
         Ok(removed)
@@ -418,6 +440,17 @@ mod tests {
                 .find("hash")
                 .is_none()
         );
+        // The runner's device works, isn't listed, can't be revoked, and is new at each start.
+        let runner = auth.runner_token().unwrap();
+        assert_eq!(
+            auth.check(None, Some(&runner)),
+            Some(Who::Device("runner".into()))
+        );
+        assert_eq!(auth.devices().len(), 1);
+        assert!(!auth.revoke("runner").unwrap());
+        let again = auth.runner_token().unwrap();
+        assert_eq!(auth.check(None, Some(&runner)), None);
+        assert!(auth.check(None, Some(&again)).is_some());
         assert!(auth.revoke(&device.id).unwrap());
         assert_eq!(auth.check(None, Some(&token)), None);
         std::fs::remove_dir_all(&h).unwrap();

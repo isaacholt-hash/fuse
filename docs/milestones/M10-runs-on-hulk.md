@@ -76,6 +76,13 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - A run started in the web app runs in the runner, so closing the tab doesn't stop it. The page follows the run's stored steps live.
   - "Waiting for you" approvals can be answered from any session. Stop works. Interrupted runs continue.
   - A Runs list shows going, waiting, done and failed.
+  - Part 1 done (the runner):
+    - `run_requests`, `run_approvals` and `run_live` (migration 0050, `src/storage/runQueue.ts`) are how a page and the runner talk, through the server's database.
+    - `src/runner` is the same chat run loop as the desktop's, built into one Node file by `pnpm build:runner`. It takes requests oldest first, parks each approval as a question any page can answer, saves the streaming text twice a second, and stops a run when a page asks. After a restart it marks runs that were going as stopped (Continue picks them up), fails requests it had taken, and counts open questions as no.
+    - fuse-server starts it with `--runner dist-runner/runner.mjs` (and `--node`), with its own device token made at each start (not listed or revocable) and only PATH, HOME, LANG and TZ in its environment, so it has no keys. It starts it again 5 s after it exits, and on SIGTERM lets it save its runs as stopped before the server stops.
+    - Checked for real on HULK: a request from a page went through the runner and the run to the provider transport (no key on the throwaway server, so it ended with "No Anthropic key yet") and the answer was saved; SIGTERM stopped both cleanly.
+    - Changed from the plan: the page follows a run by reading its stored steps and `run_live` every second, rather than over the WebSocket. It's simpler, and it works the same from any page.
+  - Part 2 (next): the web app asks for runs instead of running them, shows waiting questions and the Runs list.
 - [ ] **7. Handover from the desktop (CA-15, part 2).**
   - Settings → HULK: the address and a pairing code.
   - "Run on HULK" in the Code composer and on a stopped run. It sends the project's export, the repo's remote and base branch, and the prompt and mode. The server works on `fuse/<run-id>` and pushes it.

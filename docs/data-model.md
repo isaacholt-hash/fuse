@@ -182,6 +182,14 @@ The routing policy, tiers, model catalog and prices are **data files** in `data/
   - Not built yet: React previews, `project_id` (AR-06), and `allow_cdns_json` (AR-05's per-artifact CDN switch). | AR-01, AR-05, AR-06 |
 | `artifact_versions` | `artifact_id`, `version` (1, 2, …), `content`, `source` (`model`/`user`/`restore`), `message_id NULL`. Built with `artifacts` (step 18); a version is only added when the content changed. Kept forever; diffs are computed, not stored (`src/artifacts/diff.ts`, a line LCS). M2 step 19: the panel picks any version, shows a diff against another, restores an old one as a new `restore` version, and saves your own edits as `user` versions. While the latest version isn't the model's, every request in the thread ends its system prompt with `<edited_artifacts>` holding the current content, so the model builds on your edit. M2 step 20 (AR-03): **Ask AI** in the panel takes the selected text, or the whole artifact when nothing is selected, plus an instruction, and sends them as an ordinary chat message. It's routed, streamed and costed like any message, and asks for the whole artifact back under the same id. The reply becomes the next `model` version, and the panel opens it as a diff against the version it changed. | AR-02, AR-03 |
 
+### Runs on HULK: M10 (`0050_run_queue.sql`)
+
+Used only by the web app on HULK. A page doesn't run a run itself; it asks the server's runner.
+
+- `run_requests`: what a page asked for (`start`, `continue`, `stop`), its input as JSON, and what became of it (`queued`, `taken`, `done`, `failed`, with the run it started). Taken once, oldest first.
+- `run_approvals`: a question a run is waiting on, as JSON, and its answer once some signed-in page gives one. Questions open when the runner stops count as no.
+- `run_live`: the text of a run's turn while it streams, so a page can show it.
+
 ### Out of P1 (not designed here)
 
 Agents/tools/MCP/audit (P2), sync metadata (P2: sync will need a per-row `version` / `sync_state`, added then), auth sessions and billing (P3).

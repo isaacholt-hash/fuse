@@ -9,6 +9,10 @@ import type { SqlDb } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  // M10: what pages asked the runner, and its questions and streaming text, before runs.
+  "run_requests",
+  "run_approvals",
+  "run_live",
   // Coding runs (M6): changes and steps before their run, runs before their messages.
   "run_changes",
   "run_folders",
