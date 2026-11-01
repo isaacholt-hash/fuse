@@ -362,6 +362,7 @@ const startedLabel = (ms: number) => {
 export function Messages({
   messages,
   modelName,
+  empty,
   startedAt,
   onRetry,
   onEscalate,
@@ -405,6 +406,8 @@ export function Messages({
   messages: MessageView[];
   /** Selected model, for the empty state. */
   modelName: string;
+  /** M10 step 12: the empty state's words, per area; Chat's when omitted. */
+  empty?: { kicker: string; heading: string; blurb: string };
   /** When the conversation started (Unix ms). */
   startedAt: number | null;
   onRetry: () => void;
@@ -494,13 +497,14 @@ export function Messages({
               <Mark />
             </div>
             <p className="mb-2 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              A little less friction
+              {empty?.kicker ?? "A little less friction"}
             </p>
-            <h1 className="text-2xl font-medium tracking-tight">What are you working on?</h1>
+            <h1 className="text-2xl font-medium tracking-tight">
+              {empty?.heading ?? "What are you working on?"}
+            </h1>
             <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-              A fresh conversation. The right model for each message.
-              <br />
-              Every answer, accounted for.
+              {empty?.blurb ??
+                "A fresh conversation. The right model for each message. Every answer, accounted for."}
             </p>
             <div className="mt-7 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] text-muted-foreground">
               <Sparkles className="size-3" />

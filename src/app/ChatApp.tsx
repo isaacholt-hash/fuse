@@ -415,6 +415,7 @@ import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
+import { AreaTabs } from "@/ui/AreaTabs";
 import { TagsDialog } from "@/ui/Tags";
 import { KeyCapsSection } from "@/ui/KeyCaps";
 import {
@@ -460,6 +461,7 @@ import type {
   ProjectForm,
   ProjectView,
   RequestRow,
+  Area,
   ThreadView,
 } from "@/ui/types";
 import { classifyInput } from "./routing";
@@ -477,7 +479,10 @@ import { useKeys } from "./useKeys";
 import { useTheme } from "./useTheme";
 import { useUpdate } from "./useUpdate";
 import {
+  areaOf,
   cacheHitRate,
+  emptyState,
+  inArea,
   messageViews,
   modelOption,
   requestRow,
@@ -540,6 +545,18 @@ export interface ChatAppProps {
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
+/** M10 step 12 (CH-19): the area open last, and each area's own last thread. */
+const AREA_KEY = "fuse.area";
+const lastThreadKey = (area: Area) => `${LAST_THREAD_KEY}.${area}`;
+
+function readArea(): Area {
+  if (import.meta.env.VITE_FUSE_AREA === "code") return "code";
+  try {
+    return localStorage.getItem(AREA_KEY) === "code" ? "code" : "chat";
+  } catch {
+    return "chat";
+  }
+}
 
 /** M10 step 6: how often the web app reads the runner's progress, questions and requests. */
 const WEB_POLL_MS = 1000;
@@ -595,9 +612,10 @@ function runListRow(r: RecentRun, waiting: boolean): RunListRow {
   };
 }
 
-function readLastThread(): string | null {
+/** The area's last thread; before M10 step 12 there was one key for both, read as a fallback. */
+function readLastThread(area: Area): string | null {
   try {
-    return localStorage.getItem(LAST_THREAD_KEY);
+    return localStorage.getItem(lastThreadKey(area)) ?? localStorage.getItem(LAST_THREAD_KEY);
   } catch {
     return null;
   }
@@ -781,7 +799,9 @@ export function ChatApp({
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Read once at startup: the thread to reopen.
-  const [lastThread] = useState(readLastThread);
+  // M10 step 12 (CH-19): Chat or Code; each area reopens on its own last thread.
+  const [area, setArea] = useState<Area>(readArea);
+  const [lastThread] = useState(() => readLastThread(readArea()));
   // The path on screen (CH-04), every message in the thread, and where the path has siblings.
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadAll, setThreadAll] = useState<Message[]>([]);
@@ -1404,10 +1424,14 @@ export function ChatApp({
       .then(async (list) => {
         setThreadList({ threads: list, at: Date.now() });
         // Reopen on the thread that was open last time, if it still exists.
-        if (!lastThread || !list.some((t) => t.id === lastThread)) return;
-        const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
-          await loadThread(lastThread);
+        const last = lastThread ? list.find((t) => t.id === lastThread) : undefined;
+        if (!last) return;
+        const { rows, all, attached, cited, used, upto, fromFiles, artifacts } = await loadThread(
+          last.id,
+        );
         if (selectedRef.current !== null) return; // the user already moved on
+        // CH-10: what was open wins over the saved area (the fallback key knew no areas).
+        setArea(areaOf(last.kind));
         setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
         setSelectedId(lastThread);
@@ -1424,14 +1448,26 @@ export function ChatApp({
   }, [db, tenant, catalog, lastThread, loadThread]);
   useEffect(() => {
     if (selectedId === null) return;
+    const kind = threads.find((t) => t.id === selectedId)?.kind;
+    if (!kind) return;
     try {
-      localStorage.setItem(LAST_THREAD_KEY, selectedId);
+      localStorage.setItem(lastThreadKey(areaOf(kind)), selectedId);
     } catch {
       // not remembered
     }
-  }, [selectedId]);
+  }, [selectedId, threads]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(AREA_KEY, area);
+    } catch {
+      // not remembered
+    }
+  }, [area]);
 
   const select = (id: string) => {
+    // M10 step 12: a thread from the other area (search, the palette, Runs) brings its area along.
+    const kind = threads.find((t) => t.id === id)?.kind;
+    if (kind && areaOf(kind) !== area) setArea(areaOf(kind));
     setFocusId(null);
     setOneShot(null);
     setOnceArmed(false);
@@ -1987,10 +2023,26 @@ export function ChatApp({
     }
   };
 
+  /**
+   * M10 step 12 (CH-19): the other area, reopening its own last thread when it still exists,
+   * else a fresh draft.
+   */
+  const switchArea = (next: Area) => {
+    if (next === area && view === "chat") return;
+    setArea(next);
+    setView("chat");
+    const last = readLastThread(next);
+    const found = last ? threads.find((t) => t.id === last && areaOf(t.kind) === next) : null;
+    if (found) select(found.id);
+    else newChat();
+  };
+
   /** The open chat, or a new one made from the draft's settings. */
   const threadForSend = async (search: boolean): Promise<string> => {
     if (selectedId !== null) return selectedId;
-    const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito);
+    // M10 step 12: a draft belongs to the area it was written in; Work when that switch is on.
+    const kind = area === "code" ? (codeOn.draft === "work" ? "work" : "code") : "chat";
+    const thread = await createThread(db, tenant, undefined, draftProject, draftIncognito, kind);
     const threadId = thread.id;
     if (search) await setThreadWebSearch(db, tenant, threadId, true);
     if (draftInstructions) {
@@ -2633,7 +2685,16 @@ export function ChatApp({
       }),
   });
   const codeKey = selectedId ?? "draft";
-  const runKind = codeAvailable ? codeOn[codeKey] || null : null;
+  // M10 step 12: a session runs as its kind unless the switch says otherwise; a Code-area draft
+  // starts as a Code run. (Step 16 retires the switch.)
+  const defaultRun: "code" | "work" | false = thread
+    ? thread.kind === "chat"
+      ? false
+      : thread.kind
+    : area === "code"
+      ? "code"
+      : false;
+  const runKind = codeAvailable ? (codeOn[codeKey] ?? defaultRun) || null : null;
   const codeActive = runKind !== null;
   /** M6: goes on with a paused or stopped run in the open chat. */
   const continueRunHere = (runId: string, raise: boolean) => {
@@ -3461,7 +3522,9 @@ export function ChatApp({
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
-  const threadViews = threads.filter((t) => !t.incognito).map((t) => threadView(t, at));
+  const threadViews = threads
+    .filter((t) => !t.incognito && inArea(t, area))
+    .map((t) => threadView(t, at));
   const togglePin = (t: { id: string; pinned: boolean }) => {
     setThreadPinned(db, tenant, t.id, !t.pinned).then(refreshThreads).catch(report);
   };
@@ -3998,6 +4061,24 @@ export function ChatApp({
       },
     },
     {
+      id: "area-chat",
+      group: "View",
+      label: "Switch to Chat",
+      shortcut: "Ctrl 1",
+      run: () => {
+        switchArea("chat");
+      },
+    },
+    {
+      id: "area-code",
+      group: "View",
+      label: "Switch to Code",
+      shortcut: "Ctrl 2",
+      run: () => {
+        switchArea("code");
+      },
+    },
+    {
       id: "incognito",
       group: "Actions",
       label: "New incognito chat",
@@ -4107,6 +4188,10 @@ export function ChatApp({
         if (key === "b") {
           event.preventDefault();
           setSidebar((open) => !open);
+        } else if (!event.shiftKey && (event.key === "1" || event.key === "2")) {
+          // M10 step 12: the areas. Browsers honour preventDefault on these two (not on Ctrl+N).
+          event.preventDefault();
+          switchArea(event.key === "1" ? "chat" : "code");
         } else if (key === "n") {
           event.preventDefault();
           newChat(null, event.shiftKey);
@@ -4325,6 +4410,8 @@ export function ChatApp({
         <div className="flex min-h-0 flex-1">
           {sidebar && (
             <Sidebar
+              area={area}
+              onArea={switchArea}
               threads={threadViews}
               projects={projectViews}
               selectedId={selectedId}
@@ -4350,7 +4437,7 @@ export function ChatApp({
                 setSearchOpen(true);
               }}
               onUsage={openUsage}
-              {...(webApp ? { onRuns: openRuns, runsBadge } : {})}
+              {...(webApp && area === "code" ? { onRuns: openRuns, runsBadge } : {})}
             />
           )}
           {view === "runs" ? (
@@ -5214,7 +5301,7 @@ export function ChatApp({
                     disabled={!thread}
                   >
                     <h1 className="truncate text-[13px] font-semibold tracking-tight">
-                      {thread?.title ?? "New chat"}
+                      {thread?.title ?? (area === "code" ? "New session" : "New chat")}
                     </h1>
                     {thread && (
                       <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
@@ -5333,6 +5420,7 @@ export function ChatApp({
                     key={selectedId ?? "new"}
                     messages={withEscalation}
                     modelName={modeName}
+                    empty={emptyState(area)}
                     startedAt={messages[0]?.createdAt ?? null}
                     onRetry={retry}
                     onEscalate={escalate}
@@ -5622,6 +5710,7 @@ export function ChatApp({
                   />
                 )}
               </div>
+              <AreaTabs variant="bar" area={area} onArea={switchArea} />
             </main>
           )}
         </div>

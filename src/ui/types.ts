@@ -236,9 +236,14 @@ export interface SourceView {
   title: string | null;
 }
 
+/** M10 step 12 (CH-19): the two areas. Work sessions live in Code. */
+export type Area = "chat" | "code";
+
 export interface ThreadView {
   id: string;
   title: string;
+  /** M10 step 12: a chat, or a Code or Work session. */
+  kind: "chat" | "code" | "work";
   group: ThreadGroup;
   costMicro: number;
   projectId: string | null;

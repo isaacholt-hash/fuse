@@ -295,3 +295,14 @@ test("cache hit rate: cached input over all input, across the thread", () => {
     ]),
   ).toBe(0.45);
 });
+
+test("M10 step 12: chats live in Chat; Code and Work sessions in Code, each with its own empty state", async () => {
+  const { areaOf, emptyState, inArea } = await import("./viewModels");
+  expect(areaOf("chat")).toBe("chat");
+  expect(areaOf("code")).toBe("code");
+  expect(areaOf("work")).toBe("code");
+  expect(inArea({ kind: "work" }, "code")).toBe(true);
+  expect(inArea({ kind: "work" }, "chat")).toBe(false);
+  expect(emptyState("chat").heading).toBe("What are you working on?");
+  expect(emptyState("code").heading).toBe("Describe a task");
+});

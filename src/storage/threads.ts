@@ -3,10 +3,15 @@ import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import type { SqlDb } from "./sql";
 
+/** M10 step 12 (CH-19): a chat, or a Code or Work session (the Code area). */
+export type ThreadKind = "chat" | "code" | "work";
+
 export interface Thread {
   id: string;
   title: string;
   titleSource: "user" | "auto";
+  /** Which area it lives in. Threads that held a run before 0053 became sessions. */
+  kind: ThreadKind;
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -43,6 +48,7 @@ interface ThreadRow {
   id: string;
   title: string;
   title_source: "user" | "auto";
+  kind: ThreadKind;
   last_message_at: number | null;
   created_at: number;
   updated_at: number;
@@ -69,6 +75,7 @@ const toThread = (r: ThreadRow): Thread => ({
   id: r.id,
   title: r.title,
   titleSource: r.title_source,
+  kind: r.kind,
   lastMessageAt: r.last_message_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -92,7 +99,8 @@ const toThread = (r: ThreadRow): Thread => ({
 });
 
 const SELECT_THREAD = `
-  SELECT t.id, t.title, t.title_source, t.last_message_at, t.created_at, t.updated_at, t.web_search,
+  SELECT t.id, t.title, t.title_source, t.kind, t.last_message_at, t.created_at, t.updated_at,
+         t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
          t.pinned_at, t.archived_at, t.stay_provider,
@@ -104,22 +112,24 @@ const SELECT_THREAD = `
 export async function createThread(
   db: SqlDb,
   tenant: Tenant,
-  title = "New chat",
+  title?: string,
   projectId: string | null = null,
   incognito = false,
+  kind: ThreadKind = "chat",
 ): Promise<Thread> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO threads
-       (id, workspace_id, user_id, title, title_source, project_id, incognito, memory_injection,
-        created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?)`,
+       (id, workspace_id, user_id, title, title_source, kind, project_id, incognito,
+        memory_injection, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
       tenant.userId,
-      title,
+      title ?? (kind === "chat" ? "New chat" : "New session"),
+      kind,
       projectId,
       incognito ? 1 : 0,
       incognito ? "off" : "on",

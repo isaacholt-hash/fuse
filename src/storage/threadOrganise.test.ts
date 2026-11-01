@@ -60,3 +60,12 @@ test("#tag in a search narrows it to chats with that tag", async () => {
   const onlyTag = await searchChats(db, t, "#Garden");
   expect(onlyTag.map((h) => [h.threadId, h.messageId])).toEqual([[a.id, null]]);
 });
+
+test("M10 step 12: a thread is made with its kind; sessions are named as sessions", async () => {
+  const db = openTestDb();
+  const chat = await createThread(db, t);
+  expect(chat).toMatchObject({ kind: "chat", title: "New chat" });
+  const work = await createThread(db, t, undefined, null, false, "work");
+  expect(work).toMatchObject({ kind: "work", title: "New session" });
+  expect((await getThread(db, t, work.id))?.kind).toBe("work");
+});

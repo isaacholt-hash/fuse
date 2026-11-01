@@ -3332,3 +3332,61 @@ test("M8: the Windows sandbox is on unless it was switched off", async () => {
   await user.click(box);
   expect(set).toHaveBeenLastCalledWith(false);
 });
+
+test("M10 step 12: two areas: each lists its own threads, has its own empty state, and reopens its own last one", async () => {
+  const { user, db } = setup();
+  // A chat in the Chat area.
+  await user.type(await composer(), "Plan the week{Enter}");
+  await screen.findByText("Hello there.");
+  const area = () => within(screen.getByRole("group", { name: "Area" }));
+  expect(area().getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+  expect(sidebar().getByRole("button", { name: /^Plan the week/ })).toBeInTheDocument();
+
+  // Ctrl+2: the Code area, with no sessions yet and its own words.
+  await user.keyboard("{Control>}2{/Control}");
+  expect(await screen.findByRole("heading", { name: "Describe a task" })).toBeInTheDocument();
+  expect(area().getByRole("button", { name: "Code" })).toHaveAttribute("aria-pressed", "true");
+  expect(sidebar().queryByRole("button", { name: /^Plan the week/ })).toBeNull();
+  expect(screen.getAllByRole("button", { name: /^New session/ }).length).toBeGreaterThan(0);
+  expect(screen.getAllByText("No sessions yet").length).toBeGreaterThan(0);
+
+  // A thread written here is a session, listed here and not in Chat.
+  await user.type(await composer(), "Why is the build red{Enter}");
+  await screen.findByText("Hello there.");
+  const kinds = Object.fromEntries(
+    (await listThreads(db, DEFAULT_TENANT)).map((t) => [t.title, t.kind]),
+  );
+  expect(kinds).toEqual({ "Plan the week": "chat", "Why is the build red": "code" });
+  expect(sidebar().getByRole("button", { name: /^Why is the build red/ })).toBeInTheDocument();
+
+  // Ctrl+1 reopens the chat; Ctrl+2 reopens the session.
+  await user.keyboard("{Control>}1{/Control}");
+  expect(await screen.findByRole("heading", { name: "Plan the week" })).toBeInTheDocument();
+  await user.keyboard("{Control>}2{/Control}");
+  expect(await screen.findByRole("heading", { name: "Why is the build red" })).toBeInTheDocument();
+
+  // The palette crosses areas: opening the chat from it switches back to Chat.
+  await user.keyboard("{Control>}{Shift>}p{/Shift}{/Control}");
+  await user.keyboard("Switch to Chat");
+  await user.keyboard("{Enter}");
+  expect(await screen.findByRole("heading", { name: "Plan the week" })).toBeInTheDocument();
+  expect(area().getByRole("button", { name: "Chat" })).toHaveAttribute("aria-pressed", "true");
+
+  // The narrow-screen bar does the same.
+  await user.click(
+    within(screen.getByRole("navigation", { name: "Areas" })).getByRole("button", {
+      name: "Code",
+    }),
+  );
+  expect(await screen.findByRole("heading", { name: "Why is the build red" })).toBeInTheDocument();
+});
+
+test("M10 step 12: the app reopens in the area it was left in, on that area's last thread", async () => {
+  const first = setup();
+  await first.user.keyboard("{Control>}2{/Control}");
+  await first.user.type(await composer(), "Tidy the README{Enter}");
+  await screen.findByText("Hello there.");
+  expect(localStorage.getItem("fuse.area")).toBe("code");
+  const threads = await listThreads(first.db, DEFAULT_TENANT);
+  expect(localStorage.getItem("fuse.lastThread.code")).toBe(threads[0]?.id);
+});

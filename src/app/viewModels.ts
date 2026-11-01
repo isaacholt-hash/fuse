@@ -9,9 +9,10 @@ import { INTENT_LABELS } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
 import type { Message } from "@/storage/messages";
 import type { RequestLogRecord } from "@/storage/requestLog";
-import type { Thread } from "@/storage/threads";
+import type { Thread, ThreadKind } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
 import type {
+  Area,
   ImageView,
   MessageView,
   ModelOption,
@@ -57,10 +58,36 @@ export function groupFor(ms: number, now: number): ThreadGroup {
   return "Older";
 }
 
+/** M10 step 12 (CH-19): which area a thread of this kind lives in. */
+export function areaOf(kind: ThreadKind): Area {
+  return kind === "chat" ? "chat" : "code";
+}
+
+export function inArea(t: Pick<ThreadView, "kind">, area: Area): boolean {
+  return areaOf(t.kind) === area;
+}
+
+/** The empty state of each area's main column. */
+export function emptyState(area: Area): { kicker: string; heading: string; blurb: string } {
+  return area === "code"
+    ? {
+        kicker: "Code and Work sessions",
+        heading: "Describe a task",
+        blurb: "A session in a folder or repository. Every edit shown, every step accounted for.",
+      }
+    : {
+        kicker: "A little less friction",
+        heading: "What are you working on?",
+        blurb:
+          "A fresh conversation. The right model for each message. Every answer, accounted for.",
+      };
+}
+
 export function threadView(t: Thread, now: number): ThreadView {
   return {
     id: t.id,
     title: t.title,
+    kind: t.kind,
     group: groupFor(t.lastMessageAt ?? t.createdAt, now),
     costMicro: t.costMicroUsd,
     projectId: t.projectId,
