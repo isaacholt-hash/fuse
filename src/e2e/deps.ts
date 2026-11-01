@@ -50,6 +50,7 @@ interface Block {
   content?: string | { type: string; text?: string }[];
 }
 interface Body {
+  system?: string | { text?: string }[];
   messages: { role: string; content: string | Block[] }[];
   tools?: { name?: string }[];
 }
@@ -61,6 +62,14 @@ const resultText = (b: Block) =>
 
 /** The next turn for a request: a command for a check, then its result as the answer. */
 export function scriptedTurn(body: Body): Turn {
+  // M10 checklist: a chat or session is titled with its first message, so the test can find it.
+  const system =
+    typeof body.system === "string" ? body.system : (body.system ?? []).map((b) => b.text).join("");
+  if (system.includes("Write a short title")) {
+    const input = body.messages.flatMap((m) => blocks(m.content)).map((b) => b.text ?? "");
+    const asked = /<user_message>\s*([^\n]+)/.exec(input.join("\n"))?.[1];
+    return { text: (asked ?? "A chat").slice(0, 60) };
+  }
   const last = body.messages.at(-1);
   const result = last ? blocks(last.content).find((b) => b.type === "tool_result") : undefined;
   if (result) return { text: `Command result:\n\n${resultText(result)}` };

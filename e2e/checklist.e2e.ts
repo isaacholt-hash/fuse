@@ -199,6 +199,12 @@ test("3. a Code session with a project and a cost cap runs, named after its task
     );
     expect(await nextAnswer(0)).toContain("Command result:");
     expect(readFileSync(join(FOLDER, "checklist.txt"), "utf8")).toBe("Made by the checklist.\n");
+    // The Continue in Code brief was sent with the task: the composer doesn't fill up with it again.
+    expect(
+      await app.run<string>(
+        `return document.querySelector('textarea[aria-label="Message"]').value;`,
+      ),
+    ).toBe("");
     await app.find(`${row("E2E edit checklist.txt")}[@aria-current="page"]`);
     expect(await app.text(byLabel("Spent of cap"))).toContain("of $0.50");
   });

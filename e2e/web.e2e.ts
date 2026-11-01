@@ -70,7 +70,8 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
       writeFileSync(join(SHOTS, "console.log"), started.console.join("\n"));
       started.quit();
     }
-    if (profile) rmSync(profile, { recursive: true, force: true });
+    // Chrome may still be writing its profile as it closes.
+    if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   });
 
   test("set up: a project", async () => {
