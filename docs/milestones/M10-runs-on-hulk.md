@@ -87,6 +87,11 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - Settings → HULK: the address and a pairing code.
   - "Run on HULK" in the Code composer and on a stopped run. It sends the project's export, the repo's remote and base branch, and the prompt and mode. The server works on `fuse/<run-id>` and pushes it.
   - The desktop shows the run's status and opens it in the browser.
+  - Part 1 done (the plumbing):
+    - The desktop pairs with HULK in Rust (`src-tauri/src/hulk.rs`): the address must be https (or this computer, for tests), and the device token from the pairing code goes in the keychain, never to the webview. `hulk_invoke` calls only `db_open`, `db_select`, `db_execute` and `key_status` on HULK, and `hulk_put_file` uploads the project's export.
+    - `src/handover/handover.ts` checks the repository first (an `origin` remote, a branch checked out, nothing uncommitted or unpushed, since HULK works from what's on origin), uploads the project's PL-12 export, and asks HULK's runner to start a Code run on a new branch with the handover's details.
+    - The runner restores the project (same ids; what's already there is kept), has the server clone or fetch the repository into its own copy (`repo_clone`, server only: https, ssh or `user@host:path` remotes, or a repository under the server's home; a copy with changes left in it is refused), and runs in a new chat in the project with only that copy as its folder. When the run is done on its branch, it asks to push it, as a send, and says what happened.
+  - Part 2 (next): Settings → HULK and "Run on HULK" in the desktop's Code composer, with the run's status.
 - [ ] **8. Notify and follow (CA-16 core).**
   - When a run finishes, fails or starts waiting, the web Runs list shows a badge.
   - A paired desktop shows a system notification.

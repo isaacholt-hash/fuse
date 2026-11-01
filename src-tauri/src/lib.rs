@@ -4,6 +4,9 @@ mod api;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod auth;
 mod backup;
+// The server's clone of a handed-over run's repository (M10 step 7), served by fuse-server.
+#[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
+mod clone;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod creds;
 mod ctx;
@@ -15,6 +18,7 @@ mod files;
 mod git;
 mod hardware;
 mod hello;
+mod hulk;
 mod keys;
 mod local;
 pub mod local_worker;
@@ -133,6 +137,11 @@ pub fn run() {
             python_runtime::commands::python_install_cancel,
             python_runtime::commands::python_status,
             python_runtime::commands::python_remove,
+            hulk::commands::hulk_status,
+            hulk::commands::hulk_pair,
+            hulk::commands::hulk_unpair,
+            hulk::commands::hulk_invoke,
+            hulk::commands::hulk_put_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
