@@ -99,9 +99,9 @@ export class Session {
   }
 
   /** Starts the app and attaches to its window's page. */
-  static async start(application: string): Promise<Session> {
+  static async start(application: string, args: string[] = []): Promise<Session> {
     await Session.portFree();
-    const app = spawn(application, [], { stdio: "inherit" });
+    const app = spawn(application, args, { stdio: "inherit" });
     const failed: { error?: Error } = {};
     app.on("error", (e) => {
       failed.error = e;
@@ -299,6 +299,12 @@ export class Session {
 
   chord(name: string): Promise<void> {
     return this.press(name, true);
+  }
+
+  /** Opens this address in the page (the web test's browser starts on a blank tab). */
+  async navigate(url: string): Promise<void> {
+    await this.send("Page.enable");
+    await this.send("Page.navigate", { url });
   }
 
   /** Lays the page out at this size, as a window of it would. */

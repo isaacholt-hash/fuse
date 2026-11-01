@@ -98,6 +98,25 @@ jobs:
         env:
           FUSE_SERVER_BIN: src-tauri/target/debug/fuse-server
         run: pnpm exec vitest run src/runner/hulk.bench.test.ts
+      # M10 checklist: the web app's part of the steps 11 to 17 checklist, clicked through in
+      # headless Chrome (preinstalled here) against a throwaway server of this build.
+      - run: pnpm build:web
+      - name: Web click-through
+        env:
+          FUSE_SERVER_TEST: "1"
+          FUSE_WEB_URL: http://127.0.0.1:4199/
+          FUSE_WEB_BROWSER: google-chrome
+        run: |
+          home="$(mktemp -d)"
+          src-tauri/target/debug/fuse-server --port 4199 --home "$home" --ui dist-web --test-keys-in-memory > "$RUNNER_TEMP/web-server.log" 2>&1 &
+          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4199/api/auth/state > /dev/null && break; sleep 0.5; done
+          pnpm exec vitest run --config e2e/vitest.config.ts e2e/web.e2e.ts
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-e2e-screenshots
+          path: e2e/screenshots/web/
+          if-no-files-found: ignore
 
   # M8 step 9: the Windows sandbox, tested where it runs (HULK can't), and the app checked on
   # Windows so its Windows-only code is linted before it merges, not first built at release.
