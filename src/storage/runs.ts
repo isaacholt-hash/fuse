@@ -638,3 +638,84 @@ export async function listRunFolders(
   );
   return rows.map((r) => ({ folderId: r.folder_id, label: r.label }));
 }
+
+/** A run in the web app's Runs list (M10 step 6), with its chat's title. */
+export interface RecentRun {
+  id: string;
+  threadId: string | null;
+  /** Null when the run has no chat, or its chat was deleted. */
+  threadTitle: string | null;
+  task: string;
+  status: RunStatus;
+  note: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** The latest runs across every chat, most recently changed first. */
+export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise<RecentRun[]> {
+  const rows = await db.select<{
+    id: string;
+    thread_id: string | null;
+    title: string | null;
+    task: string;
+    status: RunStatus;
+    note: string | null;
+    created_at: number;
+    updated_at: number;
+  }>(
+    `SELECT r.id, r.thread_id, t.title, r.task, r.status, r.note, r.created_at, r.updated_at
+     FROM runs r
+     LEFT JOIN threads t ON t.id = r.thread_id AND t.workspace_id = r.workspace_id
+       AND t.deleted_at IS NULL
+     WHERE r.workspace_id = ? ORDER BY r.updated_at DESC, r.id DESC LIMIT ?`,
+    [tenant.workspaceId, limit],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    threadId: r.thread_id,
+    threadTitle: r.title,
+    task: r.task,
+    status: r.status,
+    note: r.note,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }));
+}
+
+/** How many runs finished or failed after `since` (the Runs badge, M10 step 8). */
+export async function runsEndedSince(db: SqlDb, tenant: Tenant, since: number): Promise<number> {
+  const rows = await db.select<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM runs
+     WHERE workspace_id = ? AND status IN ('done', 'error') AND updated_at > ?`,
+    [tenant.workspaceId, since],
+  );
+  return rows[0]?.n ?? 0;
+}
+
+/**
+ * A chat's runs, without their steps: what the web app checks every second to see which of them
+ * it needs to load again (M10 step 6).
+ */
+export async function runStatesForThread(
+  db: SqlDb,
+  tenant: Tenant,
+  threadId: string,
+): Promise<{ id: string; messageId: string; status: RunStatus; updatedAt: number }[]> {
+  const rows = await db.select<{
+    id: string;
+    message_id: string;
+    status: RunStatus;
+    updated_at: number;
+  }>(
+    `SELECT id, message_id, status, updated_at FROM runs
+     WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL`,
+    [tenant.workspaceId, threadId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    messageId: r.message_id,
+    status: r.status,
+    updatedAt: r.updated_at,
+  }));
+}

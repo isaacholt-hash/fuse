@@ -102,7 +102,29 @@ import {
   type RunProgress,
 } from "@/agent/run";
 import type { RunMode } from "@/storage/runs";
-import { recentToolCalls, runsForThread, type AuditEntry } from "@/storage/runs";
+import {
+  getRun,
+  listChanges,
+  listSteps,
+  recentRuns,
+  recentToolCalls,
+  runStatesForThread,
+  runsEndedSince,
+  runsForThread,
+  type AuditEntry,
+  type RecentRun,
+} from "@/storage/runs";
+import {
+  answerApproval,
+  askToContinue,
+  askToStart,
+  askToStop,
+  getLive,
+  getRequest,
+  openApprovals,
+  type StartInput,
+} from "@/storage/runQueue";
+import { RunsScreen, type RunListRow } from "@/ui/Runs";
 import { AgentAuditSection } from "@/ui/AgentAudit";
 import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -490,6 +512,56 @@ export interface ChatAppProps {
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
+
+/** M10 step 6: how often the web app reads the runner's progress, questions and requests. */
+const WEB_POLL_MS = 1000;
+/** M10 step 8: when the Runs list was last opened; runs that ended since then are new. */
+const RUNS_SEEN_KEY = "fuse.runsSeenAt";
+
+function readRunsSeen(): number {
+  try {
+    return Number(localStorage.getItem(RUNS_SEEN_KEY) ?? "0") || 0;
+  } catch {
+    return 0;
+  }
+}
+
+function saveRunsSeen(at: number): void {
+  try {
+    localStorage.setItem(RUNS_SEEN_KEY, String(at));
+  } catch {
+    // the badge just counts from the last time it could be remembered
+  }
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** A row of the Runs list: "waiting" when it has a question no one has answered. */
+function runListRow(r: RecentRun, waiting: boolean): RunListRow {
+  return {
+    id: r.id,
+    task: r.task,
+    chat: r.threadTitle,
+    threadId: r.threadTitle === null ? null : r.threadId,
+    status: waiting
+      ? "waiting"
+      : r.status === "running"
+        ? "going"
+        : r.status === "error"
+          ? "failed"
+          : r.status,
+    note: r.note,
+    when: new Date(r.updatedAt).toLocaleString(undefined, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+  };
+}
 
 function readLastThread(): string | null {
   try {
@@ -1008,7 +1080,7 @@ export function ChatApp({
   // F6: a mode just picked for a saved chat, used until the chat list has reloaded with it. Without
   // this, a message sent before the pin was saved and read back went out on the old mode.
   const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
-  const [view, setView] = useState<"chat" | "settings" | "usage">(
+  const [view, setView] = useState<"chat" | "settings" | "usage" | "runs">(
     import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
       : import.meta.env.VITE_FUSE_VIEW === "usage"
@@ -1793,48 +1865,64 @@ export function ChatApp({
       },
     };
     try {
-      const result = await (runIn && repoApi && job.kind === "send"
-        ? startChatRun(runDeps(repoApi), {
-            threadId,
-            projectId: runIn.projectId,
-            kind: runIn.kind,
-            task: job.text,
-            model: routed.model,
-            mode:
-              codeMode[threadId] ??
-              codeMode.draft ??
-              projects.find((p) => p.id === runIn.projectId)?.runMode ??
-              "ask",
-            newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
-            // RT-14: on Auto, the cheapest Best model plans; a pinned tier or model does it all.
-            planner: routed.info.mode === "auto" ? routed.info.best : null,
-            signal: controller.signal,
-            onProgress: (answerId, p) => {
-              setThreadRuns((m) => new Map(m).set(answerId, p));
-              if (!loaded) {
-                loaded = true;
-                void reload(threadId);
-                void refreshThreads();
-              }
+      const runMode =
+        codeMode[threadId] ??
+        codeMode.draft ??
+        projects.find((p) => p.id === runIn?.projectId)?.runMode ??
+        "ask";
+      // RT-14: on Auto, the cheapest Best model plans; a pinned tier or model does it all.
+      const planner = routed.info.mode === "auto" ? routed.info.best : null;
+      const result = await (runIn && repoApi && job.kind === "send" && webApp
+        ? startOnServer(
+            {
+              threadId,
+              projectId: runIn.projectId,
+              kind: runIn.kind,
+              task: job.text,
+              model: { provider: routed.model.provider, id: routed.model.id },
+              mode: runMode,
+              newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
+              planner: planner ? { provider: planner.provider, id: planner.id } : null,
             },
-          }).then((run) => ({
-            status: run.status === "done" ? ("complete" as const) : ("stopped" as const),
-            failedOverFrom: undefined,
-          }))
-        : job.kind === "send"
-          ? sendMessage(deps, {
-              ...input,
-              text: job.text,
-              fileIds: job.files.map((f) => f.id),
-              fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
-            })
-          : job.kind === "retry"
-            ? retryLast(deps, input)
-            : job.kind === "escalate"
-              ? escalateLast(deps, input)
-              : job.kind === "regenerate"
-                ? regenerate(deps, { ...input, answerId: job.answerId })
-                : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
+            controller.signal,
+          ).then(() => ({ status: "complete" as const, failedOverFrom: undefined }))
+        : runIn && repoApi && job.kind === "send"
+          ? startChatRun(runDeps(repoApi), {
+              threadId,
+              projectId: runIn.projectId,
+              kind: runIn.kind,
+              task: job.text,
+              model: routed.model,
+              mode: runMode,
+              newBranch: codeBranch[threadId] ?? codeBranch.draft ?? false,
+              planner,
+              signal: controller.signal,
+              onProgress: (answerId, p) => {
+                setThreadRuns((m) => new Map(m).set(answerId, p));
+                if (!loaded) {
+                  loaded = true;
+                  void reload(threadId);
+                  void refreshThreads();
+                }
+              },
+            }).then((run) => ({
+              status: run.status === "done" ? ("complete" as const) : ("stopped" as const),
+              failedOverFrom: undefined,
+            }))
+          : job.kind === "send"
+            ? sendMessage(deps, {
+                ...input,
+                text: job.text,
+                fileIds: job.files.map((f) => f.id),
+                fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
+              })
+            : job.kind === "retry"
+              ? retryLast(deps, input)
+              : job.kind === "escalate"
+                ? escalateLast(deps, input)
+                : job.kind === "regenerate"
+                  ? regenerate(deps, { ...input, answerId: job.answerId })
+                  : editQuestion(deps, { ...input, messageId: job.messageId, text: job.text }));
       if (result.failedOverFrom) {
         setTrouble({ provider: result.failedOverFrom, at: Date.now() });
       } else if (result.status === "complete" && trouble?.provider === routed.model.provider) {
@@ -2201,7 +2289,17 @@ export function ChatApp({
   };
   const stop = useCallback(() => {
     if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
-  }, []);
+    // M10 step 6: a run in the web app is the runner's: Stop asks it to stop.
+    if (webApp) {
+      for (const r of threadRuns.values()) {
+        if (r.run.status === "running") {
+          askToStop(db, tenant, r.run.id).catch((e: unknown) => {
+            setProblem(e instanceof Error ? e.message : String(e));
+          });
+        }
+      }
+    }
+  }, [webApp, threadRuns, db, tenant]);
 
   /**
    * Asks the housekeeping model what to remember from a chat (PM-03). Runs by itself when you
@@ -2474,6 +2572,11 @@ export function ChatApp({
   /** M6: goes on with a paused or stopped run in the open chat. */
   const continueRunHere = (runId: string, raise: boolean) => {
     if (!repoApi || !selectedId) return;
+    if (webApp) {
+      // M10 step 6: the runner picks it up; the poll below follows it.
+      askToContinue(db, tenant, runId, raise ? DEFAULT_RUN_CAP_MICRO_USD : undefined).catch(report);
+      return;
+    }
     const threadId = selectedId;
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
@@ -2492,6 +2595,147 @@ export function ChatApp({
       });
     void reload(threadId).catch(report);
   };
+
+  /**
+   * M10 step 6: the web app asks the server's runner to start a run, and waits only until it has
+   * started (or couldn't). Following it is the poll's job: the page never runs the loop itself,
+   * so closing it doesn't stop the run. Stop before it has started stops it once it has.
+   */
+  const startOnServer = async (input: StartInput, signal: AbortSignal): Promise<void> => {
+    const requestId = await askToStart(db, tenant, input);
+    for (;;) {
+      const r = await getRequest(db, tenant, requestId);
+      if (r?.runId) {
+        if (signal.aborted) await askToStop(db, tenant, r.runId);
+        return;
+      }
+      if (!r || r.status === "failed") {
+        setProblem(r?.error ?? "The server lost that request. Try again.");
+        return;
+      }
+      await sleep(WEB_POLL_MS);
+    }
+  };
+
+  // M10 steps 6 and 8: what the web app shows of the runner's work, read every second: the
+  // questions waiting for anyone, the Runs list and its badge, and the open chat's runs.
+  const [serverRuns, setServerRuns] = useState<{
+    recent: RecentRun[];
+    waiting: Set<string>;
+    ended: number;
+  } | null>(null);
+  const runsSeenAt = useRef(readRunsSeen());
+  const follow = useRef({ reload, refreshThreads, report });
+  useEffect(() => {
+    follow.current = { reload, refreshThreads, report };
+  });
+  useEffect(() => {
+    if (!webApp) return;
+    const threadId = selectedId;
+    // Asked through a function, so the checks after each await see the cleanup's change.
+    const life = { stopped: false };
+    const gone = () => life.stopped;
+    let busy = false;
+    // Each run's status and last change, as last loaded: only what changed is loaded again.
+    const seen = new Map<string, string>();
+    let shownQuestions = "";
+    let shownRuns = "";
+    const tick = async () => {
+      const open = await openApprovals<ApprovalRequest>(db, tenant);
+      const recent = await recentRuns(db, tenant, 50);
+      const ended = await runsEndedSince(db, tenant, runsSeenAt.current);
+      if (gone()) return;
+      // Only a change re-renders the app.
+      const runsNow = `${recent.map((r) => `${r.id}:${r.status}:${String(r.updatedAt)}`).join()}|${open.map((a) => a.runId).join()}|${String(ended)}`;
+      if (runsNow !== shownRuns) {
+        shownRuns = runsNow;
+        setServerRuns({ recent, waiting: new Set(open.map((a) => a.runId)), ended });
+      }
+      const questions = open.map((a) => a.id).join();
+      if (questions !== shownQuestions) {
+        shownQuestions = questions;
+        setApprovals(
+          new Map(
+            open.map((a) => [
+              a.runId,
+              {
+                // As the runner saved it: the question without its signal.
+                request: a.request,
+                answer: (answer: ApprovalAnswer) => {
+                  // False means another page (or Stop) answered first: the card just goes.
+                  setApprovals((all) => {
+                    const next = new Map(all);
+                    next.delete(a.runId);
+                    return next;
+                  });
+                  answerApproval(db, tenant, a.id, answer).catch(follow.current.report);
+                },
+              },
+            ]),
+          ),
+        );
+      }
+      if (!threadId) return;
+      const updates: [string, RunProgress][] = [];
+      let endedHere = false;
+      for (const s of await runStatesForThread(db, tenant, threadId)) {
+        const mark = `${s.status}:${String(s.updatedAt)}`;
+        const before = seen.get(s.id);
+        const going = s.status === "running" || s.status === "paused";
+        if (!going && before === mark) continue;
+        if (before?.startsWith("running:") && s.status !== "running") endedHere = true;
+        seen.set(s.id, mark);
+        const run = await getRun(db, tenant, s.id);
+        if (!run) continue;
+        updates.push([
+          s.messageId,
+          {
+            run,
+            steps: await listSteps(db, tenant, s.id),
+            changes: await listChanges(db, tenant, s.id),
+            streaming: s.status === "running" ? await getLive(db, tenant, s.id) : "",
+          },
+        ]);
+      }
+      if (gone() || selectedRef.current !== threadId) return;
+      if (updates.length > 0) {
+        setThreadRuns((m) => {
+          const next = new Map(m);
+          for (const [messageId, p] of updates) next.set(messageId, p);
+          return next;
+        });
+      }
+      if (endedHere) {
+        await follow.current.reload(threadId);
+        await follow.current.refreshThreads();
+      }
+    };
+    const poll = () => {
+      if (busy || gone()) return;
+      busy = true;
+      tick()
+        .catch((e: unknown) => {
+          follow.current.report(e);
+        })
+        .finally(() => {
+          busy = false;
+        });
+    };
+    poll();
+    const timer = setInterval(poll, WEB_POLL_MS);
+    return () => {
+      life.stopped = true;
+      clearInterval(timer);
+    };
+  }, [webApp, selectedId, db, tenant]);
+  const openRuns = () => {
+    const at = Date.now();
+    runsSeenAt.current = at;
+    saveRunsSeen(at);
+    setServerRuns((s) => (s ? { ...s, ended: 0 } : s));
+    setView("runs");
+  };
+  const runsBadge = serverRuns ? serverRuns.waiting.size + serverRuns.ended : 0;
   const instructionParts = effectiveInstructions(
     globalInstructions ?? NO_INSTRUCTIONS,
     activeProject?.instructions ?? "",
@@ -2867,7 +3111,11 @@ export function ChatApp({
     stronger && latest?.role === "assistant"
       ? [...shown.slice(0, -1), { ...latest, escalateTo: tierLabel(stronger.to) }]
       : shown;
-  const streaming = selectedId !== null && selectedId in live;
+  // In the web app a run in this chat goes on in the runner, with no answer streaming here.
+  const streaming =
+    selectedId !== null &&
+    (selectedId in live ||
+      (webApp && [...threadRuns.values()].some((r) => r.run.status === "running")));
   const openSaved = threadArtifacts.find((a) => a.key === openArtifact);
   useEffect(() => {
     if (!openSaved) return;
@@ -3897,9 +4145,22 @@ export function ChatApp({
                 setSearchOpen(true);
               }}
               onUsage={openUsage}
+              {...(webApp ? { onRuns: openRuns, runsBadge } : {})}
             />
           )}
-          {view === "usage" ? (
+          {view === "runs" ? (
+            <RunsScreen
+              rows={
+                serverRuns
+                  ? serverRuns.recent.map((r) => runListRow(r, serverRuns.waiting.has(r.id)))
+                  : null
+              }
+              onOpen={select}
+              onBack={() => {
+                setView("chat");
+              }}
+            />
+          ) : view === "usage" ? (
             <UsageScreen
               view={usageView}
               savings={savings}
