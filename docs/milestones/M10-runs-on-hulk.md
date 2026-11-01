@@ -129,4 +129,13 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - Found and fixed: a run's own branch and the `git_branch` tool ran `git switch -c`, which the git guard refuses (`-c` is refused anywhere), so every new-branch run failed with "-c isn't allowed". They use `--create` now.
   - Part 2 done (the deploy kit): `scripts/deploy-server.sh` builds and installs a release into `~/.local/opt/fuse-server/<commit>/` and writes the user unit (127.0.0.1:4100); `docs/hulk-server.md` has Isaac's first-time steps, updating and looking after it. Tested into a scratch folder: the installed build served the UI and started the runner.
 
+**After Isaac's live check (queued 2026-11-01).** These six came from reading about 1,500 public reviews, GitHub issues and Hacker News comments on the Claude, ChatGPT, Claude Code and Codex apps. They're the pains FUSE's design doesn't already cover. Each is small, and each is one PR.
+
+- [ ] **11. Stall watchdog for runs.** Code, Work and HULK runs get a wall-clock limit and a "no progress for N minutes" stop, beside the cost cap, both editable per project. A long run shows "Running for 3h" on its card and in Runs, and Stop always works. Evidence: anthropics/claude-code#75314 (10 background agents ran 34+ hours and couldn't be cancelled).
+- [ ] **12. Delete for real.** Delete a thread (not only archive) and delete one message or turn, with an undo toast. Its memories, summaries and search entries go with it. First check what FUSE already has. Evidence: openai/codex#13018 (106 👍).
+- [ ] **13. History survives updates.** A CI test applies every migration to a realistic database fixture and checks that thread, message and memory counts are unchanged. The PL-11 integrity check runs at the first start after an update and says so if it fails. Evidence: openai/codex#20741, #20493, #23979, #24425 (history gone after an update).
+- [ ] **14. Log volume guard.** A test that keeps `request_log` and run-step writes to a fixed number of rows per request, never one per streamed chunk. Evidence: openai/codex#28224 (451 👍; SQLite logs writing about 640 TB a year).
+- [ ] **15. Quiet by default.** Every sound, system notification and banner has a switch in Settings, and sounds are off unless turned on. Evidence: 29 store reviews about chimes and banners that can't be turned off.
+- [ ] **16. Thinking cost shown live.** While a reasoning model thinks, the answer shows reasoning tokens and cost as they climb, with Stop. Evidence: store reviews about one simple prompt using up the limit through long thinking.
+
 ## Notes
