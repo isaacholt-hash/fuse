@@ -277,6 +277,8 @@ test("6. with a 1-minute idle limit, a stalled run stops and says why", async ()
     // The watchdog looks every 15 s, so it stops between 60 and 75 s without progress.
     await app.sees("Stopped: no progress for", 120_000);
     await app.gone(dot("E2E stall", "Going"));
+    // And the composer is ready again: it doesn't stay on "Generating response".
+    await app.gone('//*[normalize-space()="Generating response"]');
   });
 }, 180_000);
 
