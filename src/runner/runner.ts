@@ -9,6 +9,7 @@ import {
   addApproval,
   approvalAnswer,
   answerApproval,
+  askToStart,
   closeOpenApprovals,
   failTakenRequests,
   finishRequest,
@@ -21,7 +22,15 @@ import {
 import { readFuseExport, applyRestore } from "@/data/restore";
 import { cloneOnServer } from "@/handover/api";
 import { grantFolder, linkThreadFolder } from "@/storage/folders";
-import { getRun, markInterruptedRuns, setRunStatus, type Run } from "@/storage/runs";
+import {
+  getRun,
+  listSteps,
+  markInterruptedRuns,
+  setRunStatus,
+  type Run,
+  type RunStep,
+} from "@/storage/runs";
+import { dueSchedules, markStarted, setScheduleOutcome, setScheduleRun } from "@/storage/schedules";
 import { createThread } from "@/storage/threads";
 
 export interface RunnerOptions {
@@ -38,6 +47,8 @@ export interface RunnerOptions {
   log?: (line: string) => void;
   /** M10 step 7: the server's clone of a handed-over run's repository (tests pass a fake). */
   clone?: (remote: string, branch: string) => Promise<string>;
+  /** The clock scheduled tasks go by; tests pass a fake. */
+  now?: () => number;
 }
 
 const wait = (ms: number) =>
@@ -89,9 +100,10 @@ export class Runner {
       );
   }
 
-  /** Handles every request waiting now. */
+  /** Starts the scheduled tasks that are due, then handles every request waiting now. */
   async tick(): Promise<void> {
     const base = await this.options.deps();
+    await this.startDue(base);
     for (;;) {
       const request = await takeRequest(base.db, base.tenant);
       if (!request) return;
@@ -109,6 +121,48 @@ export class Runner {
   /** Stops every run going (shutdown); each is left stopped, to be continued. */
   stopAll(): void {
     for (const c of this.going.values()) c.abort();
+  }
+
+  /**
+   * AG-07: each due task gets a new chat in its project, named for it, and a start request like
+   * any page's. A time missed while the server was off isn't made up; the next one is set.
+   */
+  private async startDue(base: RunDeps): Promise<void> {
+    const now = (this.options.now ?? Date.now)();
+    for (const s of await dueSchedules(base.db, base.tenant, now)) {
+      const when = new Date(now).toLocaleString(undefined, {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      });
+      const thread = await createThread(base.db, base.tenant, `${s.name} · ${when}`, s.projectId);
+      await markStarted(base.db, base.tenant, s, thread.id, now);
+      await askToStart(base.db, base.tenant, {
+        threadId: thread.id,
+        projectId: s.projectId,
+        task: s.prompt,
+        model: { provider: s.provider, id: s.model },
+        mode: s.mode,
+        kind: s.kind,
+        capMicroUsd: s.capMicroUsd,
+        scheduleId: s.id,
+      });
+      this.log(`started the scheduled task ${s.name}`);
+    }
+  }
+
+  /** How a scheduled task's run ended; a run that didn't finish says its last step. */
+  private async scheduleOutcome(deps: RunDeps, scheduleId: string, runId: string): Promise<void> {
+    const run = await getRun(deps.db, deps.tenant, runId);
+    if (!run) return;
+    const last = (await listSteps(deps.db, deps.tenant, runId)).at(-1);
+    const note =
+      run.status === "done"
+        ? null
+        : [run.note, last ? `Last step: ${describeStep(last)}` : null].filter(Boolean).join(" ");
+    await setScheduleOutcome(deps.db, deps.tenant, scheduleId, run.status, note || null);
   }
 
   private track(p: Promise<void>): void {
@@ -144,8 +198,16 @@ export class Runner {
       return;
     }
     const input = request.input;
-    const model = modelFor(base, input.model);
-    const planner = input.planner ? modelFor(base, input.planner) : null;
+    const scheduleId = input.scheduleId;
+    let model: CatalogModel;
+    let planner: CatalogModel | null;
+    try {
+      model = modelFor(base, input.model);
+      planner = input.planner ? modelFor(base, input.planner) : null;
+    } catch (e) {
+      if (scheduleId) await setScheduleOutcome(db, tenant, scheduleId, "error", message(e));
+      throw e;
+    }
     const handed = input.handover ? await this.takeOver(base, input.handover, input) : null;
     const threadId = handed?.threadId ?? input.threadId;
     if (!threadId) throw new Error("No chat to run in.");
@@ -168,20 +230,28 @@ export class Runner {
             runId = p.run.id;
             this.going.set(runId, controller);
             void finishRequest(db, tenant, request.id, { runId }).catch(() => {});
+            if (scheduleId) void setScheduleRun(db, tenant, scheduleId, runId).catch(() => {});
           }
           live(answerId, p);
         },
-      }).then(
-        async (run: Run) => {
-          if (handed && input.handover)
-            await this.push(deps, run.id, handed.folderId, input.handover);
-          await this.ended(deps, run.id);
-        },
-        async (e: unknown) => {
-          if (runId) await this.failed(deps, runId, e);
-          else await finishRequest(db, tenant, request.id, { error: message(e) });
-        },
-      ),
+      })
+        .then(
+          async (run: Run) => {
+            if (handed && input.handover)
+              await this.push(deps, run.id, handed.folderId, input.handover);
+            await this.ended(deps, run.id);
+          },
+          async (e: unknown) => {
+            if (runId) await this.failed(deps, runId, e);
+            else {
+              await finishRequest(db, tenant, request.id, { error: message(e) });
+              if (scheduleId) await setScheduleOutcome(db, tenant, scheduleId, "error", message(e));
+            }
+          },
+        )
+        .then(async () => {
+          if (scheduleId && runId) await this.scheduleOutcome(deps, scheduleId, runId);
+        }),
     );
   }
 
@@ -278,6 +348,13 @@ function modelFor(deps: RunDeps, ref: ModelRef): CatalogModel {
   const m = findModel(deps.catalog, ref.provider as ProviderId, ref.id);
   if (!m) throw new Error(`The model ${ref.provider}/${ref.id} isn't in FUSE's list.`);
   return m;
+}
+
+/** A step in a few words, for a failed scheduled task: the tool and the start of its result. */
+function describeStep(step: RunStep): string {
+  const text = step.kind === "tool" ? `${step.call.name}: ${step.output}` : step.text;
+  const one = text.replace(/\s+/g, " ").trim();
+  return one.length > 200 ? `${one.slice(0, 200)}…` : one || "(empty)";
 }
 
 function message(e: unknown): string {

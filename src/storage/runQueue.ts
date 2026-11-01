@@ -26,6 +26,8 @@ export interface StartInput {
   capMicroUsd?: number;
   /** M10 step 7: a run handed over from a desktop. */
   handover?: Handover;
+  /** M10 step 9 (AG-07): the scheduled task this run is for. */
+  scheduleId?: string;
 }
 
 /**

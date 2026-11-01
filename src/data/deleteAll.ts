@@ -9,7 +9,9 @@ import type { SqlDb } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
-  // M10: what pages asked the runner, and its questions and streaming text, before runs.
+  // M10: scheduled tasks, what pages asked the runner, and its questions and streaming text,
+  // before runs.
+  "schedules",
   "run_requests",
   "run_approvals",
   "run_live",
