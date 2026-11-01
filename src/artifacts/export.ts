@@ -16,6 +16,25 @@ export const tauriExportApi: ExportApi = {
     invoke<string | null>("save_as", bytes, { headers: { "x-file-name": name } }),
 };
 
+/**
+ * The web app on HULK (M10 step 5): no save dialog in a browser, so the file is a download,
+ * saved wherever the browser saves them.
+ */
+export const browserExportApi: ExportApi = {
+  save: (name, bytes) => {
+    const url = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.click();
+    // The browser has the file once the click is handled; the URL can go a little later.
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+    }, 60_000);
+    return Promise.resolve(name);
+  },
+};
+
 const CODE_EXT: Record<string, string> = {
   typescript: "ts",
   ts: "ts",

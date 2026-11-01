@@ -128,6 +128,28 @@ fn bytes(result: Result<Vec<u8>, String>) -> Result<Reply, Value> {
     result.map(Reply::Bytes).map_err(Value::String)
 }
 
+/// The folders the web app may link (M10 step 5): only ones under the server user's home, so a
+/// typed path can't hand FUSE `/etc` or another user's files. `folder` is already resolved
+/// (symlinks followed) by `repo::repo_check`. This guides the one signed-in user rather than
+/// fencing them in: the server trusts that user, who could equally run a command there.
+fn under_home(
+    folder: repo::RepoInfo,
+    home: Option<&std::path::Path>,
+) -> Result<repo::RepoInfo, String> {
+    let home = home
+        .and_then(|h| std::fs::canonicalize(h).ok())
+        .ok_or("The server has no home folder to allow folders under.")?;
+    if std::path::Path::new(&folder.root).starts_with(&home) {
+        Ok(folder)
+    } else {
+        Err(format!(
+            "{} isn't under {}: FUSE on HULK can only use folders in its user's home.",
+            folder.root,
+            home.display()
+        ))
+    }
+}
+
 /// Runs a command body that may block (files, processes, the keychain) off the async threads.
 async fn blocking<T, F>(ctx: &Arc<Ctx>, f: F) -> Result<T, String>
 where
@@ -259,7 +281,13 @@ pub async fn dispatch(
         // Folders (repo.rs, git.rs)
         "repo_check" => {
             args!(name, args, path: String);
-            json(blocking(ctx, move |_| repo::repo_check(path)).await)
+            json(
+                blocking(ctx, move |_| {
+                    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+                    under_home(repo::repo_check(path)?, home.as_deref())
+                })
+                .await,
+            )
         }
         "repo_list" => {
             args!(name, args, folder_id: String, path: String, recursive: bool);
@@ -683,5 +711,26 @@ mod tests {
         assert_send(&fut);
         drop(fut);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_web_app_links_only_folders_under_the_home() {
+        let home = temp_dir("home");
+        let inside = home.join("projects").join("x");
+        std::fs::create_dir_all(&inside).unwrap();
+        let outside = temp_dir("elsewhere");
+        let check = |p: &std::path::Path| repo::repo_check(p.to_string_lossy().into_owned());
+
+        let ok = under_home(check(&inside).unwrap(), Some(&home)).unwrap();
+        assert_eq!(ok.name, "x");
+        assert!(under_home(check(&home).unwrap(), Some(&home)).is_ok());
+        let refused = under_home(check(&outside).unwrap(), Some(&home)).unwrap_err();
+        assert!(refused.contains("isn't under"), "{refused}");
+        // A path that climbs out is resolved first, so `..` can't get round it.
+        let climb = home.join("projects").join("..").join("..");
+        assert!(under_home(check(&climb).unwrap(), Some(&home)).is_err());
+        assert!(under_home(check(&inside).unwrap(), None).is_err());
+        let _ = std::fs::remove_dir_all(home);
+        let _ = std::fs::remove_dir_all(outside);
     }
 }

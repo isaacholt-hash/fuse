@@ -159,6 +159,7 @@ Nothing syncs today. When PL-04 is built:
 | A stolen or lost device | Each paired device has its own token, shown once and then kept in that device's keychain. Settings → Devices lists them with when each was last used, and Revoke ends one at once. A device can't pair others or list devices | A device token is as safe as the device it's on |
 | Reading the server's keys or database | Provider keys, MCP secrets and the database key are `systemd-creds --user` credentials: encrypted, sealed to HULK and Isaac's user, one file per account, sealed with the account's name so a file can't stand in for another. Secrets go in and out on stdin and stdout, never as arguments, logs or errors. The database is SQLCipher, as on the desktop | Anything running as Isaac on HULK can ask systemd-creds too, as malware can ask the desktop keychain. The OS account is the real boundary |
 | A page calling desktop-only commands | Only the commands in `api::WEB_COMMANDS` are served; dialogs, the local model, Windows Hello, the Windows sandbox and MCP sign-in are refused as unknown | — |
+| Linking a folder outside Isaac's files | The web app has no folder dialog: a folder is typed in, and the server's `repo_check` accepts only folders under its user's home, after following symlinks and `..` (M10 step 5) | It guides rather than fences: the server trusts its one signed-in user, who could also grant a folder through the database or reach it with a command. The OS account is the boundary, as above |
 
 ## Out of scope for now
 

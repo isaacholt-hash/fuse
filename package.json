@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:runner": "vite build --config vite.runner.config.ts",
+    "build:web": "tsc -b && vite build --outDir dist-web",
     "preview": "vite preview",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",

@@ -1,6 +1,8 @@
 import { Cpu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { openExternal } from "./openExternal";
+import { Greyed } from "./primitives";
+import { WEB_REASONS } from "./webReasons";
 
 /** Settings → Local model (M7, LL-03): what this computer can run, and which model it gets. */
 export interface LocalModelView {
@@ -40,7 +42,10 @@ export function LocalModelSection({
   enabled = true,
   onEnabled,
   shadow = null,
+  web = false,
 }: {
+  /** PL-02: the web app on HULK, which has no local model: shown, greyed, with the reason. */
+  web?: boolean;
   view: LocalModelView | null;
   error?: string | null;
   onInstall?: () => void;
@@ -64,7 +69,14 @@ export function LocalModelSection({
         summaries, memory suggestions), at no API cost. It never writes the answers you read, and
         FUSE works the same without it.
       </p>
-      {error ? (
+      {web ? (
+        <>
+          <Button size="sm" className="h-7 text-xs" disabled>
+            Download and install
+          </Button>
+          <Greyed>{WEB_REASONS.local}</Greyed>
+        </>
+      ) : error ? (
         <p className="text-[11px] text-destructive">{error}</p>
       ) : !view ? (
         <p className="text-[11px] text-muted-foreground">Checking this computer…</p>

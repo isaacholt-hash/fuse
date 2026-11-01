@@ -61,6 +61,25 @@ function wsUrl(path: string): string {
   return u.toString();
 }
 
+/** A request to fuse-server itself (sign-in, devices: src/platform/auth.ts), at the same base. */
+export function serverFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  return config.fetch(url(path), { credentials: "same-origin", ...init });
+}
+
+const signedOutListeners = new Set<() => void>();
+
+/**
+ * Calls `listener` whenever the server says this page is signed out (its session expired or was
+ * signed out elsewhere), so the web app can show the sign-in screen again. Returns a function
+ * that stops listening.
+ */
+export function onSignedOut(listener: () => void): () => void {
+  signedOutListeners.add(listener);
+  return () => {
+    signedOutListeners.delete(listener);
+  };
+}
+
 function openSocket(): Promise<WebSocket> {
   if (socket) return socket;
   const opening = new Promise<WebSocket>((resolve, reject) => {
@@ -133,6 +152,9 @@ export async function httpInvoke<T>(
       data && typeof data === "object" && "error" in data
         ? data.error
         : `FUSE on the server answered ${String(res.status)}.`;
+    if (res.status === 401 && error === "signed_out") {
+      for (const listener of signedOutListeners) listener();
+    }
     // Rejects with the command's own error value, as Tauri's invoke does.
     // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
     return Promise.reject(error);

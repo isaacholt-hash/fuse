@@ -10,6 +10,7 @@ import {
   Download,
   Folder,
   FolderMinus,
+  Globe,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -30,6 +31,15 @@ export function Mark({ small = false }: { small?: boolean }) {
     >
       <Zap className={small ? "size-4" : "size-5"} fill="currentColor" strokeWidth={1.5} />
     </span>
+  );
+}
+/** PL-02: the reason beside a control that's greyed here (the web app on HULK, M10 step 5). */
+export function Greyed({ children }: { children: ReactNode }) {
+  return (
+    <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-5 text-muted-foreground">
+      <Globe className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      <span>{children}</span>
+    </p>
   );
 }
 export function Hint({ children }: { children: ReactNode }) {

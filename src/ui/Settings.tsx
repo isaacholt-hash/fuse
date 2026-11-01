@@ -20,8 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CloudProviderId } from "@/catalog/catalog";
 import { openExternal } from "./openExternal";
-import { Modal } from "./primitives";
+import { Greyed, Modal } from "./primitives";
 import type { KeyView, Motion, RequestRow, TextSize, Theme } from "./types";
+import { WEB_REASONS } from "./webReasons";
 
 function KeyResult({ state }: { state: KeyView }) {
   if (state.busy === "testing" || state.busy === "saving")
@@ -251,7 +252,13 @@ export function SettingsView({
   onTestKey,
   onDeleteKey,
   onShowLog,
+  web = false,
+  server,
 }: {
+  /** PL-02: the web app on HULK; desktop-only settings are greyed with their reason. */
+  web?: boolean;
+  /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
+  server?: ReactNode;
   keys: KeyView[];
   /** The installed app version; null while it loads. */
   version: string | null;
@@ -353,10 +360,12 @@ export function SettingsView({
         <div className="mt-4 flex items-start gap-2.5 text-[11px] leading-5 text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-4 shrink-0" />
           <p>
-            Keys are stored in your OS keychain and never leave this device except to call the
-            provider.
+            {web
+              ? "Keys are stored on HULK, encrypted by its system (systemd-creds), and never leave it except to call the provider."
+              : "Keys are stored in your OS keychain and never leave this device except to call the provider."}
           </p>
         </div>
+        {server}
         {privacy}
         {agent}
         {instructions}
@@ -410,7 +419,9 @@ export function SettingsView({
               { value: "large", label: "Large" },
             ]}
             onChange={onTextSize}
+            disabled={web}
           />
+          {web && <Greyed>{WEB_REASONS.textSize}</Greyed>}
           <Choice
             label="Motion"
             value={motion}
@@ -435,7 +446,7 @@ export function SettingsView({
           </span>
           <span className="text-muted-foreground">↗</span>
         </button>
-        {version && <VersionLine version={version} onCheck={onCheckUpdates} />}
+        {version && <VersionLine version={version} onCheck={onCheckUpdates} web={web} />}
       </div>
     </main>
   );
@@ -445,20 +456,25 @@ export function SettingsView({
 function VersionLine({
   version,
   onCheck,
+  web,
 }: {
   version: string;
   onCheck?: (() => Promise<string>) | undefined;
+  /** The web app shows the server's version (PL-06); it's updated with the server. */
+  web: boolean;
 }) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
     <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-5 font-mono text-[10px] text-muted-foreground">
       <span>
-        {version === "dev"
-          ? "FUSE development build · auto-update off"
-          : `FUSE ${version} · updates install automatically`}
+        {web
+          ? `FUSE on HULK ${version} · ${WEB_REASONS.update}`
+          : version === "dev"
+            ? "FUSE development build · auto-update off"
+            : `FUSE ${version} · updates install automatically`}
       </span>
-      {onCheck && version !== "dev" && (
+      {onCheck && version !== "dev" && !web && (
         <button
           className="underline underline-offset-2 hover:text-foreground disabled:opacity-60"
           disabled={busy}
@@ -609,11 +625,13 @@ function Choice<T extends string>({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-3">
@@ -626,6 +644,7 @@ function Choice<T extends string>({
             variant={o.value === value ? "secondary" : "ghost"}
             role="radio"
             aria-checked={o.value === value}
+            disabled={disabled}
             className="text-xs"
             onClick={() => {
               onChange(o.value);
