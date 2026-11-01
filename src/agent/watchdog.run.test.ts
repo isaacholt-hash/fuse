@@ -120,6 +120,30 @@ test("a run that makes no progress for its idle limit is stopped, and says so", 
   expect(run.note).toMatch(/^Stopped: no progress for /);
 });
 
+test("a planner that never answers is stopped by the same idle limit", async () => {
+  const planner: CatalogModel = { ...model, id: "test-planner", displayName: "Test Planner" };
+  const planless: ProviderAdapter = {
+    provider: "anthropic",
+    listModels: () => Promise.resolve([]),
+    async *streamChat(h, m, o, signal): AsyncGenerator<StreamEvent> {
+      if (m === planner.id) await aborted(signal);
+      yield* brief.streamChat(h, m, o, signal);
+    },
+  };
+  const { deps, project } = await setup(planless);
+  const run = await startRun(deps, {
+    projectId: project.id,
+    threadId: null,
+    messageId: null,
+    task: "Plan forever",
+    model,
+    planner,
+    idleMinutes: 0.002,
+  });
+  expect(run.status).toBe("stopped");
+  expect(run.note).toMatch(/^Stopped: no progress for /);
+});
+
 test("a run that keeps streaming is still stopped at its wall-clock limit", async () => {
   const { deps, project } = await setup(chatty);
   const run = await startRun(deps, {

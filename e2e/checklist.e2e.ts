@@ -57,6 +57,13 @@ const row = (title: string) =>
 const dot = (title: string, state: "Going" | "New result" | "Waiting for you") =>
   `${row(title)}//*[@role="img" and @aria-label="${state}"]`;
 
+/**
+ * Where to click to open a row: its title. The row's hover buttons sit over its middle, hidden
+ * until hovered, so a click there would land on one of them.
+ */
+const rowTitle = (title: string) =>
+  `${row(title)}//span[normalize-space()=${JSON.stringify(title)}]`;
+
 /** The open row's title, or null on a new draft. */
 const selectedTitle = () =>
   app.run<string | null>(
@@ -237,11 +244,11 @@ test("5. a run going in another session shows Going, then New, cleared on openin
     await send("E2E slow run");
     await app.find(row("E2E slow run"));
     // Look at another session while it runs.
-    await app.click(row("E2E edit checklist.txt"));
+    await app.click(rowTitle("E2E edit checklist.txt"));
     await app.find(dot("E2E slow run", "Going"), 10_000);
     await app.find(dot("E2E slow run", "New result"), 60_000);
     await app.find('//*[@aria-label="Filter by state"]//button[normalize-space()="New 1"]');
-    await app.click(row("E2E slow run"));
+    await app.click(rowTitle("E2E slow run"));
     await app.gone(dot("E2E slow run", "New result"));
   });
 });
