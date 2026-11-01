@@ -23,6 +23,8 @@ const run: Run = {
   planner: null,
   createdAt: 1,
   updatedAt: 1,
+  startedAt: 1,
+  waitedMs: 0,
 };
 const steps: RunStep[] = [
   {
@@ -75,6 +77,7 @@ test("steps read as plain lines; the finished run's last turn is the answer, not
     title: "Coding run",
     status: "done",
     costLabel: "$0.1234 of $1.00",
+    activeSince: null,
     note: null,
     streaming: "",
     modeLabel: "read-only",
@@ -228,4 +231,10 @@ test("M9 step 12: the activity log exports as CSV (quoted as needed) and JSON", 
   expect(csv).toContain("asks to run a command: run this");
   const json = JSON.parse(auditJson([entry])) as { entries: { at: string; output: string }[] };
   expect(json.entries[0]).toMatchObject({ at: "2026-10-31T12:00:00.000Z", output: "hi\nthere" });
+});
+
+test("M10 step 11: a working run counts its active time from its leg's start plus what it waited", () => {
+  const working = runView({ ...run, status: "running", startedAt: 100, waitedMs: 40 }, []);
+  expect(working.activeSince).toBe(140);
+  expect(runView(run, []).activeSince).toBeNull();
 });

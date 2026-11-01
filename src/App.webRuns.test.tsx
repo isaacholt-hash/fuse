@@ -157,14 +157,15 @@ test("a Code run in the web app is asked of the runner; its question is answered
   expect(screen.queryByRole("alertdialog", { name: "Run this command?" })).toBeNull();
 
   // Stop is a request to the runner.
-  await user.click(await screen.findByRole("button", { name: /^Stop/ }, SLOW));
+  // M10 step 11: the run's card has its own Stop beside the composer's; it asks the same way.
+  await user.click(await screen.findByRole("button", { name: "Stop this coding run" }, SLOW));
   const stop = await nextRequest(db);
   expect(stop).toMatchObject({ kind: "stop", input: { runId: run.id } });
 
   // The runner stops it; the page sees that and lets you write again.
   await setRunStatus(db, t, run.id, "stopped");
   await waitFor(() => {
-    expect(screen.queryByRole("button", { name: /^Stop/ })).toBeNull();
+    expect(screen.queryAllByRole("button", { name: /^Stop/ })).toEqual([]);
   }, SLOW);
   // It waits on the page's one-second poll a few times.
 }, 20_000);

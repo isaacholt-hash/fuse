@@ -5,7 +5,7 @@ import { projectToolsOff, switchProjectTool } from "@/storage/projectTools";
 import { KIND_LABEL, placesLabel, TOOLS } from "@/agent/registry";
 import { resolvePath } from "@/agent/folders";
 import { docKind, docxText, xlsxText } from "@/documents/read";
-import { getChange, listRunFolders } from "@/storage/runs";
+import { getChange, listRunFolders, setRunStatus } from "@/storage/runs";
 import {
   recordShadow,
   shadowSummary,
@@ -246,6 +246,7 @@ import {
   setProjectPrivacy,
   setProjectAnswerWithoutModel,
   setProjectRunMode,
+  setProjectRunLimits,
   disallowCommand,
   listAllowedCommands,
   type Project,
@@ -590,6 +591,7 @@ function runListRow(r: RecentRun, waiting: boolean): RunListRow {
       hour: "2-digit",
       minute: "2-digit",
     }),
+    activeSince: r.status === "running" ? r.startedAt + r.waitedMs : null,
   };
 }
 
@@ -2321,18 +2323,49 @@ export function ChatApp({
     );
   };
   const stop = useCallback(() => {
-    if (selectedRef.current) controllers.current.get(selectedRef.current)?.abort();
-    // M10 step 6: a run in the web app is the runner's: Stop asks it to stop.
-    if (webApp) {
-      for (const r of threadRuns.values()) {
-        if (r.run.status === "running") {
-          askToStop(db, tenant, r.run.id).catch((e: unknown) => {
-            setProblem(e instanceof Error ? e.message : String(e));
-          });
-        }
-      }
+    const threadId = selectedRef.current;
+    const controller = threadId ? controllers.current.get(threadId) : undefined;
+    controller?.abort();
+    // M10 step 6: a run in the web app is the runner's: Stop asks it to stop. M10 step 11: on the
+    // desktop a run left "working" with nothing running it (after a restart) is marked stopped,
+    // so Stop always works.
+    for (const r of threadRuns.values()) {
+      if (r.run.status !== "running") continue;
+      const settle = webApp
+        ? askToStop(db, tenant, r.run.id)
+        : controller
+          ? Promise.resolve()
+          : setRunStatus(db, tenant, r.run.id, "stopped", "Stopped.").then(() =>
+              threadId ? reload(threadId) : undefined,
+            );
+      settle.catch((e: unknown) => {
+        setProblem(e instanceof Error ? e.message : String(e));
+      });
     }
-  }, [webApp, threadRuns, db, tenant]);
+  }, [webApp, threadRuns, db, tenant, reload]);
+
+  /** M10 step 11: the Stop on a run's card: this run, wherever it is going. */
+  const stopRun = useCallback(
+    (runId: string) => {
+      const threadId = selectedRef.current;
+      const failed = (e: unknown) => {
+        setProblem(e instanceof Error ? e.message : String(e));
+      };
+      if (webApp) {
+        askToStop(db, tenant, runId).catch(failed);
+        return;
+      }
+      const controller = threadId ? controllers.current.get(threadId) : undefined;
+      if (controller) {
+        controller.abort();
+        return;
+      }
+      setRunStatus(db, tenant, runId, "stopped", "Stopped.")
+        .then(() => (threadId ? reload(threadId) : undefined))
+        .catch(failed);
+    },
+    [webApp, db, tenant, reload],
+  );
 
   /**
    * Asks the housekeeping model what to remember from a chat (PM-03). Runs by itself when you
@@ -5314,6 +5347,7 @@ export function ChatApp({
                       openSource(chunkId).catch(report);
                     }}
                     onContinueRun={continueRunHere}
+                    onStopRun={stopRun}
                     onApprove={(runId, answer) => {
                       approvals.get(runId)?.answer(answer);
                     }}
@@ -5715,6 +5749,12 @@ export function ChatApp({
                         },
                         onRunMode: (mode: RunMode) => {
                           setProjectRunMode(db, tenant, editedProject.id, mode)
+                            .then(refreshProjects)
+                            .catch(report);
+                        },
+                        limits: editedProject.runLimits,
+                        onLimits: (patch) => {
+                          setProjectRunLimits(db, tenant, editedProject.id, patch)
                             .then(refreshProjects)
                             .catch(report);
                         },

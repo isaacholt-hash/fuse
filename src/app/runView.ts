@@ -288,6 +288,7 @@ export function runView(
     title: run.kind === "work" ? "Work run" : "Coding run",
     status: run.status,
     costLabel: `${formatUsd(run.spentMicroUsd)} of ${formatUsd(run.capMicroUsd)}`,
+    activeSince: run.status === "running" ? run.startedAt + run.waitedMs : null,
     note: run.note,
     steps: views,
     streaming,

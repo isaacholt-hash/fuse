@@ -6,7 +6,7 @@
 
 Isaac approved the UI review's recommendation on 2026-11-01: FUSE gets two areas, Chat and Code, with Work sessions inside Code, the same on desktop and web. PR #223 queued that work as M10 steps 11 to 22 in his order. He then asked to plan the next build and have it run without him, with two answers given during planning:
 
-- **Start:** only after his HULK deploy and live check. Anything the live check finds becomes an F-item he places in the queue; the run builds it when it reaches it.
+- **Start:** he first said after his HULK deploy and live check, then chose "Build now, check later" the same day: the run started 2026-11-01, and the live check (which needs his pairing code and his yes to the push) runs once after step 17, covering F1 and the new Code area together. Anything it finds becomes an F-item he places in the queue.
 - **Stop:** after step 17, so he can look at the new shell before the six review fixes (18 to 22).
 
 So this plan covers seven PRs: 11 (stall watchdog), 12 (area switch), 13 (status and place), 14 (home screen), 15 (Scheduled page), 16 (composers), 17 (handoff and rollups). Each step ships on desktop and web and is checked on both (rule added to M10 in #223).

@@ -10,6 +10,7 @@ const base: RunView = {
   title: "Work run",
   status: "running",
   costLabel: "$0.01 of $1.00",
+  activeSince: null,
   note: null,
   steps: [],
   streaming: "",
@@ -130,4 +131,31 @@ test("M9 step 6: a Python script's approval shows the script, what it saves, and
   expect(screen.queryByRole("button", { name: "Always allow in this project" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Allow" }));
   expect(onApprove).toHaveBeenCalledWith("r1", "yes");
+});
+
+test("M10 step 11: a working run says how long it has run and can be stopped from its card", () => {
+  const onStopRun = vi.fn();
+  render(
+    <Tooltip.Provider>
+      <Messages
+        modelName="Auto"
+        startedAt={0}
+        onRetry={() => undefined}
+        onStopRun={onStopRun}
+        messages={[
+          { id: "q", role: "user", content: "Go", status: "complete" },
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "streaming",
+            run: { ...base, activeSince: Date.now() - 125_000 },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  expect(screen.getByLabelText("Running for").textContent).toBe("Running for 2 min");
+  fireEvent.click(screen.getByRole("button", { name: "Stop this work run" }));
+  expect(onStopRun).toHaveBeenCalledWith("r1");
 });
