@@ -2,6 +2,7 @@ import type { ProviderId } from "@/catalog/catalog";
 import { Dialog, DropdownMenu, Tooltip } from "radix-ui";
 import {
   Anchor,
+  ArrowRightLeft,
   Archive,
   ArchiveRestore,
   Brain,
@@ -125,7 +126,10 @@ export function ThreadMenu({
   onEditTags,
   stay,
   onExport,
+  handoff,
 }: {
+  /** M10 step 17: Continue in Code from a chat, or Discuss in Chat from a session. */
+  handoff?: { label: string; onSelect: () => void };
   /** CH-11: copy or save this chat. */
   onExport?: (format: "copy" | "md" | "pdf" | "json") => void;
   /** RT-06: keep Auto on one provider in this chat; `provider` is the one it would stay on. */
@@ -166,6 +170,15 @@ export function ThreadMenu({
           sideOffset={5}
           className="z-30 max-h-[70dvh] min-w-48 overflow-y-auto rounded-lg border bg-popover p-1 shadow-lg"
         >
+          {handoff && (
+            <>
+              <DropdownMenu.Item className={item} onSelect={handoff.onSelect}>
+                <ArrowRightLeft className="size-3.5" />
+                {handoff.label}
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-border" />
+            </>
+          )}
           <DropdownMenu.Item className={item} onSelect={onRename}>
             <Pencil className="size-3.5" />
             Rename chat

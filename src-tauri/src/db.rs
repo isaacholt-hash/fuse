@@ -301,6 +301,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "thread_kind",
         sql: include_str!("../migrations/0053_thread_kind.sql"),
     },
+    MigrationFile {
+        version: 54,
+        description: "request_surface",
+        sql: include_str!("../migrations/0054_request_surface.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -1125,6 +1130,11 @@ mod tests {
         .unwrap();
         assert_eq!(logged[0]["cost_micro_usd"], 1234);
         assert_eq!(logged[0]["purpose"], "chat");
+        // 0054: requests written before it say nothing about where they came from.
+        let surface = select(&pool, "SELECT surface FROM request_log LIMIT 1", &[])
+            .await
+            .unwrap();
+        assert!(surface[0]["surface"].is_null());
         // 0053: the seeded chat held no run, so it stays in the Chat area.
         let kind = select(&pool, "SELECT kind FROM threads WHERE id = 't1'", &[])
             .await

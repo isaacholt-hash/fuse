@@ -15,6 +15,7 @@ import { prepareImage as webviewPrepareImage, type PreparedImage } from "@/files
 import { tauriKeysApi, type KeysApi } from "@/keys/api";
 import { httpAuthApi, MIN_PASSPHRASE, type AuthApi } from "@/platform/auth";
 import { onSignedOut } from "@/platform/http";
+import { setRequestSurface } from "@/storage/requestLog";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import type { ProviderAdapter } from "@/providers/types";
@@ -157,6 +158,10 @@ export default function App({
   hulkPollMs,
   onRestart,
 }: Props) {
+  // M10 step 17: Usage tells the desktop app's requests from the web app's.
+  useEffect(() => {
+    setRequestSurface(webApp ? "web" : "desktop");
+  }, [webApp]);
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
   // Bumped after a successful unlock, to open the database again.
   const [attempt, setAttempt] = useState(0);

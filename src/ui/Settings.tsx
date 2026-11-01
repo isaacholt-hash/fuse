@@ -368,10 +368,7 @@ export function SettingsView({
               : "Keys are stored in your OS keychain and never leave this device except to call the provider."}
           </p>
         </div>
-        {server}
-        {hulk}
         {privacy}
-        {agent}
         {instructions}
         {memory}
         {budgets}
@@ -380,7 +377,22 @@ export function SettingsView({
         {keyCaps}
         {models}
         {local}
-        {python}
+        {(server ?? hulk ?? agent ?? python) && (
+          <section aria-label="Code" className="mt-10 border-t pt-6">
+            {/* M10 step 17 (CH-19): what the Code area's sessions use, in one place. */}
+            <h2 className="text-xs font-medium tracking-[0.1em] text-muted-foreground uppercase">
+              Code
+            </h2>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              Where sessions run, what their runs did, and the sandbox and Python they use. A
+              project&apos;s run mode, cap and time limits are in its settings.
+            </p>
+            {server}
+            {hulk}
+            {agent}
+            {python}
+          </section>
+        )}
         {mcp}
         {prices}
         {appLock}

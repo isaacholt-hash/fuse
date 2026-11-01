@@ -32,6 +32,8 @@ export interface Thread {
   scheduleId: string | null;
   /** M10 step 16: a session's own settings; null fields fall back to the project's, then FUSE's. */
   session: ThreadSession;
+  /** M10 step 17: the chat or session this one was handed off from. */
+  handoffFromId: string | null;
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -75,6 +77,7 @@ interface ThreadRow {
   run_branch: number | null;
   run_where: "local" | "hulk" | null;
   run_cap_micro_usd: number | null;
+  handoff_from_id: string | null;
   last_message_at: number | null;
   created_at: number;
   updated_at: number;
@@ -110,6 +113,7 @@ const toThread = (r: ThreadRow): Thread => ({
     where: r.run_where,
     capMicroUsd: r.run_cap_micro_usd,
   },
+  handoffFromId: r.handoff_from_id,
   lastMessageAt: r.last_message_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -134,7 +138,7 @@ const toThread = (r: ThreadRow): Thread => ({
 
 const SELECT_THREAD = `
   SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.schedule_id, t.run_mode,
-         t.run_branch, t.run_where, t.run_cap_micro_usd, t.last_message_at, t.created_at, t.updated_at,
+         t.run_branch, t.run_where, t.run_cap_micro_usd, t.handoff_from_id, t.last_message_at, t.created_at, t.updated_at,
          t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
@@ -526,4 +530,18 @@ export async function setThreadSession(
     `UPDATE threads SET ${sets.join(", ")}, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [...args, Date.now(), tenant.workspaceId, id],
   );
+}
+
+/** M10 step 17: "Continue in Code" and "Discuss in Chat" link the new thread to where it began. */
+export async function setThreadHandoff(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  fromId: string,
+): Promise<void> {
+  await db.execute("UPDATE threads SET handoff_from_id = ? WHERE workspace_id = ? AND id = ?", [
+    fromId,
+    tenant.workspaceId,
+    id,
+  ]);
 }
