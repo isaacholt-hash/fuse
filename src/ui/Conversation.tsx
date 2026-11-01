@@ -34,7 +34,7 @@ import {
   Server,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { RunningFor } from "./RunningFor";
 import { Button } from "@/components/ui/button";
 import { fuzzyScore } from "./fuzzy";
@@ -363,6 +363,7 @@ export function Messages({
   messages,
   modelName,
   empty,
+  home,
   startedAt,
   onRetry,
   onEscalate,
@@ -408,6 +409,8 @@ export function Messages({
   modelName: string;
   /** M10 step 12: the empty state's words, per area; Chat's when omitted. */
   empty?: { kicker: string; heading: string; blurb: string };
+  /** M10 step 14: a new chat or session shows this instead of the plain empty state. */
+  home?: ReactNode;
   /** When the conversation started (Unix ms). */
   startedAt: number | null;
   onRetry: () => void;
@@ -491,7 +494,9 @@ export function Messages({
           setPicked(selectedQuote(scrollRef.current));
         }}
       >
-        {messages.length === 0 ? (
+        {messages.length === 0 && home ? (
+          home
+        ) : messages.length === 0 ? (
           <div className="flex min-h-full flex-col items-center justify-center px-8 py-10 text-center">
             <div className="mb-5">
               <Mark />

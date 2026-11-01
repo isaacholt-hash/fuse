@@ -288,3 +288,56 @@ test("M10 step 13: Code rows show a run going, waiting for you, or a new result,
     expect(within(row()).getByRole("img", { name: "New result" })).toBeInTheDocument();
   }, SLOW);
 }, 20_000);
+
+test("M10 step 14: a new session opens on what's happening, and a row opens its chat", async () => {
+  const db = openTestDb();
+  const { createProject } = await import("@/storage/projects");
+  const { createSchedule } = await import("@/storage/schedules");
+  const project = await createProject(db, t, "Lighthouse");
+  const session = await createThread(db, t, "Deploy the docs", project.id, false, "code");
+  const answer = await addMessage(db, t, {
+    threadId: session.id,
+    parentId: null,
+    role: "assistant",
+    content: "",
+  });
+  const run = await createRun(db, t, {
+    projectId: project.id,
+    threadId: session.id,
+    messageId: answer,
+    task: "Deploy the docs",
+    provider: "anthropic",
+    model: "m",
+    capMicroUsd: 1_000_000,
+  });
+  await addApproval(db, t, run.id, { kind: "command", command: "git push", runId: run.id });
+  await createSchedule(db, t, {
+    projectId: project.id,
+    name: "Nightly link check",
+    prompt: "Check the links",
+    kind: "code",
+    mode: "plan",
+    provider: "anthropic",
+    model: "m",
+    capMicroUsd: 500_000,
+    repeat: "daily",
+    onceAt: null,
+    minute: 22 * 60,
+    weekday: null,
+  });
+  const user = start(db);
+  await screen.findByRole("group", { name: "Area" }, SLOW);
+  await user.keyboard("{Control>}2{/Control}");
+  const happening = within(await screen.findByLabelText("What's happening", {}, SLOW));
+  const waiting = within(await happening.findByRole("region", { name: "Waiting for you" }, SLOW));
+  expect(waiting.getByText(/Run git push/)).toBeInTheDocument();
+  expect(
+    within(happening.getByRole("region", { name: "Next scheduled" })).getByText(
+      "Nightly link check",
+    ),
+  ).toBeInTheDocument();
+  // The composer is still there under it.
+  expect(screen.getByRole("textbox", { name: "Message" })).toBeInTheDocument();
+  await user.click(waiting.getByRole("button", { name: "Open Deploy the docs" }));
+  expect(await screen.findByRole("heading", { name: "Deploy the docs" }, SLOW)).toBeInTheDocument();
+}, 20_000);
