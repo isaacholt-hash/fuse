@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). All 11 steps are built and merged (2026-11-01). Next is Isaac's deploy (`docs/hulk-server.md`) and live check; after that, steps 11–16 (queued 2026-11-01), one at a time, stopping after each merge
+- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). All 11 steps are built and merged (2026-11-01). Next is Isaac's deploy (`docs/hulk-server.md`) and live check; after that, steps 11–22 (queued 2026-11-01), one at a time, stopping after each merge. Every step ships on desktop and web
 
 ## The 5 things that matter
 
@@ -34,6 +34,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Work in folders (2026-10-30) | M8 starts P2: a Work mode beside Code, folders per chat and several per project, Word, Excel and PDF read and written, organise as one approved plan, and commands in an OS sandbox (bubblewrap; AppContainer on Windows) |
 | Tools and MCP (2026-10-31) | M9 is P2 part 2: a tool registry with kinds, fetch_url, tool results treated as data with flagged passages shown on approvals, Python only in the M8 sandbox (pinned download, checked by hash), MCP over stdio and HTTP with OAuth (tools only, local servers sandboxed, secrets in the keychain). Read-only tools also work in plain chat |
 | Runs on HULK (2026-10-31) | M10 is P2 part 3: fuse-server (Rust, axum, Linux only) serves the same UI and commands to the browser and to a Node runner that runs runs headless; keys in systemd-creds; sign-in by passphrase, tailnet only via `tailscale serve`; desktop handover of Code runs on repos with a remote; scheduled tasks on the server; its own database until sync |
+| Two areas (2026-11-01) | Chat and Code are separate areas with their own sidebars and composers, switched in the sidebar header; Work sessions live inside Code (same runner, approvals, diffs, cap and handover). Chat reads files but never changes them; handoff both ways. From the UI review of the ChatGPT and Claude web apps (`docs/ui-review-2026-11-01.md`), M10 steps 12, 16 and 17 |
 | Build mode | **Claude builds and merges once checks pass; Isaac reviews after.** Small runnable steps, one PR each |
 | Open | Default tier mapping — set from current provider model lists and prices in M1, never from memory |
 

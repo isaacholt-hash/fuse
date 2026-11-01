@@ -158,6 +158,7 @@ Chat must feel at least as fast and polished as the two apps it replaces, with t
 | CH-16 | Share link for a thread (read-only, revocable) on web. | Nice | P3 |
 | CH-17 | Side-by-side view of two answers (from branches or compare mode) with a diff for code and text. | Should | P1 |
 | CH-18 | Custom assistants: a saved persona with instructions, files and tools, started like a chat; built on projects and the prompt library. | Nice | P2 |
+| CH-19 | Two areas (added 2026-11-01): Chat and Code, switched in the sidebar header, each with its own sidebar, composer, empty state and last-open item. A thread has a kind (chat, code, work); Work sessions live in the Code area. Chat can read a project's files and repository but never change them; "Continue in Code" and "Discuss in Chat" hand off with a summary and link the two threads. Same on desktop and web (PL-02). | Must | P2 |
 
 ## 8. Projects, memory and context
 
@@ -492,5 +493,6 @@ Decided 2026-10-30:
 **Can wait**
 
 - [ ] P2 part 3, Runs on HULK (M10): built unattended 2026-11-01 (`docs/milestones/M10-runs-on-hulk.md`); the recorded benchmark passes on HULK and in CI. Waiting on Isaac: the deploy (`docs/hulk-server.md`) and the live check. The self-hosted web app (PL-03, PL-02), background runs and handover (CA-15), following and approving from another device (CA-16 core), and scheduled tasks (AG-07)
+- [ ] M10 follow-ups (queued 2026-11-01, `docs/milestones/M10-runs-on-hulk.md` steps 11–22): the stall watchdog, two areas (CH-19) with status and place in the sidebar, a home screen and a Scheduled page, then the six fixes from public reviews. Source: `docs/ui-review-2026-11-01.md`
 - [ ] P2 sync, dictation, deep research (after M10)
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on
