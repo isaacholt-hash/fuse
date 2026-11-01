@@ -57,6 +57,18 @@ async function until(check: () => Promise<boolean>) {
   throw new Error("timed out");
 }
 
+/** HULK's copy after a run that wrote FOOTER.md and didn't commit it. */
+const changed = {
+  "status --porcelain": { output: "?? FOOTER.md\n", exitCode: 0 },
+  "rev-parse HEAD": { output: "aaa\n", exitCode: 0 },
+  "rev-parse origin/main": { output: "aaa\n", exitCode: 0 },
+};
+const looked = [
+  ["status", "--porcelain"],
+  ["rev-parse", "HEAD"],
+  ["rev-parse", "origin/main"],
+];
+
 /** A run that makes its branch and finishes. */
 const branchRun: typeof startChatRun = async (deps, input) => {
   const run = await createRun(deps.db, deps.tenant, {
@@ -101,7 +113,7 @@ async function handedOver(serverDb: SqlDb, files: ReturnType<typeof memoryFiles>
 test("a handed-over run: the project comes over, the run works in HULK's clone, and asks to push", async () => {
   const db = openTestDb();
   const files = memoryFiles();
-  const { git, ran } = fakeGit();
+  const { git, ran } = fakeGit(changed);
   const cloned: string[] = [];
   const runner = new Runner({
     deps: () =>
@@ -142,18 +154,24 @@ test("a handed-over run: the project comes over, the run works in HULK's clone, 
     "/home/daywalker/.local/share/fuse-server/data/work/site-1234",
   ]);
 
-  // Pushing is a send: it waits for you, then pushes only the run's branch.
+  // Committing and pushing is a send: it waits for you (having only looked), then commits what
+  // the run changed and pushes only the run's branch.
   await until(async () => (await openApprovals(db, t)).length === 1);
   const [q] = await openApprovals<{ kind: string; summary: string; remote: boolean }>(db, t);
   expect(q?.request).toMatchObject({
     kind: "git",
-    summary: "Push fuse/fix-the-footer-1 to git@github.com:o/site.git",
+    summary: "Commit and push fuse/fix-the-footer-1 to git@github.com:o/site.git",
     remote: true,
   });
-  expect(ran).toEqual([]);
+  expect(ran.map((r) => r.args)).toEqual(looked);
   await answerApproval(db, t, q?.id ?? "", "yes");
   await runner.idle();
-  expect(ran.map((r) => r.args)).toEqual([["push", "-u", "origin", "fuse/fix-the-footer-1"]]);
+  expect(ran.map((r) => r.args)).toEqual([
+    ...looked,
+    ["add", "-A"],
+    ["commit", "-m", "Fix the footer"],
+    ["push", "-u", "origin", "fuse/fix-the-footer-1"],
+  ]);
   expect(await getRun(db, t, run?.id ?? "")).toMatchObject({
     status: "done",
     note: "Pushed fuse/fix-the-footer-1 to git@github.com:o/site.git.",
@@ -163,7 +181,7 @@ test("a handed-over run: the project comes over, the run works in HULK's clone, 
 test("saying no to the push leaves the branch on HULK's copy, and says so", async () => {
   const db = openTestDb();
   const files = memoryFiles();
-  const { git, ran } = fakeGit();
+  const { git, ran } = fakeGit(changed);
   const runner = new Runner({
     deps: () =>
       Promise.resolve({
@@ -188,11 +206,45 @@ test("saying no to the push leaves the branch on HULK's copy, and says so", asyn
   const [q] = await openApprovals(db, t);
   await answerApproval(db, t, q?.id ?? "", "no");
   await runner.idle();
-  expect(ran).toEqual([]);
+  expect(ran.map((r) => r.args)).toEqual(looked);
   const req = await getRequest(db, t, requestId);
   expect((await getRun(db, t, req?.runId ?? ""))?.note).toBe(
     "Not pushed: fuse/fix-the-footer-1 is on HULK's copy only.",
   );
+});
+
+test("a run that changed nothing asks nothing and says so", async () => {
+  const db = openTestDb();
+  const files = memoryFiles();
+  const { git, ran } = fakeGit({
+    "rev-parse HEAD": changed["rev-parse HEAD"],
+    "rev-parse origin/main": changed["rev-parse origin/main"],
+  });
+  const runner = new Runner({
+    deps: () =>
+      Promise.resolve({
+        db,
+        tenant: t,
+        catalog: defaultCatalog,
+        adapterFor: () => {
+          throw new Error("no provider");
+        },
+        repo: {} as RunDeps["repo"],
+        files,
+        git,
+      }),
+    start: branchRun,
+    clone: () => Promise.resolve("/srv/clone"),
+    pollMs: 1,
+    sleep: () => new Promise((r) => setTimeout(r, 1)),
+  });
+  const { requestId } = await handedOver(db, files);
+  await runner.tick();
+  await runner.idle();
+  expect(await openApprovals(db, t)).toEqual([]);
+  expect(ran.map((r) => r.args)).toEqual(looked);
+  const req = await getRequest(db, t, requestId);
+  expect((await getRun(db, t, req?.runId ?? ""))?.note).toBe("Nothing to push: no files changed.");
 });
 
 test("a clone that fails fails the request with why", async () => {

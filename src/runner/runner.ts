@@ -279,25 +279,46 @@ export class Runner {
     return { threadId: thread.id, folderId: folder.id };
   }
 
-  /** A handed-over run that finished on its branch asks to push it (a send), then says how. */
+  /**
+   * A handed-over run that finished on its branch asks to commit what it changed and push the
+   * branch (one send), then says how. Nobody is at the desktop to commit, so HULK does.
+   */
   private async push(deps: RunDeps, runId: string, folderId: string, handover: Handover) {
     const run = await getRun(deps.db, deps.tenant, runId);
-    if (run?.status !== "done" || !run.branch || !deps.git || !deps.approve) return;
+    const git = deps.git;
+    if (run?.status !== "done" || !run.branch || !git || !deps.approve) return;
+    const branch = run.branch;
+    const changed = (await git.run(folderId, "git", ["status", "--porcelain"])).output.trim();
+    const head = (await git.run(folderId, "git", ["rev-parse", "HEAD"])).output.trim();
+    const base = (
+      await git.run(folderId, "git", ["rev-parse", `origin/${handover.branch}`])
+    ).output.trim();
+    if (!changed && head === base) {
+      await setRunStatus(deps.db, deps.tenant, runId, "done", "Nothing to push: no files changed.");
+      return;
+    }
     const yes = await deps.approve({
       kind: "git",
-      summary: `Push ${run.branch} to ${handover.remote}`,
+      summary: `${changed ? "Commit and push" : "Push"} ${branch} to ${handover.remote}`,
       remote: true,
       runId,
     });
-    let note: string;
-    if (yes === "yes" || yes === "always" || yes === true) {
-      const r = await deps.git.run(folderId, "git", ["push", "-u", "origin", run.branch]);
-      note =
-        r.exitCode === 0
-          ? `Pushed ${run.branch} to ${handover.remote}.`
-          : `Couldn't push ${run.branch}: ${r.output.trim()}`;
-    } else note = `Not pushed: ${run.branch} is on HULK's copy only.`;
-    await setRunStatus(deps.db, deps.tenant, runId, "done", note);
+    const note = async (): Promise<string> => {
+      if (yes !== "yes" && yes !== "always" && yes !== true)
+        return `Not pushed: ${branch} is on HULK's copy only.`;
+      if (changed) {
+        const add = await git.run(folderId, "git", ["add", "-A"]);
+        const message = run.task.replace(/\s+/g, " ").trim().slice(0, 72) || "Run on HULK";
+        const commit =
+          add.exitCode === 0 ? await git.run(folderId, "git", ["commit", "-m", message]) : add;
+        if (commit.exitCode !== 0) return `Couldn't commit on ${branch}: ${commit.output.trim()}`;
+      }
+      const r = await git.run(folderId, "git", ["push", "-u", "origin", branch]);
+      return r.exitCode === 0
+        ? `Pushed ${branch} to ${handover.remote}.`
+        : `Couldn't push ${branch}: ${r.output.trim()}`;
+    };
+    await setRunStatus(deps.db, deps.tenant, runId, "done", await note());
   }
 
   /** Saves the streaming text every `liveMs`, and always when a turn ends. */
