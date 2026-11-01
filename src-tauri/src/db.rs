@@ -18,6 +18,7 @@ use sqlx::migrate::{Migration as SqlxMigration, MigrationType, Migrator};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
+use crate::ctx::Ctx;
 use crate::keys::SecretStore;
 
 pub(crate) const DB_FILE: &str = "fuse.db";
@@ -650,63 +651,87 @@ impl Database {
     }
 }
 
+// The commands' bodies (M10 step 2). The database lives in the config folder, the one the SQL
+// plugin used, so existing databases are found; its key is in the same store as the API keys
+// (the OS keychain on the desktop).
+
+pub(crate) async fn db_open(ctx: &Ctx) -> Result<OpenStatus, String> {
+    let db = &ctx.db;
+    let _one_at_a_time = db.opening.lock().await;
+    if db.pool().is_ok() {
+        return Ok(OpenStatus::Ready);
+    }
+    db.settle(open(&ctx.config_dir, ctx.keys.store.as_ref()).await?)
+}
+
+pub(crate) async fn db_recover(ctx: &Ctx, key: String) -> Result<OpenStatus, String> {
+    let db = &ctx.db;
+    let _one_at_a_time = db.opening.lock().await;
+    db.settle(recover(&ctx.config_dir, ctx.keys.store.as_ref(), &key).await?)
+}
+
+pub(crate) fn db_recovery_key(ctx: &Ctx) -> Result<String, String> {
+    recovery_key(ctx.keys.store.as_ref())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecuteResult {
+    rows_affected: u64,
+}
+
+pub(crate) async fn db_execute(
+    ctx: &Ctx,
+    sql: String,
+    params: Vec<Value>,
+) -> Result<ExecuteResult, String> {
+    let rows_affected = execute(&ctx.db.pool()?, &sql, &params).await?;
+    Ok(ExecuteResult { rows_affected })
+}
+
+pub(crate) async fn db_select(
+    ctx: &Ctx,
+    sql: String,
+    params: Vec<Value>,
+) -> Result<Vec<Map<String, Value>>, String> {
+    select(&ctx.db.pool()?, &sql, &params).await
+}
+
 pub mod commands {
     use super::*;
-    use crate::keys::OsKeychain;
-    use tauri::{AppHandle, Manager, State};
+    use tauri::State;
 
-    pub(crate) fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
-        // Same folder the SQL plugin used, so existing databases are found.
-        app.path().app_config_dir().map_err(|e| e.to_string())
+    #[tauri::command]
+    pub async fn db_open(ctx: State<'_, Ctx>) -> Result<OpenStatus, String> {
+        super::db_open(&ctx).await
     }
 
     #[tauri::command]
-    pub async fn db_open(app: AppHandle, db: State<'_, Database>) -> Result<OpenStatus, String> {
-        let _one_at_a_time = db.opening.lock().await;
-        if db.pool().is_ok() {
-            return Ok(OpenStatus::Ready);
-        }
-        db.settle(open(&data_dir(&app)?, &OsKeychain).await?)
+    pub async fn db_recover(ctx: State<'_, Ctx>, key: String) -> Result<OpenStatus, String> {
+        super::db_recover(&ctx, key).await
     }
 
     #[tauri::command]
-    pub async fn db_recover(
-        app: AppHandle,
-        db: State<'_, Database>,
-        key: String,
-    ) -> Result<OpenStatus, String> {
-        let _one_at_a_time = db.opening.lock().await;
-        db.settle(recover(&data_dir(&app)?, &OsKeychain, &key).await?)
-    }
-
-    #[tauri::command]
-    pub fn db_recovery_key() -> Result<String, String> {
-        recovery_key(&OsKeychain)
-    }
-
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct ExecuteResult {
-        rows_affected: u64,
+    pub fn db_recovery_key(ctx: State<'_, Ctx>) -> Result<String, String> {
+        super::db_recovery_key(&ctx)
     }
 
     #[tauri::command]
     pub async fn db_execute(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         sql: String,
         params: Vec<Value>,
     ) -> Result<ExecuteResult, String> {
-        let rows_affected = execute(&db.pool()?, &sql, &params).await?;
-        Ok(ExecuteResult { rows_affected })
+        super::db_execute(&ctx, sql, params).await
     }
 
     #[tauri::command]
     pub async fn db_select(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         sql: String,
         params: Vec<Value>,
     ) -> Result<Vec<Map<String, Value>>, String> {
-        select(&db.pool()?, &sql, &params).await
+        super::db_select(&ctx, sql, params).await
     }
 }
 

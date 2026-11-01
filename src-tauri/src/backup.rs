@@ -13,6 +13,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use sqlx::sqlite::SqlitePool;
 
+use crate::ctx::Ctx;
 use crate::db::{DB_FILE, is_plaintext, prune_backups};
 
 const BACKUPS_DIR: &str = "backups";
@@ -101,7 +102,7 @@ pub fn list(dir: &Path) -> Vec<BackupInfo> {
 
 /// Copies the open database to `backups/` now. Writers wait while the file is copied, so the
 /// copy (database plus WAL) is consistent.
-pub async fn backup_now(dir: &Path, pool: &SqlitePool) -> Result<BackupInfo, String> {
+pub async fn copy_now(dir: &Path, pool: &SqlitePool) -> Result<BackupInfo, String> {
     let fail = |e: String| format!("Couldn't back up the database: {e}");
     let db = dir.join(DB_FILE);
     if is_plaintext(&db) {
@@ -207,42 +208,53 @@ pub fn check_files(files_root: &Path, hashes: &[String]) -> FileCheck {
     out
 }
 
+pub(crate) fn backup_list(ctx: &Ctx) -> Result<Vec<BackupInfo>, String> {
+    Ok(list(&ctx.config_dir))
+}
+
+pub(crate) async fn backup_now(ctx: &Ctx) -> Result<BackupInfo, String> {
+    copy_now(&ctx.config_dir, &ctx.db.pool()?).await
+}
+
+pub(crate) async fn files_check(ctx: &Ctx) -> Result<FileCheck, String> {
+    let rows = crate::db::select(
+        &ctx.db.pool()?,
+        "SELECT DISTINCT sha256 FROM files WHERE deleted_at IS NULL",
+        &[],
+    )
+    .await?;
+    let hashes: Vec<String> = rows
+        .into_iter()
+        .filter_map(|r| r.get("sha256").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+    Ok(check_files(&ctx.data_dir, &hashes))
+}
+
 pub mod commands {
     use super::*;
-    use crate::db::{Database, commands::data_dir};
-    use tauri::{AppHandle, Manager, State};
+    use tauri::{AppHandle, State};
 
     #[tauri::command]
-    pub fn backup_list(app: AppHandle) -> Result<Vec<BackupInfo>, String> {
-        Ok(list(&data_dir(&app)?))
+    pub fn backup_list(ctx: State<'_, Ctx>) -> Result<Vec<BackupInfo>, String> {
+        super::backup_list(&ctx)
     }
 
     #[tauri::command]
-    pub async fn backup_now(app: AppHandle, db: State<'_, Database>) -> Result<BackupInfo, String> {
-        super::backup_now(&data_dir(&app)?, &db.pool()?).await
+    pub async fn backup_now(ctx: State<'_, Ctx>) -> Result<BackupInfo, String> {
+        super::backup_now(&ctx).await
     }
 
     /// Plans the restore and restarts the app, which applies it before the database opens.
+    /// Desktop only: restarting is the app's own business.
     #[tauri::command]
-    pub fn backup_restore(app: AppHandle, name: String) -> Result<(), String> {
-        request_restore(&data_dir(&app)?, &name)?;
+    pub fn backup_restore(app: AppHandle, ctx: State<'_, Ctx>, name: String) -> Result<(), String> {
+        request_restore(&ctx.config_dir, &name)?;
         app.restart();
     }
 
     #[tauri::command]
-    pub async fn files_check(app: AppHandle, db: State<'_, Database>) -> Result<FileCheck, String> {
-        let rows = crate::db::select(
-            &db.pool()?,
-            "SELECT DISTINCT sha256 FROM files WHERE deleted_at IS NULL",
-            &[],
-        )
-        .await?;
-        let hashes: Vec<String> = rows
-            .into_iter()
-            .filter_map(|r| r.get("sha256").and_then(|v| v.as_str()).map(String::from))
-            .collect();
-        let root = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        Ok(check_files(&root, &hashes))
+    pub async fn files_check(ctx: State<'_, Ctx>) -> Result<FileCheck, String> {
+        super::files_check(&ctx).await
     }
 }
 
@@ -306,7 +318,7 @@ mod tests {
         let store = MemoryStore::default();
         let pool = ready(open(&dir, &store).await.unwrap());
         add_thread(&pool, "t1", "Before").await;
-        let info = backup_now(&dir, &pool).await.unwrap();
+        let info = copy_now(&dir, &pool).await.unwrap();
         assert_eq!(info.reason, "manual");
         assert!(!is_plaintext(&dir.join(BACKUPS_DIR).join(&info.name)));
         add_thread(&pool, "t2", "After").await;

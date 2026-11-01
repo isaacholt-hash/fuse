@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
+use crate::ctx::Ctx;
+
 /// Keychain service name; one entry per provider under it.
 const SERVICE: &str = "com.isaacholt.fuse";
 /// Anthropic API version header, from https://platform.claude.com/docs/en/api/models/list (2026-10-26).
@@ -267,12 +269,19 @@ pub struct Keys {
     pub client: reqwest::Client,
 }
 
-impl Default for Keys {
-    fn default() -> Self {
+impl Keys {
+    /// Keys kept in `store`: the OS keychain on the desktop, the server's own store there.
+    pub(crate) fn with_store(store: Box<dyn SecretStore>) -> Self {
         Keys {
-            store: Box::new(OsKeychain),
+            store,
             client: reqwest::Client::new(),
         }
+    }
+}
+
+impl Default for Keys {
+    fn default() -> Self {
+        Keys::with_store(Box::new(OsKeychain))
     }
 }
 
@@ -324,66 +333,116 @@ pub(crate) fn mcp_oauth_delete(keys: &Keys, server_id: &str) -> Result<(), Strin
     keys.store.delete(&mcp_account(server_id, "__oauth")?)
 }
 
+// The commands' bodies (M10 step 2), without Tauri.
+
+/// M9 step 8: keeps an MCP server's environment variable in the keychain.
+pub(crate) fn mcp_secret_set(
+    ctx: &Ctx,
+    server_id: String,
+    name: String,
+    value: String,
+) -> Result<(), String> {
+    ctx.keys.store.set(&mcp_account(&server_id, &name)?, &value)
+}
+
+/// M9 step 8: removes one; nothing if it wasn't there.
+pub(crate) fn mcp_secret_delete(ctx: &Ctx, server_id: String, name: String) -> Result<(), String> {
+    ctx.keys.store.delete(&mcp_account(&server_id, &name)?)
+}
+
+/// M9 step 8: which of these variables have a value kept (never the values).
+pub(crate) fn mcp_secret_status(
+    ctx: &Ctx,
+    server_id: String,
+    names: Vec<String>,
+) -> Result<Vec<bool>, String> {
+    names
+        .iter()
+        .map(|n| Ok(ctx.keys.store.get(&mcp_account(&server_id, n)?)?.is_some()))
+        .collect()
+}
+
+pub(crate) fn key_status(ctx: &Ctx, provider: Provider) -> Result<KeyStatus, String> {
+    status(ctx.keys.store.as_ref(), provider)
+}
+
+pub(crate) async fn key_save(
+    ctx: &Ctx,
+    provider: Provider,
+    key: String,
+) -> Result<SaveResult, String> {
+    save_key(
+        ctx.keys.store.as_ref(),
+        &ctx.keys.client,
+        provider,
+        &key,
+        None,
+    )
+    .await
+}
+
+pub(crate) async fn key_test(ctx: &Ctx, provider: Provider) -> Result<TestResult, String> {
+    test_saved_key(ctx.keys.store.as_ref(), &ctx.keys.client, provider, None).await
+}
+
+pub(crate) fn key_delete(ctx: &Ctx, provider: Provider) -> Result<KeyStatus, String> {
+    delete_key(ctx.keys.store.as_ref(), provider)
+}
+
 pub mod commands {
     use super::*;
     use tauri::State;
 
-    /// M9 step 8: keeps an MCP server's environment variable in the keychain.
     #[tauri::command]
     pub fn mcp_secret_set(
-        keys: State<'_, Keys>,
+        ctx: State<'_, Ctx>,
         server_id: String,
         name: String,
         value: String,
     ) -> Result<(), String> {
-        keys.store.set(&mcp_account(&server_id, &name)?, &value)
+        super::mcp_secret_set(&ctx, server_id, name, value)
     }
 
-    /// M9 step 8: removes one; nothing if it wasn't there.
     #[tauri::command]
     pub fn mcp_secret_delete(
-        keys: State<'_, Keys>,
+        ctx: State<'_, Ctx>,
         server_id: String,
         name: String,
     ) -> Result<(), String> {
-        keys.store.delete(&mcp_account(&server_id, &name)?)
+        super::mcp_secret_delete(&ctx, server_id, name)
     }
 
-    /// M9 step 8: which of these variables have a value kept (never the values).
     #[tauri::command]
     pub fn mcp_secret_status(
-        keys: State<'_, Keys>,
+        ctx: State<'_, Ctx>,
         server_id: String,
         names: Vec<String>,
     ) -> Result<Vec<bool>, String> {
-        names
-            .iter()
-            .map(|n| Ok(keys.store.get(&mcp_account(&server_id, n)?)?.is_some()))
-            .collect()
+        super::mcp_secret_status(&ctx, server_id, names)
     }
 
     #[tauri::command]
-    pub fn key_status(keys: State<'_, Keys>, provider: Provider) -> Result<KeyStatus, String> {
-        status(keys.store.as_ref(), provider)
+    pub fn key_status(ctx: State<'_, Ctx>, provider: Provider) -> Result<KeyStatus, String> {
+        super::key_status(&ctx, provider)
     }
 
     #[tauri::command]
     pub async fn key_save(
-        keys: State<'_, Keys>,
+        ctx: State<'_, Ctx>,
         provider: Provider,
         key: String,
     ) -> Result<SaveResult, String> {
-        save_key(keys.store.as_ref(), &keys.client, provider, &key, None).await
+        super::key_save(&ctx, provider, key).await
     }
 
     #[tauri::command]
-    pub async fn key_test(keys: State<'_, Keys>, provider: Provider) -> Result<TestResult, String> {
-        test_saved_key(keys.store.as_ref(), &keys.client, provider, None).await
+    pub async fn key_test(ctx: State<'_, Ctx>, provider: Provider) -> Result<TestResult, String> {
+        super::key_test(&ctx, provider).await
     }
 
     #[tauri::command]
-    pub fn key_delete(keys: State<'_, Keys>, provider: Provider) -> Result<KeyStatus, String> {
-        delete_key(keys.store.as_ref(), provider)
+    pub fn key_delete(ctx: State<'_, Ctx>, provider: Provider) -> Result<KeyStatus, String> {
+        super::key_delete(&ctx, provider)
     }
 }
 

@@ -53,7 +53,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - Every api module goes through it.
   - A test checks that nothing outside `src/platform` imports `@tauri-apps/api/core`.
   - The desktop behaves the same.
-- [ ] **2. Rust core without Tauri.**
+- [x] **2. Rust core without Tauri.**
   - A `Ctx` (data folder, key store, database, run and process registries) and an `EventSink` trait replace `State`, `AppHandle` and `Channel` inside the command bodies.
   - Tauri commands become thin wrappers. No behaviour change.
 - [ ] **3. fuse-server.**

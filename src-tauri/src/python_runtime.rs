@@ -8,8 +8,11 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+
+use crate::ctx::{Ctx, Sink};
 
 /// Builds come only from python-build-standalone's GitHub releases.
 const SOURCE: &str = "https://github.com/astral-sh/python-build-standalone/releases/download/";
@@ -320,25 +323,104 @@ pub struct PyInstall {
     cancel: std::sync::Mutex<Option<std::sync::Arc<AtomicBool>>>,
 }
 
+// The commands' bodies (M10 step 2), without Tauri.
+
+fn root(ctx: &Ctx) -> PathBuf {
+    ctx.data_dir.join("python-runtime")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn python_install(
+    ctx: &Ctx,
+    url: String,
+    sha256: String,
+    size_bytes: u64,
+    python: String,
+    release: String,
+    lock: String,
+    packages: Vec<String>,
+    on_event: Sink<PyMsg>,
+) -> Result<Runtime, String> {
+    check_url(&url, &release)?;
+    if !lock
+        .lines()
+        .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
+        .all(|l| l.starts_with(' ') || l.contains("=="))
+    {
+        return Err("The library list must pin every version.".into());
+    }
+    let state = &ctx.python;
+    let flag = Arc::new(AtomicBool::new(false));
+    {
+        let mut current = state.cancel.lock().map_err(|e| e.to_string())?;
+        if current.is_some() {
+            return Err("Python is already being installed.".into());
+        }
+        *current = Some(flag.clone());
+    }
+    let client = reqwest::Client::builder()
+        .https_only(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let want = Wanted {
+        url: &url,
+        sha256: &sha256,
+        size: size_bytes,
+        python: &python,
+        release: &release,
+        lock: &lock,
+        packages,
+    };
+    let result = install(&client, &root(ctx), &want, &flag, |m| {
+        let _ = on_event.send(m);
+    })
+    .await;
+    if let Ok(mut current) = state.cancel.lock() {
+        *current = None;
+    }
+    result
+}
+
+pub(crate) fn python_install_cancel(ctx: &Ctx) -> Result<(), String> {
+    if let Some(flag) = ctx
+        .python
+        .cancel
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+    {
+        flag.store(true, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+pub(crate) fn python_status(ctx: &Ctx) -> Result<Option<Runtime>, String> {
+    Ok(status(&root(ctx)))
+}
+
+pub(crate) fn python_remove(ctx: &Ctx) -> Result<(), String> {
+    if ctx
+        .python
+        .cancel
+        .lock()
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        return Err("Wait for the install to finish or stop it first.".into());
+    }
+    remove(&root(ctx))
+}
+
 pub mod commands {
     use super::*;
-    use std::sync::Arc;
+    use crate::ctx::channel_sink;
+    use tauri::State;
     use tauri::ipc::Channel;
-    use tauri::{AppHandle, Manager, State};
-
-    fn root(app: &AppHandle) -> Result<PathBuf, String> {
-        Ok(app
-            .path()
-            .app_data_dir()
-            .map_err(|e| e.to_string())?
-            .join("python-runtime"))
-    }
 
     #[tauri::command]
     #[allow(clippy::too_many_arguments)]
     pub async fn python_install(
-        app: AppHandle,
-        state: State<'_, PyInstall>,
+        ctx: State<'_, Ctx>,
         url: String,
         sha256: String,
         size_bytes: u64,
@@ -348,69 +430,26 @@ pub mod commands {
         packages: Vec<String>,
         on_event: Channel<PyMsg>,
     ) -> Result<Runtime, String> {
-        check_url(&url, &release)?;
-        if !lock
-            .lines()
-            .filter(|l| !l.trim().is_empty() && !l.trim_start().starts_with('#'))
-            .all(|l| l.starts_with(' ') || l.contains("=="))
-        {
-            return Err("The library list must pin every version.".into());
-        }
-        let flag = Arc::new(AtomicBool::new(false));
-        {
-            let mut current = state.cancel.lock().map_err(|e| e.to_string())?;
-            if current.is_some() {
-                return Err("Python is already being installed.".into());
-            }
-            *current = Some(flag.clone());
-        }
-        let client = reqwest::Client::builder()
-            .https_only(true)
-            .build()
-            .map_err(|e| e.to_string())?;
-        let want = Wanted {
-            url: &url,
-            sha256: &sha256,
-            size: size_bytes,
-            python: &python,
-            release: &release,
-            lock: &lock,
-            packages,
-        };
-        let result = match root(&app) {
-            Ok(dir) => {
-                install(&client, &dir, &want, &flag, |m| {
-                    let _ = on_event.send(m);
-                })
-                .await
-            }
-            Err(e) => Err(e),
-        };
-        if let Ok(mut current) = state.cancel.lock() {
-            *current = None;
-        }
-        result
+        let sink = channel_sink(on_event);
+        super::python_install(
+            &ctx, url, sha256, size_bytes, python, release, lock, packages, sink,
+        )
+        .await
     }
 
     #[tauri::command]
-    pub fn python_install_cancel(state: State<'_, PyInstall>) -> Result<(), String> {
-        if let Some(flag) = state.cancel.lock().map_err(|e| e.to_string())?.as_ref() {
-            flag.store(true, Ordering::Relaxed);
-        }
-        Ok(())
+    pub fn python_install_cancel(ctx: State<'_, Ctx>) -> Result<(), String> {
+        super::python_install_cancel(&ctx)
     }
 
     #[tauri::command]
-    pub fn python_status(app: AppHandle) -> Result<Option<Runtime>, String> {
-        Ok(status(&root(&app)?))
+    pub fn python_status(ctx: State<'_, Ctx>) -> Result<Option<Runtime>, String> {
+        super::python_status(&ctx)
     }
 
     #[tauri::command]
-    pub fn python_remove(app: AppHandle, state: State<'_, PyInstall>) -> Result<(), String> {
-        if state.cancel.lock().map_err(|e| e.to_string())?.is_some() {
-            return Err("Wait for the install to finish or stop it first.".into());
-        }
-        remove(&root(&app)?)
+    pub fn python_remove(ctx: State<'_, Ctx>) -> Result<(), String> {
+        super::python_remove(&ctx)
     }
 }
 

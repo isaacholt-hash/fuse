@@ -7,10 +7,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use serde::{Deserialize, Serialize};
-use tauri::ipc::Channel;
-use tauri::{State, async_runtime};
 
-use crate::keys::{Keys, Provider};
+use crate::ctx::{Ctx, EventSink, Sink};
+use crate::keys::Provider;
 
 /// Paths each provider may be called on (docs/providers.md).
 fn allowed_path(provider: Provider, path: &str) -> bool {
@@ -72,7 +71,7 @@ pub enum StreamMsg {
 #[derive(Default)]
 pub struct Transport {
     next_id: AtomicU32,
-    running: Mutex<HashMap<u32, async_runtime::JoinHandle<()>>>,
+    running: Mutex<HashMap<u32, tokio::task::JoinHandle<()>>>,
 }
 
 /// Checks a request before any key is touched. Returns the full URL.
@@ -108,7 +107,7 @@ pub async fn run_request(
     url: &str,
     req: &HttpRequest,
     key: &str,
-    channel: &Channel<StreamMsg>,
+    channel: &dyn EventSink<StreamMsg>,
 ) {
     let mut builder = if req.method == "POST" {
         client.post(url)
@@ -176,66 +175,81 @@ pub async fn run_request(
     }
 }
 
+/// Starts a provider request; returns an id for `provider_abort`. Results arrive on `on_event`.
+pub(crate) async fn provider_fetch(
+    ctx: &Ctx,
+    request: HttpRequest,
+    on_event: Sink<StreamMsg>,
+) -> Result<u32, String> {
+    // Error prefixes (`forbidden:`, `egress:`, `no_key:`, `keychain:`) let the frontend
+    // classify them.
+    let url =
+        validate(&request, request.provider.api_base()).map_err(|e| format!("forbidden: {e}"))?;
+    // SE-13: the project's egress policy, looked up here, before any key is touched.
+    crate::egress::check(
+        &ctx.db.pool()?,
+        request.provider,
+        &request.method,
+        &request.path,
+        request.scope.as_deref(),
+    )
+    .await
+    .map_err(|e| format!("egress: {e}"))?;
+    let key = ctx
+        .keys
+        .store
+        .get(request.provider.account())
+        .map_err(|e| format!("keychain: {e}"))?
+        .ok_or_else(|| "no_key: No API key saved for this provider.".to_string())?;
+    let client = ctx.keys.client.clone();
+    let id = ctx.transport.next_id.fetch_add(1, Ordering::Relaxed);
+    let handle = tokio::spawn(async move {
+        run_request(&client, &url, &request, &key, on_event.as_ref()).await;
+    });
+    let mut running = ctx.transport.running.lock().map_err(|e| e.to_string())?;
+    running.retain(|_, h| !h.is_finished());
+    running.insert(id, handle);
+    Ok(id)
+}
+
+pub(crate) fn provider_abort(ctx: &Ctx, id: u32) -> Result<(), String> {
+    if let Some(handle) = ctx
+        .transport
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&id)
+    {
+        handle.abort();
+    }
+    Ok(())
+}
+
 pub mod commands {
     use super::*;
-    use crate::db::Database;
+    use crate::ctx::channel_sink;
+    use tauri::State;
+    use tauri::ipc::Channel;
 
-    /// Starts a provider request; returns an id for `provider_abort`. Results arrive on `on_event`.
     #[tauri::command]
     pub async fn provider_fetch(
-        keys: State<'_, Keys>,
-        transport: State<'_, Transport>,
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         request: HttpRequest,
         on_event: Channel<StreamMsg>,
     ) -> Result<u32, String> {
-        // Error prefixes (`forbidden:`, `egress:`, `no_key:`, `keychain:`) let the frontend
-        // classify them.
-        let url = validate(&request, request.provider.api_base())
-            .map_err(|e| format!("forbidden: {e}"))?;
-        // SE-13: the project's egress policy, looked up here, before any key is touched.
-        crate::egress::check(
-            &db.pool()?,
-            request.provider,
-            &request.method,
-            &request.path,
-            request.scope.as_deref(),
-        )
-        .await
-        .map_err(|e| format!("egress: {e}"))?;
-        let key = keys
-            .store
-            .get(request.provider.account())
-            .map_err(|e| format!("keychain: {e}"))?
-            .ok_or_else(|| "no_key: No API key saved for this provider.".to_string())?;
-        let client = keys.client.clone();
-        let id = transport.next_id.fetch_add(1, Ordering::Relaxed);
-        let handle = async_runtime::spawn(async move {
-            run_request(&client, &url, &request, &key, &on_event).await;
-        });
-        let mut running = transport.running.lock().map_err(|e| e.to_string())?;
-        running.retain(|_, h| !h.inner().is_finished());
-        running.insert(id, handle);
-        Ok(id)
+        super::provider_fetch(&ctx, request, channel_sink(on_event)).await
     }
 
     #[tauri::command]
-    pub fn provider_abort(transport: State<'_, Transport>, id: u32) -> Result<(), String> {
-        if let Some(handle) = transport
-            .running
-            .lock()
-            .map_err(|e| e.to_string())?
-            .remove(&id)
-        {
-            handle.abort();
-        }
-        Ok(())
+    pub fn provider_abort(ctx: State<'_, Ctx>, id: u32) -> Result<(), String> {
+        super::provider_abort(&ctx, id)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tauri::ipc::Channel;
 
     fn req(provider: Provider, method: &str, path: &str, headers: &[(&str, &str)]) -> HttpRequest {
         HttpRequest {
@@ -351,14 +365,15 @@ mod tests {
 
         let got: Arc<Mutex<Vec<serde_json::Value>>> = Arc::default();
         let sink = got.clone();
-        let channel = Channel::new(move |msg: tauri::ipc::InvokeResponseBody| {
-            if let tauri::ipc::InvokeResponseBody::Json(json) = msg {
-                sink.lock()
-                    .unwrap()
-                    .push(serde_json::from_str(&json).unwrap());
-            }
-            Ok(())
-        });
+        let channel: Channel<StreamMsg> =
+            Channel::new(move |msg: tauri::ipc::InvokeResponseBody| {
+                if let tauri::ipc::InvokeResponseBody::Json(json) = msg {
+                    sink.lock()
+                        .unwrap()
+                        .push(serde_json::from_str(&json).unwrap());
+                }
+                Ok(())
+            });
         let mut r = req(
             Provider::Anthropic,
             "POST",
@@ -399,12 +414,13 @@ mod tests {
             .port();
         let got: std::sync::Arc<Mutex<Vec<String>>> = std::sync::Arc::default();
         let sink = got.clone();
-        let channel = Channel::new(move |msg: tauri::ipc::InvokeResponseBody| {
-            if let tauri::ipc::InvokeResponseBody::Json(json) = msg {
-                sink.lock().unwrap().push(json);
-            }
-            Ok(())
-        });
+        let channel: Channel<StreamMsg> =
+            Channel::new(move |msg: tauri::ipc::InvokeResponseBody| {
+                if let tauri::ipc::InvokeResponseBody::Json(json) = msg {
+                    sink.lock().unwrap().push(json);
+                }
+                Ok(())
+            });
         let r = req(Provider::Openai, "GET", "/v1/models", &[]);
         let client = reqwest::Client::builder().no_proxy().build().unwrap();
         run_request(

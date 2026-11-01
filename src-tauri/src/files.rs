@@ -2,12 +2,15 @@
 //! The database keeps only metadata (see docs/data-model.md, `files`). Bytes cross IPC raw, not as
 //! JSON, so a 10 MB image doesn't become a 30 MB number array.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+
+use crate::ctx::Ctx;
 
 /// Hard cap per file. Provider limits are lower (Anthropic: 32 MB per request), and images are
 /// resized before they get here.
@@ -87,34 +90,45 @@ pub fn wipe(root: &Path) -> Result<usize, String> {
     Ok(removed)
 }
 
+/// Body: the raw file bytes.
+pub(crate) fn file_put(
+    ctx: &Ctx,
+    body: Vec<u8>,
+    _headers: &HashMap<String, String>,
+) -> Result<StoredFile, String> {
+    put(&ctx.data_dir, &body)
+}
+
+/// Returns the raw bytes.
+pub(crate) fn file_get(ctx: &Ctx, sha256: String) -> Result<Vec<u8>, String> {
+    get(&ctx.data_dir, &sha256)
+}
+
+/// Deletes every stored attachment (delete-all); returns how many.
+pub(crate) fn file_wipe(ctx: &Ctx) -> Result<usize, String> {
+    wipe(&ctx.data_dir)
+}
+
 pub mod commands {
     use super::*;
-    use tauri::ipc::{InvokeBody, Request, Response};
-    use tauri::{AppHandle, Manager};
+    use crate::ctx::request_parts;
+    use tauri::State;
+    use tauri::ipc::{Request, Response};
 
-    fn root(app: &AppHandle) -> Result<PathBuf, String> {
-        app.path().app_data_dir().map_err(|e| e.to_string())
+    #[tauri::command]
+    pub fn file_put(ctx: State<'_, Ctx>, request: Request<'_>) -> Result<StoredFile, String> {
+        let (body, headers) = request_parts(&request)?;
+        super::file_put(&ctx, body, &headers)
     }
 
-    /// Body: the raw file bytes.
     #[tauri::command]
-    pub fn file_put(app: AppHandle, request: Request<'_>) -> Result<StoredFile, String> {
-        match request.body() {
-            InvokeBody::Raw(bytes) => put(&root(&app)?, bytes),
-            InvokeBody::Json(_) => Err("expected raw bytes".into()),
-        }
+    pub fn file_get(ctx: State<'_, Ctx>, sha256: String) -> Result<Response, String> {
+        Ok(Response::new(super::file_get(&ctx, sha256)?))
     }
 
-    /// Returns the raw bytes.
     #[tauri::command]
-    pub fn file_get(app: AppHandle, sha256: String) -> Result<Response, String> {
-        Ok(Response::new(get(&root(&app)?, &sha256)?))
-    }
-
-    /// Deletes every stored attachment (delete-all); returns how many.
-    #[tauri::command]
-    pub fn file_wipe(app: AppHandle) -> Result<usize, String> {
-        wipe(&root(&app)?)
+    pub fn file_wipe(ctx: State<'_, Ctx>) -> Result<usize, String> {
+        super::file_wipe(&ctx)
     }
 }
 

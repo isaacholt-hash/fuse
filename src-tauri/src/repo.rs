@@ -3,6 +3,7 @@
 //! up from the database, never taken from the frontend's word. Files the repository ignores and
 //! secret-looking files (`.env`, keys) are skipped unless the project allows them.
 
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
@@ -12,6 +13,8 @@ use ignore::gitignore::Gitignore;
 use serde::Serialize;
 use sqlx::Row;
 use sqlx::sqlite::SqlitePool;
+
+use crate::ctx::Ctx;
 
 /// The most one read returns; the agent asks for the next part with an offset.
 pub const MAX_READ: u64 = 256 * 1024;
@@ -566,13 +569,136 @@ pub async fn folder_root(pool: &SqlitePool, folder_id: &str) -> Result<(PathBuf,
     Ok((PathBuf::from(root), secrets == 1))
 }
 
+// The commands' bodies (M10 step 2), without Tauri.
+
+pub(crate) fn repo_check(path: String) -> Result<RepoInfo, String> {
+    check(Path::new(&path))
+}
+
+pub(crate) async fn repo_list(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+    recursive: bool,
+) -> Result<Vec<Entry>, String> {
+    let (root, _) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    list(&root, &path, recursive)
+}
+
+pub(crate) async fn repo_read(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+    offset: u64,
+) -> Result<FileText, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    read(&root, &path, offset, secrets)
+}
+
+/// WF-03: a whole file's raw bytes, for documents and images.
+pub(crate) async fn repo_read_bytes(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+) -> Result<Vec<u8>, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    read_bytes(&root, &path, secrets)
+}
+
+/// WF-04: body = the bytes; headers `x-folder-id` and `x-path` (URI-encoded).
+pub(crate) async fn repo_write_bytes(
+    ctx: &Ctx,
+    body: Vec<u8>,
+    headers: &HashMap<String, String>,
+) -> Result<String, String> {
+    let header = |name: &str| {
+        headers
+            .get(name)
+            .map(|v| percent_decode(v))
+            .ok_or(format!("missing {name}"))
+    };
+    let folder_id = header("x-folder-id")?;
+    let path = header("x-path")?;
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    write_bytes(&root, &path, &body, secrets)
+}
+
+pub(crate) async fn repo_remove_bytes(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+) -> Result<(), String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    remove_bytes(&root, &path, secrets)
+}
+
+/// `%XX` escapes back to bytes (headers carry only ASCII); invalid UTF-8 is replaced.
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(v);
+            i += 3;
+        } else {
+            out.push(b[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+pub(crate) async fn repo_write(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+    content: String,
+) -> Result<Change, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    write(&root, &path, &content, secrets)
+}
+
+pub(crate) async fn repo_delete(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+) -> Result<Change, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    delete(&root, &path, secrets)
+}
+
+pub(crate) async fn repo_move(
+    ctx: &Ctx,
+    folder_id: String,
+    from: String,
+    to: String,
+) -> Result<Change, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    rename(&root, &from, &to, secrets)
+}
+
+pub(crate) async fn repo_search(
+    ctx: &Ctx,
+    folder_id: String,
+    path: String,
+    query: String,
+    ignore_case: bool,
+) -> Result<Vec<Hit>, String> {
+    let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
+    search(&root, &path, &query, ignore_case, secrets)
+}
+
 pub mod commands {
     use super::*;
-    use crate::db::Database;
+    use crate::ctx::request_parts;
     use tauri::{AppHandle, State};
     use tauri_plugin_dialog::DialogExt;
 
-    /// The native folder picker; None when cancelled.
+    /// The native folder picker; None when cancelled. Desktop only.
     #[tauri::command]
     pub async fn repo_pick(app: AppHandle) -> Result<Option<RepoInfo>, String> {
         let Some(folder) = app.dialog().file().blocking_pick_folder() else {
@@ -584,77 +710,62 @@ pub mod commands {
 
     #[tauri::command]
     pub fn repo_check(path: String) -> Result<RepoInfo, String> {
-        check(Path::new(&path))
+        super::repo_check(path)
     }
 
     #[tauri::command]
     pub async fn repo_list(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
         recursive: bool,
     ) -> Result<Vec<Entry>, String> {
-        let (root, _) = folder_root(&db.pool()?, &folder_id).await?;
-        list(&root, &path, recursive)
+        super::repo_list(&ctx, folder_id, path, recursive).await
     }
 
     #[tauri::command]
     pub async fn repo_read(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
         offset: u64,
     ) -> Result<FileText, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        read(&root, &path, offset, secrets)
+        super::repo_read(&ctx, folder_id, path, offset).await
     }
 
-    /// WF-03: a whole file's raw bytes, for documents and images.
     #[tauri::command]
     pub async fn repo_read_bytes(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
     ) -> Result<tauri::ipc::Response, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        read_bytes(&root, &path, secrets).map(tauri::ipc::Response::new)
+        super::repo_read_bytes(&ctx, folder_id, path)
+            .await
+            .map(tauri::ipc::Response::new)
     }
 
-    /// WF-04: body = the bytes; headers `x-folder-id` and `x-path` (URI-encoded).
     #[tauri::command]
     pub async fn repo_write_bytes(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         request: tauri::ipc::Request<'_>,
     ) -> Result<String, String> {
-        let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
-            return Err("expected raw bytes".into());
-        };
-        let header = |name: &str| {
-            request
-                .headers()
-                .get(name)
-                .and_then(|v| v.to_str().ok())
-                .map(percent_decode)
-                .ok_or(format!("missing {name}"))
-        };
-        let folder_id = header("x-folder-id")?;
-        let path = header("x-path")?;
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        write_bytes(&root, &path, bytes, secrets)
+        let (body, headers) = request_parts(&request)?;
+        super::repo_write_bytes(&ctx, body, &headers).await
     }
 
     /// WF-05: opens a file in the folder with its app, or shows it in the file manager. The path
     /// goes through the same rules as a read, so nothing outside the folder can be opened.
+    /// Desktop only.
     #[tauri::command]
     pub async fn repo_open(
         app: AppHandle,
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
         reveal: bool,
     ) -> Result<(), String> {
         use tauri_plugin_opener::OpenerExt;
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
+        let (root, secrets) = folder_root(&ctx.db.pool()?, &folder_id).await?;
         let root = fs::canonicalize(&root).map_err(|e| format!("The folder is missing: {e}"))?;
         let full = resolve(&root, &path)?;
         readable(&root, &full, &path, secrets)?;
@@ -675,76 +786,51 @@ pub mod commands {
 
     #[tauri::command]
     pub async fn repo_remove_bytes(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
     ) -> Result<(), String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        remove_bytes(&root, &path, secrets)
-    }
-
-    /// `%XX` escapes back to bytes (headers carry only ASCII); invalid UTF-8 is replaced.
-    fn percent_decode(s: &str) -> String {
-        let b = s.as_bytes();
-        let mut out = Vec::with_capacity(b.len());
-        let mut i = 0;
-        while i < b.len() {
-            if b[i] == b'%'
-                && i + 2 < b.len()
-                && let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
-            {
-                out.push(v);
-                i += 3;
-            } else {
-                out.push(b[i]);
-                i += 1;
-            }
-        }
-        String::from_utf8_lossy(&out).into_owned()
+        super::repo_remove_bytes(&ctx, folder_id, path).await
     }
 
     #[tauri::command]
     pub async fn repo_write(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
         content: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        write(&root, &path, &content, secrets)
+        super::repo_write(&ctx, folder_id, path, content).await
     }
 
     #[tauri::command]
     pub async fn repo_delete(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        delete(&root, &path, secrets)
+        super::repo_delete(&ctx, folder_id, path).await
     }
 
     #[tauri::command]
     pub async fn repo_move(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         from: String,
         to: String,
     ) -> Result<Change, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        rename(&root, &from, &to, secrets)
+        super::repo_move(&ctx, folder_id, from, to).await
     }
 
     #[tauri::command]
     pub async fn repo_search(
-        db: State<'_, Database>,
+        ctx: State<'_, Ctx>,
         folder_id: String,
         path: String,
         query: String,
         ignore_case: bool,
     ) -> Result<Vec<Hit>, String> {
-        let (root, secrets) = folder_root(&db.pool()?, &folder_id).await?;
-        search(&root, &path, &query, ignore_case, secrets)
+        super::repo_search(&ctx, folder_id, path, query, ignore_case).await
     }
 }
 

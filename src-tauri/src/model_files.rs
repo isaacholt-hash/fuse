@@ -276,7 +276,7 @@ pub mod commands {
     #[allow(clippy::too_many_arguments)]
     pub async fn local_install(
         app: AppHandle,
-        downloads: State<'_, Downloads>,
+        ctx: State<'_, crate::ctx::Ctx>,
         url: String,
         file: String,
         sha256: String,
@@ -288,7 +288,7 @@ pub mod commands {
         let dir = models_dir(&app)?;
         let flag = Arc::new(AtomicBool::new(false));
         {
-            let mut current = downloads.cancel.lock().map_err(|e| e.to_string())?;
+            let mut current = ctx.downloads.cancel.lock().map_err(|e| e.to_string())?;
             if current.is_some() {
                 return Err("A model is already downloading.".into());
             }
@@ -310,15 +310,21 @@ pub mod commands {
             let _ = on_event.send(m);
         })
         .await;
-        if let Ok(mut current) = downloads.cancel.lock() {
+        if let Ok(mut current) = ctx.downloads.cancel.lock() {
             *current = None;
         }
         result
     }
 
     #[tauri::command]
-    pub fn local_install_cancel(downloads: State<'_, Downloads>) -> Result<(), String> {
-        if let Some(flag) = downloads.cancel.lock().map_err(|e| e.to_string())?.as_ref() {
+    pub fn local_install_cancel(ctx: State<'_, crate::ctx::Ctx>) -> Result<(), String> {
+        if let Some(flag) = ctx
+            .downloads
+            .cancel
+            .lock()
+            .map_err(|e| e.to_string())?
+            .as_ref()
+        {
             flag.store(true, Ordering::Relaxed);
         }
         Ok(())
@@ -333,10 +339,10 @@ pub mod commands {
     #[tauri::command]
     pub async fn local_remove(
         app: AppHandle,
-        local: State<'_, crate::local::Local>,
+        ctx: State<'_, crate::ctx::Ctx>,
         file: String,
     ) -> Result<(), String> {
-        local.unload().await;
+        ctx.local.unload().await;
         remove(&models_dir(&app)?, &file)
     }
 }

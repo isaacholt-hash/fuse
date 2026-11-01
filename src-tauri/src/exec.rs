@@ -15,6 +15,8 @@ use serde::Serialize;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::{mpsc, oneshot};
 
+use crate::ctx::{Ctx, Sink};
+
 /// The most output kept; the command goes on, but more isn't captured.
 pub const MAX_OUTPUT: usize = 1024 * 1024;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(120);
@@ -676,34 +678,125 @@ pub struct Execs {
     running: Mutex<HashMap<u32, oneshot::Sender<()>>>,
 }
 
-pub mod commands {
-    use super::*;
-    use crate::db::Database;
-    use tauri::State;
-    use tauri::ipc::Channel;
+// The commands' bodies (M10 step 2), without Tauri.
 
-    /// Starts `command` in the project's linked folder; returns an id for `repo_exec_stop`.
-    /// Output and the result arrive on `on_event`.
-    // Each argument is one the frontend sends or a piece of state Tauri hands in.
-    #[allow(clippy::too_many_arguments)]
-    #[tauri::command]
-    pub async fn repo_exec(
-        app: tauri::AppHandle,
-        db: State<'_, Database>,
-        execs: State<'_, Execs>,
-        folder_id: String,
-        command: String,
-        timeout_secs: Option<u64>,
-        sandbox: Option<SandboxIn>,
-        on_event: Channel<ExecMsg>,
-    ) -> Result<u32, String> {
-        if command.trim().is_empty() {
-            return Err("Give a command to run.".into());
+/// Starts `command` in the project's linked folder; returns an id for `repo_exec_stop`.
+/// Output and the result arrive on `on_event`.
+pub(crate) async fn repo_exec(
+    ctx: &Ctx,
+    folder_id: String,
+    command: String,
+    timeout_secs: Option<u64>,
+    sandbox: Option<SandboxIn>,
+    on_event: Sink<ExecMsg>,
+) -> Result<u32, String> {
+    if command.trim().is_empty() {
+        return Err("Give a command to run.".into());
+    }
+    let db = &ctx.db;
+    let execs = &ctx.execs;
+    let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
+    let root =
+        std::fs::canonicalize(&root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
+    let (stop_tx, stop_rx) = oneshot::channel();
+    execs
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(id, stop_tx);
+    let timeout = timeout_secs
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_TIMEOUT);
+    // WF-07: writable are the run's folders (each from the database), never a path sent in.
+    let sandbox = match sandbox {
+        Some(sb) => {
+            let mut writable = vec![root.clone()];
+            for f in sb.folder_ids {
+                let (p, _) = crate::repo::folder_root(&db.pool()?, &f).await?;
+                let p = std::fs::canonicalize(&p)
+                    .map_err(|e| format!("A folder of this chat is missing: {e}"))?;
+                if !writable.contains(&p) {
+                    writable.push(p);
+                }
+            }
+            Some(Sandbox {
+                writable,
+                network: sb.network,
+            })
         }
-        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
-        let root = std::fs::canonicalize(&root)
-            .map_err(|e| format!("The linked folder is missing: {e}"))?;
-        let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
+        None => None,
+    };
+    #[cfg(windows)]
+    let data = ctx.data_dir.clone();
+    tokio::spawn(async move {
+        // The first command in a folder gives the sandbox its access there, which on a
+        // large folder takes a while.
+        #[cfg(windows)]
+        if let Some(sb) = &sandbox
+            && sandbox_kind() == SandboxKind::AppContainer
+        {
+            let folders = sb.writable.clone();
+            let granted = tokio::task::spawn_blocking(move || grant_folders(&data, &folders)).await;
+            let err = match granted {
+                Ok(Ok(())) => None,
+                Ok(Err(e)) => Some(e),
+                Err(e) => Some(e.to_string()),
+            };
+            if let Some(message) = err {
+                let _ = on_event.send(ExecMsg::Error { message });
+                return;
+            }
+        }
+        run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
+            let _ = on_event.send(m);
+        })
+        .await;
+    });
+    Ok(id)
+}
+
+/// M9 step 6: runs `script` with FUSE's Python runtime in the run's first folder (from the
+/// database), sandboxed. Output, then the files it wrote (`Files`), then `Done`, arrive on
+/// `on_event`; returns an id for `repo_exec_stop`. Refused where it can't be sandboxed.
+pub(crate) async fn python_run(
+    ctx: &Ctx,
+    folder_id: String,
+    script: String,
+    timeout_secs: Option<u64>,
+    network: bool,
+    on_event: Sink<ExecMsg>,
+) -> Result<u32, String> {
+    if script.trim().is_empty() {
+        return Err("Give a script to run.".into());
+    }
+    let execs = &ctx.execs;
+    let data = ctx.data_dir.clone();
+    let runtime = data.join("python-runtime");
+    let python = crate::python_runtime::python_exe(&runtime.join("python"));
+    if crate::python_runtime::status(&runtime).is_none() {
+        return Err(
+            "Python isn't installed. Install it in Settings → Python for data work.".into(),
+        );
+    }
+    let (root, _) = crate::repo::folder_root(&ctx.db.pool()?, &folder_id).await?;
+    let root =
+        std::fs::canonicalize(&root).map_err(|e| format!("The linked folder is missing: {e}"))?;
+    let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
+    let work = runtime.join("work").join(id.to_string());
+    let _ = std::fs::remove_dir_all(&work);
+    let out = work.join("out");
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let script_path = work.join("script.py");
+    std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "linux")]
+    let cmd = python_command(&root, &python, &script_path, &out, network);
+    #[cfg(not(target_os = "linux"))]
+    let cmd: Option<tokio::process::Command> = None;
+    // M9 step 6: on Windows, Python's own AppContainer, given read access to the folder and
+    // the runtime and write access to its work folder; a 4 GB memory cap per process.
+    #[cfg(windows)]
+    if sandbox_kind() == SandboxKind::AppContainer {
         let (stop_tx, stop_rx) = oneshot::channel();
         execs
             .running
@@ -713,214 +806,70 @@ pub mod commands {
         let timeout = timeout_secs
             .map(Duration::from_secs)
             .unwrap_or(DEFAULT_TIMEOUT);
-        // WF-07: writable are the run's folders (each from the database), never a path sent in.
-        let sandbox = match sandbox {
-            Some(sb) => {
-                let mut writable = vec![root.clone()];
-                for f in sb.folder_ids {
-                    let (p, _) = crate::repo::folder_root(&db.pool()?, &f).await?;
-                    let p = std::fs::canonicalize(&p)
-                        .map_err(|e| format!("A folder of this chat is missing: {e}"))?;
-                    if !writable.contains(&p) {
-                        writable.push(p);
-                    }
-                }
-                Some(Sandbox {
-                    writable,
-                    network: sb.network,
-                })
+        let root = fuse_sandbox_win::plain(&root);
+        let runtime_dir = runtime.join("python");
+        tokio::spawn(async move {
+            let (r, rd, w) = (root.clone(), runtime_dir.clone(), work.clone());
+            let granted =
+                tokio::task::spawn_blocking(move || grant_python(&data, &r, &rd, &w)).await;
+            let err = match granted {
+                Ok(Ok(())) => None,
+                Ok(Err(e)) => Some(e),
+                Err(e) => Some(e.to_string()),
+            };
+            if let Some(message) = err {
+                let _ = on_event.send(ExecMsg::Error { message });
+                let _ = std::fs::remove_dir_all(&work);
+                return;
             }
-            None => None,
-        };
-        #[cfg(windows)]
-        let data = {
-            use tauri::Manager;
-            app.path().app_data_dir().map_err(|e| e.to_string())?
-        };
-        #[cfg(not(windows))]
-        let _ = app;
-        tauri::async_runtime::spawn(async move {
-            // The first command in a folder gives the sandbox its access there, which on a
-            // large folder takes a while.
-            #[cfg(windows)]
-            if let Some(sb) = &sandbox
-                && sandbox_kind() == SandboxKind::AppContainer
-            {
-                let folders = sb.writable.clone();
-                let granted =
-                    tokio::task::spawn_blocking(move || grant_folders(&data, &folders)).await;
-                let err = match granted {
-                    Ok(Ok(())) => None,
-                    Ok(Err(e)) => Some(e),
-                    Err(e) => Some(e.to_string()),
-                };
-                if let Some(message) = err {
-                    let _ = on_event.send(ExecMsg::Error { message });
-                    return;
-                }
-            }
-            run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
-                let _ = on_event.send(m);
-            })
-            .await;
-        });
-        Ok(id)
-    }
-
-    /// M9 step 6: runs `script` with FUSE's Python runtime in the run's first folder (from the
-    /// database), sandboxed. Output, then the files it wrote (`Files`), then `Done`, arrive on
-    /// `on_event`; returns an id for `repo_exec_stop`. Refused where it can't be sandboxed.
-    #[allow(clippy::too_many_arguments)]
-    #[tauri::command]
-    pub async fn python_run(
-        app: tauri::AppHandle,
-        db: State<'_, Database>,
-        execs: State<'_, Execs>,
-        folder_id: String,
-        script: String,
-        timeout_secs: Option<u64>,
-        network: bool,
-        on_event: Channel<ExecMsg>,
-    ) -> Result<u32, String> {
-        use tauri::Manager;
-        if script.trim().is_empty() {
-            return Err("Give a script to run.".into());
-        }
-        let data = app.path().app_data_dir().map_err(|e| e.to_string())?;
-        let runtime = data.join("python-runtime");
-        let python = crate::python_runtime::python_exe(&runtime.join("python"));
-        if crate::python_runtime::status(&runtime).is_none() {
-            return Err(
-                "Python isn't installed. Install it in Settings → Python for data work.".into(),
+            let out_s = fuse_sandbox_win::plain(&out).to_string_lossy().into_owned();
+            // matplotlib's cache goes in the work folder, the one place it can write.
+            let mpl_s = fuse_sandbox_win::plain(&work.join("matplotlib"))
+                .to_string_lossy()
+                .into_owned();
+            let command = format!(
+                "\"{}\" -I \"{}\"",
+                fuse_sandbox_win::plain(&python).display(),
+                fuse_sandbox_win::plain(&script_path).display()
             );
-        }
-        let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
-        let root = std::fs::canonicalize(&root)
-            .map_err(|e| format!("The linked folder is missing: {e}"))?;
-        let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
-        let work = runtime.join("work").join(id.to_string());
-        let _ = std::fs::remove_dir_all(&work);
-        let out = work.join("out");
-        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
-        let script_path = work.join("script.py");
-        std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
-        #[cfg(target_os = "linux")]
-        let cmd = python_command(&root, &python, &script_path, &out, network);
-        #[cfg(not(target_os = "linux"))]
-        let cmd: Option<tokio::process::Command> = None;
-        // M9 step 6: on Windows, Python's own AppContainer, given read access to the folder and
-        // the runtime and write access to its work folder; a 4 GB memory cap per process.
-        #[cfg(windows)]
-        if sandbox_kind() == SandboxKind::AppContainer {
-            let (stop_tx, stop_rx) = oneshot::channel();
-            execs
-                .running
-                .lock()
-                .map_err(|e| e.to_string())?
-                .insert(id, stop_tx);
-            let timeout = timeout_secs
-                .map(Duration::from_secs)
-                .unwrap_or(DEFAULT_TIMEOUT);
-            let root = fuse_sandbox_win::plain(&root);
-            let runtime_dir = runtime.join("python");
-            tauri::async_runtime::spawn(async move {
-                let (r, rd, w) = (root.clone(), runtime_dir.clone(), work.clone());
-                let granted =
-                    tokio::task::spawn_blocking(move || grant_python(&data, &r, &rd, &w)).await;
-                let err = match granted {
-                    Ok(Ok(())) => None,
-                    Ok(Err(e)) => Some(e),
-                    Err(e) => Some(e.to_string()),
-                };
-                if let Some(message) = err {
-                    let _ = on_event.send(ExecMsg::Error { message });
+            let vars = [
+                ("FUSE_OUT", out_s.as_str()),
+                ("MPLBACKEND", "Agg"),
+                ("MPLCONFIGDIR", mpl_s.as_str()),
+                ("OPENBLAS_NUM_THREADS", "2"),
+                ("PYTHONDONTWRITEBYTECODE", "1"),
+                ("PYTHONUNBUFFERED", "1"),
+            ];
+            let spawned = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
+                cwd: &root,
+                command: &command,
+                network,
+                env_remove: SCRUBBED,
+                container: fuse_sandbox_win::Container::Python,
+                env_set: &vars,
+                memory_bytes: Some(PYTHON_MEMORY_BYTES),
+                piped: false,
+                env_only: None,
+            });
+            let mut done = None;
+            match spawned {
+                Ok(child) => {
+                    run_contained(child, Instant::now(), timeout, stop_rx, |m| match m {
+                        ExecMsg::Done { .. } => done = Some(m),
+                        other => {
+                            let _ = on_event.send(other);
+                        }
+                    })
+                    .await;
+                }
+                Err(e) => {
+                    let _ = on_event.send(ExecMsg::Error {
+                        message: format!("Couldn't start Python in the sandbox: {e}"),
+                    });
                     let _ = std::fs::remove_dir_all(&work);
                     return;
                 }
-                let out_s = fuse_sandbox_win::plain(&out).to_string_lossy().into_owned();
-                // matplotlib's cache goes in the work folder, the one place it can write.
-                let mpl_s = fuse_sandbox_win::plain(&work.join("matplotlib"))
-                    .to_string_lossy()
-                    .into_owned();
-                let command = format!(
-                    "\"{}\" -I \"{}\"",
-                    fuse_sandbox_win::plain(&python).display(),
-                    fuse_sandbox_win::plain(&script_path).display()
-                );
-                let vars = [
-                    ("FUSE_OUT", out_s.as_str()),
-                    ("MPLBACKEND", "Agg"),
-                    ("MPLCONFIGDIR", mpl_s.as_str()),
-                    ("OPENBLAS_NUM_THREADS", "2"),
-                    ("PYTHONDONTWRITEBYTECODE", "1"),
-                    ("PYTHONUNBUFFERED", "1"),
-                ];
-                let spawned = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
-                    cwd: &root,
-                    command: &command,
-                    network,
-                    env_remove: SCRUBBED,
-                    container: fuse_sandbox_win::Container::Python,
-                    env_set: &vars,
-                    memory_bytes: Some(PYTHON_MEMORY_BYTES),
-                    piped: false,
-                    env_only: None,
-                });
-                let mut done = None;
-                match spawned {
-                    Ok(child) => {
-                        run_contained(child, Instant::now(), timeout, stop_rx, |m| match m {
-                            ExecMsg::Done { .. } => done = Some(m),
-                            other => {
-                                let _ = on_event.send(other);
-                            }
-                        })
-                        .await;
-                    }
-                    Err(e) => {
-                        let _ = on_event.send(ExecMsg::Error {
-                            message: format!("Couldn't start Python in the sandbox: {e}"),
-                        });
-                        let _ = std::fs::remove_dir_all(&work);
-                        return;
-                    }
-                }
-                let (files, skipped) = collect_outputs(&out);
-                let _ = on_event.send(ExecMsg::Files { files, skipped });
-                if let Some(d) = done {
-                    let _ = on_event.send(d);
-                }
-                let _ = std::fs::remove_dir_all(&work);
-            });
-            return Ok(id);
-        }
-        #[cfg(not(any(target_os = "linux", windows)))]
-        let _ = (&python, network, &data);
-        let Some(cmd) = cmd else {
-            let _ = std::fs::remove_dir_all(&work);
-            return Err(
-                "Python runs only in the sandbox, and FUSE can't sandbox it on this computer yet."
-                    .into(),
-            );
-        };
-        let (stop_tx, stop_rx) = oneshot::channel();
-        execs
-            .running
-            .lock()
-            .map_err(|e| e.to_string())?
-            .insert(id, stop_tx);
-        let timeout = timeout_secs
-            .map(Duration::from_secs)
-            .unwrap_or(DEFAULT_TIMEOUT);
-        tauri::async_runtime::spawn(async move {
-            let mut done = None;
-            run_process(&root, cmd, Instant::now(), timeout, stop_rx, |m| match m {
-                ExecMsg::Done { .. } => done = Some(m),
-                other => {
-                    let _ = on_event.send(other);
-                }
-            })
-            .await;
+            }
             let (files, skipped) = collect_outputs(&out);
             let _ = on_event.send(ExecMsg::Files { files, skipped });
             if let Some(d) = done {
@@ -928,24 +877,109 @@ pub mod commands {
             }
             let _ = std::fs::remove_dir_all(&work);
         });
-        Ok(id)
+        return Ok(id);
+    }
+    #[cfg(not(any(target_os = "linux", windows)))]
+    let _ = (&python, network, &data);
+    let Some(cmd) = cmd else {
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(
+            "Python runs only in the sandbox, and FUSE can't sandbox it on this computer yet."
+                .into(),
+        );
+    };
+    let (stop_tx, stop_rx) = oneshot::channel();
+    execs
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .insert(id, stop_tx);
+    let timeout = timeout_secs
+        .map(Duration::from_secs)
+        .unwrap_or(DEFAULT_TIMEOUT);
+    tokio::spawn(async move {
+        let mut done = None;
+        run_process(&root, cmd, Instant::now(), timeout, stop_rx, |m| match m {
+            ExecMsg::Done { .. } => done = Some(m),
+            other => {
+                let _ = on_event.send(other);
+            }
+        })
+        .await;
+        let (files, skipped) = collect_outputs(&out);
+        let _ = on_event.send(ExecMsg::Files { files, skipped });
+        if let Some(d) = done {
+            let _ = on_event.send(d);
+        }
+        let _ = std::fs::remove_dir_all(&work);
+    });
+    Ok(id)
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SandboxIn {
+    folder_ids: Vec<String>,
+    network: bool,
+}
+
+/// WF-07: what sandboxes commands here ("bubblewrap", "app_container", or "none").
+pub(crate) fn sandbox_status() -> SandboxKind {
+    sandbox_kind()
+}
+
+pub(crate) fn repo_exec_stop(ctx: &Ctx, id: u32) -> Result<(), String> {
+    if let Some(stop) = ctx
+        .execs
+        .running
+        .lock()
+        .map_err(|e| e.to_string())?
+        .remove(&id)
+    {
+        let _ = stop.send(());
+    }
+    Ok(())
+}
+
+pub mod commands {
+    use super::*;
+    use crate::ctx::channel_sink;
+    use tauri::State;
+    use tauri::ipc::Channel;
+
+    #[tauri::command]
+    pub async fn repo_exec(
+        ctx: State<'_, Ctx>,
+        folder_id: String,
+        command: String,
+        timeout_secs: Option<u64>,
+        sandbox: Option<SandboxIn>,
+        on_event: Channel<ExecMsg>,
+    ) -> Result<u32, String> {
+        let sink = channel_sink(on_event);
+        super::repo_exec(&ctx, folder_id, command, timeout_secs, sandbox, sink).await
     }
 
-    #[derive(serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    pub struct SandboxIn {
-        folder_ids: Vec<String>,
+    #[tauri::command]
+    pub async fn python_run(
+        ctx: State<'_, Ctx>,
+        folder_id: String,
+        script: String,
+        timeout_secs: Option<u64>,
         network: bool,
+        on_event: Channel<ExecMsg>,
+    ) -> Result<u32, String> {
+        let sink = channel_sink(on_event);
+        super::python_run(&ctx, folder_id, script, timeout_secs, network, sink).await
     }
 
-    /// WF-07: what sandboxes commands here ("bubblewrap", "app_container", or "none").
     #[tauri::command]
     pub fn sandbox_status() -> SandboxKind {
-        sandbox_kind()
+        super::sandbox_status()
     }
 
     /// M8 step 9: whether this is Windows with an AppContainer to run commands in, switched
-    /// on or not.
+    /// on or not. Desktop only.
     #[tauri::command]
     pub async fn sandbox_windows_available() -> bool {
         #[cfg(windows)]
@@ -986,11 +1020,8 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub fn repo_exec_stop(execs: State<'_, Execs>, id: u32) -> Result<(), String> {
-        if let Some(stop) = execs.running.lock().map_err(|e| e.to_string())?.remove(&id) {
-            let _ = stop.send(());
-        }
-        Ok(())
+    pub fn repo_exec_stop(ctx: State<'_, Ctx>, id: u32) -> Result<(), String> {
+        super::repo_exec_stop(&ctx, id)
     }
 }
 
