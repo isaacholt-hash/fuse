@@ -1,7 +1,7 @@
 // M8 step 14: FUSE driven like a person would use it, over WebView2's DevTools port, on the test build
 // (scripted models, fake keys and update; src/e2e/deps.ts). Run by CI on Windows: see
 // e2e/README.md. Each step leaves a screenshot in e2e/screenshots/.
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, version } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, expect, test } from "vitest";
@@ -55,8 +55,11 @@ const composer = '//textarea[@aria-label="Message"]';
 
 beforeAll(async () => {
   expect(APP, "set FUSE_E2E_APP to the test build's fuse.exe").not.toBe("");
-  rmSync(SHOTS, { recursive: true, force: true });
+  // This file's screenshots only: checklist.e2e.ts keeps its own in a folder here.
   mkdirSync(SHOTS, { recursive: true });
+  for (const f of readdirSync(SHOTS, { withFileTypes: true })) {
+    if (f.isFile()) rmSync(join(SHOTS, f.name));
+  }
   rmSync(FOLDER, { recursive: true, force: true });
   mkdirSync(FOLDER, { recursive: true });
   // A fresh start each run: the test build's own data (never FUSE's), which a reused PC keeps.
