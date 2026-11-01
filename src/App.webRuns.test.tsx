@@ -110,6 +110,9 @@ function nextRequest(db: SqlDb): Promise<RunRequest> {
 
 const SLOW = { timeout: 3000 };
 
+const listThreadsHere = async (db: SqlDb) =>
+  (await import("@/storage/threads")).listThreads(db, DEFAULT_TENANT);
+
 beforeEach(() => {
   localStorage.clear();
 });
@@ -131,6 +134,18 @@ test("a Code run in the web app is asked of the runner; its question is answered
   expect(await screen.findByText("/home/daywalker/lighthouse")).toBeInTheDocument();
   await user.keyboard("{Escape}");
 
+  // M10 step 16: a session in the Code area. The web app's run on HULK, so "This computer" is
+  // greyed with why, and the cap set here reaches the runner.
+  await user.keyboard("{Control>}2{/Control}");
+  const where = within(await screen.findByRole("group", { name: "Where it runs" }));
+  expect(where.getByRole("button", { name: "This computer" })).toBeDisabled();
+  expect(where.getByRole("button", { name: "HULK" })).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.getByText("The web app runs on HULK: sessions run there, not on this computer."),
+  ).toBeInTheDocument();
+  const cap = screen.getByLabelText("Cost cap");
+  await user.type(cap, "2.5");
+  await user.tab();
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.type(await screen.findByRole("textbox", { name: "Message" }), "Run the tests{Enter}");
 
@@ -142,6 +157,14 @@ test("a Code run in the web app is asked of the runner; its question is answered
     task: "Run the tests",
     kind: "code",
     model: { provider: "anthropic" },
+    capMicroUsd: 2_500_000,
+  });
+  // The session keeps its settings, and is named for its task.
+  const [session] = await listThreadsHere(db);
+  expect(session).toMatchObject({
+    kind: "code",
+    title: "Run the tests",
+    session: { capMicroUsd: 2_500_000 },
   });
   const run = await runnerStarts(db, request);
 

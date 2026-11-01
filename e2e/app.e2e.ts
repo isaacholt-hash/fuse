@@ -121,6 +121,8 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
   const escape = join(homedir(), "Documents", "escape.txt");
   rmSync(escape, { force: true });
   await step("work-setup", async () => {
+    // M10 step 16: runs start in the Code area.
+    await app.chord("2");
     await app.chord("n");
     await app.click(button("Add a folder"));
     await app.sees("fuse-e2e");
@@ -221,6 +223,7 @@ test.skipIf(!PYTHON)(
       await app.find(composer);
     });
     await step("python-run", async () => {
+      await app.chord("2");
       await app.chord("n");
       await app.click(button("Add a folder"));
       await app.sees("fuse-e2e");

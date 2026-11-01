@@ -3,6 +3,8 @@
  * control stays visible, disabled, with its reason beside it (`<Greyed>` in ./primitives).
  */
 export const WEB_REASONS = {
+  /** M10 step 16: the web app's sessions run on HULK. */
+  runHere: "The web app runs on HULK: sessions run there, not on this computer.",
   hotkey:
     "A global shortcut needs the desktop app: a browser tab can't listen for keys in other apps.",
   update: "Updated with the server",

@@ -4,6 +4,16 @@ import { uuidv7 } from "./ids";
 import { getSetting, setSetting } from "./settings";
 import type { SqlDb } from "./sql";
 
+/** M10 step 16: how a session's runs go. Null: the project's default, then FUSE's. */
+export interface ThreadSession {
+  mode: "plan" | "ask" | "auto_edit" | null;
+  /** Each run on a branch of its own (CA-05). */
+  newBranch: boolean | null;
+  /** This computer, or handed over to HULK. */
+  where: "local" | "hulk" | null;
+  capMicroUsd: number | null;
+}
+
 /** M10 step 12 (CH-19): a chat, or a Code or Work session (the Code area). */
 export type ThreadKind = "chat" | "code" | "work";
 
@@ -20,6 +30,8 @@ export interface Thread {
   seenAt: number | null;
   /** M10 step 15: the scheduled task it was made for, if any. */
   scheduleId: string | null;
+  /** M10 step 16: a session's own settings; null fields fall back to the project's, then FUSE's. */
+  session: ThreadSession;
   lastMessageAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -59,6 +71,10 @@ interface ThreadRow {
   kind: ThreadKind;
   seen_at: number | null;
   schedule_id: string | null;
+  run_mode: "plan" | "ask" | "auto_edit" | null;
+  run_branch: number | null;
+  run_where: "local" | "hulk" | null;
+  run_cap_micro_usd: number | null;
   last_message_at: number | null;
   created_at: number;
   updated_at: number;
@@ -88,6 +104,12 @@ const toThread = (r: ThreadRow): Thread => ({
   kind: r.kind,
   seenAt: r.seen_at,
   scheduleId: r.schedule_id,
+  session: {
+    mode: r.run_mode,
+    newBranch: r.run_branch === null ? null : r.run_branch === 1,
+    where: r.run_where,
+    capMicroUsd: r.run_cap_micro_usd,
+  },
   lastMessageAt: r.last_message_at,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -111,7 +133,8 @@ const toThread = (r: ThreadRow): Thread => ({
 });
 
 const SELECT_THREAD = `
-  SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.schedule_id, t.last_message_at, t.created_at, t.updated_at,
+  SELECT t.id, t.title, t.title_source, t.kind, t.seen_at, t.schedule_id, t.run_mode,
+         t.run_branch, t.run_where, t.run_cap_micro_usd, t.last_message_at, t.created_at, t.updated_at,
          t.web_search,
          t.instructions, t.project_id, t.memory_injection, t.memory_checked_at,
          t.pinned_tier, t.pinned_provider, t.pinned_model, t.active_leaf_id, t.incognito,
@@ -469,4 +492,38 @@ export async function setThreadSchedule(
     tenant.workspaceId,
     id,
   ]);
+}
+
+/** M10 step 16: saves a session's settings; a field left out of the patch is kept. */
+export async function setThreadSession(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  patch: Partial<ThreadSession>,
+): Promise<void> {
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  if ("mode" in patch) {
+    sets.push("run_mode = ?");
+    args.push(patch.mode ?? null);
+  }
+  if ("newBranch" in patch) {
+    sets.push("run_branch = ?");
+    args.push(
+      patch.newBranch === undefined || patch.newBranch === null ? null : patch.newBranch ? 1 : 0,
+    );
+  }
+  if ("where" in patch) {
+    sets.push("run_where = ?");
+    args.push(patch.where ?? null);
+  }
+  if ("capMicroUsd" in patch) {
+    sets.push("run_cap_micro_usd = ?");
+    args.push(patch.capMicroUsd ?? null);
+  }
+  if (sets.length === 0) return;
+  await db.execute(
+    `UPDATE threads SET ${sets.join(", ")}, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [...args, Date.now(), tenant.workspaceId, id],
+  );
 }
