@@ -568,7 +568,7 @@ export function gitArgs(
       if (!/^[A-Za-z0-9._/-]+$/.test(name) || name.startsWith("-") || name.includes("..")) {
         return { error: `Error: "${name}" isn't a usable branch name.` };
       }
-      return { program: "git", steps: [["switch", "-c", name]] };
+      return { program: "git", steps: [["switch", "--create", name]] };
     }
     case "git_commit": {
       const message = str(input.message).trim();

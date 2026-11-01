@@ -84,12 +84,13 @@ impl SecretStore for OsKeychain {
     }
 }
 
-/// In-memory store for tests.
-#[cfg(test)]
+/// In-memory store for tests, and for fuse-server's `--test-keys-in-memory` (the runs-on-HULK
+/// benchmark, M10 step 10). The desktop build doesn't carry it.
+#[cfg(any(test, all(feature = "server", target_os = "linux")))]
 #[derive(Default)]
 pub struct MemoryStore(std::sync::Mutex<std::collections::HashMap<String, String>>);
 
-#[cfg(test)]
+#[cfg(any(test, all(feature = "server", target_os = "linux")))]
 impl SecretStore for MemoryStore {
     fn get(&self, account: &str) -> Result<Option<String>, String> {
         Ok(self

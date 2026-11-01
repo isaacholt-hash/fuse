@@ -63,6 +63,42 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features server -- -D warnings
       - run: cargo test --manifest-path src-tauri/Cargo.toml --features server
 
+  # M10 step 10: the runs-on-HULK benchmark (src/runner/hulk.bench.test.ts) against a throwaway
+  # fuse-server, with a scripted model and no keys. This runner's systemd (255) can't do
+  # systemd-creds --user, so the server keeps keys in memory (--test-keys-in-memory, with
+  # FUSE_SERVER_TEST=1). `pnpm hulk:bench` does the same on HULK.
+  hulk-bench:
+    name: Runs on HULK benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      # The same packages as the Rust job (see there for the mirror and the long limit).
+      - name: Tauri system dependencies
+        timeout-minutes: 25
+        run: |
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev bubblewrap
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: hulk-bench
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # tauri::generate_context! needs the frontend dist folder to exist at compile time.
+      - run: mkdir -p dist
+      - run: cargo build --manifest-path src-tauri/Cargo.toml --features server --bin fuse-server
+      - name: Benchmark
+        env:
+          FUSE_SERVER_BIN: src-tauri/target/debug/fuse-server
+        run: pnpm exec vitest run src/runner/hulk.bench.test.ts
+
   # M8 step 9: the Windows sandbox, tested where it runs (HULK can't), and the app checked on
   # Windows so its Windows-only code is linted before it merges, not first built at release.
   windows:

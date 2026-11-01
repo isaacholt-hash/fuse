@@ -24,7 +24,8 @@
     "work:live": "vitest run --mode work src/agent/work.live.test.ts",
     "chat:live": "vitest run --mode chat src/chat/chat.live.test.ts",
     "tools:live": "vitest run --mode tools src/agent/tools.live.test.ts",
-    "local:bench": "vitest run --mode localbench src/local/local.bench.test.ts"
+    "local:bench": "vitest run --mode localbench src/local/local.bench.test.ts",
+    "hulk:bench": "mkdir -p dist && cargo build --manifest-path src-tauri/Cargo.toml --features server --bin fuse-server && FUSE_SERVER_BIN=${CARGO_TARGET_DIR:-src-tauri/target}/debug/fuse-server vitest run src/runner/hulk.bench.test.ts"
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",

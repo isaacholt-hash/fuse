@@ -184,7 +184,7 @@ test("a pull request asks, then goes through gh", async () => {
 
 test("a run can start on a branch of its own, and is told so", async () => {
   const { ran, run, systems } = await setup([], { mode: "auto_edit", newBranch: true });
-  expect(ran[0]).toMatch(/^git switch -c fuse\/fix-the-tide-rounding-[0-9a-f]{4}$/);
+  expect(ran[0]).toMatch(/^git switch --create fuse\/fix-the-tide-rounding-[0-9a-f]{4}$/);
   expect(run.branch).toMatch(/^fuse\/fix-the-tide-rounding-/);
   expect(systems[0]).toContain(`This run works on its own branch, ${run.branch ?? ""}`);
 });
