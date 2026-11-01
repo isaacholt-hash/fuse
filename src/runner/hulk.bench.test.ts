@@ -147,7 +147,18 @@ async function startServer(bin: string): Promise<string> {
   const child = spawn(
     bin,
     ["--port", String(port), "--home", join(ROOT, "server"), "--ui", ui, "--test-keys-in-memory"],
-    { env: { ...process.env, FUSE_SERVER_TEST: "1" }, stdio: ["ignore", "pipe", "pipe"] },
+    {
+      // A CI machine may have no git identity, and handed-over runs commit on HULK.
+      env: {
+        ...process.env,
+        FUSE_SERVER_TEST: "1",
+        GIT_AUTHOR_NAME: "FUSE bench",
+        GIT_AUTHOR_EMAIL: "bench@fuse.invalid",
+        GIT_COMMITTER_NAME: "FUSE bench",
+        GIT_COMMITTER_EMAIL: "bench@fuse.invalid",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
   );
   server = child;
   return new Promise((resolve, reject) => {
@@ -490,6 +501,15 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
     expect(run.branch).toMatch(/^fuse\//);
     expect(git(["--git-dir", bare, "branch", "--list", "fuse/*"])).toBe(run.branch);
     expect(run.note).toBe(`Pushed ${run.branch ?? ""} to ${bare}.`);
+    expect((push?.request as { summary?: string } | undefined)?.summary).toBe(
+      `Commit and push ${run.branch ?? ""} to ${bare}`,
+    );
+    // The pushed branch holds the run's work, committed on HULK (the live check's F1).
+    const pushed = run.branch ?? "";
+    expect(git(["--git-dir", bare, "show", `${pushed}:FOOTER.md`])).toBe("Made on HULK.");
+    expect(git(["--git-dir", bare, "log", "--format=%s", "-n", "1", pushed])).toBe(
+      "[bench c] Add a footer note.",
+    );
     // The project came over with its id, and the run worked in HULK's own copy.
     const projects = await page.db.select<{ name: string }>(
       "SELECT name FROM projects WHERE workspace_id = ? AND id = ?",
