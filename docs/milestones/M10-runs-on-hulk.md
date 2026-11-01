@@ -101,10 +101,15 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - A paired desktop shows a system notification.
   - Done (the badge): Runs in the sidebar counts the runs waiting for you, and those that finished or failed since you last opened the list (remembered in this browser).
   - The paired desktop's system notification moves to step 7, where the desktop first talks to HULK.
-- [ ] **9. Scheduled tasks (AG-07).**
+- [x] **9. Scheduled tasks (AG-07).**
   - Per project: a saved prompt with mode, tools and cost cap, run once at a time, or daily or weekly at a time, by the runner.
   - The result lands in a thread with a notice; a failure reports its last step.
   - On the server only (greyed on the desktop until sync). Tests use a fake clock.
+  - Done:
+    - `schedules` (migration 0051, `src/storage/schedules.ts`): a project's saved prompt with its kind, mode, model and cost cap, once at a date and time or daily or weekly at a time, in HULK's local time. A time missed while the server was off isn't made up; the next one is set.
+    - When a task is due, the runner gives it a new chat in its project, named for it, and starts its run like any page's request. It keeps how the last run ended; a run that didn't finish keeps its note and its last step.
+    - Project settings → Scheduled tasks (web app): each task's name, when it repeats, its next run in local time and how its last run went, with a link to its chat. Each has an on/off switch, Edit and Delete (asked first). "Add a task" picks the name, prompt, Code or Work, mode, model (the project's, or the Balanced tier's usual one), cost cap and repeat. The time zone shown is the browser's for now.
+    - On the desktop the section is greyed: scheduled tasks run in the web app on HULK until sync.
 - [ ] **10. Runs-on-HULK benchmark and deploy kit.**
   - The recorded e2e above, against a throwaway fuse-server with provider fixtures and no keys.
   - `scripts/deploy-server.sh` and the `fuse-server.service` user unit, plus the exact commands Isaac runs: enabling linger, `tailscale serve`, the first passphrase, and entering keys in the web Settings.
@@ -113,7 +118,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - (a) A page asks for a run and signs out (its cookie then gets 401); the run finishes anyway, with its answer complete, and the request knows its run.
     - (b) An edit in "ask" mode waits; a second sign-in answers it, the run finishes and the file is on disk.
     - (c) A desktop fixture (its own database, HULK over HTTP with a device token) hands over a Code run on a local bare repository. The server clones it with `repo_clone`, the run works on `fuse/<id>`, asks to push, and once the page says yes the branch is on the remote and the run's note says "Pushed …".
-    - (d) is `it.todo` until step 9 lands scheduled tasks.
+    - (d) A project's daily task, made the minute before its time on a fake clock: a second early nothing starts; at its time the runner starts it in a new chat in the project, it finishes, the task keeps "done" and its next time, and the same minute again doesn't start it twice.
     - (e) A run stopped mid-turn (as at shutdown) is `stopped`; a new runner recovers, Continue finishes it, and its earlier steps are kept.
     - Run it with `pnpm hulk:bench` (builds fuse-server, then runs the test); `pnpm test` skips it, since `FUSE_SERVER_BIN` isn't set. It doesn't need the sandbox.
     - CI: the "Runs on HULK benchmark" job on ubuntu-24.04. Its systemd (255) can't do `systemd-creds --user`, so fuse-server has `--test-keys-in-memory`, accepted only with `FUSE_SERVER_TEST=1` (threat model §9).

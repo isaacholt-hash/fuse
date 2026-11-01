@@ -36,6 +36,7 @@ import {
   openApprovals,
 } from "@/storage/runQueue";
 import { getRun, listSteps, type RunMode } from "@/storage/runs";
+import { createSchedule, getSchedule, nextRun } from "@/storage/schedules";
 import type { SqlDb, SqlValue } from "@/storage/sql";
 import { openTauriDb } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
@@ -64,6 +65,7 @@ const scripts: Record<string, Step[]> = {
     { calls: [{ name: "write_file", input: { path: "FOOTER.md", content: "Made on HULK.\n" } }] },
     DONE,
   ],
+  d: [{ calls: [{ name: "read_file", input: { path: "notes.txt", offset: null } }] }, DONE],
   e: [{ calls: [{ name: "list_files", input: { path: "", recursive: false } }] }],
 };
 
@@ -496,7 +498,92 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
     expect(projects).toEqual([{ name: "Site" }]);
   }, 120_000);
 
-  it.todo("(d) a scheduled task fires on the fake clock (needs step 9)");
+  it("(d) a scheduled task fires on the fake clock", async () => {
+    const page = await signIn();
+    const dir = join(ROOT, "d");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "notes.txt"), "Remember the milk.\n");
+    const info = await page.invoke<{ root: string }>("repo_check", { path: dir });
+    const project = await createProject(page.db, t, "Nightly");
+    const folder = await grantFolder(page.db, t, info.root);
+    await linkProjectFolder(page.db, t, project.id, folder.id);
+
+    // Daily at 03:00, made the minute before tomorrow's 03:00 on the fake clock.
+    const due = new Date();
+    due.setDate(due.getDate() + 1);
+    due.setHours(3, 0, 0, 0);
+    const at = due.getTime();
+    const task = await createSchedule(
+      page.db,
+      t,
+      {
+        projectId: project.id,
+        name: "Nightly notes",
+        prompt: "[bench d] What's in notes.txt?",
+        kind: "code",
+        mode: "ask",
+        provider: ref.provider,
+        model: ref.id,
+        capMicroUsd: 1_000_000,
+        repeat: "daily",
+        onceAt: null,
+        minute: 3 * 60,
+        weekday: null,
+      },
+      at - 60_000,
+    );
+    expect(task.nextAt).toBe(at);
+    const clockAt = (now: number) =>
+      new Runner({
+        deps: runnerDeps(runnerDb),
+        pollMs: 50,
+        log: (l) => runnerLog.push(l),
+        now: () => now,
+      });
+
+    // A second early, nothing starts.
+    await clockAt(at - 1000).tick();
+    expect((await getSchedule(page.db, t, task.id))?.lastAt).toBeNull();
+
+    // At its time, the runner starts it in a new chat in its project, and it finishes.
+    const runner = clockAt(at);
+    await runner.tick();
+    await runner.idle();
+    const fired = await getSchedule(page.db, t, task.id);
+    expect(fired).toMatchObject({
+      lastStatus: "done",
+      lastNote: null,
+      lastAt: at,
+      nextAt: nextRun(task, at),
+    });
+    expect(fired?.nextAt).toBeGreaterThan(at);
+    const run = await getRun(page.db, t, fired?.lastRunId ?? "");
+    expect(run).toMatchObject({
+      status: "done",
+      projectId: project.id,
+      threadId: fired?.lastThreadId,
+    });
+    const chats = await page.db.select<{ title: string; project_id: string }>(
+      "SELECT title, project_id FROM threads WHERE workspace_id = ? AND id = ?",
+      [t.workspaceId, fired?.lastThreadId ?? ""],
+    );
+    expect(chats[0]?.title).toMatch(/^Nightly notes · /);
+    expect(chats[0]?.project_id).toBe(project.id);
+    const steps = await listSteps(page.db, t, run?.id ?? "");
+    expect(steps.find((x) => x.kind === "tool")?.output).toContain("Remember the milk.");
+    expect(await answer(page, run?.messageId ?? null)).toEqual({
+      content: "Done.",
+      status: "complete",
+    });
+
+    // The same minute again doesn't start it twice.
+    await clockAt(at).tick();
+    const again = await page.db.select<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM runs WHERE workspace_id = ? AND project_id = ?",
+      [t.workspaceId, project.id],
+    );
+    expect(again[0]?.n).toBe(1);
+  }, 60_000);
 
   it("(e) Interrupt and Continue", async () => {
     const page = await signIn();

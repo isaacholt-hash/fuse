@@ -4,7 +4,7 @@ import { DecisionsSection, type DecisionsProps } from "./Decisions";
 import { TasksSection, type TasksProps } from "./Tasks";
 import { ProjectPrivacySection, type ProjectPrivacyProps } from "./ProjectPrivacy";
 import { ProjectRepoSection, type ProjectRepoProps } from "./ProjectRepo";
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { money, number } from "./format";
@@ -169,8 +169,11 @@ export function ProjectDialog({
   privacy,
   repo,
   tools,
+  schedules,
   onExport,
 }: {
+  /** Only when editing: its scheduled tasks (M10 step 9, AG-07). */
+  schedules?: ReactNode;
   /** Only when editing: the tools its Code and Work runs may use (M9 step 1, AG-01). */
   tools?: ProjectToolsProps;
   /** Only when editing: the folder the coding agent works in (CA-01). */
@@ -342,6 +345,7 @@ export function ProjectDialog({
           <ProjectToolsSection {...tools} />
         </div>
       )}
+      {schedules && <div className="mt-4">{schedules}</div>}
       {privacy && (
         <div className="mt-4">
           <ProjectPrivacySection {...privacy} />
