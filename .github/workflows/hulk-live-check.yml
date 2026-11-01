@@ -1,0 +1,88 @@
+name: HULK live check
+
+# M10 live check from the Windows test runner (docs/hulk-server.md, "Live check from the runner").
+# The runner's laptop stands in for TCHALLA: it pairs with FUSE on HULK from a one-time code, hands
+# over a small Code run on this repo and leaves. HULK's run asks before pushing its fuse/... branch;
+# Isaac answers in the web app. The second job, on GitHub's own runner, waits for the branch on
+# GitHub, checks it, and deletes it. Started by hand only.
+on:
+  workflow_dispatch:
+    inputs:
+      pair_code:
+        description: "One-time pairing code from HULK's web app (Settings → FUSE on HULK → Pair a device)"
+        required: true
+        type: string
+
+concurrency:
+  group: pc-tests
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  hand-over:
+    name: Hand over from the Windows runner
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Windows, fuse-windows]
+    timeout-minutes: 30
+    outputs:
+      branch: ${{ steps.check.outputs.branch }}
+      request: ${{ steps.check.outputs.request }}
+    steps:
+      - name: Hide the pairing code in the log
+        shell: powershell
+        env:
+          CODE: ${{ inputs.pair_code }}
+        run: Write-Output "::add-mask::$env:CODE"
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: pnpm install --frozen-lockfile
+      - name: Pair, hand over, leave
+        id: check
+        shell: powershell
+        env:
+          FUSE_HULK_PAIR_CODE: ${{ inputs.pair_code }}
+        run: pnpm vitest run src/handover/hulk.live.test.ts
+
+  branch-pushed:
+    name: The branch reaches GitHub with the laptop gone
+    needs: hand-over
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: write
+    steps:
+      - name: Wait for the push
+        env:
+          BRANCH: ${{ needs.hand-over.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "### Answer HULK's push question" >> "$GITHUB_STEP_SUMMARY"
+          echo "Open https://hulk.tailb7c872.ts.net:4100/ → Runs, and say yes to pushing \`$BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
+          for i in $(seq 1 90); do
+            if gh api "repos/${GITHUB_REPOSITORY}/branches/${BRANCH}" --silent 2>/dev/null; then
+              echo "$BRANCH is on GitHub."
+              break
+            fi
+            [ "$i" = 90 ] && { echo "::error::$BRANCH didn't reach GitHub in 45 minutes."; exit 1; }
+            sleep 30
+          done
+      - name: Check what it pushed, then delete it
+        env:
+          BRANCH: ${{ needs.hand-over.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${BRANCH}" --jq '[.files[].filename] | join(" ")')
+          echo "Changed on $BRANCH: $files"
+          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}"
+          echo "Deleted $BRANCH."
+          case "$files" in
+            live-check/*.md) echo "### Live check passed: \`$files\` pushed from HULK" >> "$GITHUB_STEP_SUMMARY" ;;
+            *) echo "::error::Expected one file under live-check/, got: $files"; exit 1 ;;
+          esac

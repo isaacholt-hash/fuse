@@ -52,6 +52,26 @@ The web app and its runner (M10) run on HULK as one user service, `fuse-server.s
    git ls-remote git@github.com:isaacholt-hash/fuse.git HEAD
    ```
 
+## Live check from the runner
+
+The Windows test runner's laptop (`fuse-windows`) can stand in for TCHALLA. It hands over a small Code run and leaves, and the run then pushes its branch from HULK.
+
+1. Do steps 1–8 above first: HULK must have a key, and HULK's git must be able to push.
+2. In the web app, open Settings → FUSE on HULK → Pair a device and copy the code.
+3. Start the run:
+
+   ```bash
+   gh workflow run hulk-live-check.yml -f pair_code=<code>
+   ```
+
+4. The first job runs on the laptop. It pairs as "Live check (<laptop name>)", checks that HULK has a key, and hands over "create one file under `live-check/`" on this repo, with a $0.50 cap. It leaves once the run is going on its `fuse/…` branch.
+5. When the run asks to push, answer it in the web app under Runs (any browser, your phone too).
+6. The second job runs on GitHub's own runner. It waits up to 45 minutes for the branch to reach GitHub, checks that it holds only that one file, and deletes the branch.
+
+Afterwards, revoke the "Live check" device under Settings → Devices.
+
+If the first job can't reach HULK, the laptop isn't on the tailnet, or the tailnet policy doesn't allow tcp 4100 to hulk.
+
 ## Updating
 
 Run `bash scripts/deploy-server.sh` again. The service restarts. Runs that were going are saved as stopped, and Continue picks them up.
