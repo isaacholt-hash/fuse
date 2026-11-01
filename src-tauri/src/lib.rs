@@ -1,6 +1,8 @@
 // The command table fuse-server serves (M10); the desktop app doesn't use it.
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod api;
+#[cfg(all(feature = "server", target_os = "linux"))]
+mod auth;
 mod backup;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod creds;

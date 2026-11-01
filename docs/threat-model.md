@@ -24,6 +24,7 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 4. **The coding agent vs. this computer (M6).** File access goes through Rust (`repo.rs`), which takes only a project id and a relative path and reads the folder from the database. Commands (`exec.rs`) and git (`git.rs`) run in that folder only, after the app asks you. The model can ask; only you can allow.
 5. **Artifact previews.** HTML and React previews run in a separate `preview://` origin with a no-network content security policy. A per-artifact switch allows only listed CDNs (AR-05).
 6. **The app vs. its local model worker (M7).** llama.cpp runs in a separate process, FUSE's own executable with `--local-worker`. It's started with an empty environment and spoken to only in JSON lines. It reads one model file that FUSE checked against its pinned SHA-256, and its replies are data that only does housekeeping.
+7. **The browser vs. fuse-server (M10).** The web app runs on HULK. Pages, paired desktops and the runner reach its commands only after signing in, and only the commands the web may use.
 
 ## Threats and mitigations
 
@@ -145,6 +146,19 @@ Nothing syncs today. When PL-04 is built:
 | A remote MCP server seeing your content | Only https addresses (or this computer), no redirects followed. It sees exactly what the model sends to its tools, which can include your chats' and files' content; Settings → Privacy says so. Tools that change things ask in Ask first and after a flag, and destructive ones always ask. Not offered in a Local only project | Once you switch a server on for a project, its read-only tools run without asking, and what the model puts in their arguments leaves the computer to that server |
 | Stolen or misused sign-in tokens | OAuth 2.1 with PKCE (S256) and a random state, a loopback redirect on 127.0.0.1 only, `resource` naming the server, endpoints https-only. Tokens are kept in the keychain, never in the database or the webview; Sign out and Remove delete them | A sign-in service without dynamic registration can't be used; tokens are as safe as the keychain |
 | A server or tool hanging a run | Requests have time limits (30 s, 120 s for a tool call); a server that dies fails what was waiting with its last stderr and is started again on next use; a run carries on without a server that won't start | — |
+
+### 9. The web app on HULK (M10)
+
+*fuse-server on HULK serves the app to a browser, a paired desktop and the runner, over the tailnet. It holds its own keys and its own database.*
+
+| Threat | Mitigation | Gap |
+| --- | --- | --- |
+| Someone else on the network reaching it | It listens on 127.0.0.1 only. Isaac publishes it to his tailnet with `tailscale serve`, which adds HTTPS, so only his tailnet's devices can reach it | Anyone who can run a program on HULK can reach 127.0.0.1, and still needs a session or a token |
+| Getting in without the passphrase | Every command, stream and preview needs a session cookie or a device token. The passphrase (12 characters or more) is kept only as an argon2id hash. After 5 wrong passphrases or pairing codes in 15 minutes, sign-in pauses. Sessions and tokens are 32 random bytes, stored only as SHA-256 hashes in `auth.json` (readable by Isaac's user only) | Until the passphrase is set, the first visitor sets it. The deploy kit has Isaac set it right after starting the server |
+| A page on another site using the browser's session | The cookie is HttpOnly, Secure and SameSite=Strict. A request carrying an Origin that isn't FUSE's own address is refused with 403 | — |
+| A stolen or lost device | Each paired device has its own token, shown once and then kept in that device's keychain. Settings → Devices lists them with when each was last used, and Revoke ends one at once. A device can't pair others or list devices | A device token is as safe as the device it's on |
+| Reading the server's keys or database | Provider keys, MCP secrets and the database key are `systemd-creds --user` credentials: encrypted, sealed to HULK and Isaac's user, one file per account, sealed with the account's name so a file can't stand in for another. Secrets go in and out on stdin and stdout, never as arguments, logs or errors. The database is SQLCipher, as on the desktop | Anything running as Isaac on HULK can ask systemd-creds too, as malware can ask the desktop keychain. The OS account is the real boundary |
+| A page calling desktop-only commands | Only the commands in `api::WEB_COMMANDS` are served; dialogs, the local model, Windows Hello, the Windows sandbox and MCP sign-in are refused as unknown | — |
 
 ## Out of scope for now
 
