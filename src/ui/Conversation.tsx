@@ -31,6 +31,7 @@ import {
   Ellipsis,
   FolderTree,
   SquareTerminal,
+  Server,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -974,6 +975,8 @@ export function Composer({
   onCodeMode,
   codeBranch = false,
   onCodeBranch,
+  onRunOnHulk,
+  runOnHulkReason = null,
   routing,
   insert,
   status = null,
@@ -1027,6 +1030,13 @@ export function Composer({
   /** CA-05: start the run on a branch of its own. */
   codeBranch?: boolean;
   onCodeBranch?: (on: boolean) => void;
+  /**
+   * M10 step 7 (desktop): hands the draft over to HULK as a Code run instead of running it
+   * here. Shown for a chat in a project with a repository folder.
+   */
+  onRunOnHulk?: (task: string) => void;
+  /** Why Run on HULK is greyed (not paired yet); null when it can be used. */
+  runOnHulkReason?: string | null;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
@@ -1226,6 +1236,30 @@ export function Composer({
           />
           New branch
         </label>
+      )}
+      {code && onRunOnHulk && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`shrink-0 gap-1.5 text-xs text-muted-foreground ${menu ? "justify-start" : ""}`}
+          disabled={runOnHulkReason !== null || !text.trim()}
+          title={
+            runOnHulkReason ??
+            "Hand this task to HULK: it runs there on a branch of its own, with this computer closed"
+          }
+          onClick={() => {
+            const task = text.trim();
+            if (!task) return;
+            onRunOnHulk(task);
+            setText("");
+          }}
+        >
+          <Server className="size-3.5" />
+          Run on HULK
+        </Button>
+      )}
+      {code && onRunOnHulk && runOnHulkReason && (
+        <span className="shrink-0 text-[11px] text-muted-foreground">{runOnHulkReason}</span>
       )}
       <Tip
         label={

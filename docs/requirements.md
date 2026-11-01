@@ -491,6 +491,6 @@ Decided 2026-10-30:
 
 **Can wait**
 
-- [ ] P2 part 3, Runs on HULK (M10): plan and decisions 2026-10-31 (`docs/milestones/M10-runs-on-hulk.md`), built unattended. The self-hosted web app (PL-03, PL-02), background runs and handover (CA-15), following and approving from another device (CA-16 core), and scheduled tasks (AG-07)
+- [ ] P2 part 3, Runs on HULK (M10): built unattended 2026-11-01 (`docs/milestones/M10-runs-on-hulk.md`); the recorded benchmark passes on HULK and in CI. Waiting on Isaac: the deploy (`docs/hulk-server.md`) and the live check. The self-hosted web app (PL-03, PL-02), background runs and handover (CA-15), following and approving from another device (CA-16 core), and scheduled tasks (AG-07)
 - [ ] P2 sync, dictation, deep research (after M10)
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on

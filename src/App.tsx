@@ -38,6 +38,8 @@ import { tauriBackupsApi, type BackupsApi } from "@/data/backups";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
 import { tauriZoom, type ZoomApi } from "@/app/appearance";
 import { tauriHello, type HelloApi } from "@/security/hello";
+import { tauriHulkApi, type HulkApi } from "@/handover/api";
+import { webviewNotifier, type Notifier } from "@/handover/watch";
 
 // On desktop, every provider request goes through the Rust transport, which adds the key.
 // (In the web app the same transport runs in fuse-server, with the key from systemd-creds.)
@@ -113,6 +115,12 @@ interface Props {
   zoom?: ZoomApi;
   /** Windows Hello for the app lock (SE-03). */
   hello?: HelloApi;
+  /** M10 step 7: the desktop's link to FUSE on HULK, for handing runs over. */
+  hulk?: HulkApi;
+  /** M10 step 8: system notifications for handed-over runs. */
+  notify?: Notifier;
+  /** How often HULK is asked about the open chat's runs, and about all of them; tests go faster. */
+  hulkPollMs?: { card: number; notify: number };
   /** Starts the app over after delete-all (tests pass a spy). */
   onRestart?: () => void;
 }
@@ -144,6 +152,9 @@ export default function App({
   quickCapture = webApp ? undefined : tauriQuickCapture,
   zoom = webApp ? undefined : tauriZoom,
   hello = webApp ? undefined : tauriHello,
+  hulk = webApp ? undefined : tauriHulkApi,
+  notify = webApp ? undefined : webviewNotifier,
+  hulkPollMs,
   onRestart,
 }: Props) {
   const [storage, setStorage] = useState<Storage>({ kind: "opening" });
@@ -305,6 +316,9 @@ export default function App({
       quickCapture={quickCapture}
       zoom={zoom}
       hello={hello}
+      {...(hulk ? { hulk } : {})}
+      {...(notify ? { notify } : {})}
+      {...(hulkPollMs ? { hulkPollMs } : {})}
       {...(onRestart ? { onRestart } : {})}
       prepareImage={prepareImage}
       updates={appUpdates}

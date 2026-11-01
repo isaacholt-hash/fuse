@@ -254,7 +254,10 @@ export function SettingsView({
   onShowLog,
   web = false,
   server,
+  hulk,
 }: {
+  /** Settings → HULK: pairing this desktop with FUSE on HULK (desktop only, M10 step 7). */
+  hulk?: ReactNode;
   /** PL-02: the web app on HULK; desktop-only settings are greyed with their reason. */
   web?: boolean;
   /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
@@ -366,6 +369,7 @@ export function SettingsView({
           </p>
         </div>
         {server}
+        {hulk}
         {privacy}
         {agent}
         {instructions}
