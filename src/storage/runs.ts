@@ -684,6 +684,8 @@ export interface RecentRun {
   /** M10 step 11: when its current leg started, and how long that leg waited for you. */
   startedAt: number;
   waitedMs: number;
+  /** M10 step 14: what it has spent so far. */
+  spentMicroUsd: number;
 }
 
 /** The latest runs across every chat, most recently changed first. */
@@ -699,9 +701,10 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
     updated_at: number;
     started_at: number | null;
     waited_ms: number;
+    spent_micro_usd: number;
   }>(
     `SELECT r.id, r.thread_id, t.title, r.task, r.status, r.note, r.created_at, r.updated_at,
-       r.started_at, r.waited_ms
+       r.started_at, r.waited_ms, r.spent_micro_usd
      FROM runs r
      LEFT JOIN threads t ON t.id = r.thread_id AND t.workspace_id = r.workspace_id
        AND t.deleted_at IS NULL
@@ -719,6 +722,7 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
     updatedAt: r.updated_at,
     startedAt: r.started_at ?? r.created_at,
     waitedMs: r.waited_ms,
+    spentMicroUsd: r.spent_micro_usd,
   }));
 }
 

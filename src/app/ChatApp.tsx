@@ -136,7 +136,7 @@ import {
   type Schedule,
 } from "@/storage/schedules";
 import { ScheduledTasksSection, type ScheduleDefaults } from "@/ui/Schedules";
-import type { HulkApi, HulkStatus } from "@/handover/api";
+import { hulkDb, type HulkApi, type HulkStatus } from "@/handover/api";
 import { handOver, handoverState, type HandoverState } from "@/handover/handover";
 import {
   addHandover,
@@ -420,6 +420,8 @@ import { getSetting, setSetting } from "@/storage/settings";
 import { PERIOD_DAYS, usageReport, type Dimension } from "@/cost/report";
 import { INTENT_LABELS } from "@/routing/classify";
 import { Sidebar } from "@/ui/Sidebar";
+import { Home } from "@/ui/Home";
+import { EMPTY_HOME, homeView } from "./homeView";
 import { AreaTabs } from "@/ui/AreaTabs";
 import { TagsDialog } from "@/ui/Tags";
 import { KeyCapsSection } from "@/ui/KeyCaps";
@@ -3555,6 +3557,38 @@ export function ChatApp({
     if (s) hulkLooks.set(h.threadId, [...(hulkLooks.get(h.threadId) ?? []), lookOf(s)]);
   }
   const handedThreads = new Set(handovers.map((h) => h.threadId));
+  // M10 step 14: a new chat or session opens on what's happening, read again every few seconds
+  // while it shows. The desktop reads HULK's scheduled tasks when it's paired.
+  const homeShown = view === "chat" && selectedId === null;
+  const [homeData, setHomeData] = useState<{
+    recent: RecentRun[];
+    schedules: Schedule[];
+    spentToday: number;
+    at: number;
+  } | null>(null);
+  useEffect(() => {
+    if (!homeShown) return;
+    let live = true;
+    const load = async () => {
+      const recent = await recentRuns(db, tenant, 50);
+      const schedules = webApp
+        ? await listSchedules(db, tenant)
+        : hulkLink && hulkPaired
+          ? await listSchedules(hulkDb(hulkLink), tenant).catch((): Schedule[] => [])
+          : [];
+      const spentToday = await spentSince(db, tenant, periodStart("day", Date.now()));
+      if (live) setHomeData({ recent, schedules, spentToday, at: Date.now() });
+    };
+    const again = () => {
+      load().catch(() => undefined);
+    };
+    again();
+    const timer = setInterval(again, cardMs);
+    return () => {
+      live = false;
+      clearInterval(timer);
+    };
+  }, [homeShown, db, tenant, webApp, hulkLink, hulkPaired, cardMs]);
   // M10 step 13: when a run in the open chat starts or ends, the sidebar's dots look again.
   const runStatusKey = [...threadRuns.values()].map((r) => `${r.run.id}:${r.run.status}`).join();
   useEffect(() => {
@@ -5483,6 +5517,39 @@ export function ChatApp({
                     messages={withEscalation}
                     modelName={modeName}
                     empty={emptyState(area)}
+                    {...(homeShown
+                      ? {
+                          home: (
+                            <Home
+                              area={area}
+                              empty={emptyState(area)}
+                              modelName={modeName}
+                              onOpen={select}
+                              view={
+                                homeData
+                                  ? homeView({
+                                      recent: homeData.recent,
+                                      questions: new Map(
+                                        [...approvals].map(([id, a]) => [id, a.request]),
+                                      ),
+                                      handovers,
+                                      hulkStates,
+                                      schedules: homeData.schedules,
+                                      web: webApp,
+                                      openable: new Set(threads.map((t) => t.id)),
+                                      spentToday: homeData.spentToday,
+                                      dayBudget:
+                                        budgets.find(
+                                          (b) => b.period === "day" && b.projectId === null,
+                                        )?.limitMicro ?? null,
+                                      now: homeData.at,
+                                    })
+                                  : EMPTY_HOME
+                              }
+                            />
+                          ),
+                        }
+                      : {})}
                     startedAt={messages[0]?.createdAt ?? null}
                     onRetry={retry}
                     onEscalate={escalate}
