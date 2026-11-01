@@ -125,6 +125,15 @@ import {
   type StartInput,
 } from "@/storage/runQueue";
 import { RunsScreen, type RunListRow } from "@/ui/Runs";
+import {
+  createSchedule,
+  deleteSchedule,
+  listSchedules,
+  setScheduleEnabled,
+  updateSchedule,
+  type Schedule,
+} from "@/storage/schedules";
+import { ScheduledTasksSection, type ScheduleDefaults } from "@/ui/Schedules";
 import { AgentAuditSection } from "@/ui/AgentAudit";
 import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -2762,6 +2771,31 @@ export function ChatApp({
     setThreadProject(db, tenant, thread.id, projectId).then(refreshThreads).catch(report);
   };
   const editedProject = projects.find((p) => p.id === projectDialog);
+  // M10 step 9: the edited project's scheduled tasks (the web app only runs them).
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const editedId = editedProject?.id ?? null;
+  const refreshSchedules = useCallback(async () => {
+    setSchedules(editedId && webApp ? await listSchedules(db, tenant, editedId) : []);
+  }, [db, tenant, editedId, webApp]);
+  useEffect(() => {
+    refreshSchedules().catch((e: unknown) => {
+      setProblem(e instanceof Error ? e.message : String(e));
+    });
+  }, [refreshSchedules]);
+  /** A new task starts on the project's model, or the Balanced tier's usual one. */
+  const scheduleDefaults = (): ScheduleDefaults => {
+    // With no key saved yet (a new server), any provider will do: it only picks the default.
+    const providers: ProviderId[] =
+      savedProviders.length > 0 ? savedProviders : ["anthropic", "openai"];
+    const balanced = tierModels(policy, catalog, "balanced", { providers })[0];
+    const m = editedProject?.defaultModel ?? balanced ?? catalog.models[0];
+    return {
+      kind: "code",
+      mode: editedProject?.runMode ?? "ask",
+      model: { provider: m?.provider ?? "anthropic", id: m?.id ?? "" },
+      capMicroUsd: DEFAULT_RUN_CAP_MICRO_USD,
+    };
+  };
   useEffect(() => {
     if (!projectDialog) return;
     listAllowedCommands(db, tenant, projectDialog).then(setAllowedCommands, report);
@@ -5404,6 +5438,36 @@ export function ChatApp({
           {...(editedProject ? { onDelete: removeProject } : {})}
           {...(editedProject
             ? {
+                schedules: (
+                  <ScheduledTasksSection
+                    web={webApp}
+                    tasks={schedules}
+                    models={options}
+                    defaults={scheduleDefaults()}
+                    timeZone={Intl.DateTimeFormat().resolvedOptions().timeZone}
+                    onSave={async (id, draft) => {
+                      const input = { ...draft, projectId: editedProject.id };
+                      try {
+                        if (id) await updateSchedule(db, tenant, id, input);
+                        else await createSchedule(db, tenant, input);
+                      } catch (e) {
+                        return e instanceof Error ? e.message : String(e);
+                      }
+                      await refreshSchedules();
+                      return null;
+                    }}
+                    onToggle={(id, on) => {
+                      setScheduleEnabled(db, tenant, id, on).then(refreshSchedules).catch(report);
+                    }}
+                    onDelete={(id) => {
+                      deleteSchedule(db, tenant, id).then(refreshSchedules).catch(report);
+                    }}
+                    onOpenChat={(threadId) => {
+                      setProjectDialog(null);
+                      select(threadId);
+                    }}
+                  />
+                ),
                 ...(exporter
                   ? {
                       onExport: async () => {

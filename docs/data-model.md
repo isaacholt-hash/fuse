@@ -190,6 +190,8 @@ Used only by the web app on HULK. A page doesn't run a run itself; it asks the s
 - `run_approvals`: a question a run is waiting on, as JSON, and its answer once some signed-in page gives one. Questions open when the runner stops count as no.
 - `run_live`: the text of a run's turn while it streams, so a page can show it.
 
+- `schedules` (`0051_schedules.sql`, step 9, AG-07): a saved prompt with its project, kind, mode, model and cap, run once at a time or daily or weekly at a minute past local midnight (the server's time), with when it runs next and how its last run went (with its last step on a failure). Soft-deleted.
+
 ### Out of P1 (not designed here)
 
 Agents/tools/MCP/audit (P2), sync metadata (P2: sync will need a per-row `version` / `sync_state`, added then), auth sessions and billing (P3).
