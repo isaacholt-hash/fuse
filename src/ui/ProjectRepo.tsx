@@ -20,9 +20,18 @@ export interface ProjectRepoProps {
   /** CA-04: the mode its coding runs start in. */
   runMode?: "plan" | "ask" | "auto_edit";
   onRunMode?: (mode: "plan" | "ask" | "auto_edit") => void;
+  /** M10 step 11: the cap and time limits its runs start with; null means FUSE's default. */
+  limits?: RunLimitsView;
+  onLimits?: (patch: Partial<RunLimitsView>) => void;
   /** Commands its runs may run without asking. */
   commands?: string[];
   onDisallow?: (command: string) => void;
+}
+
+export interface RunLimitsView {
+  capMicroUsd: number | null;
+  wallMinutes: number | null;
+  idleMinutes: number | null;
 }
 
 const MODES = {
@@ -32,6 +41,99 @@ const MODES = {
 } as const;
 
 const buttonClass = "h-7 rounded-lg border border-input px-2 text-xs hover:bg-muted";
+const numberClass =
+  "h-7 w-20 rounded-lg border border-input bg-background px-2 text-right text-xs tabular-nums";
+
+/** A whole number from a field, or null when it's empty or not a number. */
+function wholeOrNull(value: string): number | null {
+  const n = Number(value);
+  return value.trim() === "" || !Number.isFinite(n) || n <= 0 ? null : Math.floor(n);
+}
+
+/**
+ * M10 step 11: what the project's runs may spend and how long they may take. Empty fields mean
+ * FUSE's defaults, shown as placeholders: $1.00, 120 minutes, and 15 minutes without progress.
+ * Time waiting for an answer counts toward neither limit.
+ */
+function RunLimitsFields({
+  limits,
+  onLimits,
+}: {
+  limits: RunLimitsView;
+  onLimits: (patch: Partial<RunLimitsView>) => void;
+}) {
+  const dollars = limits.capMicroUsd === null ? "" : (limits.capMicroUsd / 1_000_000).toFixed(2);
+  return (
+    <div className="space-y-1" aria-label="Run limits">
+      <p className="text-[10px] text-muted-foreground">
+        Each run stops at these limits. Empty means FUSE&apos;s default. Waiting for your answer
+        doesn&apos;t count.
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <label className="flex items-center gap-2">
+          <span>Cost cap per run $</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            inputMode="decimal"
+            className={numberClass}
+            aria-label="Cost cap per run (dollars)"
+            placeholder="1.00"
+            defaultValue={dollars}
+            key={`cap-${dollars}`}
+            onBlur={(e) => {
+              const n = Number(e.target.value);
+              const micro =
+                e.target.value.trim() === "" || !Number.isFinite(n) || n <= 0
+                  ? null
+                  : Math.round(n * 1_000_000);
+              if (micro !== limits.capMicroUsd) onLimits({ capMicroUsd: micro });
+            }}
+          />
+        </label>
+        <label className="flex items-center gap-2">
+          <span>Stop after</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
+            className={numberClass}
+            aria-label="Stop a run after (minutes)"
+            placeholder="120"
+            defaultValue={limits.wallMinutes ?? ""}
+            key={`wall-${String(limits.wallMinutes)}`}
+            onBlur={(e) => {
+              const v = wholeOrNull(e.target.value);
+              if (v !== limits.wallMinutes) onLimits({ wallMinutes: v });
+            }}
+          />
+          <span>min</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <span>Stop when nothing happens for</span>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
+            className={numberClass}
+            aria-label="Stop a run when nothing happens for (minutes)"
+            placeholder="15"
+            defaultValue={limits.idleMinutes ?? ""}
+            key={`idle-${String(limits.idleMinutes)}`}
+            onBlur={(e) => {
+              const v = wholeOrNull(e.target.value);
+              if (v !== limits.idleMinutes) onLimits({ idleMinutes: v });
+            }}
+          />
+          <span>min</span>
+        </label>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Project settings → Folders (CA-01, WF-02): the folders this project's chats work in. FUSE can
@@ -47,6 +149,8 @@ export function ProjectRepoSection({
   onNetwork,
   runMode = "ask",
   onRunMode,
+  limits,
+  onLimits,
   commands = [],
   onDisallow,
 }: ProjectRepoProps) {
@@ -132,6 +236,9 @@ export function ProjectRepoSection({
               ))}
             </select>
           </label>
+        )}
+        {folders.length > 0 && limits && onLimits && (
+          <RunLimitsFields limits={limits} onLimits={onLimits} />
         )}
         {commands.length > 0 && (
           <div>

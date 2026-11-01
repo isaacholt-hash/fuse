@@ -130,6 +130,11 @@ export interface RunView {
   status: "running" | "paused" | "done" | "stopped" | "error";
   /** e.g. "$0.12 of $1.00". */
   costLabel: string;
+  /**
+   * M10 step 11: while it works, the moment its active time counts from (its leg's start plus
+   * the time it waited for you), so the card can say "Running for 3 min"; null otherwise.
+   */
+  activeSince: number | null;
   /** Why it paused, stopped or failed. */
   note: string | null;
   steps: RunStepView[];

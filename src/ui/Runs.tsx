@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { RunningFor } from "./RunningFor";
 
 /** How a run shows in the Runs list: "waiting" means it has a question no one has answered. */
 export type RunListStatus = "going" | "waiting" | "done" | "stopped" | "paused" | "failed";
@@ -24,6 +25,8 @@ export interface RunListRow {
   note: string | null;
   /** e.g. "2 min ago". */
   when: string;
+  /** M10 step 11: while it goes, when its active time counts from; null otherwise. */
+  activeSince?: number | null;
 }
 
 const LOOK: Record<RunListStatus, { label: string; icon: ReactNode; tone: string }> = {
@@ -110,6 +113,12 @@ export function RunsScreen({
                       <span className="block truncate text-sm font-medium">{r.task}</span>
                       <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                         {r.chat ?? "No chat"} · {r.when}
+                        {r.status === "going" && typeof r.activeSince === "number" && (
+                          <>
+                            {" · "}
+                            <RunningFor since={r.activeSince} />
+                          </>
+                        )}
                       </span>
                       {r.note && (r.status === "failed" || r.status === "paused") && (
                         <span

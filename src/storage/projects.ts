@@ -23,6 +23,8 @@ export interface Project {
   repoReadSecrets: boolean;
   /** CA-04: the mode its coding runs start in. */
   runMode: "plan" | "ask" | "auto_edit";
+  /** M10 step 11: the cap and time limits its runs start with; null means FUSE's default. */
+  runLimits: RunLimits;
   /** LL-01: sums, conversions and checks are answered without a model, at $0. */
   answerWithoutModel: boolean;
   createdAt: number;
@@ -30,6 +32,15 @@ export interface Project {
 }
 
 export type PrivacyMode = "normal" | "local_only" | "cloud_only";
+
+/** M10 step 11: what a project's runs may spend and how long they may take. Null: the default. */
+export interface RunLimits {
+  capMicroUsd: number | null;
+  /** Active minutes a run may take in all. */
+  wallMinutes: number | null;
+  /** Active minutes a run may go without progress. */
+  idleMinutes: number | null;
+}
 
 interface ProjectRow {
   id: string;
@@ -43,6 +54,9 @@ interface ProjectRow {
   repo_root: string | null;
   repo_read_sensitive: number;
   run_mode: "plan" | "ask" | "auto_edit";
+  run_cap_micro_usd: number | null;
+  run_wall_minutes: number | null;
+  run_idle_minutes: number | null;
   answer_without_model: number;
   created_at: number;
   updated_at: number;
@@ -62,6 +76,11 @@ const toProject = (r: ProjectRow): Project => ({
   repoRoot: r.repo_root,
   repoReadSecrets: r.repo_read_sensitive === 1,
   runMode: r.run_mode,
+  runLimits: {
+    capMicroUsd: r.run_cap_micro_usd,
+    wallMinutes: r.run_wall_minutes,
+    idleMinutes: r.run_idle_minutes,
+  },
   answerWithoutModel: r.answer_without_model === 1,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
@@ -75,7 +94,8 @@ const FIRST_FOLDER = (col: "path" | "read_sensitive") =>
 const COLUMNS = `id, name, instructions, default_provider, default_model, default_tier, privacy_mode,
   allow_embeddings, ${FIRST_FOLDER("path")} AS repo_root,
   COALESCE(${FIRST_FOLDER("read_sensitive")}, 0) AS repo_read_sensitive, run_mode,
-  answer_without_model, created_at, updated_at`;
+  run_cap_micro_usd, run_wall_minutes, run_idle_minutes, answer_without_model, created_at,
+  updated_at`;
 
 /** SE-13: a project's privacy mode and whether it may be embedded. */
 export async function setProjectPrivacy(
@@ -129,6 +149,36 @@ export async function setProjectRunMode(
   await db.execute(
     "UPDATE projects SET run_mode = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
     [mode, Date.now(), tenant.workspaceId, id],
+  );
+}
+
+/**
+ * M10 step 11: the cap and time limits the project's runs start with. A field left out of the
+ * patch is kept; null puts it back on FUSE's default.
+ */
+export async function setProjectRunLimits(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  patch: Partial<RunLimits>,
+): Promise<void> {
+  const sets: string[] = [];
+  const args: (number | null)[] = [];
+  const cols: [keyof RunLimits, string][] = [
+    ["capMicroUsd", "run_cap_micro_usd"],
+    ["wallMinutes", "run_wall_minutes"],
+    ["idleMinutes", "run_idle_minutes"],
+  ];
+  for (const [key, col] of cols) {
+    if (key in patch) {
+      sets.push(`${col} = ?`);
+      args.push(patch[key] ?? null);
+    }
+  }
+  if (sets.length === 0) return;
+  await db.execute(
+    `UPDATE projects SET ${sets.join(", ")}, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [...args, Date.now(), tenant.workspaceId, id],
   );
 }
 

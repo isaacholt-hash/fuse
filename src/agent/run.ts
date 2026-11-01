@@ -11,6 +11,12 @@ import {
 } from "@/storage/network";
 import { uuidv7 } from "@/storage/ids";
 import { foldersFor, labelFolders, scopedExec, scopedGit, scopedRepo } from "./folders";
+import {
+  DEFAULT_RUN_IDLE_MINUTES,
+  DEFAULT_RUN_WALL_MINUTES,
+  Watchdog,
+  type WatchdogLimits,
+} from "./watchdog";
 import type { Folder } from "@/storage/folders";
 import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
 import { effectiveInstructions, systemPrompt } from "@/chat/instructions";
@@ -44,6 +50,8 @@ import {
   setRunFolders,
   setRunPlan,
   addRunCost,
+  addRunWait,
+  markRunContinued,
   type Approval,
   type Run,
   type RunChange,
@@ -80,7 +88,7 @@ import { checkInput } from "./checkInput";
 import { kindOf, toolEntry, toolsIn } from "./registry";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
 import { mcpToolsFor, type McpOffered } from "./mcpTools";
-import type { ToolSpec } from "@/providers/types";
+import type { SendScope, ToolSpec } from "@/providers/types";
 import { addressCarries, findInstructions, localFlags, scansOutput } from "./injection";
 import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
@@ -284,8 +292,29 @@ export interface RunInput {
    */
   planner?: CatalogModel | null;
   capMicroUsd?: number;
+  /**
+   * M10 step 11: the stall watchdog's limits in active minutes (time waiting for you counts
+   * toward neither). When omitted: the project's, then FUSE's defaults (120 and 15).
+   */
+  wallMinutes?: number;
+  idleMinutes?: number;
   signal?: AbortSignal;
   onProgress?: (p: RunProgress) => void;
+}
+
+/** What the loop's helpers get: the run's own signal (a tripped watchdog aborts it too). */
+type LoopInput = Pick<RunInput, "signal" | "onProgress"> & { dog?: Watchdog };
+
+/** M10 step 11: the watchdog's limits for a run: asked for, else the project's, else the default. */
+async function limitsFor(
+  deps: RunDeps,
+  run: Run,
+  input: Pick<RunInput, "wallMinutes" | "idleMinutes">,
+): Promise<WatchdogLimits> {
+  const project = run.projectId ? await getProject(deps.db, deps.tenant, run.projectId) : null;
+  const wall = input.wallMinutes ?? project?.runLimits.wallMinutes ?? DEFAULT_RUN_WALL_MINUTES;
+  const idle = input.idleMinutes ?? project?.runLimits.idleMinutes ?? DEFAULT_RUN_IDLE_MINUTES;
+  return { wallMs: wall * 60_000, idleMs: idle * 60_000 };
 }
 
 /**
@@ -407,11 +436,15 @@ async function progress(
   }
 }
 
-/** Works the run until it finishes, pauses at its cap, is stopped, or fails. */
+/**
+ * Works the run until it finishes, pauses at its cap, is stopped, or fails. M10 step 11: a
+ * watchdog stops it too, after its wall-clock limit or when it makes no progress for its idle
+ * limit; a trip aborts whatever is in flight the same way Stop does, and leaves its own note.
+ */
 async function work(
   deps: RunDeps,
   runId: string,
-  input: Pick<RunInput, "signal" | "onProgress">,
+  outer: Pick<RunInput, "signal" | "onProgress" | "wallMinutes" | "idleMinutes">,
 ): Promise<Run> {
   const { db, tenant } = deps;
   const scope = (run: Run) =>
@@ -420,11 +453,54 @@ async function work(
       : run.projectId
         ? { kind: "project" as const, id: run.projectId }
         : { kind: "global" as const };
+  const first = await getRun(db, tenant, runId);
+  if (!first) throw new Error("Run not found");
+  let tripped: string | null = null;
+  const inner = new AbortController();
+  const forward = () => {
+    inner.abort();
+  };
+  if (outer.signal?.aborted) inner.abort();
+  else outer.signal?.addEventListener("abort", forward);
+  const dog = new Watchdog(await limitsFor(deps, first, outer), {
+    ...(deps.now ? { now: deps.now } : {}),
+    onTrip: (_reason, note) => {
+      tripped = note;
+      inner.abort();
+    },
+  });
+  const input: LoopInput = {
+    signal: inner.signal,
+    ...(outer.onProgress ? { onProgress: outer.onProgress } : {}),
+    dog,
+  };
+  const stopNote = () => tripped ?? "Stopped.";
+  dog.start();
+  try {
+    await workTurns(deps, runId, input, scope, stopNote);
+  } finally {
+    dog.stop();
+    outer.signal?.removeEventListener("abort", forward);
+  }
+  await progress(deps, runId, input);
+  const finished = await getRun(db, tenant, runId);
+  if (!finished) throw new Error("Run not found");
+  return finished;
+}
+
+async function workTurns(
+  deps: RunDeps,
+  runId: string,
+  input: LoopInput,
+  scope: (run: Run) => SendScope,
+  stopNote: () => string,
+): Promise<void> {
+  const { db, tenant } = deps;
   for (let turn = 0; ; turn++) {
     const run = await getRun(db, tenant, runId);
     if (!run) throw new Error("Run not found");
     if (input.signal?.aborted) {
-      await setRunStatus(db, tenant, runId, "stopped", "Stopped.");
+      await setRunStatus(db, tenant, runId, "stopped", stopNote());
       break;
     }
     if (run.spentMicroUsd >= run.capMicroUsd) {
@@ -524,6 +600,7 @@ async function work(
       )) {
         if (ev.type === "text") {
           text += ev.text;
+          input.dog?.progress();
           await progress(deps, runId, input, text);
         } else if (ev.type === "tool_call") calls.push(ev.call);
         else if (ev.type === "done") done = ev;
@@ -572,7 +649,7 @@ async function work(
         runId,
         stopped ? "stopped" : "error",
         stopped
-          ? "Stopped."
+          ? stopNote()
           : userMessage(
               failure ?? new ProviderError("stream", "No answer"),
               PROVIDER_NAMES[model.provider],
@@ -587,6 +664,7 @@ async function work(
       requestId,
       costMicroUsd: usage.costMicroUsd,
     });
+    input.dog?.progress();
     if (calls.length === 0) {
       await setRunStatus(db, tenant, runId, "done");
       break;
@@ -613,13 +691,10 @@ async function work(
         const batchId = uuidv7(Date.now());
         for (const c of out.batch) await recordChange(deps, runId, stepId, c, batchId);
       }
+      input.dog?.progress();
     }
     await progress(deps, runId, input);
   }
-  await progress(deps, runId, input);
-  const finished = await getRun(db, tenant, runId);
-  if (!finished) throw new Error("Run not found");
-  return finished;
 }
 
 interface CallOutcome {
@@ -642,7 +717,7 @@ async function ask(
   deps: RunDeps,
   run: Run,
   req: ApprovalAsk,
-  input: Pick<RunInput, "signal" | "onProgress">,
+  input: LoopInput,
 ): Promise<ApprovalAnswer | "stopped"> {
   if (!deps.approve) return "no";
   const flags = await priorFlags(deps, run);
@@ -652,20 +727,27 @@ async function ask(
       resolve("stopped");
     });
   });
-  const answer = await Promise.race([
-    deps
-      .approve({
-        ...req,
-        runId: run.id,
-        ...(flags.length ? { flags } : {}),
-        ...(input.signal ? { signal: input.signal } : {}),
-      })
-      .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a))
-      // After a flag nothing is always-allowed: a yes is for this one.
-      .then((a): ApprovalAnswer => (flags.length && a === "always" ? "yes" : a)),
-    stopped,
-  ]);
-  return input.signal?.aborted ? "stopped" : answer;
+  // M10 step 11: time spent waiting for the answer counts toward no limit.
+  input.dog?.waiting(true);
+  try {
+    const answer = await Promise.race([
+      deps
+        .approve({
+          ...req,
+          runId: run.id,
+          ...(flags.length ? { flags } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+        })
+        .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a))
+        // After a flag nothing is always-allowed: a yes is for this one.
+        .then((a): ApprovalAnswer => (flags.length && a === "always" ? "yes" : a)),
+      stopped,
+    ]);
+    return input.signal?.aborted ? "stopped" : answer;
+  } finally {
+    const waited = input.dog?.waiting(false) ?? 0;
+    if (waited > 0) await addRunWait(deps.db, deps.tenant, run.id, waited);
+  }
 }
 
 const STOPPED: CallOutcome = { output: "Error: the run was stopped.", isError: true };
@@ -1371,6 +1453,8 @@ async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
 export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
   const folders = input.folders ?? (await foldersFor(base, input));
   if (folders.length === 0) throw new Error("Pick a folder for this chat first.");
+  // M10 step 11: the cap asked for, else the project's, else FUSE's default.
+  const project = input.projectId ? await getProject(base.db, base.tenant, input.projectId) : null;
   const run = await createRun(base.db, base.tenant, {
     projectId: input.projectId,
     threadId: input.threadId,
@@ -1378,7 +1462,7 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
     task: input.task,
     provider: input.model.provider,
     model: input.model.id,
-    capMicroUsd: input.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
+    capMicroUsd: input.capMicroUsd ?? project?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
     mode: input.mode ?? "plan",
     kind: input.kind ?? "code",
   });
@@ -1526,7 +1610,8 @@ export async function continueRun(
 ): Promise<Run> {
   const { db, tenant } = deps;
   if (input.raiseCapBy) await raiseRunCap(db, tenant, runId, input.raiseCapBy);
-  await setRunStatus(db, tenant, runId, "running");
+  // M10 step 11: a new leg, with its own clock.
+  await markRunContinued(db, tenant, runId);
   return work(await forRun(deps, runId), runId, input);
 }
 

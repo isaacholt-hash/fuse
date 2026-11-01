@@ -195,3 +195,27 @@ test("a request is taken once, oldest first", async () => {
   expect((await takeRequest(db, t))?.id).toBe(b);
   expect(await takeRequest(db, t)).toBeNull();
 });
+
+test("M10 step 11: Stop for a run nothing here is running still marks it stopped", async () => {
+  const db = openTestDb();
+  const run = await createRun(db, t, {
+    projectId: null,
+    threadId: null,
+    messageId: null,
+    task: "x",
+    provider: ref.provider,
+    model: ref.id,
+    capMicroUsd: 1,
+  });
+  await askToStop(db, t, run.id);
+  await new Runner({ deps: depsFor(db), ...fast }).tick();
+  expect(await getRun(db, t, run.id)).toMatchObject({
+    status: "stopped",
+    note: "Stopped from another session.",
+  });
+  // A run that already ended is left as it is.
+  await setRunStatus(db, t, run.id, "done");
+  await askToStop(db, t, run.id);
+  await new Runner({ deps: depsFor(db), ...fast }).tick();
+  expect((await getRun(db, t, run.id))?.status).toBe("done");
+});

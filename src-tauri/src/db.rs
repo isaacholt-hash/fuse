@@ -291,6 +291,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "schedules",
         sql: include_str!("../migrations/0051_schedules.sql"),
     },
+    MigrationFile {
+        version: 52,
+        description: "run_limits",
+        sql: include_str!("../migrations/0052_run_limits.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -1115,6 +1120,17 @@ mod tests {
         .unwrap();
         assert_eq!(logged[0]["cost_micro_usd"], 1234);
         assert_eq!(logged[0]["purpose"], "chat");
+        // 0052: an old project has no run limits of its own, so its runs use FUSE's defaults.
+        let limits = select(
+            &pool,
+            "SELECT run_cap_micro_usd, run_wall_minutes, run_idle_minutes FROM projects WHERE id = 'p1'",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert!(limits[0]["run_cap_micro_usd"].is_null());
+        assert!(limits[0]["run_wall_minutes"].is_null());
+        assert!(limits[0]["run_idle_minutes"].is_null());
         pool.close().await;
         if (MIGRATIONS.len() as i64) > SEEDED_FROM {
             assert!(

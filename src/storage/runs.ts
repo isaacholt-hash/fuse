@@ -37,6 +37,10 @@ export interface Run {
   planner: string | null;
   createdAt: number;
   updatedAt: number;
+  /** M10 step 11: when its current leg started (Continue starts a new one). */
+  startedAt: number;
+  /** M10 step 11: time in that leg spent waiting for your answer; counts toward no limit. */
+  waitedMs: number;
 }
 
 export type RunStep =
@@ -100,6 +104,8 @@ interface RunRow {
   planner: string | null;
   created_at: number;
   updated_at: number;
+  started_at: number | null;
+  waited_ms: number;
 }
 
 interface StepRow {
@@ -141,6 +147,8 @@ const toRun = (r: RunRow): Run => ({
   planner: r.planner,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
+  startedAt: r.started_at ?? r.created_at,
+  waitedMs: r.waited_ms,
 });
 
 const toStep = (r: StepRow): RunStep =>
@@ -182,8 +190,8 @@ export async function createRun(
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO runs (id, workspace_id, user_id, project_id, thread_id, message_id, task, kind,
-       mode, provider, model, status, cap_micro_usd, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?)`,
+       mode, provider, model, status, cap_micro_usd, created_at, updated_at, started_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -199,6 +207,7 @@ export async function createRun(
       run.capMicroUsd,
       now,
       now,
+      now,
     ],
   );
   const created = await getRun(db, tenant, id);
@@ -210,7 +219,7 @@ export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, kind, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
-       updated_at
+       updated_at, started_at, waited_ms
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
   );
@@ -307,6 +316,28 @@ export async function markInterruptedRuns(db: SqlDb, tenant: Tenant): Promise<nu
     [Date.now(), tenant.workspaceId],
   );
   return result.rowsAffected;
+}
+
+/**
+ * M10 step 11: Continue starts a new leg: the run is running again, its clock starts now, and the
+ * time it waited before is forgotten (it belonged to the last leg).
+ */
+export async function markRunContinued(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  const now = Date.now();
+  await db.execute(
+    `UPDATE runs SET status = 'running', note = NULL, started_at = ?, waited_ms = 0, updated_at = ?
+     WHERE workspace_id = ? AND id = ?`,
+    [now, now, tenant.workspaceId, id],
+  );
+}
+
+/** M10 step 11: a question was answered after `ms` of waiting; it counts toward no limit. */
+export async function addRunWait(db: SqlDb, tenant: Tenant, id: string, ms: number): Promise<void> {
+  if (ms <= 0) return;
+  await db.execute(
+    `UPDATE runs SET waited_ms = waited_ms + ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
+    [Math.floor(ms), Date.now(), tenant.workspaceId, id],
+  );
 }
 
 /** Raises the cap (after a pause at the cap, with the user's say-so). */
@@ -650,6 +681,9 @@ export interface RecentRun {
   note: string | null;
   createdAt: number;
   updatedAt: number;
+  /** M10 step 11: when its current leg started, and how long that leg waited for you. */
+  startedAt: number;
+  waitedMs: number;
 }
 
 /** The latest runs across every chat, most recently changed first. */
@@ -663,8 +697,11 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
     note: string | null;
     created_at: number;
     updated_at: number;
+    started_at: number | null;
+    waited_ms: number;
   }>(
-    `SELECT r.id, r.thread_id, t.title, r.task, r.status, r.note, r.created_at, r.updated_at
+    `SELECT r.id, r.thread_id, t.title, r.task, r.status, r.note, r.created_at, r.updated_at,
+       r.started_at, r.waited_ms
      FROM runs r
      LEFT JOIN threads t ON t.id = r.thread_id AND t.workspace_id = r.workspace_id
        AND t.deleted_at IS NULL
@@ -680,6 +717,8 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
     note: r.note,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
+    startedAt: r.started_at ?? r.created_at,
+    waitedMs: r.waited_ms,
   }));
 }
 

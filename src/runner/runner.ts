@@ -174,7 +174,15 @@ export class Runner {
     const base = await this.options.deps();
     const { db, tenant } = base;
     if (request.kind === "stop") {
-      this.going.get(request.input.runId)?.abort();
+      const going = this.going.get(request.input.runId);
+      if (going) going.abort();
+      else {
+        // M10 step 11: nothing here is running it (a stale row, or another process's), so Stop
+        // still works: the record says stopped, and Continue can pick it up.
+        const run = await getRun(db, tenant, request.input.runId);
+        if (run?.status === "running")
+          await setRunStatus(db, tenant, run.id, "stopped", "Stopped from another session.");
+      }
       await finishRequest(db, tenant, request.id, { runId: request.input.runId });
       return;
     }

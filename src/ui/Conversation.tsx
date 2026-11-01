@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { RunningFor } from "./RunningFor";
 import { Button } from "@/components/ui/button";
 import { fuzzyScore } from "./fuzzy";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
@@ -377,6 +378,7 @@ export function Messages({
   onOpenFile,
   onOpenSource,
   onContinueRun,
+  onStopRun,
   onUndoChange,
   onUndoRun,
   onApprove,
@@ -384,6 +386,8 @@ export function Messages({
 }: {
   /** WF-05: opens a file a run made or changed in the side panel. */
   onPreviewChange?: (changeId: string) => void;
+  /** M10 step 11: stops this run, wherever it is going. */
+  onStopRun?: (runId: string) => void;
   /** CA-03, CA-04: answers what a run asked for ("always": don't ask again for this command). */
   onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
@@ -646,6 +650,7 @@ export function Messages({
                         run={message.run}
                         busy={busy}
                         {...(onContinueRun ? { onContinue: onContinueRun } : {})}
+                        {...(onStopRun ? { onStop: onStopRun } : {})}
                         {...(onUndoChange ? { onUndoChange } : {})}
                         {...(onUndoRun ? { onUndoRun } : {})}
                         {...(onApprove ? { onApprove } : {})}
@@ -2017,6 +2022,7 @@ function RunCard({
   run,
   busy,
   onContinue,
+  onStop,
   onUndoChange,
   onUndoRun,
   onApprove,
@@ -2028,6 +2034,8 @@ function RunCard({
   onPreviewChange?: (changeId: string) => void;
   onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
   onContinue?: (runId: string, raise: boolean) => void;
+  /** M10 step 11: stops this run; always offered while it works. */
+  onStop?: (runId: string) => void;
   onUndoChange?: (changeId: string) => void;
   onUndoRun?: (runId: string) => void;
 }) {
@@ -2051,9 +2059,27 @@ function RunCard({
         >
           {RUN_STATUS[run.status]}
         </span>
+        {live && run.activeSince !== null && (
+          <span className="text-[10px] text-muted-foreground">
+            <RunningFor since={run.activeSince} />
+          </span>
+        )}
         <span className="ml-auto font-mono text-[10px] text-muted-foreground tabular-nums">
           {run.costLabel}
         </span>
+        {live && onStop && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 px-2 text-[10px]"
+            aria-label={`Stop this ${run.title.toLowerCase()}`}
+            onClick={() => {
+              onStop(run.id);
+            }}
+          >
+            Stop
+          </Button>
+        )}
       </div>
       {(run.steps.length > 0 || run.streaming) && (
         <ol className="mt-2 space-y-1 border-l pl-3 text-[11px]">
