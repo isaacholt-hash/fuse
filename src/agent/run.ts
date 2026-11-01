@@ -1387,7 +1387,7 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
   if (input.newBranch && deps.git && run.mode !== "plan" && run.kind === "code") {
     const branch = branchName(input.task, run.id);
     const made = await deps.git
-      .run(HERE, "git", ["switch", "-c", branch])
+      .run(HERE, "git", ["switch", "--create", branch])
       .catch((e: unknown) => ({ output: e instanceof Error ? e.message : String(e), exitCode: 1 }));
     if (made.exitCode === 0) await setRunBranch(deps.db, deps.tenant, run.id, branch);
     else {

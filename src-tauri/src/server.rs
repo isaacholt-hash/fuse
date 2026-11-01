@@ -27,7 +27,7 @@ use crate::api::{self, Reply, SinkFactory};
 use crate::auth::{Auth, SignInError, Who};
 use crate::creds::SystemdCreds;
 use crate::ctx::{Ctx, EventSink, Sink};
-use crate::keys::Keys;
+use crate::keys::{Keys, MemoryStore, SecretStore};
 
 /// Byte bodies (attachments, written files) are capped at 50 MB by the commands themselves.
 const BODY_LIMIT: usize = 64 * 1024 * 1024;
@@ -42,6 +42,9 @@ pub struct Config {
     /// The runner (`pnpm build:runner`), started with `node`; without it, nothing runs runs.
     pub runner: Option<PathBuf>,
     pub node: PathBuf,
+    /// Tests only (M10 step 10): keys and the database key in memory, for the process's life,
+    /// where systemd-creds can't be used (CI). Accepted only with `FUSE_SERVER_TEST=1`.
+    pub test_keys_in_memory: bool,
 }
 
 /// Messages waiting for a page's WebSocket, created by whichever comes first: the socket or
@@ -453,19 +456,24 @@ pub fn router(server: Arc<Server>, ui: &FsPath) -> Router {
         .fallback_service(ServeDir::new(ui).fallback(ServeFile::new(ui.join("index.html"))))
 }
 
-/// Builds the server's `Ctx` in `home`, with its keys in systemd-creds.
-pub fn context(home: &FsPath) -> Result<Ctx, String> {
-    if !SystemdCreds::available() {
-        return Err("This computer can't keep secrets with systemd-creds --user (it needs systemd 256 or later).".into());
-    }
-    let creds = SystemdCreds::new(&home.join("creds"))?;
+/// Builds the server's `Ctx` in `home`, with its keys in systemd-creds, or in memory for the
+/// test mode (`--test-keys-in-memory`).
+pub fn context(home: &FsPath, keys_in_memory: bool) -> Result<Ctx, String> {
+    let store: Box<dyn SecretStore> = if keys_in_memory {
+        Box::new(MemoryStore::default())
+    } else {
+        if !SystemdCreds::available() {
+            return Err("This computer can't keep secrets with systemd-creds --user (it needs systemd 256 or later).".into());
+        }
+        Box::new(SystemdCreds::new(&home.join("creds"))?)
+    };
     let data = home.join("data");
     let config = home.join("config");
     for dir in [&data, &config] {
         std::fs::create_dir_all(dir)
             .map_err(|e| format!("Couldn't make {}: {e}", dir.display()))?;
     }
-    Ok(Ctx::new(data, config, Keys::with_store(Box::new(creds))))
+    Ok(Ctx::new(data, config, Keys::with_store(store)))
 }
 
 fn default_home() -> PathBuf {
@@ -476,13 +484,18 @@ fn default_home() -> PathBuf {
         .join("fuse-server")
 }
 
-fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Config, String> {
+/// The environment variable that allows `--test-keys-in-memory`.
+const TEST_ENV: &str = "FUSE_SERVER_TEST";
+
+/// `test_env`: `FUSE_SERVER_TEST=1` is set, so the test-only options are allowed.
+fn parse_args(mut args: impl Iterator<Item = String>, test_env: bool) -> Result<Config, String> {
     let mut config = Config {
         port: DEFAULT_PORT,
         ui: PathBuf::from("dist-web"),
         home: default_home(),
         runner: None,
         node: PathBuf::from("node"),
+        test_keys_in_memory: false,
     };
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -492,6 +505,12 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Config, String> 
             "--home" => config.home = value()?.into(),
             "--runner" => config.runner = Some(value()?.into()),
             "--node" => config.node = value()?.into(),
+            "--test-keys-in-memory" if test_env => config.test_keys_in_memory = true,
+            "--test-keys-in-memory" => {
+                return Err(format!(
+                    "--test-keys-in-memory is for tests only: it keeps keys and the database key in memory, so it needs {TEST_ENV}=1 set too."
+                ));
+            }
             _ => {
                 return Err(format!(
                     "Unknown option {arg}. Options: --port, --ui, --home, --runner, --node."
@@ -503,7 +522,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Config, String> 
 }
 
 pub fn main() -> ExitCode {
-    let config = match parse_args(std::env::args().skip(1)) {
+    let test_env = std::env::var(TEST_ENV).is_ok_and(|v| v == "1");
+    let config = match parse_args(std::env::args().skip(1), test_env) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("fuse-server: {e}");
@@ -530,7 +550,15 @@ pub fn main() -> ExitCode {
 }
 
 async fn serve(config: Config) -> Result<(), String> {
-    let server = Server::new(context(&config.home)?, Auth::open(&config.home)?);
+    if config.test_keys_in_memory {
+        eprintln!(
+            "fuse-server: WARNING: TEST MODE (--test-keys-in-memory): keys and the database key are kept in memory only and are lost when this server stops. Never use it for real data."
+        );
+    }
+    let server = Server::new(
+        context(&config.home, config.test_keys_in_memory)?,
+        Auth::open(&config.home)?,
+    );
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -645,7 +673,6 @@ impl Runner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::keys::MemoryStore;
 
     const PASS: &str = "correct horse battery";
 
@@ -909,6 +936,7 @@ mod tests {
             ["--port", "4200", "--ui", "/srv/ui"]
                 .map(String::from)
                 .into_iter(),
+            false,
         )
         .unwrap();
         assert_eq!((c.port, c.ui), (4200, PathBuf::from("/srv/ui")));
@@ -917,13 +945,34 @@ mod tests {
             ["--runner", "r.mjs", "--node", "/usr/bin/node"]
                 .map(String::from)
                 .into_iter(),
+            false,
         )
         .unwrap();
         assert_eq!(
             (c.runner, c.node),
             (Some(PathBuf::from("r.mjs")), PathBuf::from("/usr/bin/node"))
         );
-        assert!(parse_args(["--bogus"].map(String::from).into_iter()).is_err());
-        assert!(parse_args(["--port"].map(String::from).into_iter()).is_err());
+        assert!(parse_args(["--bogus"].map(String::from).into_iter(), false).is_err());
+        assert!(parse_args(["--port"].map(String::from).into_iter(), false).is_err());
+    }
+
+    #[test]
+    fn keys_in_memory_only_with_the_test_variable() {
+        let flag = || ["--test-keys-in-memory"].map(String::from).into_iter();
+        match parse_args(flag(), false) {
+            Ok(_) => panic!("--test-keys-in-memory was accepted without FUSE_SERVER_TEST=1"),
+            Err(e) => assert!(e.contains("FUSE_SERVER_TEST=1"), "{e}"),
+        }
+        assert!(parse_args(flag(), true).is_ok_and(|c| c.test_keys_in_memory));
+        assert!(parse_args(std::iter::empty(), true).is_ok_and(|c| !c.test_keys_in_memory));
+    }
+
+    #[test]
+    fn test_keys_live_in_memory() {
+        let home = std::env::temp_dir().join(format!("fuse-server-memkeys-{}", std::process::id()));
+        let ctx = context(&home, true).unwrap();
+        assert!(!home.join("creds").exists());
+        drop(ctx);
+        let _ = std::fs::remove_dir_all(&home);
     }
 }

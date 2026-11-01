@@ -102,6 +102,16 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
 - [ ] **10. Runs-on-HULK benchmark and deploy kit.**
   - The recorded e2e above, against a throwaway fuse-server with provider fixtures and no keys.
   - `scripts/deploy-server.sh` and the `fuse-server.service` user unit, plus the exact commands Isaac runs: enabling linger, `tailscale serve`, the first passphrase, and entering keys in the web Settings.
+  - Part 1 done (the benchmark):
+    - `src/runner/hulk.bench.test.ts` starts a throwaway fuse-server on a free port. The page is plain fetch calls with a session cookie. The runner runs in the test process with its own paired device, going over HTTP to the server's real commands; only the model is scripted (the real Anthropic adapter on scripted turns), so there's no key.
+    - (a) A page asks for a run and signs out (its cookie then gets 401); the run finishes anyway, with its answer complete, and the request knows its run.
+    - (b) An edit in "ask" mode waits; a second sign-in answers it, the run finishes and the file is on disk.
+    - (c) A desktop fixture (its own database, HULK over HTTP with a device token) hands over a Code run on a local bare repository. The server clones it with `repo_clone`, the run works on `fuse/<id>`, asks to push, and once the page says yes the branch is on the remote and the run's note says "Pushed …".
+    - (d) is `it.todo` until step 9 lands scheduled tasks.
+    - (e) A run stopped mid-turn (as at shutdown) is `stopped`; a new runner recovers, Continue finishes it, and its earlier steps are kept.
+    - Run it with `pnpm hulk:bench` (builds fuse-server, then runs the test); `pnpm test` skips it, since `FUSE_SERVER_BIN` isn't set. It doesn't need the sandbox.
+    - CI: the "Runs on HULK benchmark" job on ubuntu-24.04. Its systemd (255) can't do `systemd-creds --user`, so fuse-server has `--test-keys-in-memory`, accepted only with `FUSE_SERVER_TEST=1` (threat model §9).
+    - Found and fixed: a run's own branch and the `git_branch` tool ran `git switch -c`, which the git guard refuses (`-c` is refused anywhere), so every new-branch run failed with "-c isn't allowed". They use `--create` now.
   - Part 2 done (the deploy kit): `scripts/deploy-server.sh` builds and installs a release into `~/.local/opt/fuse-server/<commit>/` and writes the user unit (127.0.0.1:4100); `docs/hulk-server.md` has Isaac's first-time steps, updating and looking after it. Tested into a scratch folder: the installed build served the UI and started the runner.
 
 ## Notes

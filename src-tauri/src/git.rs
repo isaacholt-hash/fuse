@@ -175,6 +175,11 @@ mod tests {
     #[test]
     fn only_the_agents_subcommands_and_no_injection() {
         assert_eq!(refuse("git", &a(&["status", "--short"])), None);
+        // A run's own branch (CA-05): `-c` is refused anywhere, so FUSE uses --create.
+        assert_eq!(
+            refuse("git", &a(&["switch", "--create", "fuse/x-1a2b"])),
+            None
+        );
         assert_eq!(
             refuse("git", &a(&["commit", "-m", "-c is fine inside a message"])),
             None
