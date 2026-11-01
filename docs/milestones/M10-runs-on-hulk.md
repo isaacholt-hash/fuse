@@ -102,5 +102,6 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
 - [ ] **10. Runs-on-HULK benchmark and deploy kit.**
   - The recorded e2e above, against a throwaway fuse-server with provider fixtures and no keys.
   - `scripts/deploy-server.sh` and the `fuse-server.service` user unit, plus the exact commands Isaac runs: enabling linger, `tailscale serve`, the first passphrase, and entering keys in the web Settings.
+  - Part 2 done (the deploy kit): `scripts/deploy-server.sh` builds and installs a release into `~/.local/opt/fuse-server/<commit>/` and writes the user unit (127.0.0.1:4100); `docs/hulk-server.md` has Isaac's first-time steps, updating and looking after it. Tested into a scratch folder: the installed build served the UI and started the runner.
 
 ## Notes
