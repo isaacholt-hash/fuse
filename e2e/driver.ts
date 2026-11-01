@@ -14,6 +14,9 @@ const KEYS: Partial<Record<string, { key: string; code: string; vk: number; text
   k: { key: "k", code: "KeyK", vk: 75 },
   n: { key: "n", code: "KeyN", vk: 78 },
   ",": { key: ",", code: "Comma", vk: 188 },
+  // M10 step 16: Ctrl+1 and Ctrl+2 switch between the Chat and Code areas.
+  "1": { key: "1", code: "Digit1", vk: 49 },
+  "2": { key: "2", code: "Digit2", vk: 50 },
 };
 
 export class Session {
