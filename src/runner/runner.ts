@@ -167,7 +167,7 @@ export class Runner {
           if (runId === null) {
             runId = p.run.id;
             this.going.set(runId, controller);
-            void finishRequest(db, tenant, request.id, { runId });
+            void finishRequest(db, tenant, request.id, { runId }).catch(() => {});
           }
           live(answerId, p);
         },
