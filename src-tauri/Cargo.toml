@@ -20,7 +20,7 @@ required-features = ["server"]
 
 [features]
 # fuse-server (M10, Linux only): the web app and runner host on HULK.
-server = ["dep:axum", "dep:tower-http", "tokio/net", "tokio/rt-multi-thread", "tokio/signal"]
+server = ["dep:axum", "dep:tower-http", "dep:argon2", "tokio/net", "tokio/rt-multi-thread", "tokio/signal"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -65,6 +65,8 @@ sysinfo = { version = "=0.39.6", default-features = false, features = ["system",
 # already in the build through Tauri.
 axum = { version = "=0.8.9", optional = true, features = ["ws"] }
 tower-http = { version = "=0.6.11", optional = true, features = ["fs"] }
+# The sign-in passphrase's hash (argon2id). Pinned: 0.6.0 released 2026-08-27.
+argon2 = { version = "=0.6.0", optional = true, default-features = false, features = ["alloc"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

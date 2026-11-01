@@ -61,10 +61,11 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - It serves the UI and has the command allowlist (desktop-only commands are refused). Streams use a WebSocket.
   - Data lives in `~/.local/share/fuse-server`, and keys in systemd-creds.
   - Tests cover the allowlist, the key store and the egress policy. CI builds the server on Linux.
-- [ ] **4. Sign-in and devices.**
+- [x] **4. Sign-in and devices.**
   - Passphrase setup and sign-in, sessions, the Origin check, the rate limit and sign-out.
   - Device pairing codes and tokens, with Settings → Devices and Revoke.
   - Threat model: the web app on HULK.
+  - Done in the server; the sign-in and Devices screens come with the web build (step 5).
 - [ ] **5. Web UI.**
   - `pnpm build:web` builds the same app on the HTTP platform.
   - OS-only features are greyed with a reason (PL-02): hotkey, updater, Windows Hello. The native folder dialog becomes a picker under the server's allowed folders.
