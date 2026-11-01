@@ -583,12 +583,20 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
       projectId: project.id,
       threadId: fired?.lastThreadId,
     });
-    const chats = await page.db.select<{ title: string; project_id: string }>(
-      "SELECT title, project_id FROM threads WHERE workspace_id = ? AND id = ?",
+    const chats = await page.db.select<{
+      title: string;
+      project_id: string;
+      kind: string;
+      schedule_id: string | null;
+    }>(
+      "SELECT title, project_id, kind, schedule_id FROM threads WHERE workspace_id = ? AND id = ?",
       [t.workspaceId, fired?.lastThreadId ?? ""],
     );
     expect(chats[0]?.title).toMatch(/^Nightly notes · /);
     expect(chats[0]?.project_id).toBe(project.id);
+    // M10 steps 12 and 15: a Code session in the Code area, linked to its task.
+    expect(chats[0]?.kind).toBe("code");
+    expect(chats[0]?.schedule_id).toBe(task.id);
     const steps = await listSteps(page.db, t, run?.id ?? "");
     expect(steps.find((x) => x.kind === "tool")?.output).toContain("Remember the milk.");
     expect(await answer(page, run?.messageId ?? null)).toEqual({

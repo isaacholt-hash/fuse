@@ -2,25 +2,13 @@ import { CalendarClock } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { RunKind, RunMode } from "@/storage/runs";
-import {
-  describeRepeat,
-  type Repeat,
-  type Schedule,
-  type ScheduleInput,
-} from "@/storage/schedules";
+import type { RunMode } from "@/storage/runs";
+import { describeRepeat, type Repeat, type Schedule } from "@/storage/schedules";
 import { Greyed, Modal } from "./primitives";
+import { freshDraft, lastLine, when, type Draft, type ScheduleDefaults } from "./scheduleText";
+
+export type { Draft, ScheduleDefaults } from "./scheduleText";
 import type { ModelOption } from "./types";
-
-/** What a new task starts with: the project's kind, mode and model, and the usual cost cap. */
-export interface ScheduleDefaults {
-  kind: RunKind;
-  mode: RunMode;
-  model: { provider: string; id: string };
-  capMicroUsd: number;
-}
-
-type Draft = Omit<ScheduleInput, "projectId">;
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MODES: { value: RunMode; label: string }[] = [
@@ -41,32 +29,6 @@ const day = (ms: number) => {
   const d = new Date(ms);
   return `${String(d.getFullYear())}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
-const when = (ms: number) =>
-  new Date(ms).toLocaleString(undefined, {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-function lastLine(s: Schedule): { text: string; failed: boolean } | null {
-  if (s.lastAt === null) return null;
-  const at = when(s.lastAt);
-  switch (s.lastStatus) {
-    case null:
-      return { text: `Started ${at}`, failed: false };
-    case "done":
-      return { text: `Last run ${at}: done`, failed: false };
-    case "error":
-      return { text: `Last run ${at} failed: ${s.lastNote ?? "no reason given"}`, failed: true };
-    default:
-      return {
-        text: `Last run ${at}: ${s.lastStatus}${s.lastNote ? ` (${s.lastNote})` : ""}`,
-        failed: false,
-      };
-  }
-}
 
 /**
  * Project settings → Scheduled tasks (M10 step 9, AG-07): saved prompts the runner on HULK
@@ -84,7 +46,10 @@ export function ScheduledTasksSection({
   onToggle,
   onDelete,
   onOpenChat,
+  onOpenPage,
 }: {
+  /** M10 step 15: opens the Scheduled page, every project's tasks in one place. */
+  onOpenPage?: () => void;
   web: boolean;
   tasks: Schedule[];
   models: ModelOption[];
@@ -100,28 +65,21 @@ export function ScheduledTasksSection({
 }) {
   const [editing, setEditing] = useState<{ id: string | null; draft: Draft } | null>(null);
   const [deleting, setDeleting] = useState<Schedule | null>(null);
-  const fresh = (): Draft => {
-    const at = new Date(now() + 3_600_000);
-    at.setMinutes(0, 0, 0);
-    return {
-      name: "",
-      prompt: "",
-      kind: defaults.kind,
-      mode: defaults.mode,
-      provider: defaults.model.provider,
-      model: defaults.model.id,
-      capMicroUsd: defaults.capMicroUsd,
-      repeat: "daily",
-      onceAt: at.getTime(),
-      minute: 9 * 60,
-      weekday: 1,
-    };
-  };
+  const fresh = (): Draft => freshDraft(defaults, now());
   return (
     <section aria-label="Scheduled tasks">
       <div className="mb-1 flex items-center gap-2">
         <CalendarClock className="size-4 text-muted-foreground" />
         <h3 className="text-xs font-medium">Scheduled tasks</h3>
+        {onOpenPage && (
+          <button
+            type="button"
+            className="ml-auto text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            onClick={onOpenPage}
+          >
+            All scheduled tasks
+          </button>
+        )}
       </div>
       <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
         A saved prompt that runs by itself, once or every day or week, as a Code or Work run in a
@@ -279,7 +237,7 @@ export function ScheduledTasksSection({
   );
 }
 
-function TaskDialog({
+export function TaskDialog({
   editing,
   models,
   onClose,

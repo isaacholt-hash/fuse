@@ -341,3 +341,49 @@ test("M10 step 14: a new session opens on what's happening, and a row opens its 
   await user.click(waiting.getByRole("button", { name: "Open Deploy the docs" }));
   expect(await screen.findByRole("heading", { name: "Deploy the docs" }, SLOW)).toBeInTheDocument();
 }, 20_000);
+
+test("M10 step 15: the Scheduled page lists every project's tasks, and a task can be paused there", async () => {
+  const db = openTestDb();
+  const { createProject } = await import("@/storage/projects");
+  const { createSchedule, getSchedule } = await import("@/storage/schedules");
+  const kitchen = await createProject(db, t, "Kitchen");
+  const garden = await createProject(db, t, "Garden");
+  const make = (projectId: string, name: string) =>
+    createSchedule(db, t, {
+      projectId,
+      name,
+      prompt: "Check",
+      kind: "code",
+      mode: "plan",
+      provider: "anthropic",
+      model: "m",
+      capMicroUsd: 500_000,
+      repeat: "daily",
+      onceAt: null,
+      minute: 7 * 60,
+      weekday: null,
+    });
+  const tidy = await make(kitchen.id, "Tidy the recipes");
+  await make(garden.id, "Water check");
+  const user = start(db);
+  await screen.findByRole("group", { name: "Area" }, SLOW);
+  // The Scheduled entry is in the Code area.
+  expect(screen.queryByRole("button", { name: "Scheduled" })).toBeNull();
+  await user.keyboard("{Control>}2{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Scheduled" }, SLOW));
+  const list = within(await screen.findByRole("list", { name: "Every scheduled task" }, SLOW));
+  expect(list.getByText("Tidy the recipes")).toBeInTheDocument();
+  expect(list.getByText("Water check")).toBeInTheDocument();
+  expect(list.getByText(/Kitchen · Daily at 07:00/)).toBeInTheDocument();
+  await user.click(list.getByRole("button", { name: "Pause Tidy the recipes" }));
+  await waitFor(async () => {
+    expect((await getSchedule(db, t, tidy.id))?.enabled).toBe(false);
+  }, SLOW);
+  expect(
+    await within(await screen.findByRole("list", { name: "Every scheduled task" })).findByRole(
+      "button",
+      { name: "Resume Tidy the recipes" },
+      SLOW,
+    ),
+  ).toBeInTheDocument();
+}, 20_000);
