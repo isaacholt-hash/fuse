@@ -71,7 +71,7 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
   - OS-only features are greyed with a reason (PL-02): hotkey, updater, Windows Hello. The native folder dialog becomes a picker under the server's allowed folders.
   - Settings shows the server version (PL-06).
   - Screenshots at desktop width and at 390 px.
-- [ ] **6. Runs on HULK (CA-15, part 1).**
+- [x] **6. Runs on HULK (CA-15, part 1).**
   - The runner, started and watched by fuse-server.
   - A run started in the web app runs in the runner, so closing the tab doesn't stop it. The page follows the run's stored steps live.
   - "Waiting for you" approvals can be answered from any session. Stop works. Interrupted runs continue.
@@ -82,7 +82,11 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - fuse-server starts it with `--runner dist-runner/runner.mjs` (and `--node`), with its own device token made at each start (not listed or revocable) and only PATH, HOME, LANG and TZ in its environment, so it has no keys. It starts it again 5 s after it exits, and on SIGTERM lets it save its runs as stopped before the server stops.
     - Checked for real on HULK: a request from a page went through the runner and the run to the provider transport (no key on the throwaway server, so it ended with "No Anthropic key yet") and the answer was saved; SIGTERM stopped both cleanly.
     - Changed from the plan: the page follows a run by reading its stored steps and `run_live` every second, rather than over the WebSocket. It's simpler, and it works the same from any page.
-  - Part 2 (next): the web app asks for runs instead of running them, shows waiting questions and the Runs list.
+  - Part 2 done (the web app):
+    - A Code or Work run started in the web app is a request to the runner (`askToStart`). The page waits only until the run has started, then follows it: every second it reads the open chat's runs, and loads again only those that are going or have changed, with their streaming text from `run_live`. The desktop still runs its own loop.
+    - Questions waiting for anyone (`openApprovals`) show on their run's card, as on the desktop. Answering writes `answerApproval`; if another page answered first, the card just goes. Stop and Continue are requests too.
+    - Runs (in the sidebar, web only) lists recent runs across chats: Going, Waiting for you, Done, Stopped, Paused, or Failed with its note. A row opens its chat.
+    - The poll stops when the chat changes or the app closes.
 - [ ] **7. Handover from the desktop (CA-15, part 2).**
   - Settings → HULK: the address and a pairing code.
   - "Run on HULK" in the Code composer and on a stopped run. It sends the project's export, the repo's remote and base branch, and the prompt and mode. The server works on `fuse/<run-id>` and pushes it.
@@ -92,9 +96,11 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
     - `src/handover/handover.ts` checks the repository first (an `origin` remote, a branch checked out, nothing uncommitted or unpushed, since HULK works from what's on origin), uploads the project's PL-12 export, and asks HULK's runner to start a Code run on a new branch with the handover's details.
     - The runner restores the project (same ids; what's already there is kept), has the server clone or fetch the repository into its own copy (`repo_clone`, server only: https, ssh or `user@host:path` remotes, or a repository under the server's home; a copy with changes left in it is refused), and runs in a new chat in the project with only that copy as its folder. When the run is done on its branch, it asks to push it, as a send, and says what happened.
   - Part 2 (next): Settings → HULK and "Run on HULK" in the desktop's Code composer, with the run's status.
-- [ ] **8. Notify and follow (CA-16 core).**
+- [x] **8. Notify and follow (CA-16 core).**
   - When a run finishes, fails or starts waiting, the web Runs list shows a badge.
   - A paired desktop shows a system notification.
+  - Done (the badge): Runs in the sidebar counts the runs waiting for you, and those that finished or failed since you last opened the list (remembered in this browser).
+  - The paired desktop's system notification moves to step 7, where the desktop first talks to HULK.
 - [ ] **9. Scheduled tasks (AG-07).**
   - Per project: a saved prompt with mode, tools and cost cap, run once at a time, or daily or weekly at a time, by the runner.
   - The result lands in a thread with a notice; a failure reports its last step.

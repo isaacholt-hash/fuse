@@ -14,6 +14,7 @@ import {
   Pencil,
   Pin,
   PinOff,
+  Play,
   Plus,
   Search,
   Settings,
@@ -47,6 +48,9 @@ interface Props {
   onSearch?: () => void;
   /** Opens the usage dashboard (CO-02). */
   onUsage?: () => void;
+  /** M10 step 6: the web app's Runs list, and (step 8) how many runs want a look. */
+  onRuns?: () => void;
+  runsBadge?: number;
 }
 
 const sectionTitle =
@@ -70,6 +74,8 @@ export function Sidebar({
   onArchive,
   onSearch,
   onUsage,
+  onRuns,
+  runsBadge = 0,
 }: Props) {
   const [tag, setTag] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -313,6 +319,22 @@ export function Sidebar({
         )}
       </nav>
       <div className="mx-4 border-t py-3">
+        {onRuns && (
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2.5 text-xs text-muted-foreground"
+            onClick={onRuns}
+            aria-label={runsBadge > 0 ? `Runs, ${String(runsBadge)} new` : "Runs"}
+          >
+            <Play className="size-4" />
+            Runs
+            {runsBadge > 0 && (
+              <span className="ml-auto rounded-full bg-foreground px-1.5 py-px text-[10px] font-medium text-background">
+                {runsBadge}
+              </span>
+            )}
+          </Button>
+        )}
         {onUsage && (
           <Button
             variant="ghost"
