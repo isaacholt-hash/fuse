@@ -4,12 +4,23 @@ version = "0.1.0"
 description = "FUSE — frontier models, unified, spend-efficient"
 authors = ["Isaac Holt"]
 edition = "2024"
+# fuse-server is a second binary (M10); `cargo run` and Tauri mean the app.
+default-run = "fuse"
 
 [lib]
 # The `_lib` suffix keeps the lib name distinct from the bin name (needed on Windows,
 # see https://github.com/rust-lang/cargo/issues/8519).
 name = "fuse_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "fuse-server"
+path = "src/bin/fuse-server.rs"
+required-features = ["server"]
+
+[features]
+# fuse-server (M10, Linux only): the web app and runner host on HULK.
+server = ["dep:axum", "dep:tower-http", "tokio/net", "tokio/rt-multi-thread", "tokio/signal"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -50,6 +61,11 @@ llama-cpp-2 = { version = "=0.1.160", default-features = false, features = ["ope
 sysinfo = { version = "=0.39.6", default-features = false, features = ["system", "disk"] }
 
 # Ending a command's whole process group on the time limit or Stop (CA-03, src/exec.rs).
+# fuse-server (M10). Pinned: axum 0.8.9 released 2026-04-14; tower-http 0.6.11 (2026-05-18) is
+# already in the build through Tauri.
+axum = { version = "=0.8.9", optional = true, features = ["ws"] }
+tower-http = { version = "=0.6.11", optional = true, features = ["fs"] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 

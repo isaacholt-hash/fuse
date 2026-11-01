@@ -1,7 +1,9 @@
-// The command table fuse-server will serve (M10 step 3); only its tests use it so far.
-#[allow(dead_code)]
+// The command table fuse-server serves (M10); the desktop app doesn't use it.
+#[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod api;
 mod backup;
+#[cfg(all(feature = "server", target_os = "linux"))]
+mod creds;
 mod ctx;
 mod db;
 mod egress;
@@ -21,8 +23,16 @@ mod preview;
 mod python_runtime;
 mod quick;
 mod repo;
+#[cfg(all(feature = "server", target_os = "linux"))]
+mod server;
 mod transport;
 mod web;
+
+/// fuse-server's entry point (src/bin/fuse-server.rs).
+#[cfg(all(feature = "server", target_os = "linux"))]
+pub fn server_main() -> std::process::ExitCode {
+    server::main()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
