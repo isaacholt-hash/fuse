@@ -296,6 +296,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "run_limits",
         sql: include_str!("../migrations/0052_run_limits.sql"),
     },
+    MigrationFile {
+        version: 53,
+        description: "thread_kind",
+        sql: include_str!("../migrations/0053_thread_kind.sql"),
+    },
 ];
 
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
@@ -1120,6 +1125,11 @@ mod tests {
         .unwrap();
         assert_eq!(logged[0]["cost_micro_usd"], 1234);
         assert_eq!(logged[0]["purpose"], "chat");
+        // 0053: the seeded chat held no run, so it stays in the Chat area.
+        let kind = select(&pool, "SELECT kind FROM threads WHERE id = 't1'", &[])
+            .await
+            .unwrap();
+        assert_eq!(kind[0]["kind"], "chat");
         // 0052: an old project has no run limits of its own, so its runs use FUSE's defaults.
         let limits = select(
             &pool,
@@ -1202,6 +1212,58 @@ mod tests {
             })
             .collect();
         assert_eq!(got, vec!["p1 /code/app", "p2 /code/app", "p3 /docs"]);
+        pool.close().await;
+    }
+
+    #[tokio::test]
+    async fn threads_take_the_kind_of_their_last_run_in_0053() {
+        let dir = temp_dir("kind53");
+        let store = MemoryStore::default();
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(52).run(&pool).await.unwrap();
+        // A chat with no run, one with a Code run, one with a Code run then a Work run.
+        sqlx::raw_sql(
+            "INSERT INTO threads (id, workspace_id, user_id, title, created_at, updated_at)
+               SELECT 't-none', workspace_id, id, 'A', 1, 1 FROM users LIMIT 1;
+             INSERT INTO threads (id, workspace_id, user_id, title, created_at, updated_at)
+               SELECT 't-code', workspace_id, id, 'B', 2, 2 FROM users LIMIT 1;
+             INSERT INTO threads (id, workspace_id, user_id, title, created_at, updated_at)
+               SELECT 't-mixed', workspace_id, id, 'C', 3, 3 FROM users LIMIT 1;
+             INSERT INTO runs (id, workspace_id, user_id, thread_id, task, kind, mode, provider,
+                               model, status, cap_micro_usd, created_at, updated_at)
+               SELECT 'r1', workspace_id, id, 't-code', 'x', 'code', 'plan', 'anthropic', 'm',
+                      'done', 1, 1, 1 FROM users LIMIT 1;
+             INSERT INTO runs (id, workspace_id, user_id, thread_id, task, kind, mode, provider,
+                               model, status, cap_micro_usd, created_at, updated_at)
+               SELECT 'r2', workspace_id, id, 't-mixed', 'x', 'code', 'plan', 'anthropic', 'm',
+                      'done', 1, 1, 1 FROM users LIMIT 1;
+             INSERT INTO runs (id, workspace_id, user_id, thread_id, task, kind, mode, provider,
+                               model, status, cap_micro_usd, created_at, updated_at)
+               SELECT 'r3', workspace_id, id, 't-mixed', 'x', 'work', 'plan', 'anthropic', 'm',
+                      'done', 1, 2, 2 FROM users LIMIT 1;",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), "52").unwrap();
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let rows = select(&pool, "SELECT id, kind FROM threads ORDER BY id", &[])
+            .await
+            .unwrap();
+        let got: Vec<String> = rows
+            .iter()
+            .map(|r| {
+                format!(
+                    "{} {}",
+                    r["id"].as_str().unwrap(),
+                    r["kind"].as_str().unwrap()
+                )
+            })
+            .collect();
+        assert_eq!(got, vec!["t-code code", "t-mixed work", "t-none chat"]);
         pool.close().await;
     }
 

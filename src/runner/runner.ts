@@ -137,7 +137,14 @@ export class Runner {
         minute: "2-digit",
         hour12: false,
       });
-      const thread = await createThread(base.db, base.tenant, `${s.name} · ${when}`, s.projectId);
+      const thread = await createThread(
+        base.db,
+        base.tenant,
+        `${s.name} · ${when}`,
+        s.projectId,
+        false,
+        s.kind,
+      );
       await markStarted(base.db, base.tenant, s, thread.id, now);
       await askToStart(base.db, base.tenant, {
         threadId: thread.id,
@@ -281,7 +288,15 @@ export class Runner {
     const path = await (this.options.clone ?? cloneOnServer)(handover.remote, handover.branch);
     const folder = await grantFolder(db, tenant, path);
     const title = input.task.replace(/\s+/g, " ").trim().slice(0, 60) || "Handed over";
-    const thread = await createThread(db, tenant, `${title} (from the desktop)`, input.projectId);
+    // M10 step 12: a handed-over run is a Code session.
+    const thread = await createThread(
+      db,
+      tenant,
+      `${title} (from the desktop)`,
+      input.projectId,
+      false,
+      "code",
+    );
     await linkThreadFolder(db, tenant, thread.id, folder.id);
     this.log(`took over a run on ${handover.remote} (${handover.branch})`);
     return { threadId: thread.id, folderId: folder.id };

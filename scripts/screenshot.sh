@@ -22,6 +22,8 @@ fi
 KEYRING_HOME="$(mktemp -d)"
 printf 'throwaway' | XDG_DATA_HOME="$KEYRING_HOME" gnome-keyring-daemon --unlock --components=secrets >/dev/null
 export VITE_FUSE_VIEW="${FUSE_VIEW:-}"
+# FUSE_AREA=code: open in the Code area (M10 step 12; dev builds only).
+export VITE_FUSE_AREA="${FUSE_AREA:-}"
 # The app's database and attachment files go in the same temp dir, so screenshots never touch real data.
 export XDG_CONFIG_HOME="$KEYRING_HOME/config" XDG_DATA_HOME="$KEYRING_HOME/data"
 # FUSE_SEED_DIR=dir: start from a copy of an existing data folder (e.g. to test an upgrade).

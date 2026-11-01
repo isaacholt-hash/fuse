@@ -200,6 +200,10 @@ test("the Runs list shows each run's status, and its badge counts waiting and ne
   await run("Check the links", null);
 
   const user = start(db);
+  // M10 step 12: Runs lives in the Code area.
+  await screen.findByRole("group", { name: "Area" }, SLOW);
+  expect(screen.queryByRole("button", { name: /^Runs/ })).toBeNull();
+  await user.keyboard("{Control>}2{/Control}");
   // One waiting, two ended since the list was last opened (never): 3.
   const runs = await screen.findByRole("button", { name: "Runs, 3 new" }, SLOW);
   await user.click(runs);

@@ -24,9 +24,13 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint, Mark, Tip } from "./primitives";
-import type { ProjectView, ThreadView } from "./types";
+import { AreaTabs } from "./AreaTabs";
+import type { Area, ProjectView, ThreadView } from "./types";
 
 interface Props {
+  /** M10 step 12 (CH-19): the area shown, and the switch. The threads given are its own. */
+  area: Area;
+  onArea: (area: Area) => void;
   threads: ThreadView[];
   projects: ProjectView[];
   selectedId: string | null;
@@ -57,6 +61,8 @@ const sectionTitle =
   "px-3 text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase";
 
 export function Sidebar({
+  area,
+  onArea,
   threads,
   projects,
   selectedId,
@@ -117,6 +123,8 @@ export function Sidebar({
       }}
     />
   );
+  const code = area === "code";
+  const none = code ? "No sessions yet" : "No chats yet";
   const tags = [...new Set(threads.filter((t) => !t.archived).flatMap((t) => t.tags))].sort();
   const filter = tag !== null && tags.includes(tag) ? tag : null;
   const shown = (t: ThreadView) => !t.archived && (filter === null || t.tags.includes(filter));
@@ -149,6 +157,12 @@ export function Sidebar({
         </Tip>
       </div>
       <div className="px-4 pb-5">
+        <AreaTabs
+          area={area}
+          onArea={onArea}
+          variant="segmented"
+          className="mb-3 max-[600px]:hidden"
+        />
         <Button
           variant="outline"
           className="h-10 w-full justify-start gap-2.5 bg-background shadow-xs"
@@ -157,7 +171,7 @@ export function Sidebar({
           }}
         >
           <Plus className="size-4" />
-          New chat
+          {code ? "New session" : "New chat"}
           <span className="ml-auto">
             <Hint>Ctrl N</Hint>
           </span>
@@ -250,7 +264,7 @@ export function Sidebar({
                     <Button
                       variant="ghost"
                       size="icon-xs"
-                      aria-label={`New chat in ${project.name}`}
+                      aria-label={`${code ? "New session" : "New chat"} in ${project.name}`}
                       onClick={() => {
                         setToggled((t) => ({ ...t, [project.id]: true }));
                         onNewInProject(project.id);
@@ -273,7 +287,7 @@ export function Sidebar({
                 {open && (
                   <div className="mt-1 ml-4 space-y-1 border-l pl-1.5">
                     {project.threads.length === 0 ? (
-                      <p className="px-3 py-1.5 text-[11px] text-muted-foreground">No chats yet</p>
+                      <p className="px-3 py-1.5 text-[11px] text-muted-foreground">{none}</p>
                     ) : (
                       project.threads.map(row)
                     )}
@@ -286,7 +300,7 @@ export function Sidebar({
         {threads.length === 0 && projects.length === 0 && (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             <MessageSquare className="mx-auto mb-3 size-5" />
-            No chats yet
+            {none}
           </div>
         )}
         {(["Today", "Yesterday", "Previous 7 days", "Older"] as const).map((group) => {

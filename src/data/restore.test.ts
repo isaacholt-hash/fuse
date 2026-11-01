@@ -166,3 +166,28 @@ test("a version 1 export (one JSON file) still restores", async () => {
   await applyRestore(fresh, t, await readFuseExport(v1), memoryFilesApi());
   expect((await listThreads(fresh, t)).map((x) => x.title).sort()).toEqual(["Beds", "Worktops"]);
 });
+
+test("M10 step 12: a session comes back as a session; an older export's threads come back as chats", async () => {
+  const db = openTestDb();
+  const files = memoryFilesApi();
+  await createThread(db, t, "Notes");
+  await createThread(db, t, "Fix the build", null, false, "code");
+  const { bytes } = await exportAll(db, t, files, 1);
+  const fresh = openTestDb();
+  await applyRestore(fresh, t, await readFuseExport(bytes), memoryFilesApi());
+  const kinds = async (d: typeof db) =>
+    Object.fromEntries((await listThreads(d, t)).map((x) => [x.title, x.kind]));
+  expect(await kinds(fresh)).toEqual({ Notes: "chat", "Fix the build": "code" });
+  // Written before 0053: no kind column, so each thread is a chat (runs aren't exported).
+  const entries = unzipSync(bytes);
+  const rows = JSON.parse(strFromU8(entries["records/threads.json"] as Uint8Array)) as Record<
+    string,
+    unknown
+  >[];
+  entries["records/threads.json"] = strToU8(
+    JSON.stringify(rows.map(({ kind: _kind, ...rest }) => rest)),
+  );
+  const older = openTestDb();
+  await applyRestore(older, t, await readFuseExport(zipSync(entries)), memoryFilesApi());
+  expect(await kinds(older)).toEqual({ Notes: "chat", "Fix the build": "chat" });
+});
