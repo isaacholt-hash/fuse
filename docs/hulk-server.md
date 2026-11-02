@@ -46,7 +46,7 @@ The web app and its runner (M10) run on HULK as one user service, `fuse-server.s
    - In the web app, open Settings → FUSE on HULK → Pair a device to get a code.
    - On the desktop, open Settings → HULK. Enter `https://hulk.tailb7c872.ts.net:4100` and the code.
 
-8. **Git on HULK.** Handed-over runs push their `fuse/…` branch with HULK's own git credentials, using daywalker's ssh key or `gh auth setup-git`. Check them once:
+8. **Git on HULK.** Handed-over runs commit as the desktop's own git name and email (sent with the handover, set only in HULK's copy of the repo), and push their `fuse/…` branch with HULK's own git credentials, using daywalker's ssh key or `gh auth setup-git`. Check them once:
 
    ```bash
    git ls-remote git@github.com:isaacholt-hash/fuse.git HEAD
@@ -57,7 +57,7 @@ The web app and its runner (M10) run on HULK as one user service, `fuse-server.s
 The Windows test runner's laptop (`fuse-windows`) can stand in for TCHALLA. It hands over a small Code run and leaves, and the run then pushes its branch from HULK.
 
 1. Do steps 1–8 above first: HULK must have a key, and HULK's git must be able to push.
-2. In the web app, open Settings → FUSE on HULK → Pair a device and copy the code.
+2. In the web app, open Settings → FUSE on HULK → Pair a device and copy the code. It lasts 10 minutes and the laptop takes about 7 to get to it, so start the run straight away.
 3. Start the run:
 
    ```bash
@@ -65,7 +65,7 @@ The Windows test runner's laptop (`fuse-windows`) can stand in for TCHALLA. It h
    ```
 
 4. The first job runs on the laptop. It pairs as "Live check (<laptop name>)", checks that HULK has a key, and hands over "create one file under `live-check/`" on this repo, with a $0.50 cap. It leaves once the run is going on its `fuse/…` branch.
-5. When the run asks to push, answer it in the web app under Runs (any browser, your phone too).
+5. When the run asks to push, answer it in the web app: Code area, Waiting filter (any browser, your phone too). The run's card then says whether it pushed.
 6. The second job runs on GitHub's own runner. It waits up to 45 minutes for the branch to reach GitHub, checks that it holds only that one file, and deletes the branch.
 
 Afterwards, revoke the "Live check" device under Settings → Devices.

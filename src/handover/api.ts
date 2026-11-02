@@ -1,6 +1,7 @@
 // The desktop's link to FUSE on HULK (M10 step 7, src-tauri/src/hulk.rs). The device token
 // stays in Rust; this side only names the server command and its arguments.
 import { invoke } from "@/platform/core";
+import type { GitAuthor } from "@/storage/runQueue";
 import type { SqlDb, SqlValue } from "@/storage/sql";
 
 export interface HulkStatus {
@@ -38,5 +39,9 @@ export function hulkDb(hulk: HulkApi): SqlDb {
 }
 
 /** The server's own clone of a repository, for a handed-over run (src-tauri/src/clone.rs). */
-export const cloneOnServer = (remote: string, branch: string) =>
-  invoke<string>("repo_clone", { remote, branch });
+export const cloneOnServer = (remote: string, branch: string, author?: GitAuthor | null) =>
+  invoke<string>("repo_clone", {
+    remote,
+    branch,
+    ...(author ? { authorName: author.name, authorEmail: author.email } : {}),
+  });

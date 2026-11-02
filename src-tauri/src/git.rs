@@ -23,6 +23,11 @@ const GIT_ALLOWED: &[&str] = &[
     "push",
     "rev-parse",
     "branch",
+    // M10 handover: where HULK starts from (`remote get-url`, `rev-list --count`) and who
+    // commits there (`var GIT_AUTHOR_IDENT`). Read-only forms only: see `refuse`.
+    "remote",
+    "rev-list",
+    "var",
 ];
 const GH_ALLOWED: &[&str] = &["pr"];
 
@@ -70,6 +75,16 @@ pub fn refuse(program: &str, args: &[String]) -> Option<String> {
         && args.get(1).map(String::as_str) != Some("view")
     {
         return Some("Only gh pr create and gh pr view are allowed.".into());
+    }
+    if program == "git" && sub == "remote" && args.get(1).map(String::as_str) != Some("get-url") {
+        return Some("Only git remote get-url is allowed.".into());
+    }
+    if program == "git"
+        && sub == "var"
+        && (args.len() != 2
+            || !matches!(args[1].as_str(), "GIT_AUTHOR_IDENT" | "GIT_COMMITTER_IDENT"))
+    {
+        return Some("Only git var GIT_AUTHOR_IDENT or GIT_COMMITTER_IDENT is allowed.".into());
     }
     if let Some(bad) = args.iter().find(|a| {
         REFUSED
@@ -189,6 +204,17 @@ mod tests {
         assert!(refuse("git", &a(&["push", "--receive-pack=evil"])).is_some());
         assert!(refuse("git", &a(&["status", "--git-dir=/etc"])).is_some());
         assert!(refuse("git", &[]).is_some());
+        // A handover's reads, and only those forms of them.
+        assert_eq!(refuse("git", &a(&["remote", "get-url", "origin"])), None);
+        assert_eq!(
+            refuse("git", &a(&["rev-list", "--count", "origin/main..HEAD"])),
+            None
+        );
+        assert_eq!(refuse("git", &a(&["var", "GIT_AUTHOR_IDENT"])), None);
+        assert!(refuse("git", &a(&["remote", "set-url", "origin", "x"])).is_some());
+        assert!(refuse("git", &a(&["remote", "add", "evil", "x"])).is_some());
+        assert!(refuse("git", &a(&["var", "-l"])).is_some());
+        assert!(refuse("git", &a(&["var", "GIT_EDITOR"])).is_some());
         assert_eq!(
             refuse("gh", &a(&["pr", "create", "--title", "x", "--body", "y"])),
             None

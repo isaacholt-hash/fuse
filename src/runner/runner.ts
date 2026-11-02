@@ -15,6 +15,7 @@ import {
   finishRequest,
   setLive,
   takeRequest,
+  type GitAuthor,
   type Handover,
   type ModelRef,
   type RunRequest,
@@ -46,7 +47,7 @@ export interface RunnerOptions {
   sleep?: (ms: number) => Promise<void>;
   log?: (line: string) => void;
   /** M10 step 7: the server's clone of a handed-over run's repository (tests pass a fake). */
-  clone?: (remote: string, branch: string) => Promise<string>;
+  clone?: (remote: string, branch: string, author?: GitAuthor | null) => Promise<string>;
   /** The clock scheduled tasks go by; tests pass a fake. */
   now?: () => number;
 }
@@ -286,7 +287,11 @@ export class Runner {
     if (!base.files) throw new Error("The server has no file store for the project's export.");
     const parsed = await readFuseExport(await base.files.get(handover.exportSha));
     await applyRestore(db, tenant, parsed, base.files);
-    const path = await (this.options.clone ?? cloneOnServer)(handover.remote, handover.branch);
+    const path = await (this.options.clone ?? cloneOnServer)(
+      handover.remote,
+      handover.branch,
+      handover.author,
+    );
     const folder = await grantFolder(db, tenant, path);
     const title = input.task.replace(/\s+/g, " ").trim().slice(0, 60) || "Handed over";
     // M10 step 12: a handed-over run is a Code session.

@@ -2439,6 +2439,10 @@ function RunCard({
           </ul>
         </div>
       )}
+      {/* A handed-over run's push: "Pushed …", or why it wasn't. */}
+      {run.status === "done" && run.note && (
+        <p className="mt-2 text-[11px] text-muted-foreground">{run.note}</p>
+      )}
       {(run.status === "paused" || run.status === "stopped") && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
           {run.note && <span className="text-muted-foreground">{run.note}</span>}

@@ -426,8 +426,18 @@ pub async fn dispatch(
 
         // Handover (clone.rs)
         "repo_clone" => {
-            args!(name, args, remote: String, branch: String);
-            json(crate::clone::repo_clone(ctx, remote, branch).await)
+            args!(
+                name,
+                args,
+                remote: String,
+                branch: String,
+                author_name: Option<String>,
+                author_email: Option<String>,
+            );
+            let author = author_name
+                .zip(author_email)
+                .map(|(name, email)| crate::clone::Author { name, email });
+            json(crate::clone::repo_clone(ctx, remote, branch, author).await)
         }
 
         _ => Err(unknown(name)),

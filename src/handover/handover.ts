@@ -7,7 +7,7 @@ import { exportData } from "@/data/exportAll";
 import type { FilesApi } from "@/files/api";
 import type { GitApi } from "@/repo/git";
 import type { Tenant } from "@/storage/defaults";
-import { askToStart, getRequest, type ModelRef } from "@/storage/runQueue";
+import { askToStart, getRequest, type GitAuthor, type ModelRef } from "@/storage/runQueue";
 import type { RunMode, RunStatus } from "@/storage/runs";
 import type { SqlDb } from "@/storage/sql";
 import { hulkDb, type HulkApi } from "./api";
@@ -59,9 +59,21 @@ export async function repoOrigin(
   return { remote, branch };
 }
 
+/**
+ * Who commits here, so HULK's commits are yours too ("Name <email> 1700000000 +0000"); null
+ * when git here has no identity.
+ */
+export async function gitAuthor(git: GitApi, folderId: string): Promise<GitAuthor | null> {
+  const r = await git.run(folderId, "git", ["var", "GIT_AUTHOR_IDENT"]).catch(() => null);
+  if (r?.exitCode !== 0) return null;
+  const m = /^(.+?) <([^<>]*)> /.exec(r.output.trim());
+  return m?.[1] && m[2] ? { name: m[1], email: m[2] } : null;
+}
+
 /** Sends the run to HULK; returns the request's id there. */
 export async function handOver(deps: HandoverDeps, input: HandoverInput): Promise<string> {
   const { remote, branch } = await repoOrigin(deps.git, input.folderId);
+  const author = await gitAuthor(deps.git, input.folderId);
   const { bytes } = await exportData(deps.db, deps.tenant, deps.files, {
     kind: "project",
     projectId: input.projectId,
@@ -78,7 +90,7 @@ export async function handOver(deps: HandoverDeps, input: HandoverInput): Promis
     kind: "code",
     newBranch: true,
     ...(input.capMicroUsd !== undefined ? { capMicroUsd: input.capMicroUsd } : {}),
-    handover: { exportSha: stored.sha256, remote, branch },
+    handover: { exportSha: stored.sha256, remote, branch, author },
   });
 }
 

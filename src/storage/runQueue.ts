@@ -38,6 +38,13 @@ export interface Handover {
   exportSha: string;
   remote: string;
   branch: string;
+  /** Who HULK commits as: the desktop's git identity, when it has one. */
+  author?: GitAuthor | null;
+}
+
+export interface GitAuthor {
+  name: string;
+  email: string;
 }
 
 type Ask =
