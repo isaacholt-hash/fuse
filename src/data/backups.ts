@@ -16,6 +16,16 @@ export interface FileCheck {
   changed: string[];
 }
 
+/** M10 step 20: what the app's files take on disk (the rows come from SQL). */
+export interface StorageSizes {
+  /** The database with its write-ahead log. */
+  databaseBytes: number;
+  backupCount: number;
+  backupBytes: number;
+  attachmentCount: number;
+  attachmentBytes: number;
+}
+
 /** Backup and restore (src-tauri/src/backup.rs). */
 export interface BackupsApi {
   list(): Promise<BackupInfo[]>;
@@ -23,6 +33,12 @@ export interface BackupsApi {
   /** Restores the backup at the next start and restarts the app now. */
   restore(name: string): Promise<void>;
   checkFiles(): Promise<FileCheck>;
+  /** M10 step 20: sizes on disk. */
+  sizes(): Promise<StorageSizes>;
+  /** Keeps the newest `keep` backups; resolves to how many went. */
+  pruneBackups(keep: number): Promise<number>;
+  /** Removes attachment files not in `keep` (SHA-256s); resolves to how many went. */
+  pruneFiles(keep: string[]): Promise<number>;
 }
 
 export const tauriBackupsApi: BackupsApi = {
@@ -30,6 +46,9 @@ export const tauriBackupsApi: BackupsApi = {
   backupNow: () => invoke<BackupInfo>("backup_now"),
   restore: (name) => invoke("backup_restore", { name }),
   checkFiles: () => invoke<FileCheck>("files_check"),
+  sizes: () => invoke<StorageSizes>("storage_sizes"),
+  pruneBackups: (keep) => invoke<number>("backup_prune", { keep }),
+  pruneFiles: (keep) => invoke<number>("files_prune", { keep }),
 };
 
 const REASONS: Record<BackupInfo["reason"], string> = {

@@ -277,6 +277,20 @@ function setup(
         return Promise.resolve();
       },
       checkFiles: () => Promise.resolve({ checked: 3, missing: ["a".repeat(64)], changed: [] }),
+      sizes: () =>
+        Promise.resolve({
+          databaseBytes: 3 * 1024 * 1024,
+
+          backupCount: 2,
+
+          backupBytes: 6 * 1024 * 1024,
+
+          attachmentCount: 1,
+
+          attachmentBytes: 2048,
+        }),
+      pruneBackups: (keep: number) => Promise.resolve(2 - keep),
+      pruneFiles: () => Promise.resolve(0),
     },
   };
   // Files handed to "Save as…" (AR-04).
@@ -2195,6 +2209,27 @@ test("the first start after an update says so when the check finds a problem, on
   expect(await db.select("SELECT value FROM settings WHERE key = 'app.build'")).toEqual([
     { value: "84b779b@55" },
   ]);
+});
+
+// M10 step 20 (review item 18): Settings → Your data → Storage.
+test("Storage lists each part with its size and offers a clean-up where there's something to clean", async () => {
+  const { db, user } = setup();
+  await user.type(await composer(), "Make a row{Enter}");
+  await screen.findByText("Hello there.");
+  await user.keyboard("{Control>},{/Control}");
+  const storage = within(await screen.findByRole("group", { name: "Storage" }));
+  const row = (label: string) => within(storage.getByText(label).closest("tr") as HTMLElement);
+  expect(row("Database").getByText("3.0 MB")).toBeInTheDocument();
+  expect(row("Backups").getByText("6.0 MB")).toBeInTheDocument();
+  expect(row("Backups").getByText("2 rows")).toBeInTheDocument();
+  expect(row("Request log").getByText(/^\d+ rows$/)).toBeInTheDocument();
+  // Nothing older than 90 days: no trim offered; two backups: the clean-up keeps the latest.
+  expect(row("Request log").queryByRole("button")).not.toBeInTheDocument();
+  const logRows = await db.select("SELECT COUNT(*) AS n FROM request_log");
+  await user.click(row("Backups").getByRole("button", { name: "Keep only the latest backup" }));
+  expect(await storage.findByRole("status")).toHaveTextContent("Removed 1 backup.");
+  // The request log is untouched by any clean-up here.
+  expect(await db.select("SELECT COUNT(*) AS n FROM request_log")).toEqual(logRows);
 });
 
 test("nothing can be deleted while an answer streams", async () => {

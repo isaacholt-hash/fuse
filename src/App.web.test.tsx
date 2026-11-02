@@ -51,6 +51,16 @@ function start(server: ReturnType<typeof fakeServer>) {
         backupNow: () => Promise.reject(new Error("unused")),
         restore: () => Promise.reject(new Error("unused")),
         checkFiles: () => Promise.reject(new Error("unused")),
+        sizes: () =>
+          Promise.resolve({
+            databaseBytes: 0,
+            backupCount: 0,
+            backupBytes: 0,
+            attachmentCount: 0,
+            attachmentBytes: 0,
+          }),
+        pruneBackups: () => Promise.resolve(0),
+        pruneFiles: () => Promise.resolve(0),
       }}
       preview={{ url: () => Promise.resolve("about:blank") }}
       web={{ fetch: () => Promise.reject(new Error("unused")) }}

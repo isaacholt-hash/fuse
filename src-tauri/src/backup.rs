@@ -230,6 +230,54 @@ pub(crate) async fn files_check(ctx: &Ctx) -> Result<FileCheck, String> {
     Ok(check_files(&ctx.data_dir, &hashes))
 }
 
+/// What the app's data takes on disk (M10 step 20, review item 18): the database with its WAL,
+/// the backups and the attachment files. Rows and their sizes come from SQL on the other side.
+#[derive(Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageSizes {
+    pub database_bytes: u64,
+    pub backup_count: u64,
+    pub backup_bytes: u64,
+    pub attachment_count: u64,
+    pub attachment_bytes: u64,
+}
+
+fn size_of(path: &Path) -> u64 {
+    fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+pub fn sizes(config_dir: &Path, data_dir: &Path) -> StorageSizes {
+    let db = config_dir.join(DB_FILE);
+    let database_bytes = ["", "-wal", "-shm"]
+        .iter()
+        .map(|ext| size_of(&PathBuf::from(format!("{}{ext}", db.display()))))
+        .sum();
+    let backups = list(config_dir);
+    let (attachment_count, attachment_bytes) = crate::files::usage(data_dir);
+    StorageSizes {
+        database_bytes,
+        backup_count: backups.len() as u64,
+        backup_bytes: backups.iter().map(|b| b.bytes).sum(),
+        attachment_count,
+        attachment_bytes,
+    }
+}
+
+pub(crate) fn storage_sizes(ctx: &Ctx) -> Result<StorageSizes, String> {
+    Ok(sizes(&ctx.config_dir, &ctx.data_dir))
+}
+
+/// Keeps the newest `keep` backups; returns how many went.
+pub(crate) fn backup_prune(ctx: &Ctx, keep: usize) -> Result<usize, String> {
+    crate::db::prune_backups_to(&ctx.config_dir.join(BACKUPS_DIR), keep)
+        .map_err(|e| format!("Couldn't remove old backups: {e}"))
+}
+
+/// Removes attachment files the database no longer names; returns how many went.
+pub(crate) fn files_prune(ctx: &Ctx, keep: Vec<String>) -> Result<usize, String> {
+    crate::files::prune(&ctx.data_dir, &keep)
+}
+
 pub mod commands {
     use super::*;
     use tauri::{AppHandle, State};
@@ -237,6 +285,21 @@ pub mod commands {
     #[tauri::command]
     pub fn backup_list(ctx: State<'_, Ctx>) -> Result<Vec<BackupInfo>, String> {
         super::backup_list(&ctx)
+    }
+
+    #[tauri::command]
+    pub fn storage_sizes(ctx: State<'_, Ctx>) -> Result<StorageSizes, String> {
+        super::storage_sizes(&ctx)
+    }
+
+    #[tauri::command]
+    pub fn backup_prune(ctx: State<'_, Ctx>, keep: usize) -> Result<usize, String> {
+        super::backup_prune(&ctx, keep)
+    }
+
+    #[tauri::command]
+    pub fn files_prune(ctx: State<'_, Ctx>, keep: Vec<String>) -> Result<usize, String> {
+        super::files_prune(&ctx, keep)
     }
 
     #[tauri::command]

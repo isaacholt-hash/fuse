@@ -37,6 +37,9 @@ pub const WEB_COMMANDS: &[&str] = &[
     "backup_list",
     "backup_now",
     "files_check",
+    "storage_sizes",
+    "backup_prune",
+    "files_prune",
     "app_build",
     "db_open",
     "db_recover",
@@ -264,6 +267,15 @@ pub async fn dispatch(
         "backup_list" => json(blocking(ctx, backup::backup_list).await),
         "backup_now" => json(backup::backup_now(ctx).await),
         "files_check" => json(backup::files_check(ctx).await),
+        "storage_sizes" => json(backup::storage_sizes(ctx)),
+        "backup_prune" => {
+            args!(name, args, keep: usize);
+            json(backup::backup_prune(ctx, keep))
+        }
+        "files_prune" => {
+            args!(name, args, keep: Vec<String>);
+            json(backup::files_prune(ctx, keep))
+        }
         "app_build" => json(Ok::<_, String>(crate::hulk::this_build())),
 
         // The database (db.rs)
@@ -460,6 +472,7 @@ mod tests {
         "backup_list",
         "backup_now",
         "files_check",
+        "storage_sizes",
         "app_build",
         "db_open",
         "db_recovery_key",
@@ -577,10 +590,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 73 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 76 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            73
+            76
         );
     }
 

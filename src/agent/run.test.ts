@@ -16,6 +16,8 @@ import { addDecision } from "@/storage/memories";
 import { createProject, setProjectRepo } from "@/storage/projects";
 import { listRecentRequests } from "@/storage/requestLog";
 import { getRun, listSteps } from "@/storage/runs";
+import { countingDb } from "@/storage/testing/countWrites";
+import type { SqlDb } from "@/storage/sql";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { continueRun, runAnswer, startRun, type RunDeps } from "./run";
 import { GIT_READ_TOOLS, READ_ONLY_TOOLS } from "./tools";
@@ -66,7 +68,8 @@ const repo: RepoApi = {
   },
 };
 
-type Turn = { text: string; calls?: ToolCall[] } | ProviderError;
+/** `chunks`: the text streamed in pieces (M10 step 20); otherwise it arrives in one event. */
+type Turn = { text: string; calls?: ToolCall[]; chunks?: string[] } | ProviderError;
 
 /** A provider that answers each request with the next scripted turn. */
 function scripted(turns: Turn[]) {
@@ -80,7 +83,7 @@ function scripted(turns: Turn[]) {
       await Promise.resolve();
       if (!turn) throw new Error("no more turns scripted");
       if (turn instanceof ProviderError) throw turn;
-      yield { type: "text", text: turn.text };
+      for (const piece of turn.chunks ?? [turn.text]) yield { type: "text", text: piece };
       for (const call of turn.calls ?? []) yield { type: "tool_call", call };
       yield {
         type: "done",
@@ -103,12 +106,12 @@ function scripted(turns: Turn[]) {
   return { adapter, sent };
 }
 
-async function setup(turns: Turn[]) {
+async function setup(turns: Turn[], wrap: (db: SqlDb) => SqlDb = (d) => d) {
   const db = openTestDb();
   const project = await createProject(db, t, "Lighthouse");
   await setProjectRepo(db, t, project.id, { root: "/repo", readSecrets: false });
   const { adapter, sent } = scripted(turns);
-  const deps: RunDeps = { db, tenant: t, catalog, adapterFor: () => adapter, repo };
+  const deps: RunDeps = { db: wrap(db), tenant: t, catalog, adapterFor: () => adapter, repo };
   const start = (over: { capMicroUsd?: number; signal?: AbortSignal } = {}) =>
     startRun(deps, {
       projectId: project.id,
@@ -185,6 +188,34 @@ test("a run: plan, tool calls, results replayed, answer; every turn priced and l
   const log = (await listRecentRequests(db, t)).filter((r) => r.purpose === "agent");
   expect(log).toHaveLength(2);
   expect(log.reduce((sum, r) => sum + r.usage.costMicroUsd, 0)).toBe(2 * TURN_COST);
+});
+
+test("M10 step 20: a run's writes don't grow with the stream: one step and one log row per turn", async () => {
+  const chunks = Array.from({ length: 800 }, (_, i) => `piece ${String(i)} `);
+  let writes = new Map<string, number>();
+  const { start } = await setup(
+    [
+      {
+        text: chunks.join(""),
+        chunks,
+        calls: [call("c1", "read_file", { path: "src/app/tide.ts", offset: null })],
+      },
+      { text: "x ".repeat(300), chunks: Array.from({ length: 300 }, () => "x ") },
+    ],
+    (d) => {
+      const counted = countingDb(d);
+      writes = counted.writes;
+      return counted.db;
+    },
+  );
+  const run = await start();
+  expect(run.status).toBe("done");
+  expect(writes.get("INSERT INTO run_steps")).toBe(3);
+  expect(writes.get("INSERT INTO request_log")).toBe(2);
+  const total = [...writes.values()].reduce((a, b) => a + b, 0);
+  expect(total, [...writes.entries()].map(([k, v]) => `${k}=${String(v)}`).join(", ")).toBeLessThan(
+    30,
+  );
 });
 
 test("a failing tool call is a result, and the run goes on", async () => {

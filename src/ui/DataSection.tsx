@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Greyed, Modal } from "./primitives";
+import { Storage, type StorageApi } from "./Storage";
 
 /** What has to be typed before everything is deleted. */
 export const DELETE_PHRASE = "delete everything";
@@ -318,9 +319,12 @@ export function DataSection({
   onExport,
   onDeleteAll,
   backups,
+  storage,
   restore,
   backupRestoreReason,
 }: {
+  /** M10 step 20: sizes by part, with clean-ups. */
+  storage?: StorageApi;
   restore?: RestoreApi;
   /** PL-02: why restoring a backup is greyed here (the web app on HULK). */
   backupRestoreReason?: string;
@@ -385,6 +389,7 @@ export function DataSection({
           {...(backupRestoreReason ? { restoreReason: backupRestoreReason } : {})}
         />
       )}
+      {storage && <Storage api={storage} />}
       {onDeleteAll && (
         <>
           <Button

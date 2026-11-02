@@ -259,6 +259,7 @@ import {
 } from "@/storage/messages";
 import { sweepDeleted } from "@/storage/purge";
 import { startupCheck, startupNotice, type AppBuild } from "@/data/startupCheck";
+import { cleanUp, storageReport, type StoragePart } from "@/data/storage";
 import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
@@ -2399,6 +2400,18 @@ export function ChatApp({
       }
     },
   });
+  // M10 step 20: Settings → Your data → Storage, sizes and clean-ups. One object, so the
+  // section loads once.
+  const storageApi = useMemo(
+    () =>
+      backups
+        ? {
+            load: () => storageReport(db, tenant, backups),
+            clean: (part: StoragePart) => cleanUp(db, tenant, backups, part),
+          }
+        : undefined,
+    [db, tenant, backups],
+  );
   /** Deletes a message and everything under it: an answer, or a question and all that followed. */
   const deleteFromMessage = (id: string) => {
     if (!selectedId || live[selectedId]) return;
@@ -5120,6 +5133,7 @@ export function ChatApp({
                 exporter && (
                   <DataSection
                     {...(backups ? { backups } : {})}
+                    {...(storageApi ? { storage: storageApi } : {})}
                     {...(webApp ? { backupRestoreReason: WEB_REASONS.restore } : {})}
                     restore={{
                       read: async (file) => {

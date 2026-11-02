@@ -116,6 +116,16 @@ describe("greyed with a reason in the web app (PL-02)", () => {
           backupNow: () => Promise.reject(new Error("unused")),
           restore: () => Promise.reject(new Error("unused")),
           checkFiles: () => Promise.reject(new Error("unused")),
+          sizes: () =>
+            Promise.resolve({
+              databaseBytes: 0,
+              backupCount: 0,
+              backupBytes: 0,
+              attachmentCount: 0,
+              attachmentBytes: 0,
+            }),
+          pruneBackups: () => Promise.resolve(0),
+          pruneFiles: () => Promise.resolve(0),
         }}
       />,
     );
