@@ -89,6 +89,7 @@ pub fn run() {
             backup::commands::backup_now,
             backup::commands::backup_restore,
             backup::commands::files_check,
+            hulk::commands::app_build,
             db::commands::db_open,
             db::commands::db_recover,
             db::commands::db_recovery_key,

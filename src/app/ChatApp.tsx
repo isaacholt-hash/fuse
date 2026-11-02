@@ -258,6 +258,7 @@ import {
   type Message,
 } from "@/storage/messages";
 import { sweepDeleted } from "@/storage/purge";
+import { startupCheck, startupNotice, type AppBuild } from "@/data/startupCheck";
 import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
@@ -579,6 +580,8 @@ export interface ChatAppProps {
   hulkPollMs?: { card: number; notify: number };
   /** M10 step 18: how long a delete can be undone before it's purged; tests shorten it. */
   undoMs?: number;
+  /** M10 step 19 (PL-11): this build, so the first start on it checks the database and files. */
+  appBuild?: () => Promise<AppBuild | null>;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -786,6 +789,7 @@ export function ChatApp({
   notify,
   hulkPollMs,
   undoMs = 8000,
+  appBuild,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -1435,6 +1439,21 @@ export function ChatApp({
     purgeIncognito(db, tenant)
       // M10 step 18: a delete whose undo window a close or crash cut short ends here.
       .then(() => sweepDeleted(db, tenant))
+      // M10 step 19 (PL-11): the first start on a new build checks the database and the
+      // attached files, and says so if something is wrong. A failure to check isn't one.
+      .then(async () => {
+        if (!appBuild || !backups) return;
+        try {
+          const build = await appBuild();
+          if (!build) return;
+          const notice = startupNotice(
+            await startupCheck(db, tenant, build, () => backups.checkFiles()),
+          );
+          if (notice) setAlerts((all) => [...all, notice]);
+        } catch (e) {
+          console.warn("The startup check didn't run:", e);
+        }
+      })
       .then(() => settleSeen(db, tenant))
       .then(() => listThreads(db, tenant))
       .then(async (list) => {
@@ -1462,7 +1481,7 @@ export function ChatApp({
         setThreadMemories(used);
       })
       .catch(report);
-  }, [db, tenant, catalog, lastThread, loadThread]);
+  }, [db, tenant, catalog, lastThread, loadThread, appBuild, backups]);
   useEffect(() => {
     if (selectedId === null) return;
     const kind = threads.find((t) => t.id === selectedId)?.kind;

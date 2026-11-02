@@ -1173,6 +1173,124 @@ mod tests {
         }
     }
 
+    /// A database as FUSE wrote it at migration 50 (M10 step 1), with rows in every table a
+    /// user fills: chats with branches and re-runs, runs with steps and changes, memories of
+    /// every kind, proposals, summaries, artifacts, files, budgets. The fixture is never edited
+    /// to suit a later migration; a migration that loses a row fails here (M10 step 19, PL-11).
+    const REALISTIC_FROM: i64 = 50;
+    const REALISTIC: &str = include_str!("../fixtures/upgrade-0050.sql");
+
+    #[tokio::test]
+    async fn history_survives_every_update_since_0050() {
+        let dir = temp_dir("history50");
+        let store = MemoryStore::default();
+        let key = new_key().unwrap();
+        store.set(KEY_ACCOUNT, &key).unwrap();
+        let pool = connect(&dir.join(DB_FILE), Some(&key)).await.unwrap();
+        migrator_until(REALISTIC_FROM).run(&pool).await.unwrap();
+        sqlx::raw_sql(REALISTIC).execute(&pool).await.unwrap();
+        let before = table_counts(&pool).await.unwrap();
+        pool.close().await;
+        fs::write(dir.join(MIGRATION_MARKER), REALISTIC_FROM.to_string()).unwrap();
+        let seeded: std::collections::HashMap<_, _> = before.iter().cloned().collect();
+        for table in [
+            "projects",
+            "threads",
+            "messages",
+            "request_log",
+            "files",
+            "memories",
+            "memory_proposals",
+            "thread_summaries",
+            "artifacts",
+            "runs",
+            "run_steps",
+            "run_changes",
+            "chunks",
+            "budgets",
+        ] {
+            assert!(
+                seeded.get(table).copied().unwrap_or(0) > 0,
+                "{table} is seeded"
+            );
+        }
+
+        let pool = ready(open(&dir, &store).await.unwrap());
+        let after: std::collections::HashMap<_, _> =
+            table_counts(&pool).await.unwrap().into_iter().collect();
+        for (table, n) in &before {
+            if table == "_sqlx_migrations" {
+                continue;
+            }
+            assert_eq!(after.get(table), Some(n), "rows in {table}");
+        }
+        let broken: Vec<SqliteRow> = sqlx::query("PRAGMA foreign_key_check")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        assert!(broken.is_empty(), "foreign keys still hold");
+        let quick = select(&pool, "PRAGMA quick_check", &[]).await.unwrap();
+        assert_eq!(quick[0]["quick_check"], "ok");
+        // Every chat, message and memory, by id and text; and what the migrations since
+        // derived: 0053 made the chat that held a run a Code session, the rest stay chats.
+        let threads = select(
+            &pool,
+            "SELECT id, title, kind, deleted_at FROM threads ORDER BY id",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            threads
+                .iter()
+                .map(|t| (t["id"].as_str().unwrap(), t["kind"].as_str().unwrap()))
+                .collect::<Vec<_>>(),
+            [
+                ("t1", "code"),
+                ("t2", "chat"),
+                ("t3", "chat"),
+                ("t4", "chat")
+            ]
+        );
+        assert_eq!(threads[0]["title"], "Tile budget");
+        assert!(!threads[3]["deleted_at"].is_null());
+        let messages = select(
+            &pool,
+            "SELECT id, content, parent_id, escalated_from_id FROM messages ORDER BY id",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(messages.len(), 9);
+        assert_eq!(messages[0]["content"], "Marrakech includes the trim.");
+        assert_eq!(messages[3]["escalated_from_id"], "a2");
+        let memories = select(
+            &pool,
+            "SELECT id, text, scope, thread_id FROM memories ORDER BY id",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(memories.len(), 7);
+        assert_eq!(memories[2]["scope"], "conversation");
+        assert_eq!(memories[2]["thread_id"], "t1");
+        let spend = select(
+            &pool,
+            "SELECT SUM(cost_micro_usd) AS total FROM request_log WHERE thread_id = 't1'",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert_eq!(spend[0]["total"], 300340);
+        pool.close().await;
+        assert!(
+            crate::backup::list(&dir)
+                .iter()
+                .any(|b| b.reason == "update"),
+            "backed up before migrating"
+        );
+    }
+
     #[tokio::test]
     async fn linked_repositories_become_project_folders_in_0040() {
         let dir = temp_dir("folders40");

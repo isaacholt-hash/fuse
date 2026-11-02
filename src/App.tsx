@@ -36,6 +36,7 @@ import { tauriRepo, type RepoApi } from "@/repo/api";
 import { tauriExec, type ExecApi } from "@/repo/exec";
 import { tauriGit, type GitApi } from "@/repo/git";
 import { tauriBackupsApi, type BackupsApi } from "@/data/backups";
+import { tauriAppBuild, type AppBuild } from "@/data/startupCheck";
 import { tauriQuickCapture, type QuickCaptureApi } from "@/app/quickCapture";
 import { tauriZoom, type ZoomApi } from "@/app/appearance";
 import { tauriHello, type HelloApi } from "@/security/hello";
@@ -72,7 +73,7 @@ type Gate =
   | { kind: "checking" }
   | { kind: "setUp" }
   | { kind: "signIn" }
-  | { kind: "in"; version: string }
+  | { kind: "in"; version: string; build?: AppBuild | null }
   | { kind: "error"; message: string };
 
 interface Props {
@@ -105,6 +106,8 @@ interface Props {
   /** git and gh there (CA-05). */
   git?: GitApi;
   backups?: BackupsApi;
+  /** M10 step 19: this build, for the check at the first start on it; tests pass their own. */
+  appBuild?: () => Promise<AppBuild | null>;
   /** The local model: hardware, install, run (M7). */
   local?: LocalApi;
   /** The Python runtime for data work (M9 step 5). */
@@ -148,6 +151,7 @@ export default function App({
   exec = webApp ? webExec : tauriExec,
   git = tauriGit,
   backups = tauriBackupsApi,
+  appBuild,
   // What only the desktop has is left out of the web app, and greyed there instead.
   local = webApp ? undefined : tauriLocalApi,
   python = tauriPythonApi,
@@ -183,7 +187,15 @@ export default function App({
         if (!alive) return;
         setGate(
           s.signedIn
-            ? { kind: "in", version: s.version }
+            ? {
+                kind: "in",
+                version: s.version,
+                // M10 step 19: the server's build, for the startup check.
+                build:
+                  s.schema !== undefined && s.builtFrom
+                    ? { schema: s.schema, builtFrom: s.builtFrom, builtOn: s.builtOn ?? "unknown" }
+                    : null,
+              }
             : s.setUp
               ? { kind: "signIn" }
               : { kind: "setUp" },
@@ -236,6 +248,13 @@ export default function App({
   }, [openDb, attempt, signedIn, webApp]);
 
   const version = gate.kind === "in" ? gate.version : "";
+  // M10 step 19: the build the startup check keys on (the server's on the web). Stable, so
+  // the startup effect that uses it runs once.
+  const gateBuild = gate.kind === "in" ? (gate.build ?? null) : null;
+  const resolvedAppBuild = useMemo(
+    () => appBuild ?? (webApp ? () => Promise.resolve(gateBuild) : tauriAppBuild),
+    [appBuild, webApp, gateBuild],
+  );
   const appUpdates = useMemo(
     () => updates ?? (webApp ? serverUpdates(version) : desktopUpdates),
     [updates, webApp, version],
@@ -318,6 +337,7 @@ export default function App({
       execApi={exec}
       gitApi={git}
       backups={backups}
+      appBuild={resolvedAppBuild}
       localApi={local}
       pythonApi={python}
       mcpApi={mcp}

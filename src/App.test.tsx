@@ -162,12 +162,15 @@ function setup(
     exec,
     wrapDb = (d) => d,
     undoMs,
+    appBuild,
   }: {
     helloAvailable?: boolean;
     repo?: RepoApi;
     exec?: ExecApi;
     /** M10 step 18: how long a delete can be undone (the app's default otherwise). */
     undoMs?: number;
+    /** M10 step 19: the build the app thinks it is; without it, no startup check runs. */
+    appBuild?: () => Promise<{ schema: number; builtFrom: string; builtOn: string } | null>;
     /** Wraps the database the app sees, e.g. to slow one query down. */
     wrapDb?: (db: SqlDb) => SqlDb;
   } = {},
@@ -316,6 +319,7 @@ function setup(
       repo={repo}
       {...(exec ? { exec } : {})}
       {...(undoMs !== undefined ? { undoMs } : {})}
+      appBuild={appBuild ?? (() => Promise.resolve(null))}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -2175,6 +2179,22 @@ test("delete from a question: the rows and their search entries go once the noti
     await db.select("SELECT COUNT(*) AS n FROM messages_fts WHERE messages_fts MATCH 'forget'"),
   ).toEqual([{ n: 0 }]);
   expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(1);
+});
+
+// M10 step 19 (PL-11): the first start on a build checks the database and the attached files.
+test("the first start after an update says so when the check finds a problem, once per build", async () => {
+  const build = { schema: 55, builtFrom: "84b779b", builtOn: "2026-11-02" };
+  const { db, user } = setup({}, undefined, {}, { appBuild: () => Promise.resolve(build) });
+  // The fake file check reports one attached file missing.
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "The check after the update found problems: Checked 3 attached files: 1 missing. A backup from before the update is in Settings → Your data.",
+  );
+  await user.click(within(alert).getByRole("button", { name: "Dismiss alert" }));
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(await db.select("SELECT value FROM settings WHERE key = 'app.build'")).toEqual([
+    { value: "84b779b@55" },
+  ]);
 });
 
 test("nothing can be deleted while an answer streams", async () => {
