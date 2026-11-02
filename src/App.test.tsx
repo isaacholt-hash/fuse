@@ -161,10 +161,13 @@ function setup(
     repo = noRepo,
     exec,
     wrapDb = (d) => d,
+    undoMs,
   }: {
     helloAvailable?: boolean;
     repo?: RepoApi;
     exec?: ExecApi;
+    /** M10 step 18: how long a delete can be undone (the app's default otherwise). */
+    undoMs?: number;
     /** Wraps the database the app sees, e.g. to slow one query down. */
     wrapDb?: (db: SqlDb) => SqlDb;
   } = {},
@@ -312,6 +315,7 @@ function setup(
       backups={backups.api}
       repo={repo}
       {...(exec ? { exec } : {})}
+      {...(undoMs !== undefined ? { undoMs } : {})}
       exporter={{
         save: (name: string, bytes: Uint8Array) => {
           saves.push({ name, bytes });
@@ -2084,6 +2088,101 @@ test("rename and delete a thread", async () => {
   await user.click(await screen.findByRole("button", { name: "Delete conversation" }));
   expect(await sidebar().findByText("No chats yet")).toBeInTheDocument();
   expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(0);
+});
+
+// M10 step 18: delete for real, with an undo window.
+test("delete a chat: Undo brings it back; otherwise its rows are purged once the notice ends", async () => {
+  const { db, user } = setup({}, undefined, {}, { undoMs: 60_000 });
+  await user.type(await composer(), "Keep me{Enter}");
+  await screen.findByText("Hello there.");
+  const [thread] = await listThreads(db, DEFAULT_TENANT);
+  if (!thread) throw new Error("no thread");
+
+  await user.click(sidebar().getByRole("button", { name: `Delete ${thread.title}` }));
+  expect(
+    await screen.findByText(/, its messages, summaries and search entries/),
+  ).toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: "Delete conversation" }));
+  expect(await screen.findByText(`Deleted “${thread.title}”`)).toBeInTheDocument();
+  expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: /^Undo/ }));
+  expect(await sidebar().findByText(thread.title)).toBeInTheDocument();
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  expect(screen.queryByText(/^Deleted /)).not.toBeInTheDocument();
+  expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(1);
+
+  // Dismissing the notice ends the window at once.
+  await user.click(sidebar().getByRole("button", { name: `Delete ${thread.title}` }));
+  await user.click(await screen.findByRole("button", { name: "Delete conversation" }));
+  await user.click(await screen.findByRole("button", { name: "Dismiss" }));
+  await waitFor(async () => {
+    expect(await db.select("SELECT purged_at IS NOT NULL AS purged FROM threads")).toEqual([
+      { purged: 1 },
+    ]);
+  });
+  expect(await db.select("SELECT COUNT(*) AS n FROM messages")).toEqual([{ n: 0 }]);
+  expect(screen.queryByText(/^Deleted /)).not.toBeInTheDocument();
+});
+
+test("delete an answer takes what followed it; Ctrl+Z puts it back, unless you're typing", async () => {
+  const { user } = setup(
+    { anthropic: [() => answer("First answer."), () => answer("Second answer.")] },
+    undefined,
+    {},
+    { undoMs: 60_000 },
+  );
+  await user.type(await composer(), "First question{Enter}");
+  await screen.findByText("First answer.");
+  await user.type(await composer(), "Second question{Enter}");
+  await screen.findByText("Second answer.");
+
+  const first = screen.getAllByRole("group", { name: "Answer actions" })[0];
+  if (!first) throw new Error("no answer actions");
+  await user.click(within(first).getByRole("button", { name: "Delete answer" }));
+  await waitFor(() => {
+    expect(screen.queryByText("First answer.")).not.toBeInTheDocument();
+  });
+  expect(screen.queryByText("Second question")).not.toBeInTheDocument();
+  // The question stays (its text is also the chat's title in the sidebar).
+  expect(screen.getAllByText("First question").length).toBeGreaterThan(0);
+  expect(screen.getByText("Deleted 3 messages")).toBeInTheDocument();
+
+  // In the composer, Ctrl+Z is the editor's own undo.
+  const box = await composer();
+  await user.click(box);
+  await user.keyboard("{Control>}z{/Control}");
+  expect(screen.getByText("Deleted 3 messages")).toBeInTheDocument();
+  box.blur();
+  await user.keyboard("{Control>}z{/Control}");
+  expect(await screen.findByText("First answer.")).toBeInTheDocument();
+  expect(screen.getByText("Second answer.")).toBeInTheDocument();
+  expect(screen.queryByText(/^Deleted /)).not.toBeInTheDocument();
+});
+
+test("delete from a question: the rows and their search entries go once the notice ends", async () => {
+  const { db, user } = setup({}, undefined, {}, { undoMs: 50 });
+  await user.type(await composer(), "A question to forget{Enter}");
+  await screen.findByText("Hello there.");
+  await user.click(screen.getByRole("button", { name: "Delete from here" }));
+  await waitFor(() => {
+    expect(screen.queryByText("Hello there.")).not.toBeInTheDocument();
+  });
+  expect(screen.getByText("Deleted 2 messages")).toBeInTheDocument();
+  await waitFor(async () => {
+    expect(await db.select("SELECT COUNT(*) AS n FROM messages")).toEqual([{ n: 0 }]);
+  });
+  expect(
+    await db.select("SELECT COUNT(*) AS n FROM messages_fts WHERE messages_fts MATCH 'forget'"),
+  ).toEqual([{ n: 0 }]);
+  expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(1);
+});
+
+test("nothing can be deleted while an answer streams", async () => {
+  const { user } = setup({ anthropic: [untilStopped] });
+  await user.type(await composer(), "Take your time{Enter}");
+  expect(await screen.findByRole("button", { name: /Stop/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Delete from here" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Delete answer" })).not.toBeInTheDocument();
 });
 
 test("reopening the app reopens the last thread, with its messages and costs", async () => {
