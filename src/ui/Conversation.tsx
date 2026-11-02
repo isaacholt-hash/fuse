@@ -90,7 +90,7 @@ function RouteBadge({ route }: { route: RouteView }) {
       }
     >
       <button
-        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground max-[900px]:text-left"
+        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground @max-[900px]:text-left"
         aria-label={`Routing: ${route.label}`}
       >
         <span>{route.label}</span>
@@ -111,14 +111,14 @@ function TokensLine({ usage }: { usage: UsageView }) {
       {number(tokensIn(usage))} in · {number(usage.output)} out
       {usage.cachedInput > 0 && (
         <>
-          <br className="max-[900px]:hidden" />
-          <span className="max-[900px]:ml-1.5">{number(usage.cachedInput)} cached</span>
+          <br className="@max-[900px]:hidden" />
+          <span className="@max-[900px]:ml-1.5">{number(usage.cachedInput)} cached</span>
         </>
       )}
       {usage.webSearchCalls > 0 && (
         <>
-          <br className="max-[900px]:hidden" />
-          <span className="max-[900px]:ml-1.5">
+          <br className="@max-[900px]:hidden" />
+          <span className="@max-[900px]:ml-1.5">
             {number(usage.webSearchCalls)} search{usage.webSearchCalls === 1 ? "" : "es"}
           </span>
         </>
@@ -127,14 +127,17 @@ function TokensLine({ usage }: { usage: UsageView }) {
   );
 }
 
-/** The reading column beside its 132 px ledger margin; one column below 900 px. */
+/**
+ * The reading column beside its 132 px ledger margin; one column when the main column (the
+ * scroll area or the composer's footer, each a container) is under 900 px.
+ */
 const LEDGER_GRID =
-  "grid grid-cols-[minmax(0,1fr)_132px] gap-x-6 max-[900px]:grid-cols-[minmax(0,1fr)] max-[900px]:gap-x-0";
+  "grid grid-cols-[minmax(0,1fr)_132px] gap-x-6 @max-[900px]:grid-cols-[minmax(0,1fr)] @max-[900px]:gap-x-0";
 /** The margin: right-aligned lines beside a message; one wrapping line under it below 900 px. */
 const MARGIN =
-  "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums max-[900px]:flex max-[900px]:flex-wrap max-[900px]:items-center max-[900px]:gap-x-2.5 max-[900px]:pt-0 max-[900px]:text-left";
+  "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-center @max-[900px]:gap-x-2.5 @max-[900px]:pt-0 @max-[900px]:text-left";
 const MARGIN_BUTTON =
-  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground max-[900px]:text-left";
+  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[900px]:text-left";
 
 /** "about $0.03 a message", for the ledger head. */
 const perMessage = (micro: number, answers: number) =>
@@ -155,12 +158,12 @@ function LedgerTotal({ total }: { total: ThreadTotal }) {
       <div
         tabIndex={0}
         aria-label="Thread total"
-        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums max-[900px]:flex max-[900px]:flex-wrap max-[900px]:items-baseline max-[900px]:gap-x-2 max-[900px]:text-left"
+        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-baseline @max-[900px]:gap-x-2 @max-[900px]:text-left"
       >
-        <span className="block text-[10px] max-[900px]:hidden">this thread</span>
+        <span className="block text-[10px] @max-[900px]:hidden">this thread</span>
         <Money
           micro={total.micro}
-          className="block text-base leading-6 max-[900px]:text-[13px] max-[900px]:leading-5"
+          className="block text-base leading-6 @max-[900px]:text-[13px] @max-[900px]:leading-5"
         />
         <span className="block">
           {number(total.tokens)} tokens
@@ -562,7 +565,7 @@ export function Messages({
       )}
       <div
         ref={scrollRef}
-        className="h-full overflow-y-auto scroll-smooth"
+        className="@container h-full overflow-y-auto scroll-smooth"
         onScroll={(e) => {
           const el = e.currentTarget;
           setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 240);
@@ -595,7 +598,7 @@ export function Messages({
         ) : (
           <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
             <div
-              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 max-[900px]:gap-y-1`}
+              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[900px]:gap-y-1`}
             >
               <div className="text-[11px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
@@ -698,7 +701,7 @@ export function Messages({
                         {message.images.length} file{message.images.length === 1 ? "" : "s"}
                       </span>
                     )}
-                    <div className="mt-1 flex items-center justify-end gap-0.5 max-[900px]:mt-0 max-[900px]:justify-start">
+                    <div className="mt-1 flex items-center justify-end gap-0.5 @max-[900px]:mt-0 @max-[900px]:justify-start">
                       {message.branch && (
                         <BranchPicker
                           branch={message.branch}
@@ -1510,7 +1513,7 @@ export function Composer({
     </Popover.Root>
   );
   return (
-    <footer className="shrink-0 px-8 pt-2 pb-3 max-[800px]:px-5">
+    <footer className="@container shrink-0 px-8 pt-2 pb-3 max-[800px]:px-5">
       <div
         className={`${LEDGER_GRID} mx-auto w-[min(100%,calc(68ch+132px+24px))] items-end text-[15px]`}
       >
@@ -2037,10 +2040,10 @@ export function Composer({
           </div>
         </div>
         {estimated !== null && (
-          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground max-[900px]:order-last max-[900px]:pt-1 max-[900px]:pb-0 max-[900px]:text-left">
+          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[900px]:order-last @max-[900px]:pt-1 @max-[900px]:pb-0 @max-[900px]:text-left">
             {streaming ? "so far" : "next message"}
             <span
-              className="block max-[900px]:ml-1.5 max-[900px]:inline"
+              className="block @max-[900px]:ml-1.5 @max-[900px]:inline"
               aria-label="Estimated cost"
             >
               ≈ <Money micro={estimated} className="text-[13px]" />
