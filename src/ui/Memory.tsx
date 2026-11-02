@@ -870,7 +870,7 @@ export function MemoryReviewDialog({
   );
 }
 
-/** The bar above the composer when suggestions are waiting (or secrets were skipped). */
+/** The quiet line under the composer when suggestions are waiting (or secrets were skipped). */
 export function MemoryBar({
   count,
   checking,
@@ -890,18 +890,24 @@ export function MemoryBar({
     <div
       role="status"
       aria-label="Memory suggestions"
-      className="mx-auto mb-2 flex w-full max-w-3xl items-center gap-2 px-8 text-[11px] text-muted-foreground max-[800px]:px-5"
+      className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
     >
-      <Brain className={`size-3.5 shrink-0 ${checking ? "animate-pulse" : ""}`} />
+      <Brain className={`size-3 shrink-0 ${checking ? "animate-pulse" : ""}`} />
       {checking ? (
         <span>Checking the last chat for things to remember…</span>
       ) : count > 0 ? (
         <>
           <span>
-            {number(count)} memory suggestion{count === 1 ? "" : "s"} from your chats
+            {number(count)} memory suggestion{count === 1 ? "" : "s"}
           </span>
+          <span aria-hidden>·</span>
           <Tip label="Review what FUSE suggests remembering">
-            <Button variant="link" size="xs" className="px-0" onClick={onReview}>
+            <Button
+              variant="link"
+              size="xs"
+              className="h-auto px-0 text-[11px] text-foreground underline underline-offset-2"
+              onClick={onReview}
+            >
               Review
             </Button>
           </Tip>

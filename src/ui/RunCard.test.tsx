@@ -23,7 +23,6 @@ function show(run: RunView, onApprove = vi.fn()) {
   render(
     <Tooltip.Provider>
       <Messages
-        modelName="Auto"
         startedAt={0}
         onRetry={() => undefined}
         onApprove={onApprove}
@@ -138,7 +137,6 @@ test("M10 step 11: a working run says how long it has run and can be stopped fro
   render(
     <Tooltip.Provider>
       <Messages
-        modelName="Auto"
         startedAt={0}
         onRetry={() => undefined}
         onStopRun={onStopRun}

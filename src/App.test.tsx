@@ -766,27 +766,19 @@ test("M10 step 22: the effort dial sends the chosen level with the model's full 
     anthropic: [() => answer("Deep answer."), () => answer("Normal answer.")],
   });
   await composer();
-  // Shows the usual level for the model that would answer (the test model's own default).
-  const dial = screen.getByRole("button", { name: "Reasoning effort" });
-  expect(dial).toHaveAttribute("aria-pressed", "false");
-  await user.click(dial);
-  const menu = within(await screen.findByRole("dialog", { name: "Reasoning effort" }));
-  expect(menu.getByRole("menuitemradio", { name: /^Usual/ })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
-  await user.click(menu.getByRole("menuitemradio", { name: /^Max/ }));
-  expect(screen.getByRole("button", { name: "Reasoning effort" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  // M10 step 26: effort is in the model menu. Unset, it's the usual level for the model.
+  const chip = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  await user.click(chip());
+  const effort = within(await screen.findByRole("group", { name: "Reasoning effort" }));
+  expect(effort.getByRole("radio", { name: "Usual" })).toHaveAttribute("aria-checked", "true");
+  await user.click(effort.getByRole("radio", { name: /^Max/ }));
+  await user.keyboard("{Escape}");
+  // A chosen level shows on the model chip until it's sent.
+  expect(within(chip()).getByLabelText("Effort chosen")).toHaveTextContent("· Max");
   await user.type(await composer(), "What is FUSE?{Enter}");
   expect(await screen.findByText("Deep answer.")).toBeInTheDocument();
   expect(options[0]).toMatchObject({ effort: "max", maxOutputTokens: 1000 });
-  expect(screen.getByRole("button", { name: "Reasoning effort" })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  expect(within(chip()).queryByLabelText("Effort chosen")).toBeNull();
   await user.type(await composer(), "And then?{Enter}");
   expect(await screen.findByText("Normal answer.")).toBeInTheDocument();
   expect(options.at(-1)).not.toHaveProperty("effort");
@@ -1658,10 +1650,13 @@ test("compare mode: one question to two models, shown side by side; keep either 
     anthropic: [() => answer("Answer from Balanced."), () => answer("Answer from Best.")],
   });
   await composer();
-  await user.click(screen.getByRole("button", { name: "Compare models" }));
+  await user.click(screen.getByRole("button", { name: "Options" }));
   const pick = within(screen.getByRole("group", { name: "Models to compare" }));
   await user.click(pick.getByRole("checkbox", { name: "Test Claude · Balanced" }));
   await user.click(pick.getByRole("checkbox", { name: "Test Best · Best" }));
+  await user.keyboard("{Escape}");
+  // M10 step 26: compare mode shows as a chip in the row while it's on.
+  expect(screen.getByRole("button", { name: "Stop comparing" })).toBeInTheDocument();
   await user.type(await composer(), "Which is better, tea or coffee?");
   expect(screen.getByLabelText("Compare cost")).toHaveTextContent(/Sends to 2 models · about \$/);
   await user.keyboard("{Enter}");
@@ -1693,10 +1688,7 @@ test("compare mode: one question to two models, shown side by side; keep either 
   expect(await screen.findByText("Answer from Balanced.")).toBeInTheDocument();
   expect(screen.queryByText("Answer from Best.")).not.toBeInTheDocument();
   // Compare mode is used up by the send.
-  expect(screen.getByRole("button", { name: "Compare models" })).toHaveAttribute(
-    "aria-pressed",
-    "false",
-  );
+  expect(screen.queryByRole("button", { name: "Stop comparing" })).toBeNull();
 });
 
 test("learning from overrides: three moves up for one kind of question suggest a rule to test and save", async () => {
@@ -2521,6 +2513,9 @@ test("web search: on by default, toggle per thread, live status, cited sources a
   };
   const { db, options, user } = setup({ anthropic: [searched] });
   await composer();
+  // M10 step 26: on, it's a chip in the row; the switch itself is under Options.
+  expect(screen.getByRole("button", { name: "Turn off web search" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Options" }));
   const toggle = screen.getByRole("button", { name: "Search the web" });
   // New chats start with search on; it can be turned off and back on before sending.
   expect(toggle).toHaveAttribute("aria-pressed", "true");
@@ -3275,6 +3270,8 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
 
   // M10 step 16: runs start in the Code area; the project comes along.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: a new session's kind and mode are in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Run settings" }));
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.type(await composer(), "What is this project called?{Enter}");
   const card = within(await screen.findByRole("region", { name: "Coding run" }));
@@ -3361,6 +3358,8 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
 
   // M10 step 16: runs start in the Code area; the project comes along.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: a new session's kind and mode are in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Run settings" }));
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
   await user.type(await composer(), "Make the tide 4{Enter}");
@@ -3372,6 +3371,7 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   const sentTools = (options.at(-1) as { tools?: { name: string }[] }).tools?.map((x) => x.name);
   expect(sentTools).toContain("edit_file");
   // The chat was new: saving it keeps Code on and its mode, so the next message is a run too.
+  await user.click(screen.getByRole("button", { name: "Options" }));
   expect(screen.getByRole("button", { name: "Coding run" })).toHaveAttribute(
     "aria-pressed",
     "true",
@@ -3460,6 +3460,8 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   await user.keyboard("{Escape}");
   // M10 step 16: runs start in the Code area; the project comes along.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: a new session's kind and mode are in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Run settings" }));
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   await user.selectOptions(screen.getByLabelText("What the coding run may do"), "auto_edit");
   await user.type(await composer(), "Run the tests{Enter}");
@@ -3552,6 +3554,8 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
 
   // M10 step 16: runs start in the Code area; the project comes along.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: a new session's kind and mode are in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Run settings" }));
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
   expect(screen.getByLabelText("What the coding run may do")).toHaveValue("ask");
   await user.type(await composer(), "Set a to 2{Enter}");
@@ -3613,8 +3617,9 @@ test("M10 step 12: two areas: each lists its own threads, has its own empty stat
 
   // A thread written here is a session, listed here and not in Chat. It needs a folder first.
   expect(
-    screen.getAllByText(/Pick a project with a folder, or add a folder/).length,
+    screen.getAllByText(/Choose a project to start, or add a folder with \+/).length,
   ).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Add" }));
   await user.click(screen.getByRole("button", { name: "Add a folder" }));
   await screen.findByRole("button", { name: /lighthouse/ });
   await user.type(await composer(), "Why is the build red{Enter}");
@@ -3652,6 +3657,7 @@ test("M10 step 12: two areas: each lists its own threads, has its own empty stat
 test("M10 step 12: the app reopens in the area it was left in, on that area's last thread", async () => {
   const first = setup({}, undefined, {}, { repo: pickingRepo });
   await first.user.keyboard("{Control>}2{/Control}");
+  await first.user.click(await screen.findByRole("button", { name: "Add" }));
   await first.user.click(await screen.findByRole("button", { name: "Add a folder" }));
   await screen.findByRole("button", { name: /lighthouse/ });
   await first.user.type(await composer(), "Tidy the README{Enter}");
