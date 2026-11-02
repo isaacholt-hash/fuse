@@ -37,6 +37,7 @@ pub const WEB_COMMANDS: &[&str] = &[
     "backup_list",
     "backup_now",
     "files_check",
+    "app_build",
     "db_open",
     "db_recover",
     "db_recovery_key",
@@ -263,6 +264,7 @@ pub async fn dispatch(
         "backup_list" => json(blocking(ctx, backup::backup_list).await),
         "backup_now" => json(backup::backup_now(ctx).await),
         "files_check" => json(backup::files_check(ctx).await),
+        "app_build" => json(Ok::<_, String>(crate::hulk::this_build())),
 
         // The database (db.rs)
         "db_open" => json(db::db_open(ctx).await),
@@ -458,6 +460,7 @@ mod tests {
         "backup_list",
         "backup_now",
         "files_check",
+        "app_build",
         "db_open",
         "db_recovery_key",
         "sandbox_status",
@@ -574,10 +577,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 72 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 73 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            72
+            73
         );
     }
 

@@ -284,6 +284,12 @@ pub mod commands {
     use super::HulkStatus;
     use crate::ctx::{Ctx, request_parts};
 
+    /// This build's schema, commit and day (M10 step 19: the startup check keys on it).
+    #[tauri::command]
+    pub fn app_build() -> super::Build {
+        super::this_build()
+    }
+
     #[tauri::command]
     pub async fn hulk_status(ctx: State<'_, Ctx>) -> Result<HulkStatus, String> {
         super::hulk_status(&ctx).await
