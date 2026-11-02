@@ -296,7 +296,7 @@ export default function App({
     return (
       <main className="flex h-dvh flex-col items-center justify-center gap-2 bg-background text-foreground">
         <h1 className="text-2xl font-semibold tracking-[0.12em]">FUSE</h1>
-        <p className="font-mono text-xs text-muted-foreground" role="status">
+        <p className="tabular-nums text-xs text-muted-foreground" role="status">
           {gate.kind === "checking"
             ? "Connecting to HULK…"
             : gate.kind === "error"

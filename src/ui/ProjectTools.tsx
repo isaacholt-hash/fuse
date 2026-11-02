@@ -37,7 +37,7 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
       <div className="space-y-2">
         {kinds.map((kind) => (
           <fieldset key={kind}>
-            <legend className="text-[10px] text-muted-foreground uppercase">{kind}</legend>
+            <legend className="text-[10px] text-muted-foreground">{kind}</legend>
             <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
               {tools
                 .filter((t) => t.kind === kind)
@@ -64,7 +64,7 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
         ))}
         {servers && servers.length > 0 && onServer && (
           <fieldset>
-            <legend className="text-[10px] text-muted-foreground uppercase">MCP servers</legend>
+            <legend className="text-[10px] text-muted-foreground">MCP servers</legend>
             <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
               {servers.map((s) => (
                 <li key={s.id}>

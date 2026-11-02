@@ -1,13 +1,23 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* M10 step 23: IBM Plex Sans for everything read and operated; Plex Mono only for code and
+     keyboard hints. Money is sans with tabular figures. */
   --font-heading: var(--font-sans);
-  --font-sans: "Geist Variable", sans-serif;
+  --font-sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  --color-copper: var(--copper);
+  --color-copper-soft: var(--copper-soft);
+  --color-paper: var(--paper);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -48,73 +58,84 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* M10 step 23 (docs/ui-design-2026-11-02.md): slate ink on paper, copper for money and nothing
+   else, radius by role. Hex values are the spec's; contrast on their backgrounds: ink 16.1,
+   muted 6.1, copper 6.2 light and 7.4 dark, error 6.5. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --background: #ffffff; /* page: the reading surface */
+  --foreground: #1b2130; /* ink */
+  --card: #ffffff;
+  --card-foreground: #1b2130;
+  --popover: #ffffff;
+  --popover-foreground: #1b2130;
+  --primary: #1b2130;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f1ee; /* raised: chips, hovered rows */
+  --secondary-foreground: #1b2130;
+  --muted: #f1f1ee;
+  --muted-foreground: #5c6370;
+  --accent: #f1f1ee;
+  --accent-foreground: #1b2130;
+  --destructive: #b3261e;
+  --border: #e3e4e1; /* rule */
+  --input: #e3e4e1;
+  --ring: #9a4a1a; /* focus: copper */
+  --copper: #9a4a1a;
+  --copper-soft: #f4e6db;
+  --paper: #fafaf8; /* shell: sidebar, header, composer surround */
+  --chart-1: #e3e4e1;
+  --chart-2: #9a4a1a;
+  --chart-3: #5c6370;
+  --chart-4: #1b2130;
+  --chart-5: #c9a07a;
+  /* Radius by role: 4 px chips and keys (sm), 6 px buttons, inputs and rows (lg), 10 px the
+     composer and popovers (2xl). */
+  --radius: 0.375rem;
+  --sidebar: #fafaf8;
+  --sidebar-foreground: #1b2130;
+  --sidebar-primary: #1b2130;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f1ee;
+  --sidebar-accent-foreground: #1b2130;
+  --sidebar-border: #e3e4e1;
+  --sidebar-ring: #9a4a1a;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #1b212b;
+  --foreground: #e8e9ec;
+  --card: #1b212b;
+  --card-foreground: #e8e9ec;
+  --popover: #242b37;
+  --popover-foreground: #e8e9ec;
+  --primary: #e8e9ec;
+  --primary-foreground: #151a22;
+  --secondary: #242b37;
+  --secondary-foreground: #e8e9ec;
+  --muted: #242b37;
+  --muted-foreground: #9aa1ad;
+  --accent: #242b37;
+  --accent-foreground: #e8e9ec;
+  --destructive: #f08a80;
+  --border: #2a313d;
+  --input: #2a313d;
+  --ring: #e0995f;
+  --copper: #e0995f;
+  --copper-soft: #3a2a1e;
+  --paper: #151a22;
+  --chart-1: #2a313d;
+  --chart-2: #e0995f;
+  --chart-3: #9aa1ad;
+  --chart-4: #e8e9ec;
+  --chart-5: #8a6a4a;
+  --sidebar: #151a22;
+  --sidebar-foreground: #e8e9ec;
+  --sidebar-primary: #e8e9ec;
+  --sidebar-primary-foreground: #151a22;
+  --sidebar-accent: #242b37;
+  --sidebar-accent-foreground: #e8e9ec;
+  --sidebar-border: #2a313d;
+  --sidebar-ring: #e0995f;
 }
 
 @layer base {

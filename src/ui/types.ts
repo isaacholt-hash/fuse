@@ -228,6 +228,8 @@ export interface RouteView {
   readAs: string | null;
   /** The same tokens on the cheapest Best model; null when this answer was on Best or unknown. */
   bestMicro: number | null;
+  /** M10 step 23: the tier, for the fuse-rating glyph beside the label; null when unknown. */
+  tier: "cheap" | "balanced" | "best" | null;
 }
 
 /** A composer mode (RT-01): Auto, or a pinned tier. A pinned model is picked from the model list. */

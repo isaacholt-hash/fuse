@@ -53,10 +53,10 @@ export function Storage({ api }: { api: StorageApi }) {
             {rows.map((r) => (
               <tr key={r.id} className="border-t">
                 <td className="py-1.5 pr-3">{r.label}</td>
-                <td className="py-1.5 pr-3 text-right font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                <td className="py-1.5 pr-3 text-right tabular-nums text-[11px] text-muted-foreground whitespace-nowrap">
                   {r.bytes !== null ? formatBytes(r.bytes) : ""}
                 </td>
-                <td className="py-1.5 pr-3 text-right font-mono text-[11px] text-muted-foreground whitespace-nowrap">
+                <td className="py-1.5 pr-3 text-right tabular-nums text-[11px] text-muted-foreground whitespace-nowrap">
                   {r.count.toLocaleString("en-US")} {r.id === "attachments" ? "files" : "rows"}
                 </td>
                 <td className="py-1.5 text-right">

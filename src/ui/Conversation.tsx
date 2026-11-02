@@ -43,7 +43,7 @@ import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
 import { ArtifactCard, DiffView } from "./Artifacts";
 import { openExternal } from "./openExternal";
-import { Hint, Mark, Tip } from "./primitives";
+import { Hint, Mark, Money, Tier, Tip } from "./primitives";
 import { EffortDial, type EffortView } from "./EffortDial";
 import { ReasoningLine } from "./ReasoningLine";
 import type { EffortLevel } from "@/catalog/catalog";
@@ -90,11 +90,16 @@ function RouteBadge({ route }: { route: RouteView }) {
       }
     >
       <button
-        className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
         aria-label={`Routing: ${route.label}`}
       >
+        {route.tier && <Tier tier={route.tier} />}
         <span className="text-foreground/70">{route.label}</span>
-        {route.bestMicro !== null && <span>· {money(route.bestMicro)} on Best</span>}
+        {route.bestMicro !== null && (
+          <span>
+            · <Money micro={route.bestMicro} /> on Best
+          </span>
+        )}
       </button>
     </Tip>
   );
@@ -117,7 +122,7 @@ function CostBadge({ message }: { message: MessageView }) {
         label={`${message.cachedFrom} answered the same first question, in the same context, earlier; FUSE reused that answer at no cost. Regenerate asks the model again.`}
       >
         <button
-          className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+          className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
           aria-label="Answered from the cache"
         >
           <span>from cache · {message.cachedFrom}</span>
@@ -131,7 +136,7 @@ function CostBadge({ message }: { message: MessageView }) {
     return (
       <Tip label={`${message.noModel}: worked out by a fixed rule in FUSE, so no model was asked.`}>
         <button
-          className="mt-4 flex items-center gap-1.5 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+          className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
           aria-label="Answered without a model"
         >
           <span>answered without a model</span>
@@ -154,7 +159,7 @@ function CostBadge({ message }: { message: MessageView }) {
   return (
     <Tip
       label={
-        <div className="w-64 space-y-2 py-1 font-mono">
+        <div className="w-64 space-y-2 py-1 tabular-nums">
           <p className="mb-3 font-sans font-medium">Request breakdown</p>
           {rows
             .filter(
@@ -188,7 +193,7 @@ function CostBadge({ message }: { message: MessageView }) {
       }
     >
       <button
-        className="mt-4 flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-1 rounded py-1 text-left font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className="mt-4 flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-1 rounded py-1 text-left tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
         aria-label={`Cost breakdown for ${message.model ?? "model"}`}
       >
         <span>{message.model}</span>
@@ -203,9 +208,11 @@ function CostBadge({ message }: { message: MessageView }) {
           </span>
         )}
         <span>·</span>
-        <span className="text-foreground/70">
-          {usage.totalMicro === null ? "cost unknown" : money(usage.totalMicro)}
-        </span>
+        {usage.totalMicro === null ? (
+          <span className="text-foreground/70">cost unknown</span>
+        ) : (
+          <Money micro={usage.totalMicro} />
+        )}
         <ChevronDown className="ml-0.5 size-3 opacity-60" />
       </button>
     </Tip>
@@ -230,7 +237,7 @@ function MemoryBadge({ memories }: { memories: { text: string; why: string }[] }
       }
     >
       <button
-        className="mt-4 flex items-center gap-1 rounded py-1 font-mono text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className="mt-4 flex items-center gap-1 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
         aria-label={`${String(memories.length)} ${memories.length === 1 ? "memory" : "memories"} used`}
       >
         <Brain className="size-3" />
@@ -278,7 +285,7 @@ function BranchPicker({
 }) {
   return (
     <span
-      className="flex items-center font-mono text-[10px] text-muted-foreground"
+      className="flex items-center tabular-nums text-[10px] text-muted-foreground"
       role="group"
       aria-label={`${label} versions`}
     >
@@ -418,7 +425,7 @@ export function Messages({
   /** Selected model, for the empty state. */
   modelName: string;
   /** M10 step 12: the empty state's words, per area; Chat's when omitted. */
-  empty?: { kicker: string; heading: string; blurb: string };
+  empty?: { heading: string };
   /** M10 step 14: a new chat or session shows this instead of the plain empty state. */
   home?: ReactNode;
   /** When the conversation started (Unix ms). */
@@ -511,16 +518,9 @@ export function Messages({
             <div className="mb-5">
               <Mark />
             </div>
-            <p className="mb-2 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              {empty?.kicker ?? "A little less friction"}
-            </p>
             <h1 className="text-2xl font-medium tracking-tight">
               {empty?.heading ?? "What are you working on?"}
             </h1>
-            <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-              {empty?.blurb ??
-                "A fresh conversation. The right model for each message. Every answer, accounted for."}
-            </p>
             <div className="mt-7 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] text-muted-foreground">
               <Sparkles className="size-3" />
               {modelName}
@@ -547,7 +547,7 @@ export function Messages({
               >
                 {message.summaryAbove && (
                   <div
-                    className="my-8 flex items-center gap-3 font-mono text-[10px] text-muted-foreground"
+                    className="my-8 flex items-center gap-3 tabular-nums text-[10px] text-muted-foreground"
                     role="separator"
                     aria-label="Earlier messages are summarized"
                   >
@@ -560,7 +560,7 @@ export function Messages({
                   </div>
                 )}
                 {message.switchLabel && (
-                  <div className="my-8 flex items-center gap-3 font-mono text-[10px] text-muted-foreground">
+                  <div className="my-8 flex items-center gap-3 tabular-nums text-[10px] text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />
                     <span className="text-center">{message.switchLabel}</span>
                     <div className="h-px flex-1 bg-border" />
@@ -762,7 +762,7 @@ export function Messages({
                     )}
                     {message.sources && message.sources.length > 0 && (
                       <nav aria-label="Sources" className="mt-4">
-                        <p className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                        <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
                           Sources
                         </p>
                         <ol className="space-y-1 text-[11px]">
@@ -794,7 +794,7 @@ export function Messages({
                     )}
                     {message.fileSources && message.fileSources.length > 0 && (
                       <div className="mt-4" aria-label="From your files and chats">
-                        <p className="mb-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                        <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
                           From your files and chats
                         </p>
                         <ul className="space-y-0.5 text-[11px] text-muted-foreground">
@@ -1535,7 +1535,9 @@ export function Composer({
           <textarea
             ref={field}
             aria-label="Message"
-            placeholder="Ask anything, or pick up where you left off…"
+            placeholder={
+              code ? "Reply, or type / for commands" : "Ask anything. Auto picks the model."
+            }
             rows={2}
             value={text}
             onChange={(e) => {
@@ -1722,7 +1724,7 @@ export function Composer({
                       ))}
                     </div>
                   )}
-                  <div className="flex justify-between px-4 pt-3 text-[9px] tracking-wide text-muted-foreground uppercase">
+                  <div className="flex justify-between px-4 pt-3 text-[9px] text-muted-foreground">
                     <span>{routing ? "Or pin a model" : "Model / context"}</span>
                     <span>Input / output per 1M</span>
                   </div>
@@ -2395,7 +2397,7 @@ function RunCard({
       )}
       {run.changes.length > 0 && (
         <div className="mt-2 border-t pt-2" aria-label="Files changed">
-          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
             Files changed
             {onUndoRun && applied.length > 1 && !live && (
               <Button

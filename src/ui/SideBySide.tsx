@@ -66,7 +66,7 @@ export function SideBySide({
             >
               <header className="flex items-center gap-2 border-b px-3 py-2 text-xs">
                 <span className="flex-1 truncate font-medium">{ans.model}</span>
-                <span className="font-mono text-[10px] text-muted-foreground">{ans.cost}</span>
+                <span className="tabular-nums text-[10px] text-muted-foreground">{ans.cost}</span>
               </header>
               <div className="max-h-[55dvh] min-h-0 flex-1 overflow-y-auto px-3 py-2 text-sm">
                 <Markdown content={ans.content} />

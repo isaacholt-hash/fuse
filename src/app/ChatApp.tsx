@@ -324,7 +324,7 @@ import {
 import { EMPTY_USAGE } from "@/storage/usage";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
-import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
+import { Hint, Modal, Money, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
 import { PolicyEditor } from "@/ui/PolicyEditor";
@@ -4768,9 +4768,9 @@ export function ChatApp({
           area === "chat" && (
             <div
               aria-label="Continue in Code"
-              className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
+              className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2 text-xs"
             >
-              <ArrowRightLeft className="size-3.5 text-sky-600" />
+              <ArrowRightLeft className="size-3.5 text-muted-foreground" />
               <span className="flex-1">
                 This looks like a change to files. A chat reads them but doesn&apos;t change them.
               </span>
@@ -4798,9 +4798,9 @@ export function ChatApp({
         {notif.banners.routing && !suggestionNoticeOff && ruleSuggestions[0] && (
           <div
             aria-label="Routing suggestion"
-            className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
+            className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2 text-xs"
           >
-            <Sparkles className="size-3.5 text-sky-600" />
+            <Sparkles className="size-3.5 text-muted-foreground" />
             <span className="flex-1">
               From your overrides, a routing rule to consider: {ruleSuggestions[0].text}.
             </span>
@@ -5916,9 +5916,9 @@ export function ChatApp({
                       <div
                         tabIndex={0}
                         aria-label="Thread total"
-                        className="flex items-center gap-2 rounded-md px-1 py-1 font-mono text-[10px] text-muted-foreground"
+                        className="flex items-center gap-2 rounded-md px-1 py-1 tabular-nums text-[10px] text-muted-foreground"
                       >
-                        <span className="text-foreground/80">{money(thread.costMicroUsd)}</span>
+                        <Money micro={thread.costMicroUsd} />
                         <span className="text-border">/</span>
                         <span>{number(threadTokens(messages))} tokens</span>
                         {cacheRate !== null && cacheRate > 0 && (

@@ -136,8 +136,8 @@ export function GoldenSetSection({
               <ul className="mt-2 space-y-2">
                 {score.misses.map((m) => (
                   <li key={m.position} className="text-[11px] leading-4">
-                    <span className="font-mono text-muted-foreground">#{m.position}</span> expected{" "}
-                    {TIER(m.expected)}, got {TIER(m.got)}
+                    <span className="tabular-nums text-muted-foreground">#{m.position}</span>{" "}
+                    expected {TIER(m.expected)}, got {TIER(m.got)}
                     <span className="text-muted-foreground">
                       {" "}
                       · read as {m.intent.replace("_", " ")}, {m.complexity} · rule {m.ruleId}

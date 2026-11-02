@@ -4,13 +4,12 @@ import { Home, type HomeView } from "./Home";
 
 afterEach(cleanup);
 
-const empty = { kicker: "K", heading: "What are you working on?", blurb: "A fresh conversation." };
+const empty = { heading: "What are you working on?" };
 const nothing: HomeView = { waiting: [], going: [], scheduled: [], today: null };
 
 test("nothing happening: just the area's greeting", () => {
   render(<Home area="chat" view={nothing} empty={empty} modelName="Auto" onOpen={vi.fn()} />);
   expect(screen.getByRole("heading", { name: "What are you working on?" })).toBeInTheDocument();
-  expect(screen.getByText("A fresh conversation.")).toBeInTheDocument();
   expect(screen.queryByLabelText("What's happening")).toBeNull();
 });
 

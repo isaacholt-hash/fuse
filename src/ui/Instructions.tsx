@@ -30,7 +30,7 @@ function InstructionBox({
         <label htmlFor={id} className="text-xs font-medium">
           {label}
         </label>
-        <span className="font-mono text-[10px] text-muted-foreground">
+        <span className="tabular-nums text-[10px] text-muted-foreground">
           {number(value.length)} / {number(maxChars)}
         </span>
       </div>
@@ -196,9 +196,7 @@ export function ThreadInstructionsDialog({
             <div className="space-y-2">
               {globalParts.map((p) => (
                 <div key={p.label} className="rounded-lg bg-muted/60 px-3 py-2">
-                  <p className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
-                    {p.label}
-                  </p>
+                  <p className="text-[10px] font-medium text-muted-foreground">{p.label}</p>
                   <p className="mt-1 text-xs leading-5 whitespace-pre-wrap">{p.text}</p>
                 </div>
               ))}
@@ -214,7 +212,7 @@ export function ThreadInstructionsDialog({
           onChange={setDraft}
         />
         <div className="flex items-center justify-between gap-3">
-          <span className="font-mono text-[10px] text-muted-foreground">
+          <span className="tabular-nums text-[10px] text-muted-foreground">
             {tokens ? `~${number(tokens)} tokens added to every message` : "No instructions yet"}
           </span>
           <SaveRow

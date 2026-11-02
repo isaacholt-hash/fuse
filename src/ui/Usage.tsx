@@ -59,7 +59,7 @@ function EconomicsCard({
           <p className="text-[11px] text-muted-foreground">
             Cost per successful task · last {e.days} days
           </p>
-          <p className="mt-1 font-mono text-2xl font-semibold tracking-tight">
+          <p className="mt-1 tabular-nums text-2xl font-semibold tracking-tight">
             {e.perSuccess === null ? "—" : money(e.perSuccess)}
           </p>
         </div>
@@ -105,7 +105,7 @@ function SavingsCard({
         {label}
         {note && <span className="block text-[10px] text-muted-foreground">{note}</span>}
       </span>
-      <span className="font-mono">{value}</span>
+      <span className="tabular-nums">{value}</span>
     </div>
   );
   const vsBest = savings.onBest - savings.spent;
@@ -144,7 +144,7 @@ function SavingsCard({
           id="subscription"
           aria-label="Subscriptions per month in dollars"
           inputMode="decimal"
-          className="h-7 w-20 text-right font-mono text-xs"
+          className="h-7 w-20 text-right tabular-nums text-xs"
           value={draft}
           placeholder="$"
           onChange={(e) => {
@@ -206,7 +206,7 @@ export function UsageScreen({
       <div className="mx-auto max-w-[760px] px-8 py-9">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-medium tracking-[0.15em] text-muted-foreground uppercase">
+            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
               <BarChart3 className="size-3" />
               Usage
             </p>
@@ -234,7 +234,7 @@ export function UsageScreen({
           <>
             <section className="mt-8 rounded-xl border p-5" aria-label="Total">
               <p className="text-[11px] text-muted-foreground">Spent · {period?.label}</p>
-              <p className="mt-1 font-mono text-3xl font-semibold tracking-tight">
+              <p className="mt-1 tabular-nums text-3xl font-semibold tracking-tight">
                 {money(view.total)}
               </p>
               <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -270,7 +270,7 @@ export function UsageScreen({
                   />
                 ))}
               </div>
-              <div className="mt-1 flex justify-between font-mono text-[9px] text-muted-foreground">
+              <div className="mt-1 flex justify-between tabular-nums text-[9px] text-muted-foreground">
                 <span>{view.bars[0]?.label}</span>
                 <span>{view.bars.at(-1)?.label}</span>
               </div>
@@ -295,7 +295,7 @@ export function UsageScreen({
                         <li key={r.label} className="text-[11px]">
                           <div className="flex justify-between gap-3">
                             <span className="truncate">{r.label}</span>
-                            <span className="font-mono">{money(r.micro)}</span>
+                            <span className="tabular-nums">{money(r.micro)}</span>
                           </div>
                           <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
                             <div

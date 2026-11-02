@@ -35,7 +35,7 @@ export function FilesPanel({
         </Button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3 text-xs">
-        <h3 className="mb-1.5 text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase">
+        <h3 className="mb-1.5 text-[10px] font-medium tracking-[0.1em] text-muted-foreground">
           Changed
         </h3>
         {changes.length === 0 ? (
@@ -51,7 +51,7 @@ export function FilesPanel({
                 <span className="min-w-0 flex-1 truncate" title={c.label}>
                   {c.label}
                 </span>
-                <span className="shrink-0 font-mono text-[10px]">
+                <span className="shrink-0 tabular-nums text-[10px]">
                   <span className="text-emerald-700 dark:text-emerald-400">+{String(c.added)}</span>{" "}
                   <span className="text-destructive">-{String(c.removed)}</span>
                 </span>
@@ -84,7 +84,7 @@ export function FilesPanel({
             ))}
           </ul>
         )}
-        <h3 className="mb-1.5 text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase">
+        <h3 className="mb-1.5 text-[10px] font-medium tracking-[0.1em] text-muted-foreground">
           Artifacts
         </h3>
         {artifacts.length === 0 ? (
