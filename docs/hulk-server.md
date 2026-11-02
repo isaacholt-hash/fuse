@@ -26,7 +26,7 @@ The web app and its runner (M10) run on HULK as one user service, `fuse-server.s
 
    This builds the release server, the web app and the runner, and installs them into `~/.local/opt/fuse-server/<commit>/`. It writes `~/.config/systemd/user/fuse-server.service`, then enables and starts the service.
 
-   Check it locally first. This should print `{"setUp":false,…}`:
+   Check it locally first. This should print `{"setUp":false,…}` with the commit it was built from (`builtFrom`) and its schema version; a paired desktop compares both with its own before it reads HULK's database (M10 F2):
 
    ```bash
    curl -s http://127.0.0.1:4100/api/auth/state

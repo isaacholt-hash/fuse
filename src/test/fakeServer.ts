@@ -43,7 +43,14 @@ export function fakeServer({
   function answer(path: string, body: Record<string, unknown> | null): Response {
     switch (path) {
       case "/api/auth/state":
-        return json({ setUp: server.setUp, signedIn: server.signedIn, version });
+        return json({
+          setUp: server.setUp,
+          signedIn: server.signedIn,
+          version,
+          schema: 54,
+          builtFrom: "a483e9b",
+          builtOn: "2026-11-01",
+        });
       case "/api/auth/set-up":
         if (server.setUp) return json({ error: "A passphrase is already set." }, 400);
         if (pass(body).length < 12)

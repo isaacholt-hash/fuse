@@ -308,6 +308,12 @@ const MIGRATIONS: &[MigrationFile] = &[
     },
 ];
 
+/// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
+/// count read and write the same tables, whatever their commits.
+pub fn schema_version() -> i64 {
+    MIGRATIONS.len() as i64
+}
+
 /// Built exactly as tauri-plugin-sql built them (ReversibleUp, in a transaction), so the
 /// checksums recorded by earlier versions of FUSE still match.
 fn migrator() -> Migrator {

@@ -4,9 +4,25 @@ import { invoke } from "@/platform/core";
 import type { GitAuthor } from "@/storage/runQueue";
 import type { SqlDb, SqlValue } from "@/storage/sql";
 
+/** What a FUSE build is (M10 F2): its schema (the count of migrations), commit and day. */
+export interface HulkBuild {
+  schema: number;
+  builtFrom: string;
+  builtOn: string;
+}
+
 export interface HulkStatus {
   address: string | null;
   paired: boolean;
+  /** This app's build; null only when the link itself couldn't be asked. */
+  mine: HulkBuild | null;
+  /** HULK's build from the last look; null when not paired or HULK couldn't be reached. */
+  server: HulkBuild | null;
+  /**
+   * Why HULK can't be read right now: its build runs an older or newer schema than this app.
+   * The link refuses every read and handover with this same sentence (src-tauri/src/hulk.rs).
+   */
+  mismatch: string | null;
 }
 
 export interface HulkApi {

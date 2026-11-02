@@ -49,7 +49,8 @@ const post = (path: string, headers: Record<string, string>, body: string | Uint
 function hulkWith(token: string): HulkApi {
   const bearer = { authorization: `Bearer ${token}` };
   return {
-    status: () => Promise.resolve({ address: ADDRESS, paired: true }),
+    status: () =>
+      Promise.resolve({ address: ADDRESS, paired: true, mine: null, server: null, mismatch: null }),
     pair: () => Promise.reject(new Error("already paired")),
     unpair: () => Promise.reject(new Error("revoke this device in HULK's Settings → Devices")),
     invoke: <T>(command: string, args: Record<string, unknown> = {}) =>
