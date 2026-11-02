@@ -1,0 +1,577 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FUSE Ledger</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+</head>
+<body>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: sidebar 248 | reading column ≤68ch | ledger margin 132. One money column runs from the
+   thread total in the header, past every answer, to the estimate under the composer. */
+:root {
+  --paper: #FAFAF8;      /* shell: sidebar, header, composer surround */
+  --page: #FFFFFF;       /* reading surface */
+  --ink: #1B2130;        /* slate-navy text, never pure black */
+  --muted: #5C6370;
+  --rule: #E3E4E1;
+  --raised: #F1F1EE;     /* chips, hover rows */
+  --copper: #9A4A1A;     /* money, and only money */
+  --copper-soft: #F4E6DB;
+  --error: #B3261E;
+  --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, monospace;
+  --r-chip: 4px; --r-ctl: 6px; --r-surface: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #151A22; --page: #1B212B; --ink: #E8E9EC; --muted: #9AA1AD; --rule: #2A313D;
+    --raised: #242B37; --copper: #E0995F; --copper-soft: #3A2A1E; --error: #F08A80; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #151A22; --page: #1B212B; --ink: #E8E9EC; --muted: #9AA1AD; --rule: #2A313D;
+  --raised: #242B37; --copper: #E0995F; --copper-soft: #3A2A1E; --error: #F08A80; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; }
+button, input, textarea { font: inherit; color: inherit; }
+button { background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--copper); outline-offset: 2px; border-radius: var(--r-chip); }
+kbd { font: 500 11px/1 var(--mono); color: var(--muted); border: 1px solid var(--rule); border-radius: var(--r-chip); padding: 2px 4px; }
+code { font: 13px/1.5 var(--mono); }
+.num { font-variant-numeric: tabular-nums; }
+.money { color: var(--copper); font-variant-numeric: tabular-nums; font-weight: 500; }
+svg { display: block; }
+
+/* Demo bar: only exists for review, not part of the app */
+.demo { display: flex; gap: 6px; align-items: center; padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--rule); background: var(--page); font-size: 13px; flex-wrap: wrap; }
+.demo .what { color: var(--muted); margin-right: auto; }
+.demo button { padding: 4px 10px; border-radius: var(--r-ctl); border: 1px solid var(--rule); }
+.demo button[aria-current="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+
+/* App frame */
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: calc(100% - 42px); }
+.view { display: none; } .view[data-on] { display: contents; }
+
+/* Sidebar */
+.side { display: flex; flex-direction: column; border-right: 1px solid var(--rule); padding: 14px 10px 10px max(10px, env(safe-area-inset-left, 0px)); gap: 4px; min-width: 0; }
+.brand { display: flex; align-items: center; gap: 8px; padding: 2px 6px 10px; font-weight: 600; letter-spacing: 0.01em; }
+.brand svg { width: 22px; height: 22px; }
+.areas { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: var(--r-ctl); padding: 2px; margin: 0 2px 8px; }
+.areas button { padding: 4px; border-radius: 4px; color: var(--muted); font-weight: 500; }
+.areas button[aria-current="true"] { background: var(--ink); color: var(--page); }
+.areas kbd { margin-left: 6px; border: 0; padding: 0; color: inherit; opacity: .55; }
+.side .act { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r-ctl); width: 100%; text-align: left; }
+.side .act:hover { background: var(--raised); }
+.side .act kbd { margin-left: auto; }
+.side .act svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.states { display: flex; gap: 6px; padding: 2px 8px 6px; font-size: 12px; color: var(--muted); }
+.states span { padding: 1px 6px; border-radius: var(--r-chip); background: var(--raised); }
+.group { margin-top: 10px; padding: 0 8px 4px; font-size: 12px; font-weight: 500; color: var(--muted); }
+.row { display: grid; grid-template-columns: 12px minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 5px 8px; border-radius: var(--r-ctl); width: 100%; text-align: left; }
+.row:hover { background: var(--raised); }
+.row[aria-current="true"] { background: var(--raised); }
+.row .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .t.unseen { font-weight: 600; }
+.row .place { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.row .place svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.row .money { font-size: 12px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--ink); justify-self: center; }
+.dot.waiting { background: var(--ink); }
+.dot.going { border-style: solid; border-color: var(--muted); animation: pulse 1.6s ease-in-out infinite; }
+.dot.done { border-color: var(--rule); }
+.dot.none { visibility: hidden; }
+@keyframes pulse { 50% { opacity: .35; } }
+.side .foot { margin-top: auto; border-top: 1px solid var(--rule); padding-top: 8px; }
+.who { display: flex; gap: 8px; align-items: center; padding: 8px; font-size: 12px; color: var(--muted); }
+.who b { display: block; color: var(--ink); font-weight: 500; font-size: 13px; }
+.who .av { width: 26px; height: 26px; border-radius: 50%; background: var(--raised); display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--ink); }
+
+/* Main */
+.main { display: flex; flex-direction: column; min-width: 0; background: var(--page); }
+.head { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--rule); min-height: 46px; }
+.crumbs { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.crumbs .proj { color: var(--muted); }
+.crumbs .sep { color: var(--rule); }
+.crumbs h1 { font-size: 14px; font-weight: 600; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.head .tools { display: flex; gap: 14px; font-size: 13px; color: var(--muted); }
+.head .tools button:hover { color: var(--ink); }
+.scroll { flex: 1; overflow: auto; }
+.col { width: min(100%, calc(68ch + 132px + 48px)); margin: 0 auto; padding: 24px max(16px, env(safe-area-inset-right, 0px)) 24px max(16px, env(safe-area-inset-left, 0px)); }
+
+/* The ledger: each message is a row of body | margin */
+.ledger-head { display: grid; grid-template-columns: minmax(0,1fr) 132px; gap: 24px; align-items: baseline; padding-bottom: 14px; margin-bottom: 8px; border-bottom: 1px solid var(--rule); }
+.ledger-head .sum { text-align: right; font-size: 12px; color: var(--muted); }
+.ledger-head .sum .money { display: block; font-size: 16px; }
+.msg { display: grid; grid-template-columns: minmax(0,1fr) 132px; gap: 24px; padding: 14px 0; }
+.msg .body { min-width: 0; font-size: 15px; line-height: 1.6; max-width: 68ch; }
+.msg.you .body { color: var(--muted); font-size: 14px; }
+.msg .body p { margin: 0 0 10px; } .msg .body p:last-child { margin-bottom: 0; }
+.margin { text-align: right; font-size: 12px; color: var(--muted); line-height: 1.5; padding-top: 3px; }
+.margin .who { padding: 0; display: block; }
+.margin .model { color: var(--ink); font-weight: 500; }
+.margin .money { font-size: 13px; display: block; margin-top: 2px; }
+.margin .why { display: block; margin-top: 2px; }
+.margin button { color: inherit; text-align: right; }
+.margin button:hover { color: var(--ink); }
+.tier { display: inline-flex; gap: 2px; vertical-align: -1px; margin-left: 4px; }
+.tier i { width: 3px; height: 10px; border-radius: 1px; background: var(--rule); display: block; }
+.tier[data-n="1"] i:nth-child(1), .tier[data-n="2"] i:nth-child(-n+2), .tier[data-n="3"] i { background: var(--copper); }
+table.q { border-collapse: collapse; margin: 10px 0 12px; font-size: 14px; width: 100%; max-width: 480px; }
+table.q th, table.q td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--rule); }
+table.q th { font-weight: 500; color: var(--muted); font-size: 12px; }
+table.q td.n, table.q th.n { text-align: right; font-variant-numeric: tabular-nums; }
+table.q tr:last-child td { border-bottom: 0; font-weight: 500; }
+.switch { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); padding: 2px 0 6px; }
+.switch::before, .switch::after { content: ""; flex: 1; border-top: 1px solid var(--rule); }
+.streaming .body::after { content: ""; display: inline-block; width: 7px; height: 14px; background: var(--ink); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.stop { color: var(--ink); border: 1px solid var(--rule); border-radius: var(--r-chip); padding: 1px 6px; font-size: 12px; margin-top: 4px; }
+
+/* Composer */
+.compose { padding: 10px 20px 14px; border-top: 1px solid var(--rule); background: var(--paper); }
+.compose .col { padding-top: 0; padding-bottom: 0; }
+.box { display: grid; grid-template-columns: minmax(0,1fr) 132px; gap: 24px; align-items: end; }
+.field { border: 1px solid var(--rule); background: var(--page); border-radius: var(--r-surface); padding: 10px 12px 8px; min-width: 0; }
+.field textarea { width: 100%; border: 0; background: none; resize: none; outline: none; min-height: 44px; font-size: 15px; line-height: 1.5; padding: 0; display: block; }
+.field textarea::placeholder { color: var(--muted); }
+.bar { display: flex; gap: 4px; align-items: center; margin-top: 6px; flex-wrap: nowrap; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: var(--r-chip); background: var(--raised); font-size: 12.5px; font-weight: 500; white-space: nowrap; flex: none; }
+.chip svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; flex: none; }
+.chip.ghost { background: none; color: var(--muted); flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; display: inline-block; line-height: 1.4; }
+.chip.ghost svg { display: inline; vertical-align: -2px; margin-right: 3px; }
+.send { flex: none; } .ctx { flex: none; }
+.chip.ghost:hover { color: var(--ink); background: var(--raised); }
+.chip .arrow { color: var(--muted); font-weight: 400; }
+.ctx { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--muted); margin-left: auto; padding-left: 4px; }
+.ctx i { width: 40px; height: 3px; background: var(--rule); border-radius: 2px; position: relative; display: block; }
+.ctx i::after { content: ""; position: absolute; inset: 0; width: var(--p, 41%); background: var(--ink); border-radius: 2px; }
+.send { width: 30px; height: 30px; border-radius: var(--r-ctl); background: var(--ink); color: var(--page); display: grid; place-items: center; }
+.send svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; }
+.send.stop { background: var(--raised); color: var(--ink); }
+.est { text-align: right; font-size: 12px; color: var(--muted); padding-bottom: 10px; }
+.est .money { display: block; font-size: 13px; }
+.hint { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; color: var(--muted); margin-top: 6px; }
+
+/* Home */
+.home .ask { margin-bottom: 26px; }
+.sect { display: grid; grid-template-columns: minmax(0,1fr) 132px; gap: 24px; padding: 12px 0; border-top: 1px solid var(--rule); }
+.sect h2 { grid-column: 1 / -1; margin: 0 0 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.item { display: contents; }
+.item .l { display: flex; gap: 10px; align-items: baseline; min-width: 0; }
+.item .l .dot { width: 8px; height: 8px; flex: none; justify-self: auto; }
+.item .l b { font-weight: 500; }
+.item .l span { color: var(--muted); font-size: 13px; }
+.item .r { text-align: right; font-size: 12px; color: var(--muted); }
+.item .r .money { display: block; font-size: 13px; }
+.item + .item .l, .item + .item .r { padding-top: 6px; }
+.cap { grid-column: 1 / -1; margin-top: 2px; }
+.cap .line { position: relative; height: 2px; background: var(--rule); margin: 8px 0 6px; max-width: 68ch; }
+.cap .line i { position: absolute; left: 0; top: 0; bottom: 0; width: 37%; background: var(--copper); display: block; }
+.cap .line b { position: absolute; right: 0; top: -4px; width: 2px; height: 10px; background: var(--ink); display: block; }
+.cap p { margin: 0; font-size: 13px; color: var(--muted); }
+.cap .pace { color: var(--ink); }
+
+/* Code session */
+.strip { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 20px; border-bottom: 1px solid var(--rule); font-size: 12.5px; color: var(--muted); }
+.strip button { display: inline-flex; gap: 6px; align-items: center; color: inherit; }
+.strip button:hover { color: var(--ink); }
+.strip b { color: var(--ink); font-weight: 500; }
+.strip svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; }
+.run { border: 1px solid var(--rule); border-radius: var(--r-ctl); padding: 10px 12px; font-size: 13.5px; }
+.run h3 { margin: 0 0 8px; font-size: 13.5px; font-weight: 500; display: flex; gap: 8px; align-items: center; }
+.run h3 .dot { width: 8px; height: 8px; }
+.step { display: grid; grid-template-columns: 16px minmax(0,1fr) auto; gap: 8px; padding: 4px 0; color: var(--muted); align-items: baseline; }
+.step.cur { color: var(--ink); }
+.step .k { font-size: 11px; font-weight: 500; color: var(--muted); }
+.step .n { font-size: 12px; }
+.step code { font-size: 12.5px; }
+.edited { display: flex; gap: 10px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--rule); font-size: 13px; flex-wrap: wrap; }
+.edited .plus { color: #2E7D4F; } .edited .minus { color: var(--error); }
+:root[data-theme="dark"] .edited .plus { color: #7ED09A; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .edited .plus { color: #7ED09A; } }
+.edited button { color: var(--muted); } .edited button:hover { color: var(--ink); }
+.files { margin: 6px 0 0; padding: 0; list-style: none; font: 12.5px/1.7 var(--mono); color: var(--muted); }
+.files li { display: flex; gap: 12px; justify-content: space-between; }
+.files .num { color: var(--ink); }
+.approve { margin-top: 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn { padding: 5px 11px; border-radius: var(--r-ctl); border: 1px solid var(--rule); font-size: 13px; font-weight: 500; }
+.btn.primary { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.btn kbd { margin-left: 6px; border: 0; padding: 0; color: inherit; opacity: .6; }
+pre.cmd { margin: 8px 0 0; padding: 8px 10px; background: var(--raised); border-radius: var(--r-chip); font: 12.5px/1.5 var(--mono); overflow-x: auto; color: var(--ink); }
+
+/* Tokens view */
+.tok { padding: 26px max(16px, env(safe-area-inset-right, 0px)) 40px max(16px, env(safe-area-inset-left, 0px)); max-width: 880px; }
+.tok h2 { font-size: 14px; font-weight: 600; margin: 24px 0 8px; }
+.tok h2:first-child { margin-top: 0; }
+.tok p { margin: 0 0 8px; max-width: 68ch; color: var(--muted); }
+.sw { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.sw div { border: 1px solid var(--rule); border-radius: var(--r-ctl); padding: 8px; font-size: 12px; }
+.sw i { display: block; height: 34px; border-radius: var(--r-chip); margin-bottom: 6px; border: 1px solid var(--rule); }
+.sw code { font-size: 11.5px; color: var(--muted); }
+.spec { display: grid; gap: 10px; }
+.spec div { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 16px; align-items: baseline; }
+.spec small { color: var(--muted); font-size: 12px; }
+.r { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.r span { display: inline-flex; gap: 8px; align-items: center; font-size: 12.5px; }
+.r i { display: block; width: 36px; height: 24px; border: 1px solid var(--ink); }
+.r .a i { border-radius: var(--r-chip); } .r .b i { border-radius: var(--r-ctl); } .r .c i { border-radius: var(--r-surface); }
+.r .dot { justify-self: auto; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .side { flex-direction: row; flex-wrap: wrap; border-right: 0; border-bottom: 1px solid var(--rule); padding: 8px 10px; }
+  .side .brand { padding-bottom: 0; } .side .act, .side .group, .side .row, .side .states, .side .foot { display: none; }
+  .side .areas { margin: 0 0 0 auto; width: 160px; }
+  .ledger-head, .msg, .box, .sect { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .margin, .ledger-head .sum, .est, .item .r { text-align: left; }
+  .margin > * { display: inline; margin-right: 10px; }
+  .margin br { display: none; }
+  .margin .money, .est .money, .item .r .money { display: inline; margin-left: 6px; }
+  .margin .why { display: inline; margin-left: 6px; }
+  .est { padding: 6px 0 0; }
+  .item .r { padding-left: 18px; }
+}
+@media (prefers-reduced-motion: reduce) { .dot.going, .streaming .body::after { animation: none; } }
+</style>
+
+<div class="demo" role="navigation" aria-label="Mock views">
+  <span class="what">FUSE redesign mock, example data. Views:</span>
+  <button data-go="home" aria-current="true">Home</button>
+  <button data-go="chat">Chat thread</button>
+  <button data-go="code">Code session</button>
+  <button data-go="tokens">Tokens</button>
+  <button id="theme" aria-label="Toggle light and dark">Dark</button>
+</div>
+
+<!-- ============ HOME (Chat area) ============ -->
+<div class="view" data-view="home" data-on>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="8" width="20" height="8" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><rect x="17.5" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><path d="M6.5 12h11" stroke="var(--copper)" stroke-width="1.8"/></svg>FUSE</div>
+    <div class="areas" role="tablist"><button aria-current="true">Chat<kbd>⌃1</kbd></button><button>Code<kbd>⌃2</kbd></button></div>
+    <button class="act"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New chat<kbd>⌃N</kbd></button>
+    <button class="act"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<kbd>⌃K</kbd></button>
+    <div class="group">Kitchen renovation</div>
+    <button class="row"><span class="dot none"></span><span class="t">Tile budget</span><span class="money">$0.1184</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">Grout colour</span><span class="money">$0.0210</span></button>
+    <div class="group">Yesterday</div>
+    <button class="row"><span class="dot none"></span><span class="t">Tauri updater on Windows</span><span class="money">$0.4120</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">SQLCipher key rotation</span><span class="money">$0.0871</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">Reply to the landlord</span><span class="money">$0.0009</span></button>
+    <div class="foot">
+      <button class="act"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg>Usage</button>
+      <button class="act"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7 7 0 0 0-2-1.2L14 3h-4l-.5 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5A7 7 0 0 0 5 12c0 .4 0 .8.1 1.2l-2 1.5 2 3.5 2.4-1a7 7 0 0 0 2 1.2L10 21h4l.5-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5c.1-.4.1-.8.1-1.2Z"/></svg>Settings<kbd>⌃,</kbd></button>
+      <div class="who"><span class="av">IH</span><span><b>Isaac's workspace</b>This computer</span></div>
+    </div>
+  </aside>
+  <section class="main">
+    <header class="head"><div class="crumbs"><h1>New chat</h1></div><div class="tools"><button>Instructions</button></div></header>
+    <div class="scroll"><div class="col home">
+      <div class="ask">
+        <div class="box">
+          <div class="field">
+            <label for="ask1" hidden>Message</label>
+            <textarea id="ask1" placeholder="Ask anything. Auto picks the model." rows="2"></textarea>
+            <div class="bar">
+              <span class="chip"><svg viewBox="0 0 24 24"><path d="M4 12h6l2-5 2 10 2-5h4"/></svg>Auto <span class="arrow">→</span> Sonnet 5.5<span class="tier" data-n="2" title="Balanced tier"><i></i><i></i><i></i></span></span>
+              <button class="chip ghost" data-effort>Medium</button>
+              <button class="chip ghost"><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9m0 0v9m0-9 4 4"/></svg>Search</button>
+              <button class="chip ghost"><svg viewBox="0 0 24 24"><path d="m21 11-8.5 8.5a5 5 0 0 1-7-7L14 4a3.3 3.3 0 0 1 4.7 4.7L10.2 17a1.7 1.7 0 0 1-2.4-2.4L15.5 7"/></svg>Attach</button>
+              <span class="ctx" style="--p:0%"><i></i>0%</span>
+              <button class="send" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6"/></svg></button>
+            </div>
+          </div>
+          <div class="est">estimate<span class="money">≈ $0.004</span></div>
+        </div>
+        <div class="hint"><span>Chats read your projects' files. Edits happen in Code.</span><span>Enter sends · Shift+Enter new line</span></div>
+      </div>
+
+      <div class="sect"><h2>Waiting for you</h2>
+        <div class="item"><div class="l"><span class="dot waiting"></span><b>Rename the Runs page</b><span>wants to delete src/ui/Runs.tsx · this computer</span></div><div class="r">waiting 12 min<span class="money">$0.08 so far</span></div></div>
+      </div>
+      <div class="sect"><h2>Going</h2>
+        <div class="item"><div class="l"><span class="dot going"></span><b>Stall watchdog for runs</b><span>HULK · step 6 of about 9</span></div><div class="r">41 min<span class="money">$0.31 so far</span></div></div>
+      </div>
+      <div class="sect"><h2>Next scheduled</h2>
+        <div class="item"><div class="l"><span class="dot none"></span><b>Nightly dependency check</b><span>HULK · fuse</span></div><div class="r">Today 23:00<span class="money">last $0.12</span></div></div>
+        <div class="item"><div class="l"><span class="dot none"></span><b>Weekly cost summary</b><span>this computer</span></div><div class="r">Mon 08:00<span class="money">last $0.03</span></div></div>
+      </div>
+      <div class="sect"><h2>Today</h2>
+        <div class="cap">
+          <p><span class="money">$1.84</span> of a $5.00 day cap</p>
+          <div class="line" role="img" aria-label="$1.84 of $5.00"><i></i><b></b></div>
+          <p class="pace">At this pace: about $38 by month end, budget $60.</p>
+        </div>
+      </div>
+    </div></div>
+  </section>
+</div>
+</div>
+
+<!-- ============ CHAT THREAD ============ -->
+<div class="view" data-view="chat">
+<div class="app">
+  <aside class="side">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="8" width="20" height="8" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><rect x="17.5" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><path d="M6.5 12h11" stroke="var(--copper)" stroke-width="1.8"/></svg>FUSE</div>
+    <div class="areas" role="tablist"><button aria-current="true">Chat<kbd>⌃1</kbd></button><button>Code<kbd>⌃2</kbd></button></div>
+    <button class="act"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New chat<kbd>⌃N</kbd></button>
+    <button class="act"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<kbd>⌃K</kbd></button>
+    <div class="group">Kitchen renovation</div>
+    <button class="row" aria-current="true"><span class="dot none"></span><span class="t">Tile budget</span><span class="money">$0.1184</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">Grout colour</span><span class="money">$0.0210</span></button>
+    <div class="group">Yesterday</div>
+    <button class="row"><span class="dot none"></span><span class="t">Tauri updater on Windows</span><span class="money">$0.4120</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">SQLCipher key rotation</span><span class="money">$0.0871</span></button>
+    <button class="row"><span class="dot none"></span><span class="t">Reply to the landlord</span><span class="money">$0.0009</span></button>
+    <div class="foot">
+      <button class="act"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg>Usage</button>
+      <button class="act"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Settings<kbd>⌃,</kbd></button>
+      <div class="who"><span class="av">IH</span><span><b>Isaac's workspace</b>This computer</span></div>
+    </div>
+  </aside>
+  <section class="main">
+    <header class="head"><div class="crumbs"><span class="proj">Kitchen renovation</span><span class="sep">/</span><h1>Tile budget</h1></div><div class="tools"><button>Files · 2</button><button>Instructions</button><button aria-label="More">···</button></div></header>
+    <div class="scroll"><div class="col">
+      <div class="ledger-head"><div></div><div class="sum">this thread<span class="money num" id="total">$0.1184</span>about $0.03 a message</div></div>
+
+      <div class="msg you">
+        <div class="body"><p>Here are the three tile quotes as PDFs. Total them, and tell me which one includes the trim pieces.</p></div>
+        <div class="margin"><span class="who">you · 14:02</span>2 files</div>
+      </div>
+      <div class="msg">
+        <div class="body">
+          <p>Only Marrakech Tile includes the trim pieces (bullnose and the two corner pieces). The other two quote the field tile alone.</p>
+          <table class="q"><tr><th>Supplier</th><th class="n">Field tile</th><th class="n">Trim</th><th class="n">Total</th></tr>
+          <tr><td>Marrakech Tile</td><td class="n">£1,240</td><td class="n">£186</td><td class="n">£1,426</td></tr>
+          <tr><td>Topps</td><td class="n">£1,190</td><td class="n">not quoted</td><td class="n">£1,190</td></tr>
+          <tr><td>Mandarin Stone</td><td class="n">£1,575</td><td class="n">not quoted</td><td class="n">£1,575</td></tr>
+          <tr><td>All three</td><td class="n">£4,005</td><td class="n">£186</td><td class="n">£4,191</td></tr></table>
+          <p>Topps looks cheapest, but add their trim price before comparing. Their site lists the bullnose at about £14 a piece.</p>
+        </div>
+        <div class="margin"><span class="model">Sonnet 5.5<span class="tier" data-n="2" title="Balanced tier"><i></i><i></i><i></i></span></span><span class="money">$0.0093</span><button class="why" title="Why this model">files + a table · balanced</button><span>1,240 in · 380 out<br>800 cached</span></div>
+      </div>
+      <div class="switch">Switched to GPT-6.1 Sol · full history sent</div>
+      <div class="msg you">
+        <div class="body"><p>Work out the cost per square metre including trim for each, assuming 11.4 m².</p></div>
+        <div class="margin"><span class="who">you · 14:05</span></div>
+      </div>
+      <div class="msg streaming">
+        <div class="body"><p>Per square metre, with Topps' trim added at the listed price:</p><p>Marrakech Tile comes to £125.09 per m². Topps comes to £116.49 per m² once you add about £138 of trim. Mandarin Stone is</p></div>
+        <div class="margin"><span class="model">GPT-6.1 Sol<span class="tier" data-n="2" title="Balanced tier"><i></i><i></i><i></i></span></span><span class="money">$0.0021</span><span>thinking · 610 out so far</span><button class="stop">Stop <kbd>Esc</kbd></button></div>
+      </div>
+    </div></div>
+    <div class="compose"><div class="col">
+      <div class="box">
+        <div class="field">
+          <label for="ask2" hidden>Reply</label>
+          <textarea id="ask2" placeholder="Reply" rows="1"></textarea>
+          <div class="bar">
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M4 12h6l2-5 2 10 2-5h4"/></svg>Auto <span class="arrow">→</span> Sol<span class="tier" data-n="2"><i></i><i></i><i></i></span></span>
+            <button class="chip ghost" data-effort>Medium</button>
+            <button class="chip ghost">Search</button>
+            <button class="chip ghost">Attach</button>
+            <span class="ctx" style="--p:41%"><i></i>41%</span>
+            <button class="send stop" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
+          </div>
+        </div>
+        <div class="est">next message<span class="money">≈ $0.006</span></div>
+      </div>
+    </div></div>
+  </section>
+</div>
+</div>
+
+<!-- ============ CODE SESSION ============ -->
+<div class="view" data-view="code">
+<div class="app">
+  <aside class="side">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="8" width="20" height="8" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="2" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><rect x="17.5" y="8" width="4.5" height="8" rx="1.5" fill="currentColor"/><path d="M6.5 12h11" stroke="var(--copper)" stroke-width="1.8"/></svg>FUSE</div>
+    <div class="areas" role="tablist"><button>Chat<kbd>⌃1</kbd></button><button aria-current="true">Code<kbd>⌃2</kbd></button></div>
+    <button class="act"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>New session<kbd>⌃N</kbd></button>
+    <button class="act"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Search<kbd>⌃K</kbd></button>
+    <button class="act"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>Scheduled</button>
+    <div class="states"><span>Waiting 1</span><span>Going 1</span><span>Done 2</span></div>
+    <div class="group">fuse</div>
+    <button class="row"><span class="dot waiting"></span><span class="t">Rename the Runs page</span><span class="place"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M2 20h20"/></svg></span></button>
+    <button class="row" aria-current="true"><span class="dot going"></span><span class="t">Stall watchdog for runs</span><span class="place"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>HULK</span></button>
+    <button class="row"><span class="dot done"></span><span class="t unseen">Usage by area</span><span class="place"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>HULK</span></button>
+    <div class="group">hulkwatch</div>
+    <button class="row"><span class="dot done"></span><span class="t">Rotate the journal logs</span><span class="place"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="12" rx="1.5"/><path d="M2 20h20"/></svg></span></button>
+    <div class="foot">
+      <button class="act"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6"/></svg>Usage</button>
+      <button class="act"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/></svg>Settings<kbd>⌃,</kbd></button>
+      <div class="who"><span class="av">IH</span><span><b>Isaac's workspace</b>This computer</span></div>
+    </div>
+  </aside>
+  <section class="main">
+    <header class="head"><div class="crumbs"><span class="proj">fuse</span><span class="sep">/</span><h1>Stall watchdog for runs</h1></div><div class="tools"><button>Files · 3</button><button>Discuss in Chat</button><button aria-label="More">···</button></div></header>
+    <div class="strip">
+      <button><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/></svg>Runs on <b>HULK</b></button>
+      <button><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="8" r="2.5"/><path d="M6 8.5v7M18 10.5c0 4-12 2-12 5"/></svg><b>isaacholt/fuse</b> · m10/stall-watchdog</button>
+      <button><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.5 8 8 9 4.5-1 8-4 8-9V7z"/></svg>Mode <b>Can edit files</b></button>
+      <button>Context <b>41%</b></button>
+      <button>Cap <b class="money">$1.00</b> · spent <b class="money">$0.31</b></button>
+    </div>
+    <div class="scroll"><div class="col">
+      <div class="ledger-head"><div></div><div class="sum">this session<span class="money num">$0.3104</span>41 min</div></div>
+      <div class="msg you">
+        <div class="body"><p>Add a watchdog that marks a run as stalled when no step has finished for 10 minutes, and surfaces it in the sidebar as waiting for me.</p></div>
+        <div class="margin"><span class="who">you · 13:21</span></div>
+      </div>
+      <div class="msg">
+        <div class="body">
+          <div class="run">
+            <h3><span class="dot going"></span>Step 6 of about 9 · building the sidebar signal</h3>
+            <div class="step"><span class="k">1</span><span>Read <code>src-tauri/src/runs/mod.rs</code> and the run state machine</span><span class="n">0.9k</span></div>
+            <div class="step"><span class="k">2</span><span>Added <code>stalled_at</code> to the runs table, migration 0041</span><span class="n">2.1k</span></div>
+            <div class="step"><span class="k">3</span><span>Watchdog task in the runner, 10 minute threshold from <code>data/coding/limits.json</code></span><span class="n">4.4k</span></div>
+            <div class="step"><span class="k">4</span><span>Ran <code>cargo test runs::</code> · 18 passed</span><span class="n">1.2k</span></div>
+            <div class="step"><span class="k">5</span><span>Wrote <code>src/app/runView.ts</code> state mapping and its test</span><span class="n">3.0k</span></div>
+            <div class="step cur"><span class="k">6</span><span>Editing <code>src/ui/Sidebar.tsx</code> so a stalled run shows as waiting for you</span><span class="n">…</span></div>
+            <div class="edited">Edited 3 files <span class="plus">+84</span> <span class="minus">−12</span><button>Undo all</button><button>See diff</button></div>
+            <ul class="files">
+              <li><span>src-tauri/src/runs/watchdog.rs</span><span class="num">+61</span></li>
+              <li><span>src-tauri/migrations/0041_run_stalled_at.sql</span><span class="num">+6</span></li>
+              <li><span>src/app/runView.ts</span><span class="num">+17 −12</span></li>
+            </ul>
+          </div>
+        </div>
+        <div class="margin"><span class="model">Opus 5.5<span class="tier" data-n="3" title="Best tier"><i></i><i></i><i></i></span></span><span class="money">$0.2910</span><button class="why">multi-file change · best</button><span>38.1k in · 6.2k out<br>21k cached</span></div>
+      </div>
+      <div class="msg">
+        <div class="body">
+          <div class="run">
+            <h3><span class="dot waiting"></span>Needs your approval</h3>
+            <p style="margin:0 0 4px">Wants to run a command outside the sandbox's allow list:</p>
+            <pre class="cmd">pnpm vitest run src/app/runView.test.ts --reporter=verbose</pre>
+            <div class="approve"><button class="btn primary">Allow once<kbd>Y</kbd></button><button class="btn">Always for this project</button><button class="btn">Deny<kbd>N</kbd></button></div>
+          </div>
+        </div>
+        <div class="margin"><span class="model">Haiku 5.5<span class="tier" data-n="1" title="Cheap tier, housekeeping"><i></i><i></i><i></i></span></span><span class="money">$0.0004</span><span>command check</span></div>
+      </div>
+    </div></div>
+    <div class="compose"><div class="col">
+      <div class="box">
+        <div class="field">
+          <label for="ask3" hidden>Reply</label>
+          <textarea id="ask3" placeholder="Reply, or type / for commands" rows="1"></textarea>
+          <div class="bar">
+            <span class="chip"><svg viewBox="0 0 24 24"><path d="M4 12h6l2-5 2 10 2-5h4"/></svg>Auto <span class="arrow">→</span> Opus 5.5<span class="tier" data-n="3"><i></i><i></i><i></i></span></span>
+            <button class="chip ghost" data-effort>High</button>
+            <span class="ctx" style="--p:41%"><i></i>41%</span>
+            <button class="send stop" aria-label="Stop"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1"/></svg></button>
+          </div>
+        </div>
+        <div class="est">cap left<span class="money">$0.69</span></div>
+      </div>
+    </div></div>
+  </section>
+</div>
+</div>
+
+<!-- ============ TOKENS ============ -->
+<div class="view" data-view="tokens">
+<div class="tok" style="background:var(--page)">
+  <h2>Colour</h2>
+  <p>Slate ink on paper, and copper for money and nothing else. Tier bars and the budget line are the only places copper appears outside a figure. No blue, no gradients.</p>
+  <div class="sw">
+    <div><i style="background:var(--paper)"></i>paper<br><code>#FAFAF8 · #151A22</code></div>
+    <div><i style="background:var(--page)"></i>page<br><code>#FFFFFF · #1B212B</code></div>
+    <div><i style="background:var(--ink)"></i>ink<br><code>#1B2130 · #E8E9EC</code></div>
+    <div><i style="background:var(--muted)"></i>muted<br><code>#5C6370 · #9AA1AD</code></div>
+    <div><i style="background:var(--rule)"></i>rule<br><code>#E3E4E1 · #2A313D</code></div>
+    <div><i style="background:var(--copper)"></i>copper<br><code>#9A4A1A · #E0995F</code></div>
+    <div><i style="background:var(--error)"></i>error<br><code>#B3261E · #F08A80</code></div>
+  </div>
+  <p style="margin-top:8px">Contrast on their backgrounds: ink 16.1, muted 6.1, copper 6.2 light and 7.4 dark, error 6.5.</p>
+
+  <h2>Type</h2>
+  <p>IBM Plex Sans for everything read and operated; IBM Plex Mono only for code and keyboard hints. Money is sans with tabular figures, so the ledger lines up without reading as a terminal.</p>
+  <div class="spec">
+    <div><small>reading 15/1.6</small><span style="font-size:15px;line-height:1.6">Only Marrakech Tile includes the trim pieces.</span></div>
+    <div><small>interface 14/1.5</small><span>Stall watchdog for runs</span></div>
+    <div><small>margin 12/1.5</small><span style="font-size:12px;color:var(--muted)">1,240 in · 380 out · 800 cached</span></div>
+    <div><small>money 13 tabular</small><span class="money" style="font-size:13px">$0.0093 &nbsp; $0.2910 &nbsp; $1.84</span></div>
+    <div><small>code 13 mono</small><code>src/app/runView.ts</code></div>
+    <div><small>keys 11 mono</small><span><kbd>⌃K</kbd> <kbd>Esc</kbd></span></div>
+  </div>
+
+  <h2>Radius by role</h2>
+  <div class="r"><span class="a"><i></i>4 chips, keys, code</span><span class="b"><i></i>6 buttons, inputs, rows</span><span class="c"><i></i>10 composer, popovers</span></div>
+  <p style="margin-top:8px">No shadows except on popovers. Cards only around a run, where the border marks "this is a thing that is happening".</p>
+
+  <h2>Signals</h2>
+  <div class="r">
+    <span><span class="dot waiting"></span>waiting for you</span>
+    <span><span class="dot going"></span>going</span>
+    <span><span class="dot done"></span>done</span>
+    <span><b style="font-weight:600">bold title</b> done, unseen</span>
+    <span><span class="tier" data-n="1"><i></i><i></i><i></i></span> cheap</span>
+    <span><span class="tier" data-n="2"><i></i><i></i><i></i></span> balanced</span>
+    <span><span class="tier" data-n="3"><i></i><i></i><i></i></span> best</span>
+  </div>
+  <p style="margin-top:8px">The tier glyph is a fuse rating: one, two or three bars. It sits beside every model name, in the ledger and the composer, so the "why" of routing is readable without a tooltip.</p>
+
+  <h2>Words</h2>
+  <p>Sentence case everywhere. No eyebrows, no taglines, no tracked capitals. Section labels say what the group is (a project name, "Yesterday", "Waiting for you"). Empty states say what is true and what to do: "Nothing running. $0.00 spent today."</p>
+
+  <h2>Motion</h2>
+  <p>One moment: when an answer finishes, its figure settles into the margin and the thread total updates. While a model works, the margin shows live tokens and cost. Nothing else moves unless you moved it.</p>
+</div>
+</div>
+
+<script>
+(function () {
+  var views = document.querySelectorAll('.view');
+  var nav = document.querySelectorAll('.demo [data-go]');
+  function show(name) {
+    var ok = false;
+    views.forEach(function (v) { if (v.dataset.view === name) ok = true; });
+    if (!ok) name = 'home';
+    views.forEach(function (v) { if (v.dataset.view === name) v.setAttribute('data-on', ''); else v.removeAttribute('data-on'); });
+    nav.forEach(function (b) { b.setAttribute('aria-current', b.dataset.go === name ? 'true' : 'false'); });
+    if (name === 'chat') settle();
+  }
+  nav.forEach(function (b) { b.addEventListener('click', function () { location.hash = b.dataset.go; show(b.dataset.go); }); });
+  show((location.hash || '#home').slice(1));
+
+  // The one motion: the thread total settles into place when the thread opens.
+  var done = false;
+  function settle() {
+    if (done || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    done = true;
+    var el = document.getElementById('total'), end = 0.1184, t0 = performance.now();
+    (function tick(t) {
+      var p = Math.min(1, (t - t0) / 500), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = '$' + (end * e).toFixed(4);
+      if (p < 1) requestAnimationFrame(tick);
+    })(t0);
+  }
+
+  // Effort pill cycles and reprices the estimate beside it.
+  var levels = [['Low', '≈ $0.002'], ['Medium', '≈ $0.004'], ['High', '≈ $0.011']];
+  document.querySelectorAll('[data-effort]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var i = levels.findIndex(function (l) { return l[0] === b.textContent.trim(); });
+      var n = levels[(i + 1) % levels.length];
+      b.textContent = n[0];
+      var est = b.closest('.box').querySelector('.est .money');
+      if (est && est.textContent.indexOf('≈') === 0) est.textContent = n[1];
+    });
+  });
+
+  // Theme toggle for review; the real app follows the OS or its own setting.
+  var tb = document.getElementById('theme'), root = document.documentElement;
+  function dark() { return root.dataset.theme === 'dark' || (!root.dataset.theme && matchMedia('(prefers-color-scheme: dark)').matches); }
+  function label() { tb.textContent = dark() ? 'Light' : 'Dark'; }
+  tb.addEventListener('click', function () { root.dataset.theme = dark() ? 'light' : 'dark'; label(); });
+  label();
+})();
+</script>
+</body>
+</html>
