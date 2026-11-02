@@ -182,7 +182,7 @@ test("a Code run in the web app is asked of the runner; its question is answered
   await addApproval(db, t, run.id, { kind: "command", command: "pnpm test", runId: run.id });
   const ask = within(await screen.findByRole("alertdialog", { name: "Run this command?" }, SLOW));
   expect(ask.getByText("pnpm test")).toBeInTheDocument();
-  await user.click(ask.getByRole("button", { name: "Allow" }));
+  await user.click(ask.getByRole("button", { name: "Allow once" }));
   await waitFor(async () => {
     const rows = await db.select<{ answer: string | null }>("SELECT answer FROM run_approvals");
     expect(rows.map((r) => r.answer)).toEqual(['"yes"']);

@@ -2,6 +2,7 @@
 # Starts the app on a virtual display (HULK is headless), screenshots the FUSE window, stops the app.
 # Usage: bash scripts/screenshot.sh [output.png]
 #   FUSE_VIEW=settings   open on a given screen (dev builds only)
+#   FUSE_AREA=code       open in the Code area; FUSE_THEME=dark start dark (dev builds only)
 #   FUSE_BEFORE_SHOT=cmd  run cmd (e.g. xdotool clicks/typing) right before the screenshot
 #   FUSE_SEED_DIR=dir     start from a copy of an existing data folder (upgrade tests)
 #   FUSE_SCRIPTED=1       the test build's scripted model answers (M8 step 14), so a chat with
@@ -26,6 +27,8 @@ printf 'throwaway' | XDG_DATA_HOME="$KEYRING_HOME" gnome-keyring-daemon --unlock
 export VITE_FUSE_VIEW="${FUSE_VIEW:-}"
 # FUSE_AREA=code: open in the Code area (M10 step 12; dev builds only).
 export VITE_FUSE_AREA="${FUSE_AREA:-}"
+# FUSE_THEME=dark: start in that theme (M10 step 25; dev builds only).
+export VITE_FUSE_THEME="${FUSE_THEME:-}"
 # The app's database and attachment files go in the same temp dir, so screenshots never touch real data.
 export XDG_CONFIG_HOME="$KEYRING_HOME/config" XDG_DATA_HOME="$KEYRING_HOME/data"
 # FUSE_SEED_DIR=dir: start from a copy of an existing data folder (e.g. to test an upgrade).

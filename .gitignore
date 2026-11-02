@@ -30,3 +30,6 @@ coverage/
 docs/screenshots/*.log
 e2e/screenshots/
 dist-runner
+
+# scripts/screenshot.sh writes the dev log next to its screenshot
+tauri-dev.log

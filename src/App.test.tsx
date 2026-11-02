@@ -3379,7 +3379,7 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   expect(screen.getByLabelText("What the coding run may do")).toHaveValue("auto_edit");
   // M10 step 16: the session's strip says where and in what, and its settings were saved on it.
   const strip = within(screen.getByRole("group", { name: "Session" }));
-  expect(strip.getByText("On this computer")).toBeInTheDocument();
+  expect(strip.getByText("this computer")).toBeInTheDocument();
   expect(strip.getByText("lighthouse")).toBeInTheDocument();
   expect(strip.getByLabelText("What this session's runs may do")).toHaveValue("auto_edit");
   const [saved] = await listThreads(db, DEFAULT_TENANT);
@@ -3466,9 +3466,9 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
 
   const ask = within(await screen.findByRole("alertdialog", { name: "Run this command?" }));
   expect(ask.getByText("pnpm test")).toBeInTheDocument();
-  expect(ask.getByRole("button", { name: "Always allow in this project" })).toBeInTheDocument();
+  expect(ask.getByRole("button", { name: "Always for this project" })).toBeInTheDocument();
   expect(ran).toEqual([]);
-  await user.click(ask.getByRole("button", { name: "Allow" }));
+  await user.click(ask.getByRole("button", { name: "Allow once" }));
   expect(await screen.findByText("All 3 tests pass.")).toBeInTheDocument();
   expect(ran).toEqual(["pnpm test"]);
   // F2: the command's row opens what it printed.
@@ -3559,7 +3559,7 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
   expect(ask.getByText("Edited a.ts?")).toBeInTheDocument();
   expect(ask.getByText("const a = 2;")).toBeInTheDocument();
   expect(files.get("a.ts")).toBe("const a = 1;\n");
-  await user.click(ask.getByRole("button", { name: "Allow" }));
+  await user.click(ask.getByRole("button", { name: "Allow once" }));
   expect(await screen.findByText("Set a to 2.")).toBeInTheDocument();
   expect(files.get("a.ts")).toBe("const a = 2;\n");
   expect(

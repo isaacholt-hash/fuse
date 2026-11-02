@@ -179,7 +179,7 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     await app.type(composer, `E2E check ${String(n)}`);
     await app.press("Enter");
     await app.click(
-      '//*[@aria-label="Run this command?"]//button[normalize-space()="Allow"]',
+      '//*[@aria-label="Run this command?"]//button[@aria-label="Allow once"]',
       60_000,
     );
     return nextAnswer(seen);
@@ -243,7 +243,7 @@ test.skipIf(!PYTHON)(
       await app.type(composer, "E2E python");
       await app.press("Enter");
       await app.click(
-        '//*[@aria-label="Run this Python script?"]//button[normalize-space()="Allow"]',
+        '//*[@aria-label="Run this Python script?"]//button[@aria-label="Allow once"]',
         60_000,
       );
       const out = await nextAnswer(0);

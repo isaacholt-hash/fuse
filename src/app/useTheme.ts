@@ -4,6 +4,9 @@ import type { Theme } from "@/ui/types";
 const STORAGE_KEY = "fuse.theme";
 
 function stored(): Theme {
+  // Dev only: scripts/screenshot.sh asks for a theme (M10 step 25).
+  const asked = import.meta.env.VITE_FUSE_THEME;
+  if (asked === "light" || asked === "dark") return asked;
   try {
     const v = localStorage.getItem(STORAGE_KEY);
     return v === "light" || v === "dark" ? v : "system";

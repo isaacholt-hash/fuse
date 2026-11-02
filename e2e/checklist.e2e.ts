@@ -201,7 +201,7 @@ test("3. a Code session with a project and a cost cap runs, named after its task
     await app.type(byLabel("Cost cap"), "0.50");
     await send("E2E edit checklist.txt");
     await app.click(
-      '//*[@aria-label="Make this change?"]//button[normalize-space()="Allow"]',
+      '//*[@aria-label="Make this change?"]//button[@aria-label="Allow once"]',
       60_000,
     );
     expect(await nextAnswer(0)).toContain("Command result:");
@@ -213,7 +213,7 @@ test("3. a Code session with a project and a cost cap runs, named after its task
       ),
     ).toBe("");
     await app.find(`${row("E2E edit checklist.txt")}[@aria-current="page"]`);
-    expect(await app.text(byLabel("Spent of cap"))).toContain("of $0.50");
+    expect(await app.text(byLabel("Spent of cap"))).toContain("Cap $0.50");
   });
 });
 

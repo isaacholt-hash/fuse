@@ -224,6 +224,8 @@ export interface RunStepView {
   error: string | null;
   /** F2: a command's whole result (its output, exit code and sandbox line), opened from its row. */
   output?: string;
+  /** M10 step 25: a model turn's tokens, shown beside its note. */
+  tokens?: number;
 }
 
 /** The routing badge on an answer. */
