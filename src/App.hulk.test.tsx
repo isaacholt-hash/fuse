@@ -1,6 +1,6 @@
 // M10 steps 7 and 8, desktop: pairing with HULK, "Run on HULK", the run's card, and the
 // notification when it needs a look. HULK is a fake link over a second in-memory database.
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { memoryFilesApi } from "@/files/api";
 import type { HulkApi, HulkStatus } from "@/handover/api";
@@ -244,6 +244,47 @@ test("M10 F2: HULK behind this app is named in Settings, Scheduled and Where, an
   );
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("title", why);
+});
+
+// M10 step 21 (PL-07): during quiet hours a run that needs you waits silently.
+test("quiet hours: a HULK run waiting for you shows in the app but sends no notification", async () => {
+  const hulk = fakeHulk(true);
+  const { user, shown } = start(hulk.api);
+  await screen.findByRole("complementary", { name: "Chat sidebar" });
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Notifications" }));
+  await user.click(section.getByRole("checkbox", { name: "Keep quiet on these days and hours" }));
+  // The same time twice: the whole day, every day.
+  fireEvent.change(section.getByLabelText("From"), { target: { value: "00:00" } });
+  fireEvent.change(section.getByLabelText("to"), { target: { value: "00:00" } });
+  expect(section.getByRole("status")).toHaveTextContent("Quiet all day every day");
+
+  await codeInProject(user);
+  await sendToHulk(user, "Add a footer note");
+  await waitFor(async () => {
+    expect(await hulk.state.db.select("SELECT id FROM run_requests")).toHaveLength(1);
+  });
+  const [req] = await hulk.state.db.select<{ id: string }>("SELECT id FROM run_requests");
+  const run = await createRun(hulk.state.db, t, {
+    projectId: null,
+    threadId: null,
+    messageId: null,
+    task: "Add a footer note",
+    provider: "anthropic",
+    model: "m",
+    capMicroUsd: 1_000_000,
+  });
+  await hulk.state.db.execute("UPDATE run_requests SET status = 'done', run_id = ? WHERE id = ?", [
+    run.id,
+    req?.id ?? "",
+  ]);
+  await addApproval(hulk.state.db, t, run.id, { kind: "git", runId: run.id });
+  const cards = within(await screen.findByRole("list", { name: "Runs on HULK" }));
+  expect(await cards.findByText(/Waiting for you/)).toBeInTheDocument();
+  // Give the notification poll a few rounds: nothing shown, and no fallback bar either.
+  await new Promise((r) => setTimeout(r, 350));
+  expect(shown).toEqual([]);
+  expect(screen.queryByText(/FUSE on HULK: Waiting for you/)).not.toBeInTheDocument();
 });
 
 test("not paired, HULK as the place to run is greyed with the reason", async () => {

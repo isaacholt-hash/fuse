@@ -236,6 +236,7 @@ export function SettingsView({
   python,
   mcp,
   quickCapture,
+  notifications,
   data,
   appLock,
   importer,
@@ -295,6 +296,8 @@ export function SettingsView({
   mcp?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
+  /** M10 step 21 (PL-07): sounds, system notifications, banners and quiet hours. */
+  notifications?: ReactNode;
   /** Settings → Your data (SE-07). */
   data?: ReactNode;
   /** Settings → Privacy (SE-15): what's sent where, and providers allowed everywhere. */
@@ -397,6 +400,7 @@ export function SettingsView({
         {prices}
         {appLock}
         {quickCapture}
+        {notifications}
         {importer}
         {data}
         {routing}
