@@ -136,11 +136,15 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     // M10 step 16: runs start in the Code area.
     await app.chord("2");
     await app.chord("n");
+    // M10 step 26: "+" holds Add a folder; a new session's kind is in Run settings.
+    await app.click(button("Add"));
     await app.click(button("Add a folder"));
     await app.sees("fuse-e2e");
+    await app.click(button("Run settings"));
     await app.click(button("Work run"));
+    await app.press("Escape");
   });
-  // F4: at a narrow, a medium and a wide window, the main controls and Send stay inside the box.
+  // F4: at a narrow, a medium and a wide window, the row's controls and Send stay inside the box.
   for (const [w, h] of [
     [640, 600],
     [900, 700],
@@ -153,24 +157,16 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
         const box = document.querySelector('textarea[aria-label="Message"]').closest('[data-composer-box]').getBoundingClientRect();
         // The row clips what doesn't fit, so its controls must end inside the row itself.
         const row = document.querySelector('[data-composer-row]').getBoundingClientRect();
-        const names = ["Choose model (Ctrl+K)", "Add a folder", "Coding run", "Work run"];
+        const names = ["Add", "Choose model (Ctrl+K)", "Options"];
         const out = (n, edge) => {
           const b = document.querySelector('[aria-label="' + n + '"]');
           if (!b) return true;
           const r = b.getBoundingClientRect();
           return r.left < edge.left || r.right > edge.right;
         };
+        // M10 step 26: the row is "+", the model and Options; the rest is in their menus.
         return names.filter((n) => out(n, row))
-          .concat(out("Send message (Enter)", box) ? ["Send message (Enter)"] : [])
-          .concat(
-          // Think is in the row, or in "More", whose button must be in the box too.
-          ["Think harder", "More options"].some((n) => {
-            const b = document.querySelector('[aria-label="' + n + '"]');
-            if (!b) return false;
-            const r = b.getBoundingClientRect();
-            return r.width > 0 && r.left >= box.left && r.right <= box.right;
-          }) ? [] : ["Think harder or More options"],
-        );`);
+          .concat(out("Send message (Enter)", box) ? ["Send message (Enter)"] : []);`);
       expect(outside).toEqual([]);
     });
   }
@@ -237,9 +233,12 @@ test.skipIf(!PYTHON)(
     await step("python-run", async () => {
       await app.chord("2");
       await app.chord("n");
+      await app.click(button("Add"));
       await app.click(button("Add a folder"));
       await app.sees("fuse-e2e");
+      await app.click(button("Run settings"));
       await app.click(button("Work run"));
+      await app.press("Escape");
       await app.type(composer, "E2E python");
       await app.press("Enter");
       await app.click(

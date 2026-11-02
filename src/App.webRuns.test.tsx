@@ -147,16 +147,21 @@ test("a Code run in the web app is asked of the runner; its question is answered
   // M10 step 16: a session in the Code area. The web app's run on HULK, so "This computer" is
   // greyed with why, and the cap set here reaches the runner.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: where it runs is a menu, and the cap and kind are in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Where it runs: HULK" }));
   const where = within(await screen.findByRole("group", { name: "Where it runs" }));
   expect(where.getByRole("button", { name: "This computer" })).toBeDisabled();
   expect(where.getByRole("button", { name: "HULK" })).toHaveAttribute("aria-pressed", "true");
   expect(
     screen.getByText("The web app runs on HULK: sessions run there, not on this computer."),
   ).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "Run settings" }));
   const cap = screen.getByLabelText("Cost cap");
   await user.type(cap, "2.5");
   await user.tab();
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  await user.keyboard("{Escape}");
   await user.type(await screen.findByRole("textbox", { name: "Message" }), "Run the tests{Enter}");
 
   // The page asked; it didn't run anything itself.

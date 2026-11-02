@@ -160,16 +160,21 @@ async function codeInProject(user: ReturnType<typeof userEvent.setup>) {
   await user.keyboard("{Escape}");
   // M10 step 16: a session in the Code area; the project comes along.
   await user.keyboard("{Control>}2{/Control}");
+  // M10 step 26: a new session's kind is in Run settings.
+  await user.click(await screen.findByRole("button", { name: "Run settings" }));
   await user.click(await screen.findByRole("button", { name: "Coding run" }));
+  await user.keyboard("{Escape}");
+}
+
+/** M10 step 26: where it runs is a menu; this opens it. */
+async function whereMenu(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("button", { name: /^Where it runs:/ }));
+  return within(await screen.findByRole("group", { name: "Where it runs" }));
 }
 
 /** M10 step 16: Where = HULK, then the task is sent: it's handed over, not run here. */
 async function sendToHulk(user: ReturnType<typeof userEvent.setup>, task: string) {
-  await user.click(
-    within(await screen.findByRole("group", { name: "Where it runs" })).getByRole("button", {
-      name: "HULK",
-    }),
-  );
+  await user.click((await whereMenu(user)).getByRole("button", { name: "HULK" }));
   await user.type(await screen.findByRole("textbox", { name: "Message" }), `${task}{Enter}`);
 }
 
@@ -238,10 +243,7 @@ test("M10 F2: HULK behind this app is named in Settings, Scheduled and Where, an
 
   // Where: HULK is greyed with the same reason.
   await codeInProject(user);
-  const button = within(await screen.findByRole("group", { name: "Where it runs" })).getByRole(
-    "button",
-    { name: "HULK" },
-  );
+  const button = (await whereMenu(user)).getByRole("button", { name: "HULK" });
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("title", why);
 });
@@ -290,10 +292,7 @@ test("quiet hours: a HULK run waiting for you shows in the app but sends no noti
 test("not paired, HULK as the place to run is greyed with the reason", async () => {
   const { user } = start(fakeHulk(false).api);
   await codeInProject(user);
-  const button = within(await screen.findByRole("group", { name: "Where it runs" })).getByRole(
-    "button",
-    { name: "HULK" },
-  );
+  const button = (await whereMenu(user)).getByRole("button", { name: "HULK" });
   expect(button).toBeDisabled();
   expect(button).toHaveAttribute("title", "Pair with HULK in Settings first");
   expect(screen.getByText("Pair with HULK in Settings first")).toBeInTheDocument();

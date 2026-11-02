@@ -1,17 +1,9 @@
+// M10 step 26: the composer row is "+", the model, Options and Send; what's on shows as a chip.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
+import type { ComponentProps } from "react";
 import { Composer } from "./Conversation";
 
-// jsdom has no layout, so the row's widths are stubbed: everything in one row needs 700 px, with
-// "More" 450 px, and with Search in "More" too 380 px.
-let width = 0;
-const content = (el: HTMLElement) =>
-  !el.parentElement?.querySelector('[aria-label="More options"]')
-    ? 700
-    : el.querySelector('[aria-label="Search the web"]')
-      ? 450
-      : 380;
-const row = (el: HTMLElement) => el.dataset.composerRow !== undefined;
 const hadObserver = "ResizeObserver" in globalThis;
 beforeAll(() => {
   // jsdom has none; Radix's popover measures with one.
@@ -22,24 +14,9 @@ beforeAll(() => {
       disconnect() {}
     };
   }
-  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
-    configurable: true,
-    get(this: HTMLElement) {
-      return row(this) ? width : 0;
-    },
-  });
-  Object.defineProperty(HTMLElement.prototype, "scrollWidth", {
-    configurable: true,
-    get(this: HTMLElement) {
-      return row(this) ? content(this) : 0;
-    },
-  });
 });
 afterAll(() => {
   if (!hadObserver) Reflect.deleteProperty(globalThis, "ResizeObserver");
-  // Back to jsdom's own (0) for the other tests in this worker.
-  Reflect.deleteProperty(HTMLElement.prototype, "clientWidth");
-  Reflect.deleteProperty(HTMLElement.prototype, "scrollWidth");
 });
 afterEach(cleanup);
 
@@ -53,10 +30,14 @@ const m = {
   outputPrice: 1,
 };
 
-function show(at: number) {
-  width = at;
-  const onCodeBranch = vi.fn();
-  const utils = render(
+function show(over: Partial<ComponentProps<typeof Composer>> = {}) {
+  const props = {
+    onCodeBranch: vi.fn(),
+    onToggleWebSearch: vi.fn(),
+    onAddFolder: vi.fn(),
+    onCompare: vi.fn(),
+  };
+  render(
     <Tooltip.Provider>
       <Composer
         model={m}
@@ -69,13 +50,14 @@ function show(at: number) {
         onSend={() => undefined}
         effortFor={() => ({
           auto: "medium",
-          options: ["low", "medium", "high", "xhigh", "max"],
-          extraMicro: () => 0,
+          options: ["low", "medium", "high"],
+          extraMicro: (l) => (l === "high" ? 4000 : l === "low" ? -2000 : 0),
         })}
         onStop={() => undefined}
         onSettings={() => undefined}
+        onAddFiles={() => undefined}
         folders={[{ id: "a", name: "lighthouse", path: "/home/me/lighthouse", own: true }]}
-        onAddFolder={() => undefined}
+        onAddFolder={props.onAddFolder}
         onRemoveFolder={() => undefined}
         code
         onToggleCode={() => undefined}
@@ -84,8 +66,8 @@ function show(at: number) {
         codeMode="ask"
         onCodeMode={() => undefined}
         codeBranch
-        onCodeBranch={onCodeBranch}
-        onToggleWebSearch={() => undefined}
+        onCodeBranch={props.onCodeBranch}
+        onToggleWebSearch={props.onToggleWebSearch}
         webSearch={false}
         compare={{
           options: [
@@ -93,65 +75,102 @@ function show(at: number) {
             { key: "b", label: "GPT" },
           ],
           selected: [],
-          onChange: () => undefined,
+          onChange: props.onCompare,
           estimate: () => null,
         }}
+        estimate={() => 8000}
+        {...over}
       />
     </Tooltip.Provider>,
   );
-  return { ...utils, onCodeBranch };
+  return props;
 }
 
-/** The controls that stay in the row (Search too, unless the row is very narrow). */
-function mainControls(search = true) {
-  for (const name of [
-    "Choose model (Ctrl+K)",
-    ...(search ? ["Search the web"] : []),
-    "Remove folder lighthouse",
-    "Add a folder",
-    "Coding run",
-    "Work run",
-    "Send message (Enter)",
-  ]) {
-    expect(screen.getByRole("button", { name })).toBeTruthy();
-  }
-}
-
-test("F4: wide, everything fits in one row", () => {
-  show(800);
-  mainControls();
-  expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
-  expect(screen.getByRole("button", { name: "Reasoning effort" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Compare models" })).toBeTruthy();
-  expect(screen.getByLabelText("New branch")).toBeTruthy();
-  expect(screen.getByLabelText("What the coding run may do")).toBeTruthy();
+test("the row: +, the model, Options, the folder, the estimate and Send; nothing else", () => {
+  show();
+  const row = document.querySelector<HTMLElement>("[data-composer-row]");
+  if (!row) throw new Error("no row");
+  const names = within(row)
+    .getAllByRole("button")
+    .map((b) => b.getAttribute("aria-label"));
+  expect(names).toEqual(["Add", "Choose model (Ctrl+K)", "Options", "Remove folder lighthouse"]);
+  expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeTruthy();
+  // The estimate is muted beside Send, not copper in the margin.
+  const est = screen.getByLabelText("Estimated cost");
+  expect(est.textContent).toBe("≈ $0.008");
+  expect(est.className).toContain("text-muted-foreground");
+  // No persistent privacy or keyboard lines.
+  expect(screen.queryByText(/Your keys/)).toBeNull();
+  expect(screen.queryByText(/Enter to send/)).toBeNull();
 });
 
-for (const at of [600, 400]) {
-  test(`F4: at ${String(at)} px, run mode, New branch, Think and Compare move into More`, () => {
-    const { onCodeBranch } = show(at);
-    mainControls(at > 450);
-    expect(screen.queryByRole("button", { name: "Reasoning effort" })).toBeNull();
-    expect(screen.queryByLabelText("New branch")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "More options" }));
-    const more = within(screen.getByRole("dialog", { name: "More options" }));
-    // Each shows its state there.
-    expect(more.getByLabelText<HTMLSelectElement>("What the coding run may do").value).toBe("ask");
-    expect(more.getByLabelText<HTMLInputElement>("New branch").checked).toBe(true);
-    fireEvent.click(more.getByLabelText("New branch"));
-    expect(onCodeBranch).toHaveBeenCalledWith(false);
-    // M10 step 22: the effort dial, showing the usual level until one is chosen.
-    const dial = more.getByRole("button", { name: "Reasoning effort" });
-    expect(dial.getAttribute("aria-pressed")).toBe("false");
-    expect(dial.textContent).toContain("Medium");
-    expect(more.getByRole("group", { name: "Models to compare" })).toBeTruthy();
-  });
-}
+test("+ holds attaching files and adding a folder", () => {
+  const p = show();
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
+  const add = within(screen.getByRole("dialog", { name: "Add" }));
+  expect(add.getByRole("button", { name: "Attach a file" })).toBeTruthy();
+  fireEvent.click(add.getByRole("button", { name: "Add a folder" }));
+  expect(p.onAddFolder).toHaveBeenCalled();
+});
 
-test("F4: very narrow, Search moves into More as well, and shows its state there", () => {
-  show(400);
-  expect(screen.queryByRole("button", { name: "Search the web" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "More options" }));
-  const more = within(screen.getByRole("dialog", { name: "More options" }));
-  expect(more.getByRole("button", { name: "Search the web" }).textContent).toBe("Search the web");
+test("Options: kind, mode, branch, web search and compare, each with its state", () => {
+  const p = show();
+  fireEvent.click(screen.getByRole("button", { name: "Options" }));
+  const options = within(screen.getByRole("dialog", { name: "Options" }));
+  expect(options.getByRole("button", { name: "Coding run" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(options.getByLabelText<HTMLSelectElement>("What the coding run may do").value).toBe("ask");
+  expect(options.getByLabelText<HTMLInputElement>("New branch").checked).toBe(true);
+  fireEvent.click(options.getByLabelText("New branch"));
+  expect(p.onCodeBranch).toHaveBeenCalledWith(false);
+  const search = options.getByRole("button", { name: "Search the web" });
+  expect(search).toHaveAttribute("aria-pressed", "false");
+  fireEvent.click(search);
+  expect(p.onToggleWebSearch).toHaveBeenCalled();
+  expect(options.getByRole("group", { name: "Models to compare" })).toBeTruthy();
+});
+
+test("a mode that's on shows as a chip, and its × turns it off", () => {
+  const p = show({
+    webSearch: true,
+    compare: {
+      options: [
+        { key: "a", label: "Claude" },
+        { key: "b", label: "GPT" },
+      ],
+      selected: ["a", "b"],
+      onChange: vi.fn(),
+      estimate: () => "about $0.02",
+    },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Turn off web search" }));
+  expect(p.onToggleWebSearch).toHaveBeenCalled();
+  expect(screen.getByText("Compare · 2")).toBeTruthy();
+  expect(screen.getByLabelText("Compare cost").textContent).toContain("Sends to 2 models");
+});
+
+test("effort is in the model menu; a chosen level shows on the model chip", () => {
+  show({ pickerOpen: true });
+  const effort = within(screen.getByRole("group", { name: "Reasoning effort" }));
+  expect(effort.getByRole("radio", { name: "Usual" })).toHaveAttribute("aria-checked", "true");
+  fireEvent.click(effort.getByRole("radio", { name: /High/ }));
+  expect(screen.getByRole("button", { name: "Choose model (Ctrl+K)" }).textContent).toContain(
+    "· High",
+  );
+});
+
+test("the estimate turns amber only when it's over the cap left", () => {
+  show({ capLeft: 5000 });
+  expect(screen.getByLabelText("Estimated cost").className).toContain("text-amber-700");
+  cleanup();
+  show({ capLeft: 900_000 });
+  expect(screen.getByLabelText("Estimated cost").className).toContain("text-muted-foreground");
+});
+
+test("a guide holds Send and says what to do, quietly", () => {
+  show({ guide: "Choose a project to start." });
+  expect(screen.getByRole("note").textContent).toBe("Choose a project to start.");
+  expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeDisabled();
 });

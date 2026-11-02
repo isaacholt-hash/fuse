@@ -13,7 +13,6 @@ import {
   Quote,
   ThumbsDown,
   ThumbsUp,
-  CornerDownLeft,
   LoaderCircle,
   FileText,
   Pencil,
@@ -28,14 +27,15 @@ import {
   FolderOpen,
   FolderPlus,
   Columns2,
-  Ellipsis,
   FolderTree,
   SquareTerminal,
   Server,
   Trash2,
+  Plus,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { RunningFor } from "./RunningFor";
 import { Button } from "@/components/ui/button";
 import { fuzzyScore } from "./fuzzy";
@@ -44,7 +44,8 @@ import { Markdown } from "./Markdown";
 import { ArtifactCard, DiffView } from "./Artifacts";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Money, Tier, Tip } from "./primitives";
-import { EffortDial, type EffortView } from "./EffortDial";
+import { EffortOptions, type EffortView } from "./EffortDial";
+import { EFFORT_LABELS } from "@/routing/effort";
 import { ReasoningLine } from "./ReasoningLine";
 import type { EffortLevel } from "@/catalog/catalog";
 import type {
@@ -438,7 +439,6 @@ const startedLabel = (ms: number) => {
 export function Messages({
   total,
   messages,
-  modelName,
   empty,
   home,
   startedAt,
@@ -488,8 +488,6 @@ export function Messages({
   /** CH-17: an answer's versions side by side. */
   onSideBySide?: (answerId: string) => void;
   messages: MessageView[];
-  /** Selected model, for the empty state. */
-  modelName: string;
   /** M10 step 12: the empty state's words, per area; Chat's when omitted. */
   empty?: { heading: string };
   /** M10 step 14: a new chat or session shows this instead of the plain empty state. */
@@ -589,12 +587,6 @@ export function Messages({
             <h1 className="text-2xl font-medium tracking-tight">
               {empty?.heading ?? "What are you working on?"}
             </h1>
-            <div className="mt-7 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] text-muted-foreground">
-              <Sparkles className="size-3" />
-              {modelName}
-              <span className="mx-1 opacity-40">/</span>
-              <span>Ctrl+K to change</span>
-            </div>
           </div>
         ) : (
           <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
@@ -1111,6 +1103,44 @@ export interface CompareView {
   estimate: (draft: string) => string | null;
 }
 
+/** A row of the composer's "+" and Options menus: an icon, a label, and what it does. */
+function MenuRow({
+  icon,
+  label,
+  detail,
+  on,
+  ...button
+}: {
+  icon: ReactNode;
+  label: string;
+  detail: string | null;
+  /** A switch's state, shown as a tick. */
+  on?: boolean;
+  onClick: () => void;
+  "aria-label": string;
+  "aria-pressed"?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      {...button}
+      className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-accent focus-visible:bg-accent focus-visible:outline-none disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+    >
+      <span className="mt-0.5 shrink-0 text-muted-foreground">{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block">{label}</span>
+        {detail && (
+          <span className="block text-[11px] leading-snug text-muted-foreground">{detail}</span>
+        )}
+      </span>
+      {on !== undefined && (
+        <Check className={`mt-0.5 size-3.5 shrink-0 ${on ? "" : "invisible"}`} aria-hidden />
+      )}
+    </button>
+  );
+}
+
 export function Composer({
   model,
   models,
@@ -1154,6 +1184,10 @@ export function Composer({
   capLeft = null,
   prompts = [],
   onPickPrompt,
+  top,
+  guide = null,
+  footnote,
+  placeholder,
 }: {
   model: ModelOption;
   models: ModelOption[];
@@ -1227,13 +1261,21 @@ export function Composer({
   /** CH-12: saved prompts, offered when the message starts with "/". */
   prompts?: { id: string; name: string }[];
   onPickPrompt?: (id: string) => void;
+  /** M10 step 26: what sits above the composer, at its width (a new session's row). */
+  top?: ReactNode;
+  /** What to do before sending is possible, said quietly under the composer; it holds Send. */
+  guide?: string | null;
+  /** A quiet line under the composer (memory suggestions). */
+  footnote?: ReactNode;
+  /** The empty field's words; by default Chat's, or a session's reply when a run is on. */
+  placeholder?: string;
 }) {
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const processing = attachments.some((a) => a.status === "processing");
   const ready = attachments.some((a) => a.status === "ready");
-  const canSend = (text.trim() !== "" || ready) && !processing && !blocked;
+  const canSend = (text.trim() !== "" || ready) && !processing && !blocked && !guide;
   const addFiles = (list: FileList | null | undefined) => {
     const files = Array.from(list ?? []);
     if (files.length > 0) onAddFiles?.(files);
@@ -1254,7 +1296,8 @@ export function Composer({
     }
   }, [text]);
   const [effortChoice, setEffortChoice] = useState<EffortLevel | null>(null);
-  const [compareOpen, setCompareOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
   // CH-12: "/" at the start of an empty message lists saved prompts, filtered by what follows.
   const slash = /^\/(\S*)$/.exec(text);
   const slashMatches =
@@ -1283,235 +1326,195 @@ export function Composer({
   const previewTier = preview ? (routing?.previewTier?.(text) ?? null) : null;
   const effortView = effortFor?.(text) ?? null;
   const estimated = estimate?.(text) ?? null;
+  // M10 step 26: the estimate is muted beside Send; amber only when it's more than the cap left.
+  const overCap = estimated !== null && capLeft !== null && estimated > capLeft;
   const modeLabel = routing?.selected ? MODE_LABELS[routing.selected] : null;
   const filtered = models.filter((item) =>
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
   );
-  // F4: the row never overflows. When it would, run mode, New branch, Think and Compare move into
-  // "More" (level 1); if it still would, Search goes there too (level 2). Each level goes back
-  // once there's room for what it took away (`needed`), and the row measures again whenever what
-  // it holds changes.
-  const row = useRef<HTMLDivElement>(null);
-  const [level, setLevel] = useState(0);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const needed = useRef<number[]>([]);
-  const holds = [
-    folders.map((f) => f.id).join(","),
-    code,
-    work,
-    codeMode,
-    Boolean(compare && compare.options.length >= 2),
-    modeLabel ?? model.name,
-    preview,
-  ].join("|");
-  const [measuredFor, setMeasuredFor] = useState(holds);
-  if (measuredFor !== holds) {
-    setMeasuredFor(holds);
-    setLevel(0);
-  }
-  useLayoutEffect(() => {
-    const el = row.current;
-    if (!el) return;
-    const fit = () => {
-      if (level < 2 && el.scrollWidth > el.clientWidth + 1) {
-        needed.current[level] = el.scrollWidth;
-        setLevel(level + 1);
-      } else if (level > 0 && el.clientWidth >= (needed.current[level - 1] ?? Infinity)) {
-        setLevel(level - 1);
-      }
-    };
-    fit();
-    if (typeof ResizeObserver === "undefined") return;
-    const watch = new ResizeObserver(fit);
-    watch.observe(el);
-    return () => {
-      watch.disconnect();
-    };
-  });
-  const collapsed = level > 0;
-  const tight = level > 1;
-  /** Web search on or off: in the row, or (`menu`) in "More" when even the main row is tight. */
-  const searchButton = (menu: boolean) =>
-    onToggleWebSearch && (
-      <Tip
-        label={
-          webSearch === null
-            ? `${model.name} can't search the web`
-            : webSearch
-              ? "Web search on: the model may search (billed per search)"
-              : "Web search off"
-        }
-      >
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Search the web"
-          aria-pressed={webSearch === true}
-          disabled={webSearch === null}
-          className={`shrink-0 gap-1.5 text-xs ${menu ? "justify-start" : ""} ${webSearch ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-          onClick={onToggleWebSearch}
-        >
-          <Globe className="size-3.5" />
-          <span className={menu ? "" : "hidden min-[900px]:inline"}>
-            {menu ? `Search the web${webSearch ? " · on" : ""}` : "Search"}
-          </span>
-        </Button>
-      </Tip>
-    );
-  const showMode = Boolean(onToggleCode && (code || work) && onCodeMode);
-  const showBranch = Boolean(onToggleCode && code && onCodeBranch && codeMode !== "plan");
   const showCompare = Boolean(compare && compare.options.length >= 2);
-  const compareList = compare && (
-    <>
-      <span className="mb-1 text-[11px] text-muted-foreground">
-        Pick two or three; the next message goes to each.
-      </span>
-      {compare.options.map((o) => {
-        const on = compare.selected.includes(o.key);
-        return (
-          <label key={o.key} className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={on}
-              disabled={!on && compare.selected.length >= 3}
-              onChange={() => {
-                compare.onChange(
-                  on ? compare.selected.filter((k) => k !== o.key) : [...compare.selected, o.key],
-                );
-              }}
-            />
-            {o.label}
-          </label>
-        );
-      })}
-    </>
+  const showKind = Boolean(onToggleCode || onToggleWork);
+  const showMode = Boolean(showKind && (code || work) && onCodeMode);
+  const showBranch = Boolean(onToggleCode && code && onCodeBranch && codeMode !== "plan");
+  const hasOptions = showKind || Boolean(onToggleWebSearch) || showCompare;
+  const canAdd = Boolean(onAddFiles || onAddFolder);
+  /** A mode that's on (web search, compare): a chip in the row, with an × that turns it off. */
+  const onChip = (icon: ReactNode, label: string, offLabel: string, off: () => void) => (
+    <span className="flex shrink-0 items-center gap-1 rounded-[4px] bg-muted py-0.5 pr-0.5 pl-1.5 text-[11px] font-medium">
+      {icon}
+      <span className="@max-[560px]:sr-only">{label}</span>
+      <button
+        type="button"
+        aria-label={offLabel}
+        className="rounded-[3px] p-0.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+        onClick={off}
+      >
+        <X className="size-3" />
+      </button>
+    </span>
   );
-  /** Run mode, New branch, Think and Compare: in the row, or (`menu`) listed in "More". */
-  const extras = (menu: boolean) => (
-    <>
-      {showMode && onCodeMode && (
-        <select
-          aria-label="What the coding run may do"
-          className="h-7 shrink-0 rounded-md border border-input bg-background px-1.5 text-xs"
-          value={codeMode}
-          onChange={(e) => {
-            const v = e.target.value;
-            onCodeMode(v === "auto_edit" ? "auto_edit" : v === "plan" ? "plan" : "ask");
-          }}
-        >
-          <option value="plan">Read-only</option>
-          <option value="ask">Ask first</option>
-          <option value="auto_edit">Can edit files</option>
-        </select>
-      )}
-      {showBranch && onCodeBranch && (
-        <label className="flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={codeBranch}
-            onChange={(e) => {
-              onCodeBranch(e.target.checked);
-            }}
-          />
-          New branch
-        </label>
-      )}
-      {code && onRunOnHulk && (
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`shrink-0 gap-1.5 text-xs text-muted-foreground ${menu ? "justify-start" : ""}`}
-          disabled={runOnHulkReason !== null || !text.trim()}
-          title={
-            runOnHulkReason ??
-            "Hand this task to HULK: it runs there on a branch of its own, with this computer closed"
-          }
-          onClick={() => {
-            const task = text.trim();
-            if (!task) return;
-            onRunOnHulk(task);
-            setText("");
-          }}
-        >
-          <Server className="size-3.5" />
-          Run on HULK
-        </Button>
-      )}
-      {code && onRunOnHulk && runOnHulkReason && (
-        <span className="shrink-0 text-[11px] text-muted-foreground">{runOnHulkReason}</span>
-      )}
-      {effortView && (
-        <EffortDial
-          effort={effortView}
-          value={effortChoice}
-          onChange={setEffortChoice}
-          menu={menu}
-        />
-      )}
-      {showCompare &&
-        compare &&
-        (menu ? (
-          <div
-            role="group"
-            aria-label="Models to compare"
-            className="flex flex-col gap-1 border-t pt-2 text-xs"
-          >
-            <span className="flex items-center gap-1.5 font-medium">
-              <Columns2 className="size-3.5" />
-              Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
-            </span>
-            {compareList}
-          </div>
-        ) : (
-          <span className="relative shrink-0">
-            <Tip label="Send the next message to two or three models and compare the answers">
-              <Button
-                variant="ghost"
-                size="sm"
-                aria-label="Compare models"
-                aria-expanded={compareOpen}
-                aria-pressed={comparing}
-                className={`gap-1.5 text-xs ${comparing ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                onClick={() => {
-                  setCompareOpen((o) => !o);
-                }}
-              >
-                <Columns2 className="size-3.5" />
-                <span className="hidden min-[900px]:inline">
-                  Compare{comparing ? ` · ${String(compare.selected.length)}` : ""}
-                </span>
-              </Button>
-            </Tip>
-          </span>
-        ))}
-    </>
-  );
-  // Something in "More" is on, so its button says so.
-  const moreOn = effortChoice !== null || comparing || (tight && webSearch === true);
-  const moreMenu = (
-    <Popover.Root open={moreOpen} onOpenChange={setMoreOpen}>
+  const optionsMenu = hasOptions && (
+    <Popover.Root open={optionsOpen} onOpenChange={setOptionsOpen}>
       <Popover.Trigger asChild>
         <Button
           variant="ghost"
           size="sm"
-          aria-label="More options"
-          className={`shrink-0 gap-1.5 text-xs ${moreOn ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+          aria-label="Options"
+          className="shrink-0 gap-1 px-2 text-xs text-muted-foreground"
         >
-          <Ellipsis className="size-3.5" />
-          {moreOn && <span className="size-1.5 rounded-full bg-foreground" aria-hidden />}
+          <span className="@max-[560px]:sr-only">Options</span>
+          <SlidersHorizontal className="hidden size-3.5 @max-[560px]:inline" aria-hidden />
+          <ChevronDown className="size-3" />
         </Button>
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content
-          align="end"
+          align="start"
           side="top"
           sideOffset={8}
-          collisionPadding={16}
-          aria-label="More options"
-          className="z-30 flex w-64 flex-col gap-2 rounded-lg border bg-popover p-2 text-popover-foreground shadow-lg"
+          collisionPadding={12}
+          aria-label="Options"
+          className="z-30 flex max-h-[min(70dvh,520px)] w-72 flex-col gap-1 overflow-y-auto rounded-[10px] border bg-popover p-1.5 text-popover-foreground shadow-lg"
         >
-          {tight && searchButton(true)}
-          {extras(true)}
+          {showKind && (
+            <div role="group" aria-label="Kind" className="flex flex-col gap-1 border-b pb-1.5">
+              <div className="flex gap-1">
+                {onToggleCode && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Coding run"
+                    aria-pressed={code}
+                    className={`h-7 flex-1 gap-1.5 text-xs ${code ? "bg-foreground text-background hover:bg-foreground hover:text-background" : "text-muted-foreground"}`}
+                    onClick={onToggleCode}
+                  >
+                    <SquareTerminal className="size-3.5" />
+                    Coding
+                  </Button>
+                )}
+                {onToggleWork && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Work run"
+                    aria-pressed={work}
+                    className={`h-7 flex-1 gap-1.5 text-xs ${work ? "bg-foreground text-background hover:bg-foreground hover:text-background" : "text-muted-foreground"}`}
+                    onClick={onToggleWork}
+                  >
+                    <Briefcase className="size-3.5" />
+                    Work
+                  </Button>
+                )}
+              </div>
+              {showMode && onCodeMode && (
+                <label className="flex items-center gap-2 px-2 py-0.5 text-xs">
+                  <span className="flex-1 text-muted-foreground">May</span>
+                  <span className="relative flex items-center">
+                    <select
+                      aria-label="What the coding run may do"
+                      className="h-7 appearance-none rounded-md border border-input bg-background pr-6 pl-2 text-xs text-foreground"
+                      value={codeMode}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        onCodeMode(v === "auto_edit" ? "auto_edit" : v === "plan" ? "plan" : "ask");
+                      }}
+                    >
+                      <option value="plan">Read-only</option>
+                      <option value="ask">Ask first</option>
+                      <option value="auto_edit">Can edit files</option>
+                    </select>
+                    <ChevronDown
+                      className="pointer-events-none absolute right-1.5 size-3 text-muted-foreground"
+                      aria-hidden
+                    />
+                  </span>
+                </label>
+              )}
+              {showBranch && onCodeBranch && (
+                <label className="flex items-center gap-2 px-2 py-0.5 text-xs">
+                  <span className="flex-1 text-muted-foreground">New branch</span>
+                  <input
+                    type="checkbox"
+                    aria-label="New branch"
+                    checked={codeBranch}
+                    onChange={(e) => {
+                      onCodeBranch(e.target.checked);
+                    }}
+                  />
+                </label>
+              )}
+              {code && onRunOnHulk && (
+                <MenuRow
+                  icon={<Server className="size-3.5" />}
+                  label="Run on HULK"
+                  detail={
+                    runOnHulkReason ??
+                    "Hand this task to HULK: it runs there on a branch of its own, with this computer closed"
+                  }
+                  aria-label="Run on HULK"
+                  disabled={runOnHulkReason !== null || !text.trim()}
+                  onClick={() => {
+                    const task = text.trim();
+                    if (!task) return;
+                    onRunOnHulk(task);
+                    setText("");
+                    setOptionsOpen(false);
+                  }}
+                />
+              )}
+            </div>
+          )}
+          {onToggleWebSearch && (
+            <MenuRow
+              icon={<Globe className="size-3.5" />}
+              label="Search the web"
+              detail={
+                webSearch === null
+                  ? `${model.name} can't search the web`
+                  : "The model may search; billed per search"
+              }
+              aria-label="Search the web"
+              aria-pressed={webSearch === true}
+              disabled={webSearch === null}
+              on={webSearch === true}
+              onClick={onToggleWebSearch}
+            />
+          )}
+          {showCompare && compare && (
+            <div
+              role="group"
+              aria-label="Models to compare"
+              className="flex flex-col gap-1 border-t px-2 pt-2 pb-1 text-xs"
+            >
+              <span className="flex items-center gap-1.5">
+                <Columns2 className="size-3.5 text-muted-foreground" />
+                Compare models
+              </span>
+              <span className="mb-1 text-[11px] text-muted-foreground">
+                Pick two or three; the next message goes to each.
+              </span>
+              {compare.options.map((o) => {
+                const on = compare.selected.includes(o.key);
+                return (
+                  <label key={o.key} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={on}
+                      disabled={!on && compare.selected.length >= 3}
+                      onChange={() => {
+                        compare.onChange(
+                          on
+                            ? compare.selected.filter((k) => k !== o.key)
+                            : [...compare.selected, o.key],
+                        );
+                      }}
+                    />
+                    {o.label}
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
@@ -1521,6 +1524,12 @@ export function Composer({
       <div
         className={`${LEDGER_GRID} mx-auto w-[min(100%,calc(68ch+132px+24px))] items-end text-[15px]`}
       >
+        {top && (
+          <>
+            <div className="min-w-0">{top}</div>
+            <div aria-hidden className="@max-[760px]:hidden" />
+          </>
+        )}
         <div
           data-composer-box
           className={`min-w-0 rounded-[10px] border bg-background p-3 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/10 ${dragging ? "border-ring ring-2 ring-ring/20" : "border-input"}`}
@@ -1657,7 +1666,8 @@ export function Composer({
               ref={field}
               aria-label="Message"
               placeholder={
-                code ? "Reply, or type / for commands" : "Ask anything. Auto picks the model."
+                placeholder ??
+                (code ? "Reply, or type / for commands" : "Ask anything. Auto picks the model.")
               }
               rows={2}
               value={text}
@@ -1712,38 +1722,70 @@ export function Composer({
               {blocked}
             </p>
           )}
-          <div className="relative mt-1 flex items-center justify-between gap-2">
+          <div className="relative mt-1 flex items-center gap-2">
             <div
-              ref={row}
               data-composer-row
-              className={`flex min-w-0 flex-1 items-center overflow-hidden ${tight ? "gap-0.5" : "gap-1"}`}
+              className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden"
             >
               {onAddFiles && (
-                <>
-                  <input
-                    ref={picker}
-                    type="file"
-                    multiple
-                    accept={`image/png,image/jpeg,image/webp,image/gif,${DOCUMENT_ACCEPT}`}
-                    className="hidden"
-                    aria-label="Attach files"
-                    onChange={(e) => {
-                      addFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Tip label="Attach images, PDFs, Word, text or code · or paste / drop them">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="shrink-0"
-                      aria-label="Attach a file"
-                      onClick={() => picker.current?.click()}
-                    >
-                      <Paperclip />
-                    </Button>
+                <input
+                  ref={picker}
+                  type="file"
+                  multiple
+                  accept={`image/png,image/jpeg,image/webp,image/gif,${DOCUMENT_ACCEPT}`}
+                  className="hidden"
+                  aria-label="Attach files"
+                  onChange={(e) => {
+                    addFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              )}
+              {canAdd && (
+                <Popover.Root open={addOpen} onOpenChange={setAddOpen}>
+                  <Tip label="Attach files or add a folder">
+                    <Popover.Trigger asChild>
+                      <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Add">
+                        <Plus />
+                      </Button>
+                    </Popover.Trigger>
                   </Tip>
-                </>
+                  <Popover.Portal>
+                    <Popover.Content
+                      align="start"
+                      side="top"
+                      sideOffset={8}
+                      collisionPadding={12}
+                      aria-label="Add"
+                      className="z-30 flex w-72 flex-col gap-0.5 rounded-[10px] border bg-popover p-1.5 text-popover-foreground shadow-lg"
+                    >
+                      {onAddFiles && (
+                        <MenuRow
+                          icon={<Paperclip className="size-3.5" />}
+                          label="Attach files"
+                          detail="Images, PDFs, Word, text or code; or paste or drop them in"
+                          aria-label="Attach a file"
+                          onClick={() => {
+                            setAddOpen(false);
+                            picker.current?.click();
+                          }}
+                        />
+                      )}
+                      {onAddFolder && (
+                        <MenuRow
+                          icon={<FolderPlus className="size-3.5" />}
+                          label="Add a folder"
+                          detail="A folder on this computer for this session to work in"
+                          aria-label="Add a folder"
+                          onClick={() => {
+                            setAddOpen(false);
+                            onAddFolder();
+                          }}
+                        />
+                      )}
+                    </Popover.Content>
+                  </Popover.Portal>
+                </Popover.Root>
               )}
               <Popover.Root
                 open={pickerOpen}
@@ -1756,26 +1798,34 @@ export function Composer({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`shrink-0 rounded-[4px] bg-muted text-xs font-medium ${tight ? "gap-1 px-2" : "gap-1.5"}`}
+                    className="min-w-0 shrink gap-1.5 rounded-[4px] bg-muted text-xs font-medium"
                     aria-label="Choose model (Ctrl+K)"
                   >
-                    {!tight && <Sparkles className="size-3.5" />}
-                    <span>{modeLabel ?? model.name}</span>
-                    {routing?.once && <span className="text-muted-foreground">· once</span>}
+                    <Sparkles className="size-3.5 @max-[560px]:hidden" />
+                    <span className="shrink-0">{modeLabel ?? model.name}</span>
+                    {routing?.once && (
+                      <span className="shrink-0 text-muted-foreground">· once</span>
+                    )}
                     {preview && (
-                      <span className="text-muted-foreground" aria-label={`Auto picks ${preview}`}>
+                      <span
+                        className="min-w-0 truncate text-muted-foreground"
+                        aria-label={`Auto picks ${preview}`}
+                      >
                         → {preview}
                       </span>
                     )}
-                    {!collapsed && (previewTier ?? model.tier) && (
-                      <Tier tier={(previewTier ?? model.tier) as NonNullable<typeof model.tier>} />
+                    {(previewTier ?? model.tier) && (
+                      <Tier
+                        className="shrink-0 @max-[560px]:hidden"
+                        tier={(previewTier ?? model.tier) as NonNullable<typeof model.tier>}
+                      />
                     )}
-                    {!tight && <ChevronDown className="size-3" />}
-                    {!collapsed && (
-                      <span className="ml-1 hidden min-[900px]:inline">
-                        <Hint>Ctrl K</Hint>
+                    {effortChoice && (
+                      <span className="shrink-0 text-muted-foreground" aria-label="Effort chosen">
+                        · {EFFORT_LABELS[effortChoice]}
                       </span>
                     )}
+                    <ChevronDown className="size-3 shrink-0" />
                   </Button>
                 </Popover.Trigger>
                 <Popover.Portal>
@@ -1784,7 +1834,7 @@ export function Composer({
                     side="top"
                     sideOffset={12}
                     collisionPadding={16}
-                    className="z-30 w-[390px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl"
+                    className="z-30 flex max-h-[var(--radix-popover-content-available-height)] w-[390px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl [&>*]:shrink-0"
                     aria-label="Model picker"
                     onKeyDown={(event) => {
                       const buttons = Array.from(
@@ -1854,7 +1904,7 @@ export function Composer({
                       <span>{routing ? "Or pin a model" : "Model / context"}</span>
                       <span>Input / output per 1M</span>
                     </div>
-                    <div className="max-h-[45dvh] overflow-y-auto p-2">
+                    <div className="max-h-[45dvh] min-h-16 shrink! overflow-y-auto p-2">
                       {[...new Set(models.map((item) => item.providerName))].map((provider) => (
                         <div key={provider}>
                           {filtered.some((item) => item.providerName === provider) && (
@@ -1899,6 +1949,13 @@ export function Composer({
                         </p>
                       )}
                     </div>
+                    {effortView && !search && (
+                      <EffortOptions
+                        effort={effortView}
+                        value={effortChoice}
+                        onChange={setEffortChoice}
+                      />
+                    )}
                     <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[10px] text-muted-foreground">
                       <Command className="size-3" />
                       <span className="flex-1">
@@ -1921,11 +1978,29 @@ export function Composer({
                   </Popover.Content>
                 </Popover.Portal>
               </Popover.Root>
-              {!tight && searchButton(false)}
+              {optionsMenu}
+              {webSearch === true &&
+                onToggleWebSearch &&
+                onChip(
+                  <Globe className="size-3" aria-hidden />,
+                  "Search",
+                  "Turn off web search",
+                  onToggleWebSearch,
+                )}
+              {comparing &&
+                compare &&
+                onChip(
+                  <Columns2 className="size-3" aria-hidden />,
+                  `Compare · ${String(compare.selected.length)}`,
+                  "Stop comparing",
+                  () => {
+                    compare.onChange([]);
+                  },
+                )}
               {folders.map((f) => (
                 <span
                   key={f.id}
-                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-[4px] bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
                   title={f.own ? f.path : `${f.path} (from the project)`}
                 >
                   <FolderOpen className="size-3 shrink-0" />
@@ -1944,77 +2019,26 @@ export function Composer({
                   )}
                 </span>
               ))}
-              {onAddFolder && (
-                <Tip label="Pick a folder on this computer for this chat to work in">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Add a folder"
-                    className="shrink-0 gap-1.5 text-xs text-muted-foreground"
-                    onClick={onAddFolder}
-                  >
-                    <FolderPlus className="size-3.5" />
-                    {folders.length === 0 && (
-                      <span className="hidden min-[900px]:inline">Folder</span>
-                    )}
-                  </Button>
-                </Tip>
-              )}
-              {onToggleCode && (
-                <Tip
-                  label={
-                    code
-                      ? "Code on: the next message starts a run that works in this chat's folders"
-                      : "Code off"
-                  }
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Coding run"
-                    aria-pressed={code}
-                    className={`shrink-0 gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                    onClick={onToggleCode}
-                  >
-                    <SquareTerminal className="size-3.5" />
-                    <span className="hidden min-[900px]:inline">Code</span>
-                  </Button>
-                </Tip>
-              )}
-              {onToggleWork && (
-                <Tip
-                  label={
-                    work
-                      ? "Work on: the next message starts a run on the documents in this chat's folders"
-                      : "Work off"
-                  }
-                >
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label="Work run"
-                    aria-pressed={work}
-                    className={`shrink-0 gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                    onClick={onToggleWork}
-                  >
-                    <Briefcase className="size-3.5" />
-                    <span className="hidden min-[900px]:inline">Work</span>
-                  </Button>
-                </Tip>
-              )}
-              {!collapsed && extras(false)}
             </div>
-            {/* Outside the clipped row, so it can't be cut off itself. */}
-            {collapsed && moreMenu}
-            {/* Outside the row, which clips what spills out of it. */}
-            {!collapsed && showCompare && compareOpen && (
-              <span
-                role="group"
-                aria-label="Models to compare"
-                className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
+            {estimated !== null && (
+              <Tip
+                label={
+                  overCap
+                    ? "More than what's left of this session's cap: the run would stop when it reaches it"
+                    : streaming
+                      ? "What this message has cost so far"
+                      : "Estimated cost of the next message"
+                }
               >
-                {compareList}
-              </span>
+                <span
+                  tabIndex={0}
+                  aria-label="Estimated cost"
+                  className={`shrink-0 text-[12px] whitespace-nowrap tabular-nums ${overCap ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                >
+                  {streaming ? "so far " : "≈ "}
+                  {money(estimated)}
+                </span>
+              </Tip>
             )}
             {streaming ? (
               <Tip label="Stop · Esc">
@@ -2029,7 +2053,7 @@ export function Composer({
                 </Button>
               </Tip>
             ) : (
-              <Tip label="Send message · Enter">
+              <Tip label="Send · Enter. Shift+Enter for a new line">
                 <Button
                   size="icon"
                   className="shrink-0 rounded-md"
@@ -2051,73 +2075,59 @@ export function Composer({
             </span>
           </div>
         ) : (
-          estimated !== null && (
-            <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[760px]:order-last @max-[760px]:pt-1 @max-[760px]:pb-0 @max-[760px]:text-left">
-              {streaming ? "so far" : "next message"}
-              <span
-                className="block @max-[760px]:ml-1.5 @max-[760px]:inline"
-                aria-label="Estimated cost"
-              >
-                ≈ <Money micro={estimated} className="text-[13px]" />
-              </span>
-            </div>
-          )
+          <div aria-hidden className="@max-[760px]:hidden" />
         )}
-        <div className="mt-2.5 flex items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground">
-          <span className="flex items-center gap-1.5">
-            {streaming ? (
-              <>
-                <LoaderCircle className="size-2.5 animate-spin" />
-                Generating response
-              </>
-            ) : status ? (
-              <span
-                role="status"
-                className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
-              >
-                <CircleAlert className="size-2.5" />
-                {status}
-              </span>
-            ) : compare && comparing ? (
-              <span aria-label="Compare cost" className="flex items-center gap-1.5">
-                <Columns2 className="size-2.5" />
-                Sends to {compare.selected.length} models
-                {compare.estimate(text) ? ` · ${compare.estimate(text) ?? ""} in all` : ""}
-              </span>
-            ) : (
-              <>
-                <span className="size-1 rounded-full bg-muted-foreground/60" />
-                Your keys. Your conversations.
-              </>
-            )}
-          </span>
-          {context && context.used > 0 && (
-            <Tip
-              label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
-            >
-              <span
-                tabIndex={0}
-                aria-label="Context used"
-                className={`flex items-center gap-1.5 font-mono ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
-              >
-                <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
-                  <span
-                    className="block h-full bg-current"
-                    style={{
-                      width: `${String(Math.min(100, (context.used / context.window) * 100))}%`,
-                    }}
-                  />
+        {(streaming || status || comparing || guide || (context && context.used > 0)) && (
+          <div className="col-start-1 mt-2 flex items-center justify-between gap-2 px-1 text-[11px] text-muted-foreground">
+            <span className="flex min-w-0 items-center gap-1.5">
+              {streaming ? (
+                <>
+                  <LoaderCircle className="size-2.5 animate-spin" />
+                  Generating response
+                </>
+              ) : status ? (
+                <span
+                  role="status"
+                  className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
+                >
+                  <CircleAlert className="size-2.5" />
+                  {status}
                 </span>
-                {String(Math.min(100, Math.round((context.used / context.window) * 100)))}% of{" "}
-                {compact(context.window)}
-              </span>
-            </Tip>
-          )}
-          <span className="flex items-center gap-1.5">
-            <CornerDownLeft className="size-2.5" />
-            Enter to send<span className="mx-1 opacity-30">/</span>Shift+Enter for a new line
-          </span>
-        </div>
+              ) : compare && comparing ? (
+                <span aria-label="Compare cost" className="flex items-center gap-1.5">
+                  <Columns2 className="size-2.5" />
+                  Sends to {compare.selected.length} models
+                  {compare.estimate(text) ? ` · ${compare.estimate(text) ?? ""} in all` : ""}
+                </span>
+              ) : guide ? (
+                <span role="note">{guide}</span>
+              ) : null}
+            </span>
+            {context && context.used > 0 && (
+              <Tip
+                label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
+              >
+                <span
+                  tabIndex={0}
+                  aria-label="Context used"
+                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[10px] ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
+                >
+                  <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
+                    <span
+                      className="block h-full bg-current"
+                      style={{
+                        width: `${String(Math.min(100, (context.used / context.window) * 100))}%`,
+                      }}
+                    />
+                  </span>
+                  {String(Math.min(100, Math.round((context.used / context.window) * 100)))}% of{" "}
+                  {compact(context.window)}
+                </span>
+              </Tip>
+            )}
+          </div>
+        )}
+        {footnote && <div className="col-start-1 mt-1.5 min-w-0 px-1">{footnote}</div>}
       </div>
     </footer>
   );

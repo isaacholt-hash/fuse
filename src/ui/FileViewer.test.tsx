@@ -66,7 +66,6 @@ test("WF-05: each file a run made has Preview; a deleted or undone one doesn't",
   render(
     <Tooltip.Provider>
       <Messages
-        modelName="Auto"
         startedAt={0}
         onRetry={() => undefined}
         onPreviewChange={onPreviewChange}
@@ -109,7 +108,6 @@ test("WF-06: a plan to approve: every move ticked, allow all, allow some, or den
   render(
     <Tooltip.Provider>
       <Messages
-        modelName="Auto"
         startedAt={0}
         onRetry={() => undefined}
         onApprove={onApprove}

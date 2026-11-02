@@ -198,7 +198,10 @@ test("3. a Code session with a project and a cost cap runs, named after its task
   await step("code-session", async () => {
     await app.clear(composer);
     await app.choose("Project or repository", PROJECT);
+    // M10 step 26: the cap is in Run settings; closing it saves what was typed.
+    await app.click(button("Run settings"));
     await app.type(byLabel("Cost cap"), "0.50");
+    await app.press("Escape");
     await send("E2E edit checklist.txt");
     await app.click(
       '//*[@aria-label="Make this change?"]//button[@aria-label="Allow once"]',

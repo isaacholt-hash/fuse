@@ -1,4 +1,4 @@
-import { Laptop, Server, Sparkles } from "lucide-react";
+import { Laptop, Server } from "lucide-react";
 import type { ReactNode } from "react";
 import { money } from "./format";
 import { Mark, Money } from "./primitives";
@@ -61,13 +61,11 @@ export function Home({
   area,
   view,
   empty,
-  modelName,
   onOpen,
 }: {
   area: Area;
   view: HomeView;
   empty: { heading: string };
-  modelName: string;
   onOpen: (threadId: string) => void;
 }) {
   const busy =
@@ -83,16 +81,6 @@ export function Home({
         <Mark />
       </div>
       <h1 className="text-2xl font-medium tracking-tight">{empty.heading}</h1>
-      {!busy && (
-        <>
-          <div className="mt-7 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] text-muted-foreground">
-            <Sparkles className="size-3" />
-            {modelName}
-            <span className="mx-1 opacity-40">/</span>
-            <span>Ctrl+K to change</span>
-          </div>
-        </>
-      )}
     </div>
   );
   const runs = (title: string, state: "waiting" | "going", rows: HomeRun[]) =>

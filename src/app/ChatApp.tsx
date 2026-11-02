@@ -4144,14 +4144,19 @@ export function ChatApp({
     (p) => p.status !== "error" && (p.file?.mime.startsWith("image/") ?? p.url !== undefined),
   );
   const withSecrets = attachments.pending.find((p) => p.secrets);
-  const blocked =
+  // M10 step 26: a session works in a folder; until it has one, the composer says so quietly.
+  const sessionGuide =
     area === "code" && !codeAvailable
-      ? "Pick a project with a folder, or add a folder, first: a session works in one."
-      : sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
-        ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
-        : withSecrets
-          ? `${withSecrets.name} looks like it holds ${describeSecrets(withSecrets.secrets ?? { lines: [], kinds: [] })}. Remove those lines or send it anyway.`
-          : null;
+      ? activeProjectId
+        ? "This project has no folder yet. Add one with +, or in the project's settings."
+        : "Choose a project to start, or add a folder with +. A session works in its folder."
+      : null;
+  const blocked =
+    sendingImages && mode.kind === "model" && !model.capabilities.includes("vision")
+      ? `${model.displayName} can't read images. Pick another model (Ctrl+K).`
+      : withSecrets
+        ? `${withSecrets.name} looks like it holds ${describeSecrets(withSecrets.secrets ?? { lines: [], kinds: [] })}. Remove those lines or send it anyway.`
+        : null;
 
   useEffect(() => {
     listBudgets(db, tenant).then(setBudgets, report);
@@ -4393,12 +4398,6 @@ export function ChatApp({
   })();
   const tierDescription = (id: "balanced" | "best") =>
     policy.tiers.find((t) => t.id === id)?.description ?? "";
-  const modeName =
-    mode.kind === "auto"
-      ? "Auto"
-      : mode.kind === "tier"
-        ? `${policy.tiers.find((t) => t.id === mode.tier)?.label ?? mode.tier} tier`
-        : model.displayName;
 
   const showRename = () => {
     if (!thread) return;
@@ -6069,7 +6068,6 @@ export function ChatApp({
                   <Messages
                     key={selectedId ?? "new"}
                     messages={withEscalation}
-                    modelName={modeName}
                     empty={emptyState(area)}
                     {...(homeShown
                       ? {
@@ -6077,7 +6075,6 @@ export function ChatApp({
                             <Home
                               area={area}
                               empty={emptyState(area)}
-                              modelName={modeName}
                               onOpen={select}
                               view={
                                 homeData
@@ -6179,17 +6176,6 @@ export function ChatApp({
                       add memories. It&apos;s deleted when you leave it.
                     </p>
                   )}
-                  <MemoryBar
-                    count={proposals.length}
-                    checking={checkingMemory}
-                    skipped={skippedSecrets}
-                    onReview={() => {
-                      setReviewOpen(true);
-                    }}
-                    onDismissSkipped={() => {
-                      setSkippedSecrets([]);
-                    }}
-                  />
                   <HulkRuns
                     address={hulkStatus?.address ?? null}
                     runs={handoversHere.map((h) => {
@@ -6203,27 +6189,61 @@ export function ChatApp({
                       };
                     })}
                   />
-                  {area === "code" && selectedId === null && (
-                    <NewSessionBar
-                      projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-                      projectId={activeProjectId}
-                      onProject={(projectId) => {
-                        newChat(projectId);
-                      }}
-                      where={runsWhere}
-                      onWhere={setDraftWhere}
-                      whereReasons={whereReasons}
-                      capMicroUsd={draftCap}
-                      defaultCapMicroUsd={
-                        activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD
-                      }
-                      onCap={setDraftCap}
-                      // The composer says what to do when there's no folder yet.
-                      noFolder={null}
-                    />
-                  )}
                   <Composer
                     key={`composer-${selectedId ?? "new"}`}
+                    {...(area === "code" && selectedId === null
+                      ? {
+                          top: (
+                            <NewSessionBar
+                              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                              projectId={activeProjectId}
+                              onProject={(projectId) => {
+                                newChat(projectId);
+                              }}
+                              where={runsWhere}
+                              onWhere={setDraftWhere}
+                              whereReasons={whereReasons}
+                              onOpenHulkSettings={() => {
+                                setView("settings");
+                              }}
+                              capMicroUsd={draftCap}
+                              defaultCapMicroUsd={
+                                activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD
+                              }
+                              onCap={setDraftCap}
+                              {...(runKind
+                                ? {
+                                    run: {
+                                      kind: runKind,
+                                      onKind: (kind: "code" | "work") => {
+                                        setCodeOn((all) => ({ ...all, [codeKey]: kind }));
+                                      },
+                                      mode: sessionMode,
+                                      onMode: setSessionMode,
+                                      branch: sessionBranch,
+                                      onBranch: (on: boolean) => {
+                                        setCodeBranch((all) => ({ ...all, [codeKey]: on }));
+                                      },
+                                    },
+                                  }
+                                : {})}
+                            />
+                          ),
+                        }
+                      : {})}
+                    footnote={
+                      <MemoryBar
+                        count={proposals.length}
+                        checking={checkingMemory}
+                        skipped={skippedSecrets}
+                        onReview={() => {
+                          setReviewOpen(true);
+                        }}
+                        onDismissSkipped={() => {
+                          setSkippedSecrets([]);
+                        }}
+                      />
+                    }
                     model={{ ...modelOption(model), ...tierProp(model) }}
                     models={options}
                     estimate={estimateDraft}
@@ -6289,6 +6309,10 @@ export function ChatApp({
                     }}
                     attachments={pendingViews}
                     blocked={blocked}
+                    guide={sessionGuide}
+                    {...(area === "code" && selectedId === null
+                      ? { placeholder: "Describe your task…" }
+                      : {})}
                     onAddFiles={attachments.add}
                     onRemoveAttachment={attachments.remove}
                     onAttachmentMode={attachments.setMode}
@@ -6310,9 +6334,9 @@ export function ChatApp({
                           onRemoveFolder: removeChatFolder,
                         }
                       : {})}
-                    {...(area === "code" && codeAvailable
+                    {...(area === "code" && codeAvailable && selectedId !== null
                       ? {
-                          // M10 step 16: in the Code area these are the session's Kind, mode and
+                          // M10 step 16 (step 26: a new session sets these in the row above): in the Code area these are the session's Kind, mode and
                           // branch; a session always runs, so Kind picks Code or Work, never off.
                           codeMode: sessionMode,
                           onCodeMode: setSessionMode,

@@ -4,13 +4,27 @@ import { Composer, Messages } from "./Conversation";
 
 afterEach(cleanup);
 
+const hadObserver = "ResizeObserver" in globalThis;
+beforeAll(() => {
+  // jsdom has none; Radix's popover measures with one.
+  if (!hadObserver) {
+    globalThis.ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
+});
+afterAll(() => {
+  if (!hadObserver) Reflect.deleteProperty(globalThis, "ResizeObserver");
+});
+
 test("LL-01: an answer from a fixed rule says no model was asked, at $0", () => {
   render(
     <Tooltip.Provider>
       <Messages
         startedAt={0}
         onRetry={() => undefined}
-        modelName="Auto"
         messages={[
           { id: "q", role: "user", content: "convert 5 km to miles", status: "complete" },
           {
@@ -76,8 +90,11 @@ test("WF-02: a chat's folders show in the composer; its own can be removed, its 
   fireEvent.click(screen.getByRole("button", { name: "Remove folder notes" }));
   expect(onRemoveFolder).toHaveBeenCalledWith("a");
   expect(screen.queryByRole("button", { name: "Remove folder app" })).toBeNull();
+  // M10 step 26: adding a folder is under "+", the run's kind and mode under Options.
+  fireEvent.click(screen.getByRole("button", { name: "Add" }));
   fireEvent.click(screen.getByRole("button", { name: "Add a folder" }));
   expect(onAddFolder).toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Options" }));
   // WF-01: Work sits beside Code; with Work on, its permission mode can be picked.
   expect(screen.getByRole("button", { name: "Work run" }).getAttribute("aria-pressed")).toBe(
     "true",

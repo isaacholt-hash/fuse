@@ -101,6 +101,8 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     await step("where", async () => {
       await app.chord("n");
       await app.choose("Project or repository", PROJECT);
+      // M10 step 26: where it runs is a menu.
+      await app.click('//button[starts-with(@aria-label, "Where it runs:")]');
       const here = '//*[@aria-label="Where it runs"]//button[normalize-space()="This computer"]';
       await app.find(here);
       const greyed = await app.run<{ disabled: boolean; title: string }>(`
