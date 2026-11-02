@@ -13,7 +13,7 @@ import { createRun, getRun, setRunBranch, setRunStatus, type Run } from "@/stora
 import type { SqlDb } from "@/storage/sql";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { getThread } from "@/storage/threads";
-import { repoOrigin } from "./handover";
+import { gitAuthor, repoOrigin } from "./handover";
 
 const t = DEFAULT_TENANT;
 const model =
@@ -105,7 +105,12 @@ async function handedOver(serverDb: SqlDb, files: ReturnType<typeof memoryFiles>
     mode: "ask",
     kind: "code",
     newBranch: true,
-    handover: { exportSha: sha256, remote: "git@github.com:o/site.git", branch: "main" },
+    handover: {
+      exportSha: sha256,
+      remote: "git@github.com:o/site.git",
+      branch: "main",
+      author: { name: "Isaac Desk", email: "desk@example.com" },
+    },
   });
   return { project, requestId };
 }
@@ -129,8 +134,8 @@ test("a handed-over run: the project comes over, the run works in HULK's clone, 
         git,
       }),
     start: branchRun,
-    clone: (remote, branch) => {
-      cloned.push(`${remote} ${branch}`);
+    clone: (remote, branch, author) => {
+      cloned.push(`${remote} ${branch} as ${author?.name ?? "nobody"} <${author?.email ?? ""}>`);
       return Promise.resolve("/home/daywalker/.local/share/fuse-server/data/work/site-1234");
     },
     pollMs: 1,
@@ -139,7 +144,8 @@ test("a handed-over run: the project comes over, the run works in HULK's clone, 
   const { project, requestId } = await handedOver(db, files);
   await runner.tick();
 
-  expect(cloned).toEqual(["git@github.com:o/site.git main"]);
+  // HULK's copy commits as the desktop's git identity (live check F3).
+  expect(cloned).toEqual(["git@github.com:o/site.git main as Isaac Desk <desk@example.com>"]);
   expect((await getProject(db, t, project.id))?.name).toBe("Site");
   const req = await getRequest(db, t, requestId);
   const run = await getRun(db, t, req?.runId ?? "");
@@ -306,5 +312,21 @@ describe("where HULK starts from", () => {
         "f1",
       ),
     ).rejects.toThrow("no origin remote");
+  });
+});
+
+describe("who HULK commits as", () => {
+  it("is this computer's git identity, or nobody when it has none", async () => {
+    const ident = { output: "Isaac Desk <desk@example.com> 1700000000 +0000\n", exitCode: 0 };
+    const { git, ran } = fakeGit({ "var GIT_AUTHOR_IDENT": ident });
+    await expect(gitAuthor(git, "f1")).resolves.toEqual({
+      name: "Isaac Desk",
+      email: "desk@example.com",
+    });
+    expect(ran).toEqual([{ folderId: "f1", args: ["var", "GIT_AUTHOR_IDENT"] }]);
+    const none = { output: "Author identity unknown", exitCode: 128 };
+    await expect(gitAuthor(fakeGit({ "var GIT_AUTHOR_IDENT": none }).git, "f1")).resolves.toBe(
+      null,
+    );
   });
 });

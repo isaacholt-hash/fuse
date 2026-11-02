@@ -159,3 +159,13 @@ test("M10 step 11: a working run says how long it has run and can be stopped fro
   fireEvent.click(screen.getByRole("button", { name: "Stop this work run" }));
   expect(onStopRun).toHaveBeenCalledWith("r1");
 });
+
+test("live check F3: a finished handover says whether it pushed", () => {
+  const note = "Couldn't commit on fuse/x-1: Author identity unknown";
+  show({ ...base, status: "done", branch: "fuse/x-1", note });
+  expect(screen.getByText(note)).toBeTruthy();
+  cleanup();
+  // A run that just finished has no note, and shows none.
+  show({ ...base, status: "done" });
+  expect(screen.queryByText(/Pushed|Couldn't/)).toBeNull();
+});

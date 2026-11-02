@@ -148,14 +148,15 @@ async function startServer(bin: string): Promise<string> {
     bin,
     ["--port", String(port), "--home", join(ROOT, "server"), "--ui", ui, "--test-keys-in-memory"],
     {
-      // A CI machine may have no git identity, and handed-over runs commit on HULK.
+      // No git identity of its own, like HULK: handed-over runs commit as the desktop.
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([k]) => !/^GIT_(AUTHOR|COMMITTER)_/.test(k)),
+        ),
         FUSE_SERVER_TEST: "1",
-        GIT_AUTHOR_NAME: "FUSE bench",
-        GIT_AUTHOR_EMAIL: "bench@fuse.invalid",
-        GIT_COMMITTER_NAME: "FUSE bench",
-        GIT_COMMITTER_EMAIL: "bench@fuse.invalid",
+        // An empty global config: no user.name or user.email to fall back on.
+        GIT_CONFIG_GLOBAL: join(ROOT, "no-gitconfig"),
+        GIT_CONFIG_NOSYSTEM: "1",
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -509,6 +510,11 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
     expect(git(["--git-dir", bare, "show", `${pushed}:FOOTER.md`])).toBe("Made on HULK.");
     expect(git(["--git-dir", bare, "log", "--format=%s", "-n", "1", pushed])).toBe(
       "[bench c] Add a footer note.",
+    );
+    // Committed as the desktop's git identity (nodeGit's), as the server has none of its own
+    // (the live check's F3).
+    expect(git(["--git-dir", bare, "log", "--format=%an <%ae>|%cn", "-n", "1", pushed])).toBe(
+      "FUSE Benchmark <bench@example.invalid>|FUSE Benchmark",
     );
     // The project came over with its id, and the run worked in HULK's own copy.
     const projects = await page.db.select<{ name: string }>(

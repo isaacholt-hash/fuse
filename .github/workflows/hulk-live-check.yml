@@ -64,7 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           echo "### Answer HULK's push question" >> "$GITHUB_STEP_SUMMARY"
-          echo "Open https://hulk.tailb7c872.ts.net:4100/ → Runs, and say yes to pushing \`$BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
+          echo "Open https://hulk.tailb7c872.ts.net:4100/ → Code → Waiting, and say yes to pushing \`$BRANCH\`." >> "$GITHUB_STEP_SUMMARY"
           for i in $(seq 1 90); do
             if gh api "repos/${GITHUB_REPOSITORY}/branches/${BRANCH}" --silent 2>/dev/null; then
               echo "$BRANCH is on GitHub."
@@ -79,9 +79,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${BRANCH}" --jq '[.files[].filename] | join(" ")')
-          echo "Changed on $BRANCH: $files"
+          author=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BRANCH}" --jq '.commit.author.name')
+          echo "Changed on $BRANCH: $files (committed by $author)"
           gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}"
           echo "Deleted $BRANCH."
+          # The handover's git identity (the test's nodeGit), not HULK's: HULK has none.
+          [ "$author" = "FUSE Benchmark" ] || { echo "::error::Expected the handover's identity, got: $author"; exit 1; }
           case "$files" in
             live-check/*.md) echo "### Live check passed: \`$files\` pushed from HULK" >> "$GITHUB_STEP_SUMMARY" ;;
             *) echo "::error::Expected one file under live-check/, got: $files"; exit 1 ;;

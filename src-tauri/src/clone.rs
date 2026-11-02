@@ -99,26 +99,47 @@ async fn git(dir: Option<&Path>, args: &[&str]) -> Result<String, String> {
     }
 }
 
+/// Who commits in the clone: the desktop's own git identity, sent with the handover.
+pub(crate) struct Author {
+    pub name: String,
+    pub email: String,
+}
+
+fn check_author(a: &Author) -> Result<(), String> {
+    let ok = |s: &str| !s.trim().is_empty() && s.len() <= 200 && !s.chars().any(char::is_control);
+    if ok(&a.name) && ok(&a.email) && !a.email.contains(['<', '>']) {
+        Ok(())
+    } else {
+        Err("That git name or email can't be used for commits.".into())
+    }
+}
+
 /// Clones `remote` (or fetches it again) and checks out the tip of `branch` on it, detached.
 /// Returns the clone's folder. A clone with changes left in it is refused, not overwritten.
+/// With an `author`, the clone commits as them (HULK may have no git identity of its own).
 pub(crate) async fn repo_clone(
     ctx: &Ctx,
     remote: String,
     branch: String,
+    author: Option<Author>,
 ) -> Result<String, String> {
     let home = std::env::var_os("HOME").and_then(|h| std::fs::canonicalize(h).ok());
-    clone_at(ctx, &remote, &branch, home.as_deref()).await
+    clone_at(ctx, &remote, &branch, author.as_ref(), home.as_deref()).await
 }
 
 async fn clone_at(
     ctx: &Ctx,
     remote: &str,
     branch: &str,
+    author: Option<&Author>,
     home: Option<&Path>,
 ) -> Result<String, String> {
     let (remote, branch) = (remote.to_owned(), branch.to_owned());
     check_remote(&remote, home)?;
     check_branch(&branch)?;
+    if let Some(a) = author {
+        check_author(a)?;
+    }
     let dir = clone_dir(&ctx.data_dir, remote.trim());
     if dir.join(".git").exists() {
         let changed = git(Some(&dir), &["status", "--porcelain"]).await?;
@@ -153,6 +174,14 @@ async fn clone_at(
     )
     .await
     .map_err(|e| format!("{branch} isn't on {remote}: {e}"))?;
+    if let Some(a) = author {
+        // The clone's own config, so HULK's other repositories are untouched.
+        for (key, value) in [("user.name", &a.name), ("user.email", &a.email)] {
+            git(Some(&dir), &["config", key, value.trim()])
+                .await
+                .map_err(|e| format!("Couldn't set {key} in HULK's copy: {e}"))?;
+        }
+    }
     Ok(dir.to_string_lossy().into_owned())
 }
 
@@ -221,7 +250,9 @@ mod tests {
         // A local remote must be under the server's home: here, the test folder.
         let home = std::fs::canonicalize(&base).unwrap();
         let remote = origin.to_string_lossy().into_owned();
-        let dir = clone_at(&ctx, &remote, "main", Some(&home)).await.unwrap();
+        let dir = clone_at(&ctx, &remote, "main", None, Some(&home))
+            .await
+            .unwrap();
         assert_eq!(
             std::fs::read_to_string(Path::new(&dir).join("a.txt")).unwrap(),
             "one"
@@ -229,16 +260,51 @@ mod tests {
 
         std::fs::write(origin.join("a.txt"), "two").unwrap();
         g(&origin, &["commit", "-q", "-am", "two"]);
-        let again = clone_at(&ctx, &remote, "main", Some(&home)).await.unwrap();
+        let again = clone_at(&ctx, &remote, "main", None, Some(&home))
+            .await
+            .unwrap();
         assert_eq!(again, dir);
         assert_eq!(
             std::fs::read_to_string(Path::new(&dir).join("a.txt")).unwrap(),
             "two"
         );
 
-        assert!(clone_at(&ctx, &remote, "nope", Some(&home)).await.is_err());
+        assert!(
+            clone_at(&ctx, &remote, "nope", None, Some(&home))
+                .await
+                .is_err()
+        );
+
+        // With the desktop's identity, the clone commits as them.
+        let me = Author {
+            name: "Ada Desk".into(),
+            email: "ada@example.com".into(),
+        };
+        clone_at(&ctx, &remote, "main", Some(&me), Some(&home))
+            .await
+            .unwrap();
+        // Read from the clone's own config: git.rs's tests set GIT_* for the whole process.
+        let local = |key: &'static str| {
+            let dir = dir.clone();
+            async move {
+                git(Some(Path::new(&dir)), &["config", "--local", key])
+                    .await
+                    .unwrap()
+            }
+        };
+        assert_eq!(local("user.name").await, "Ada Desk");
+        assert_eq!(local("user.email").await, "ada@example.com");
+        let bad = Author {
+            name: "x\n[core]".into(),
+            email: "a@b".into(),
+        };
+        assert!(
+            clone_at(&ctx, &remote, "main", Some(&bad), Some(&home))
+                .await
+                .is_err()
+        );
         std::fs::write(Path::new(&dir).join("left.txt"), "x").unwrap();
-        let e = clone_at(&ctx, &remote, "main", Some(&home))
+        let e = clone_at(&ctx, &remote, "main", None, Some(&home))
             .await
             .unwrap_err();
         assert!(e.contains("has changes"), "{e}");
