@@ -372,8 +372,11 @@ export function createAnthropicAdapter(deps: {
                 yield { type: "text", text: d.text };
               } else if (d?.type === "citations_delta" && d.citation?.url) {
                 yield { type: "citation", url: d.citation.url, title: d.citation.title ?? null };
+              } else if (d?.type === "thinking_delta" && d.thinking) {
+                // M10 step 22: the thinking text where the API sends any (usually it doesn't).
+                yield { type: "reasoning", text: d.thinking };
               }
-              break; // thinking/signature/tool-input deltas aren't shown
+              break; // signature and tool-input deltas aren't shown
             }
             case "message_delta": {
               const d = data.delta as { stop_reason?: string | null } | undefined;

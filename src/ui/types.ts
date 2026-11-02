@@ -67,11 +67,26 @@ export interface PendingAttachment {
   secrets?: { summary: string; canRemove: boolean };
 }
 
+/** What a message shows about its reasoning (M10 step 22, RT-08). */
+export interface ReasoningView {
+  /** Still thinking: the count and cost climb, and Stop is offered. */
+  live: boolean;
+  tokens: number;
+  /** The count is guessed from streamed text; the real one comes with the answer. */
+  estimated: boolean;
+  costMicro: number;
+  seconds: number;
+  /** The provider's summary of the reasoning; null where it keeps it hidden. */
+  summary: string | null;
+}
+
 export interface MessageView {
   id: string;
   role: "user" | "assistant";
   content: string;
   status: "complete" | "streaming" | "stopped" | "error";
+  /** The model's reasoning on this answer: live while it thinks, then its size and cost. */
+  reasoning?: ReasoningView;
   providerName?: string;
   /** Model display name. */
   model?: string;

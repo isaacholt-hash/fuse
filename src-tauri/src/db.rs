@@ -311,6 +311,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "thread_purge",
         sql: include_str!("../migrations/0055_thread_purge.sql"),
     },
+    MigrationFile {
+        version: 56,
+        description: "reasoning_summary",
+        sql: include_str!("../migrations/0056_reasoning_summary.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same

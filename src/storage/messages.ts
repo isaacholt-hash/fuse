@@ -45,6 +45,8 @@ export interface Message {
   escalatedFromId: string | null;
   /** Thumbs up or down on an answer (CH-07); null when not rated. */
   feedback: "up" | "down" | null;
+  /** M10 step 22: the provider's summary of the reasoning, where it sends one. */
+  reasoningSummary: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -70,6 +72,7 @@ interface MessageRow extends UsageRow {
   best_cost_micro_usd: number | null;
   escalated_from_id: string | null;
   feedback: "up" | "down" | null;
+  reasoning_summary: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -100,6 +103,7 @@ const toMessage = (r: MessageRow): Message => ({
   bestCostMicroUsd: r.best_cost_micro_usd,
   escalatedFromId: r.escalated_from_id,
   feedback: r.feedback,
+  reasoningSummary: r.reasoning_summary,
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -162,6 +166,8 @@ export interface MessageResult {
   errorMessage?: string | null;
   requestId?: string | null;
   bestCostMicroUsd?: number | null;
+  /** M10 step 22: the provider's reasoning summary, where it sent one. */
+  reasoningSummary?: string | null;
 }
 
 /** Final state of an assistant message once streaming ends (complete, stopped or error). */
@@ -174,7 +180,8 @@ export async function finishMessage(
   const usage = r.usage ?? EMPTY_USAGE;
   await db.execute(
     `UPDATE messages SET content = ?, status = ?, error_code = ?, error_message = ?, request_id = ?,
-       best_cost_micro_usd = ?, (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}), updated_at = ?
+       best_cost_micro_usd = ?, reasoning_summary = ?, (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}),
+       updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [
       r.content,
@@ -183,6 +190,7 @@ export async function finishMessage(
       r.errorMessage ?? null,
       r.requestId ?? null,
       r.bestCostMicroUsd ?? null,
+      r.reasoningSummary ?? null,
       ...usageValues(usage),
       Date.now(),
       tenant.workspaceId,
@@ -400,7 +408,7 @@ export async function listMessages(
     `SELECT id, thread_id, parent_id, role, content, status, error_code, error_message, provider,
             model, ${USAGE_COLUMNS}, request_id, pinned_mode, tier, route_rule_id, route_reason,
             route_intent, route_complexity, best_cost_micro_usd, escalated_from_id, feedback,
-            created_at, updated_at
+            reasoning_summary, created_at, updated_at
      FROM messages
      WHERE workspace_id = ? AND thread_id = ? AND deleted_at IS NULL
      ORDER BY created_at, id`,

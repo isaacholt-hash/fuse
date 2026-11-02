@@ -144,6 +144,8 @@ export interface StreamDone {
 
 export type StreamEvent =
   | { type: "text"; text: string }
+  /** A piece of the provider's summary of its reasoning, as it thinks (M10 step 22). */
+  | { type: "reasoning"; text: string }
   /** The provider is running a server tool (e.g. a web search); null when it's done. */
   | { type: "status"; status: "searching" | null }
   /** A source the answer cites. */

@@ -63,8 +63,8 @@ export function ModelDefaultsSection({
       </div>
       <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
         For a tier, a model or a project: the most a model may write, how hard it reasons, and text
-        put before every prompt. A project&apos;s beat a model&apos;s, which beat a tier&apos;s.
-        &ldquo;Think harder&rdquo; still asks for the maximum. Temperature isn&apos;t offered:
+        put before every prompt. A project&apos;s beat a model&apos;s, which beat a tier&apos;s. The
+        composer&apos;s effort dial beats these for one message. Temperature isn&apos;t offered:
         neither provider accepts one on its current models.
       </p>
       {set.length > 0 && (

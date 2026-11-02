@@ -195,7 +195,8 @@ export function buildRequestBody(
     max_output_tokens: options.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
   };
   if (options.system) body.instructions = options.system;
-  if (options.effort) body.reasoning = { effort: options.effort };
+  // M10 step 22: a summary of the reasoning streams in (free), shown under the answer.
+  body.reasoning = { ...(options.effort ? { effort: options.effort } : {}), summary: "auto" };
   const tools: Record<string, unknown>[] = (options.tools ?? []).map(openaiTool);
   if (options.webSearch) {
     // An empty approximate location stops OpenAI defaulting results to the US.
@@ -344,6 +345,17 @@ export function createOpenAIAdapter(deps: {
               }
               break;
             }
+            case "response.reasoning_summary_text.delta": {
+              // M10 step 22: the reasoning summary as it's written.
+              if (typeof data.delta === "string" && data.delta) {
+                yield { type: "reasoning", text: data.delta };
+              }
+              break;
+            }
+            case "response.reasoning_summary_text.done":
+              // A summary may come in parts; a blank line separates them.
+              yield { type: "reasoning", text: "\n\n" };
+              break;
             case "response.completed":
               final = { response: data.response as ResponseObject, stopReason: "completed" };
               break;

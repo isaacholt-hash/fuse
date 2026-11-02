@@ -36,6 +36,8 @@ export interface RouteInfo {
   best: CatalogModel | null;
   /** Reasoning effort (RT-08); null = the model's default. */
   effort: Effort | null;
+  /** M10 step 22: `effort` was your choice on the dial for this message, so it beats defaults. */
+  effortChosen?: boolean;
 }
 
 /**

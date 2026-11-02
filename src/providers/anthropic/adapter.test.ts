@@ -133,6 +133,24 @@ test("usage: message_delta is cumulative, last value per field wins", () => {
   expect(merged).toEqual({ input_tokens: 10682, output_tokens: 510, cache_read_input_tokens: 0 });
 });
 
+test("M10 step 22: thinking text, when the API sends any, streams as reasoning events", async () => {
+  const stream = [
+    'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10,"output_tokens":1}}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"Comparing "}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"the quotes."}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig"}}\n\n',
+    'event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Marrakech."}}\n\n',
+    'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":40,"output_tokens_details":{"thinking_tokens":30}}}\n\n',
+    'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+  ].join("");
+  const { a } = adapter([sse(stream)]);
+  const { text, events } = await collect(a.streamChat(HI, "m", {}));
+  expect(text).toBe("Marrakech.");
+  expect(
+    events.filter((e) => e.type === "reasoning").map((e) => (e as { text: string }).text),
+  ).toEqual(["Comparing ", "the quotes."]);
+});
+
 test("thinking tokens are reported, cache reads and writes mapped", async () => {
   const stream = [
     'event: message_start\ndata: {"type":"message_start","message":{"usage":{"input_tokens":10,"cache_read_input_tokens":500,"cache_creation_input_tokens":40,"output_tokens":1}}}\n\n',

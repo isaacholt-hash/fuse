@@ -44,6 +44,9 @@ import { Markdown } from "./Markdown";
 import { ArtifactCard, DiffView } from "./Artifacts";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Tip } from "./primitives";
+import { EffortDial, type EffortView } from "./EffortDial";
+import { ReasoningLine } from "./ReasoningLine";
+import type { EffortLevel } from "@/catalog/catalog";
 import type {
   MessageView,
   RunView,
@@ -387,9 +390,12 @@ export function Messages({
   onApprove,
   onPreviewChange,
   onDelete,
+  onStop,
 }: {
   /** M10 step 18: deletes a message and everything under it; undo-able for a few seconds. */
   onDelete?: (id: string) => void;
+  /** M10 step 22: stops the answer being thought about (the reasoning line's Stop). */
+  onStop?: () => void;
   /** WF-05: opens a file a run made or changed in the side panel. */
   onPreviewChange?: (changeId: string) => void;
   /** M10 step 11: stops this run, wherever it is going. */
@@ -682,6 +688,12 @@ export function Messages({
                         {...(onUndoRun ? { onUndoRun } : {})}
                         {...(onApprove ? { onApprove } : {})}
                         {...(onPreviewChange ? { onPreviewChange } : {})}
+                      />
+                    )}
+                    {message.reasoning && !message.run && (
+                      <ReasoningLine
+                        reasoning={message.reasoning}
+                        {...(message.reasoning.live && onStop ? { onStop } : {})}
                       />
                     )}
                     {message.content && (
@@ -999,6 +1011,7 @@ export function Composer({
   onPickerOpen,
   onSelectModel,
   onSend,
+  effortFor,
   onStop,
   onSettings,
   attachments = [],
@@ -1039,8 +1052,10 @@ export function Composer({
   pickerOpen: boolean;
   onPickerOpen: (open: boolean) => void;
   onSelectModel: (model: ModelOption) => void;
-  /** `thinkHarder`: maximum reasoning effort for this one message (RT-08). */
-  onSend: (content: string, opts?: { thinkHarder: boolean }) => void;
+  /** `effort`: the level chosen on the dial for this one message (RT-08); null = routing's. */
+  onSend: (content: string, opts?: { effort: EffortLevel | null }) => void;
+  /** M10 step 22: what the dial shows for a draft: the usual level, the options, their cost. */
+  effortFor?: (text: string) => EffortView | null;
   onStop: () => void;
   onSettings: () => void;
   attachments?: PendingAttachment[];
@@ -1123,7 +1138,7 @@ export function Composer({
       field.current.style.height = `${String(Math.min(field.current.scrollHeight, window.innerHeight * 0.3))}px`;
     }
   }, [text]);
-  const [thinkHarder, setThinkHarder] = useState(false);
+  const [effortChoice, setEffortChoice] = useState<EffortLevel | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   // CH-12: "/" at the start of an empty message lists saved prompts, filtered by what follows.
   const slash = /^\/(\S*)$/.exec(text);
@@ -1143,13 +1158,14 @@ export function Composer({
   const comparing = (compare?.selected.length ?? 0) >= 2;
   const send = () => {
     if (!canSend || streaming || missingKey) return;
-    onSend(text.trim(), { thinkHarder });
+    onSend(text.trim(), { effort: effortChoice });
     setText("");
-    setThinkHarder(false);
+    setEffortChoice(null);
     field.current?.focus();
   };
   const modelPinned = !routing || routing.selected === null;
   const preview = routing?.selected === "auto" ? routing.preview(text) : null;
+  const effortView = effortFor?.(text) ?? null;
   const modeLabel = routing?.selected ? MODE_LABELS[routing.selected] : null;
   const filtered = models.filter((item) =>
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
@@ -1307,29 +1323,14 @@ export function Composer({
       {code && onRunOnHulk && runOnHulkReason && (
         <span className="shrink-0 text-[11px] text-muted-foreground">{runOnHulkReason}</span>
       )}
-      <Tip
-        label={
-          thinkHarder
-            ? "Think harder: maximum reasoning for this message (slower, more output tokens)"
-            : "Think harder for this message"
-        }
-      >
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Think harder"
-          aria-pressed={thinkHarder}
-          className={`shrink-0 gap-1.5 text-xs ${menu ? "justify-start" : ""} ${thinkHarder ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-          onClick={() => {
-            setThinkHarder((on) => !on);
-          }}
-        >
-          <Brain className="size-3.5" />
-          <span className={menu ? "" : "hidden min-[900px]:inline"}>
-            {menu ? `Think harder${thinkHarder ? " · on" : ""}` : "Think"}
-          </span>
-        </Button>
-      </Tip>
+      {effortView && (
+        <EffortDial
+          effort={effortView}
+          value={effortChoice}
+          onChange={setEffortChoice}
+          menu={menu}
+        />
+      )}
       {showCompare &&
         compare &&
         (menu ? (
@@ -1369,7 +1370,7 @@ export function Composer({
     </>
   );
   // Something in "More" is on, so its button says so.
-  const moreOn = thinkHarder || comparing || (tight && webSearch === true);
+  const moreOn = effortChoice !== null || comparing || (tight && webSearch === true);
   const moreMenu = (
     <Popover.Root open={moreOpen} onOpenChange={setMoreOpen}>
       <Popover.Trigger asChild>

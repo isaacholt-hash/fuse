@@ -34,6 +34,7 @@ const msg = (fields: Partial<Message>): Message => ({
   bestCostMicroUsd: null,
   escalatedFromId: null,
   feedback: null,
+  reasoningSummary: null,
   createdAt: 0,
   updatedAt: 0,
   ...fields,

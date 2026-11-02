@@ -192,6 +192,28 @@ test("switching model mid-thread sends the whole conversation to the new model",
   expect(msgs.map((m) => m.provider)).toEqual([null, "anthropic", null, "openai"]);
 });
 
+test("M10 step 22: the reasoning summary streams to the caller and is saved with the answer", async () => {
+  const { db, deps } = setup({
+    anthropic: async function* () {
+      yield { type: "reasoning", text: "Weighing the quotes." };
+      yield { type: "reasoning", text: " Checking trim." };
+      yield* answer("Marrakech.");
+    },
+  });
+  const thread = await createThread(db, t);
+  const seen: string[] = [];
+  await sendMessage(deps, {
+    threadId: thread.id,
+    model: claude,
+    text: "Which quote?",
+    onReasoning: (s) => seen.push(s),
+  });
+  expect(seen).toEqual(["Weighing the quotes.", "Weighing the quotes. Checking trim."]);
+  const [, a] = await listMessages(db, t, thread.id);
+  expect(a?.reasoningSummary).toBe("Weighing the quotes. Checking trim.");
+  expect(a?.content).toBe("Marrakech.");
+});
+
 test("M10 step 20: a long streamed answer writes a fixed number of rows, never one per chunk", async () => {
   const base = openTestDb();
   const { db, writes } = countingDb(base);
