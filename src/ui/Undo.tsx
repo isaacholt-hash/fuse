@@ -31,12 +31,3 @@ export function Undo({
     </div>
   );
 }
-
-/** What the notice says for a pending delete. */
-export function undoLabel(
-  pending: { kind: "thread"; title: string } | { kind: "messages"; count: number },
-): string {
-  if (pending.kind === "thread")
-    return pending.title ? `Deleted “${pending.title}”` : "Deleted the chat";
-  return pending.count === 1 ? "Deleted 1 answer" : `Deleted ${String(pending.count)} messages`;
-}

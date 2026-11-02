@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Undo, undoLabel } from "./Undo";
+import { undoLabel } from "@/app/usePendingDelete";
+import { Undo } from "./Undo";
 
 afterEach(cleanup);
 

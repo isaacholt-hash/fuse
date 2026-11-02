@@ -12,6 +12,15 @@ export type PendingDelete =
       count: number;
     };
 
+/** What the notice says for a pending delete. */
+export function undoLabel(
+  pending: { kind: "thread"; title: string } | { kind: "messages"; count: number },
+): string {
+  if (pending.kind === "thread")
+    return pending.title ? `Deleted “${pending.title}”` : "Deleted the chat";
+  return pending.count === 1 ? "Deleted 1 answer" : `Deleted ${String(pending.count)} messages`;
+}
+
 export interface PendingDeleteHandlers {
   /** Purges the rows for good (the toast ended, was dismissed, or another delete started). */
   finalise: (pending: PendingDelete) => Promise<void>;
@@ -25,7 +34,9 @@ export function usePendingDelete(ms: number, handlers: PendingDeleteHandlers) {
     null,
   );
   const latest = useRef(handlers);
-  latest.current = handlers;
+  useEffect(() => {
+    latest.current = handlers;
+  });
   const finish = useCallback((how: keyof PendingDeleteHandlers): Promise<void> => {
     const c = current.current;
     if (!c) return Promise.resolve();

@@ -157,8 +157,8 @@ import {
   type Notifier,
 } from "@/handover/watch";
 import { HulkRuns, HulkSection } from "@/ui/Hulk";
-import { Undo, undoLabel } from "@/ui/Undo";
-import { usePendingDelete } from "./usePendingDelete";
+import { Undo } from "@/ui/Undo";
+import { undoLabel, usePendingDelete } from "./usePendingDelete";
 import { AgentAuditSection } from "@/ui/AgentAudit";
 import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -6672,7 +6672,7 @@ export function ChatApp({
                 const id = deleting?.id;
                 setDeleting(null);
                 if (!id) return;
-                const title = deleting?.title ?? "";
+                const title = deleting.title;
                 controllers.current.get(id)?.abort();
                 if (selectedId === id) newChat();
                 deleteThread(db, tenant, id)
