@@ -260,6 +260,16 @@ import {
 import { sweepDeleted } from "@/storage/purge";
 import { startupCheck, startupNotice, type AppBuild } from "@/data/startupCheck";
 import { cleanUp, storageReport, type StoragePart } from "@/data/storage";
+import {
+  DEFAULT_NOTIFICATIONS,
+  getNotificationSettings,
+  mayNotify,
+  playChime,
+  setNotificationSettings,
+  type NotificationSettings,
+  type SystemKind,
+} from "@/data/notifications";
+import { NotificationsSection } from "@/ui/Notifications";
 import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
@@ -926,6 +936,28 @@ export function ChatApp({
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [budgetStates, setBudgetStates] = useState<BudgetState[]>([]);
   const [alerts, setAlerts] = useState<string[]>([]);
+  // M10 step 21 (PL-07): what may make a sound, a system notification or a banner, and the
+  // quiet hours. Read once at start; Settings → Notifications changes it.
+  const [notif, setNotif] = useState<NotificationSettings>(DEFAULT_NOTIFICATIONS);
+  const notifRef = useRef(notif);
+  useEffect(() => {
+    notifRef.current = notif;
+  }, [notif]);
+  useEffect(() => {
+    getNotificationSettings(db, tenant).then(setNotif, () => undefined);
+  }, [db, tenant]);
+  /**
+   * A system notification, if its switch is on and it isn't quiet hours, with the chime when
+   * that's on. Resolves true when nothing more should be shown: shown, or kept quiet.
+   */
+  const announce = useCallback(
+    (kind: SystemKind, title: string, body: string): Promise<boolean> => {
+      if (!mayNotify(notifRef.current, kind)) return Promise.resolve(true);
+      if (notifRef.current.sound) playChime();
+      return notify ? notify(title, body) : Promise.resolve(false);
+    },
+    [notify],
+  );
   const [overAsk, setOverAsk] = useState<{
     state: BudgetState;
     text: string;
@@ -2831,6 +2863,9 @@ export function ChatApp({
           done("no");
         });
         setApprovals((m) => new Map(m).set(req.runId, { request: req, answer: done }));
+        // M10 step 21 (PL-07): away from the window, a question is a system notification.
+        if (document.hidden)
+          void announce("waiting", "FUSE: Waiting for you", "A run needs your answer.");
       }),
   });
   const codeKey = selectedId ?? "draft";
@@ -3101,8 +3136,7 @@ export function ChatApp({
             if (threadId && threadId !== selectedRef.current && now !== "waiting")
               void markThreadUnread(db, tenant, threadId).then(refreshThreads, () => undefined);
             const title = `FUSE on HULK: ${said}`;
-            const show = notify ?? (() => Promise.resolve(false));
-            void show(title, task).then((shown) => {
+            void announce(now === "waiting" ? "waiting" : "finished", title, task).then((shown) => {
               // Where the webview can't show one, the app says so itself.
               if (!shown && live) setAlerts((a) => [...a, `${title}: ${task}`]);
             });
@@ -3119,7 +3153,7 @@ export function ChatApp({
     };
     // `handovers` is read through `allKey`: the same runs, the same poll.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hulkLink, hulkPaired, allKey, tenant, notify, notifyMs]);
+  }, [hulkLink, hulkPaired, allKey, tenant, announce, notifyMs]);
   /** "Run on HULK": the draft goes to HULK as a Code run in the project's repository. */
   const repoFolder = sharedFolders[0];
   // M10 step 16: where a session can run, and why not when it can't (PL-02).
@@ -3853,6 +3887,23 @@ export function ChatApp({
   useEffect(() => {
     if (runStatusKey) void refreshThreads().catch(() => undefined);
   }, [runStatusKey, refreshThreads]);
+  // M10 step 21 (PL-07): a run that ended while the window was away is a system notification.
+  const runStatusesSeen = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const r of threadRuns.values()) {
+      const before = runStatusesSeen.current.get(r.run.id);
+      runStatusesSeen.current.set(r.run.id, r.run.status);
+      const ended =
+        r.run.status === "done" || r.run.status === "error" || r.run.status === "stopped";
+      if (before === "running" && ended && document.hidden) {
+        const said =
+          r.run.status === "done" ? "Done" : r.run.status === "error" ? "Failed" : "Stopped";
+        void announce("finished", `FUSE: ${said}`, r.run.task);
+      }
+    }
+    // `threadRuns` is read when a status changes (`runStatusKey`), not on every progress tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runStatusKey, announce]);
   // The open chat's result is seen as it arrives (Mark as unread, seenAt 0, is left alone).
   const openLatest = selectedId ? latestRuns.get(selectedId) : undefined;
   const openSeenAt = selectedId ? threads.find((t) => t.id === selectedId)?.seenAt : undefined;
@@ -4086,7 +4137,11 @@ export function ChatApp({
         `Today's spend (${money(spentToday)}) is more than three times your daily average of the last two weeks.`,
       );
     }
-    if (fresh.length > 0) setAlerts((a) => [...a, ...fresh]);
+    if (fresh.length > 0) {
+      // M10 step 21: the bar has its switch; away from the window it's a notification too.
+      if (notifRef.current.banners.budget) setAlerts((a) => [...a, ...fresh]);
+      if (document.hidden) void announce("budget", "FUSE: Budget", fresh[0] ?? "");
+    }
   };
   useEffect(() => {
     if (view !== "settings") return;
@@ -4617,7 +4672,7 @@ export function ChatApp({
       {/* The desktop window is at least 640 wide; a phone's browser can be narrower (M10). */}
       <div className="flex h-dvh min-h-[480px] flex-col overflow-hidden bg-background text-foreground sm:min-w-[640px]">
         <UpdateBar
-          update={appUpdate.update}
+          update={notif.banners.update ? appUpdate.update : { kind: "none" }}
           onRestart={appUpdate.restart}
           onDismiss={appUpdate.dismiss}
         />
@@ -4667,37 +4722,40 @@ export function ChatApp({
               </Button>
             </div>
           ))}
-        {changeHint !== null && changeHint === selectedId && area === "chat" && (
-          <div
-            aria-label="Continue in Code"
-            className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
-          >
-            <ArrowRightLeft className="size-3.5 text-sky-600" />
-            <span className="flex-1">
-              This looks like a change to files. A chat reads them but doesn&apos;t change them.
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                handOffTo("code");
-              }}
+        {notif.banners.continueInCode &&
+          changeHint !== null &&
+          changeHint === selectedId &&
+          area === "chat" && (
+            <div
+              aria-label="Continue in Code"
+              className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
             >
-              Continue in Code
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Dismiss Continue in Code"
-              onClick={() => {
-                setChangeHint(null);
-              }}
-            >
-              <X />
-            </Button>
-          </div>
-        )}
-        {!suggestionNoticeOff && ruleSuggestions[0] && (
+              <ArrowRightLeft className="size-3.5 text-sky-600" />
+              <span className="flex-1">
+                This looks like a change to files. A chat reads them but doesn&apos;t change them.
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  handOffTo("code");
+                }}
+              >
+                Continue in Code
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Dismiss Continue in Code"
+                onClick={() => {
+                  setChangeHint(null);
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          )}
+        {notif.banners.routing && !suggestionNoticeOff && ruleSuggestions[0] && (
           <div
             aria-label="Routing suggestion"
             className="flex items-center gap-2 border-b border-sky-500/30 bg-sky-500/10 px-4 py-2 text-xs"
@@ -4728,43 +4786,45 @@ export function ChatApp({
             </Button>
           </div>
         )}
-        {!modelsNoticeOff && modelCheck?.missing.some((m) => m.tiers.length > 0) && (
-          <div
-            aria-label="Models notice"
-            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
-          >
-            <CircleAlert className="size-3.5 text-amber-600" />
-            <span className="flex-1">
-              A model a tier uses is no longer listed by its provider:{" "}
-              {modelCheck.missing
-                .filter((m) => m.tiers.length > 0)
-                .map((m) => m.displayName)
-                .join(", ")}
-              .
-            </span>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setModelsNoticeOff(true);
-                setView("settings");
-              }}
+        {notif.banners.models &&
+          !modelsNoticeOff &&
+          modelCheck?.missing.some((m) => m.tiers.length > 0) && (
+            <div
+              aria-label="Models notice"
+              className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
             >
-              See models
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Dismiss models notice"
-              onClick={() => {
-                setModelsNoticeOff(true);
-              }}
-            >
-              <X />
-            </Button>
-          </div>
-        )}
-        {!pricesNoticeOff && oldestPriceDays(catalog, at) > STALE_DAYS && (
+              <CircleAlert className="size-3.5 text-amber-600" />
+              <span className="flex-1">
+                A model a tier uses is no longer listed by its provider:{" "}
+                {modelCheck.missing
+                  .filter((m) => m.tiers.length > 0)
+                  .map((m) => m.displayName)
+                  .join(", ")}
+                .
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setModelsNoticeOff(true);
+                  setView("settings");
+                }}
+              >
+                See models
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Dismiss models notice"
+                onClick={() => {
+                  setModelsNoticeOff(true);
+                }}
+              >
+                <X />
+              </Button>
+            </div>
+          )}
+        {notif.banners.prices && !pricesNoticeOff && oldestPriceDays(catalog, at) > STALE_DAYS && (
           <div
             aria-label="Prices notice"
             className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
@@ -5203,6 +5263,15 @@ export function ChatApp({
                     }}
                   />
                 )
+              }
+              notifications={
+                <NotificationsSection
+                  settings={notif}
+                  onChange={(next) => {
+                    setNotif(next);
+                    setNotificationSettings(db, tenant, next).catch(report);
+                  }}
+                />
               }
               quickCapture={
                 webApp ? (

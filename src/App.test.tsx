@@ -2232,6 +2232,38 @@ test("Storage lists each part with its size and offers a clean-up where there's 
   expect(await db.select("SELECT COUNT(*) AS n FROM request_log")).toEqual(logRows);
 });
 
+// M10 step 21 (PL-07): every sound, notification and banner has a switch; sounds start off.
+test("Notifications: the sound is off until turned on, switches persist, and a banner switch hides its bar", async () => {
+  const { db, user } = setup();
+  await screen.findByRole("complementary", { name: "Chat sidebar" });
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "Notifications" }));
+  const sound = section.getByRole("checkbox", { name: "Play a sound with notifications" });
+  expect(sound).not.toBeChecked();
+  expect(section.getByRole("checkbox", { name: "A run is waiting for you" })).toBeChecked();
+  await user.click(sound);
+  await user.click(section.getByRole("checkbox", { name: "An update is ready" }));
+  await waitFor(async () => {
+    const rows = await db.select<{ value: string }>(
+      "SELECT value FROM settings WHERE key = 'notifications'",
+    );
+    expect(JSON.parse(rows[0]?.value ?? "{}")).toMatchObject({
+      sound: true,
+      banners: { update: false },
+    });
+  });
+  // Quiet hours: on, weekdays only, with the range read back in words.
+  await user.click(section.getByRole("checkbox", { name: "Keep quiet on these days and hours" }));
+  const days = within(section.getByRole("group", { name: "Quiet days" }));
+  await user.click(days.getByRole("button", { name: "Sat" }));
+  await user.click(days.getByRole("button", { name: "Sun" }));
+  expect(days.getByRole("button", { name: "Mon" })).toHaveAttribute("aria-pressed", "true");
+  expect(days.getByRole("button", { name: "Sat" })).toHaveAttribute("aria-pressed", "false");
+  expect(section.getByRole("status")).toHaveTextContent(
+    "Quiet 22:00 to 07:00 on Mon, Tue, Wed, Thu, Fri",
+  );
+});
+
 test("nothing can be deleted while an answer streams", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Take your time{Enter}");
