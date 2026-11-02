@@ -322,25 +322,111 @@ export async function deleteThread(db: SqlDb, tenant: Tenant, id: string): Promi
   );
 }
 
+/** M10 step 18: what a purge leaves of the chat row. */
+export type PurgeKeep = "tombstone" | "nothing";
+
 /**
- * Removes an incognito chat for good (CH-15): its messages, their files links, citations and
- * memory links, and the chat itself. Request-log rows stay for cost totals, unlinked (they hold
- * no text). Safe to run again if it was interrupted.
+ * Removes a chat's content for good (M10 step 18; CH-15 for incognito): its messages with their
+ * file links, citations, memory links, chunks and search entries, its runs with their steps,
+ * changes, approvals and requests, its summaries, artifacts, tags, folder links, network grants
+ * and the memories scoped to it. Memories, proposals and schedules that merely cite it are
+ * unlinked. Request-log rows stay for cost totals: with "tombstone" (a normal delete) the chat
+ * row stays too, emptied, so per-project spend still adds up; with "nothing" (incognito) the
+ * row goes and the log is unlinked. Left unsaid, `keep` follows the chat's incognito flag. Safe
+ * to run again if it was interrupted.
  */
-export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+export async function purgeThread(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  keep?: PurgeKeep,
+): Promise<void> {
   const ws = tenant.workspaceId;
-  const inThread = `SELECT id FROM messages WHERE workspace_id = ? AND thread_id = ?`;
-  for (const table of ["message_files", "message_citations", "message_memories"]) {
-    await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inThread})`, [ws, id]);
+  if (keep === undefined) {
+    const rows = await db.select<{ incognito: number }>(
+      `SELECT incognito FROM threads WHERE workspace_id = ? AND id = ?`,
+      [ws, id],
+    );
+    if (rows.length === 0) return;
+    keep = rows[0]?.incognito ? "nothing" : "tombstone";
   }
-  await db.execute(
-    `UPDATE request_log SET thread_id = NULL, message_id = NULL WHERE workspace_id = ? AND thread_id = ?`,
-    [ws, id],
-  );
+  const inThread = `SELECT id FROM messages WHERE workspace_id = ? AND thread_id = ?`;
+  // Runs of the chat, or of one of its messages: params [ws, id, ws, id].
+  const runs = `SELECT id FROM runs WHERE workspace_id = ? AND (thread_id = ? OR message_id IN (${inThread}))`;
+  const ownMemories = `SELECT id FROM memories WHERE workspace_id = ? AND thread_id = ?`;
   await db.execute(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND id = ?`, [
     ws,
     id,
   ]);
+  // Runs and what points at them.
+  await db.execute(
+    `UPDATE schedules SET last_run_id = NULL WHERE workspace_id = ? AND last_run_id IN (${runs})`,
+    [ws, ws, id, ws, id],
+  );
+  await db.execute(
+    `UPDATE schedules SET last_thread_id = NULL WHERE workspace_id = ? AND last_thread_id = ?`,
+    [ws, id],
+  );
+  await db.execute(
+    `DELETE FROM run_requests WHERE workspace_id = ?
+       AND (run_id IN (${runs}) OR json_extract(input, '$.threadId') = ?)`,
+    [ws, ws, id, ws, id, id],
+  );
+  for (const table of ["run_approvals", "run_live", "run_changes", "run_folders", "run_steps"]) {
+    await db.execute(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, id, ws, id]);
+  }
+  await db.execute(`DELETE FROM runs WHERE id IN (${runs})`, [ws, id, ws, id]);
+  await db.execute(
+    `DELETE FROM network_grants WHERE workspace_id = ? AND scope_kind = 'thread' AND scope_id = ?`,
+    [ws, id],
+  );
+  await db.execute(`DELETE FROM thread_folders WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  // Memories scoped to this chat go (the scope is tied to thread_id); the rest are unlinked.
+  await db.execute(
+    `UPDATE memories SET superseded_by_id = NULL WHERE workspace_id = ? AND superseded_by_id IN (${ownMemories})`,
+    [ws, ws, id],
+  );
+  await db.execute(`DELETE FROM memory_proposals WHERE memory_id IN (${ownMemories})`, [ws, id]);
+  await db.execute(`DELETE FROM message_memories WHERE memory_id IN (${ownMemories})`, [ws, id]);
+  const ownChunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'memory' AND source_id IN (${ownMemories})`;
+  await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${ownChunks})`, [ws, ws, id]);
+  await db.execute(
+    `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'memory' AND source_id IN (${ownMemories})`,
+    [ws, ws, id],
+  );
+  await db.execute(`DELETE FROM memories WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  await db.execute(
+    `UPDATE memories SET source_thread_id = NULL WHERE workspace_id = ? AND source_thread_id = ?`,
+    [ws, id],
+  );
+  await db.execute(
+    `UPDATE memories SET source_message_id = NULL WHERE workspace_id = ? AND source_message_id IN (${inThread})`,
+    [ws, ws, id],
+  );
+  await db.execute(
+    `DELETE FROM memory_proposals WHERE workspace_id = ? AND source_thread_id = ? AND status = 'pending'`,
+    [ws, id],
+  );
+  await db.execute(
+    `UPDATE memory_proposals SET source_thread_id = NULL WHERE workspace_id = ? AND source_thread_id = ?`,
+    [ws, id],
+  );
+  // The messages' links, chunks and search entries.
+  for (const table of ["message_files", "message_citations", "message_memories"]) {
+    await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inThread})`, [ws, id]);
+  }
+  const messageChunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inThread})`;
+  await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${messageChunks})`, [ws, ws, id]);
+  await db.execute(
+    `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inThread})`,
+    [ws, ws, id],
+  );
+  await db.execute(
+    keep === "tombstone"
+      ? `UPDATE request_log SET message_id = NULL WHERE workspace_id = ? AND thread_id = ?`
+      : `UPDATE request_log SET thread_id = NULL, message_id = NULL WHERE workspace_id = ? AND thread_id = ?`,
+    [ws, id],
+  );
   await db.execute(
     `DELETE FROM artifact_versions WHERE workspace_id = ? AND artifact_id IN
        (SELECT id FROM artifacts WHERE workspace_id = ? AND thread_id = ?)`,
@@ -358,7 +444,32 @@ export async function purgeThread(db: SqlDb, tenant: Tenant, id: string): Promis
   ]);
   await db.execute(`DELETE FROM imports WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   await db.execute(`DELETE FROM thread_tags WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
-  await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
+  // The chat this one was handed off to no longer has a chat to point back at.
+  await db.execute(
+    `UPDATE threads SET handoff_from_id = NULL WHERE workspace_id = ? AND handoff_from_id = ?`,
+    [ws, id],
+  );
+  if (keep === "tombstone") {
+    const now = Date.now();
+    await db.execute(
+      `UPDATE threads SET title = '', title_source = 'auto', instructions = '', pinned_at = NULL,
+         archived_at = NULL, deleted_at = COALESCE(deleted_at, ?), purged_at = ?, updated_at = ?
+       WHERE workspace_id = ? AND id = ?`,
+      [now, now, now, ws, id],
+    );
+  } else {
+    await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
+  }
+}
+
+/** Undo of a delete that hasn't been purged yet. False when it's too late. */
+export async function restoreThread(db: SqlDb, tenant: Tenant, id: string): Promise<boolean> {
+  const result = await db.execute(
+    `UPDATE threads SET deleted_at = NULL, updated_at = ?
+     WHERE workspace_id = ? AND id = ? AND deleted_at IS NOT NULL AND purged_at IS NULL`,
+    [Date.now(), tenant.workspaceId, id],
+  );
+  return result.rowsAffected > 0;
 }
 
 /** A tag as stored: lowercase, spaces as dashes, no leading #, at most 32 characters. */

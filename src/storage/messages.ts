@@ -1,6 +1,6 @@
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
-import { buildPath } from "./tree";
+import { buildPath, leafUnder } from "./tree";
 import type { SqlDb } from "./sql";
 import {
   EMPTY_USAGE,
@@ -219,6 +219,175 @@ export async function deleteMessage(db: SqlDb, tenant: Tenant, id: string): Prom
     `UPDATE messages SET deleted_at = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
     [now, now, tenant.workspaceId, id],
   );
+}
+
+/** SQLite takes thousands of bound values, but a delete of a huge subtree goes in slices. */
+const SLICE = 500;
+function slices<T>(items: readonly T[]): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += SLICE) out.push(items.slice(i, i + SLICE));
+  return out;
+}
+const marks = (n: number) => Array.from({ length: n }, () => "?").join(", ");
+
+/**
+ * M10 step 18: deletes a message and everything under it (its answers, their branches and
+ * stronger re-runs, and every later turn on that branch), as the undo-able first half of a real
+ * delete. The rows are marked, not removed: `purgeMessages` removes them, `restoreMessages`
+ * brings them back. The thread's leaf moves to the newest surviving message under the parent
+ * (a sibling answer stays on screen), or to nothing for a root. Returns what was marked, and
+ * the leaf to put back on undo.
+ */
+export async function deleteMessageTree(
+  db: SqlDb,
+  tenant: Tenant,
+  threadId: string,
+  rootId: string,
+): Promise<{ ids: string[]; previousLeafId: string | null }> {
+  const ws = tenant.workspaceId;
+  const leafRows = await db.select<{ active_leaf_id: string | null }>(
+    `SELECT active_leaf_id FROM threads WHERE workspace_id = ? AND id = ?`,
+    [ws, threadId],
+  );
+  const previousLeafId = leafRows[0]?.active_leaf_id ?? null;
+  const rows = await db.select<{ id: string }>(
+    `WITH RECURSIVE sub(id) AS (
+       SELECT id FROM messages
+       WHERE workspace_id = ? AND thread_id = ? AND id = ? AND deleted_at IS NULL
+       UNION
+       SELECT m.id FROM messages m JOIN sub ON m.parent_id = sub.id OR m.escalated_from_id = sub.id
+       WHERE m.workspace_id = ? AND m.deleted_at IS NULL)
+     SELECT id FROM sub`,
+    [ws, threadId, rootId, ws],
+  );
+  const ids = rows.map((r) => r.id);
+  if (ids.length === 0) return { ids, previousLeafId };
+  const all = await listMessages(db, tenant, threadId);
+  const now = Date.now();
+  for (const slice of slices(ids)) {
+    await db.execute(
+      `UPDATE messages SET deleted_at = ?, updated_at = ?
+       WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
+      [now, now, ws, ...slice],
+    );
+  }
+  const gone = new Set(ids);
+  if (previousLeafId === null || gone.has(previousLeafId)) {
+    const rest = all.filter((m) => !gone.has(m.id));
+    const anchor = all.find((m) => m.id === rootId)?.parentId ?? null;
+    const leaf =
+      anchor !== null && rest.some((m) => m.id === anchor) ? leafUnder(rest, anchor) : null;
+    await db.execute(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
+      leaf,
+      ws,
+      threadId,
+    ]);
+  }
+  return { ids, previousLeafId };
+}
+
+/** Undo of `deleteMessageTree`: the rows come back and the leaf returns to where it was. */
+export async function restoreMessages(
+  db: SqlDb,
+  tenant: Tenant,
+  threadId: string,
+  ids: readonly string[],
+  leafId: string | null,
+): Promise<void> {
+  const ws = tenant.workspaceId;
+  const now = Date.now();
+  for (const slice of slices(ids)) {
+    await db.execute(
+      `UPDATE messages SET deleted_at = NULL, updated_at = ?
+       WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
+      [now, ws, ...slice],
+    );
+  }
+  await db.execute(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
+    leafId,
+    ws,
+    threadId,
+  ]);
+}
+
+/**
+ * Removes messages for good: their runs (with steps, changes, approvals and requests), file
+ * links, citations, memory links and chunks go; memories, artifact versions and request-log
+ * rows that cite them are unlinked; summaries that end on them are dropped (the next assembly
+ * rebuilds one). The search index follows through its triggers. Spend is untouched: the
+ * request log keeps its rows and its thread. Safe to run again.
+ */
+export async function purgeMessages(
+  db: SqlDb,
+  tenant: Tenant,
+  ids: readonly string[],
+): Promise<void> {
+  if (ids.length === 0) return;
+  const ws = tenant.workspaceId;
+  for (const slice of slices(ids)) {
+    const inIds = marks(slice.length);
+    const runs = `SELECT id FROM runs WHERE workspace_id = ? AND message_id IN (${inIds})`;
+    await db.execute(
+      `UPDATE schedules SET last_run_id = NULL WHERE workspace_id = ? AND last_run_id IN (${runs})`,
+      [ws, ws, ...slice],
+    );
+    await db.execute(`DELETE FROM run_requests WHERE workspace_id = ? AND run_id IN (${runs})`, [
+      ws,
+      ws,
+      ...slice,
+    ]);
+    for (const table of ["run_approvals", "run_live", "run_changes", "run_folders", "run_steps"]) {
+      await db.execute(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, ...slice]);
+    }
+    await db.execute(`DELETE FROM runs WHERE id IN (${runs})`, [ws, ...slice]);
+    for (const table of ["message_files", "message_citations", "message_memories"]) {
+      await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inIds})`, slice);
+    }
+    const chunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inIds})`;
+    await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${chunks})`, [ws, ...slice]);
+    await db.execute(
+      `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+    await db.execute(
+      `UPDATE memories SET source_message_id = NULL WHERE workspace_id = ? AND source_message_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+    await db.execute(
+      `UPDATE artifact_versions SET message_id = NULL WHERE workspace_id = ? AND message_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+    await db.execute(
+      `DELETE FROM thread_summaries WHERE workspace_id = ? AND upto_message_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+    await db.execute(
+      `UPDATE request_log SET message_id = NULL WHERE workspace_id = ? AND message_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+    await db.execute(
+      `UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND active_leaf_id IN (${inIds})`,
+      [ws, ...slice],
+    );
+  }
+  // A child is always newer than its parent, so newest first never leaves a child pointing at
+  // a parent that's already gone.
+  const order: { id: string; created_at: number }[] = [];
+  for (const slice of slices(ids)) {
+    order.push(
+      ...(await db.select<{ id: string; created_at: number }>(
+        `SELECT id, created_at FROM messages WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
+        [ws, ...slice],
+      )),
+    );
+  }
+  order.sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id));
+  for (const slice of slices(order.map((r) => r.id))) {
+    await db.execute(
+      `DELETE FROM messages WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
+      [ws, ...slice],
+    );
+  }
 }
 
 /** Messages of a thread in order. M0 threads are linear, so this is the path to the leaf. */
