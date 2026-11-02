@@ -62,7 +62,7 @@ interface Props {
   onScheduled?: () => void;
 }
 
-const sectionTitle = "px-3 text-[10px] font-medium tracking-[0.1em] text-muted-foreground";
+const sectionTitle = "px-3 text-xs font-medium text-muted-foreground";
 
 export function Sidebar({
   area,
@@ -495,7 +495,7 @@ function ThreadRow({
             <span className="flex items-center gap-1.5 pr-1">
               {thread.state && <StateDot state={thread.state} />}
               <span
-                className={`min-w-0 flex-1 truncate text-[12px] ${thread.state === "unseen" ? "font-semibold" : "font-medium"}`}
+                className={`min-w-0 flex-1 truncate text-[13px] ${thread.state === "unseen" ? "font-semibold" : ""}`}
               >
                 {thread.title}
               </span>
@@ -513,15 +513,17 @@ function ThreadRow({
                   )}
                 </span>
               )}
+              <Money micro={thread.costMicro} className="shrink-0 text-[12px]" />
             </span>
-            <span className="mt-1 block truncate tabular-nums text-[10px] text-muted-foreground">
-              <Money micro={thread.costMicro} />
-              {thread.tags.map((t) => (
-                <span key={t} className="ml-1.5">
-                  #{t}
-                </span>
-              ))}
-            </span>
+            {thread.tags.length > 0 && (
+              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                {thread.tags.map((t) => (
+                  <span key={t} className="mr-1.5">
+                    #{t}
+                  </span>
+                ))}
+              </span>
+            )}
           </button>
           <div className="absolute right-2 bottom-1.5 flex gap-0.5 rounded bg-sidebar-accent opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
             {!thread.archived && (
@@ -579,10 +581,12 @@ function ThreadRow({
   );
 }
 
+// M10 step 24: filled ink = waiting for you; hollow and pulsing = going; hollow in the rule
+// colour = done (a bold title says it's unseen).
 const DOT: Record<NonNullable<ThreadState>, { label: string; className: string }> = {
-  waiting: { label: "Waiting for you", className: "bg-amber-500" },
-  going: { label: "Going", className: "animate-pulse bg-sky-500" },
-  unseen: { label: "New result", className: "bg-foreground" },
+  waiting: { label: "Waiting for you", className: "border-foreground bg-foreground" },
+  going: { label: "Going", className: "animate-pulse border-muted-foreground" },
+  unseen: { label: "New result", className: "border-border" },
 };
 
 /** M10 step 13: a row's state, as a dot with its words for screen readers. */
@@ -593,7 +597,7 @@ function StateDot({ state }: { state: NonNullable<ThreadState> }) {
       role="img"
       aria-label={look.label}
       title={look.label}
-      className={`inline-block size-2 shrink-0 rounded-full ${look.className}`}
+      className={`inline-block size-2 shrink-0 rounded-full border-[1.5px] ${look.className}`}
     />
   );
 }

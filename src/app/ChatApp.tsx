@@ -324,7 +324,7 @@ import {
 import { EMPTY_USAGE } from "@/storage/usage";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
-import { Hint, Modal, Money, ThreadMenu, Tip } from "@/ui/primitives";
+import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
 import { PolicyEditor } from "@/ui/PolicyEditor";
@@ -1893,6 +1893,38 @@ export function ChatApp({
     const task = classify(classifyInput(text, ready, messages, searchOn));
     const tier = chooseTier(policy, task).tier;
     return policy.tiers.find((t) => t.id === tier)?.label ?? tier;
+  };
+  const previewTierId = (text: string): TierId | null => {
+    if (mode.kind !== "auto" || !text.trim()) return null;
+    const ready = attachments.pending.flatMap((p) => (p.file ? [p.file] : []));
+    return chooseTier(policy, classify(classifyInput(text, ready, messages, searchOn))).tier;
+  };
+  const tierProp = (m: CatalogModel) => {
+    const tier = tierOf(policy, m);
+    return tier ? { tier } : {};
+  };
+  /**
+   * M10 step 24: the ledger's estimate under the composer. The draft and the context it goes
+   * with, priced on the model that would answer, plus a typical answer's output (800 tokens).
+   */
+  const estimateDraft = (text: string): number | null => {
+    const ready = attachments.pending.flatMap((p) => (p.file ? [p.file] : []));
+    const input = classifyInput(text, ready, messages, searchOn);
+    const task = classify(input);
+    const tier =
+      mode.kind === "auto"
+        ? chooseTier(policy, task).tier
+        : mode.kind === "tier"
+          ? mode.tier
+          : null;
+    const firstOfTier = tier ? policy.tiers.find((t) => t.id === tier)?.models[0] : undefined;
+    const target =
+      (firstOfTier ? findModel(catalog, firstOfTier.provider, firstOfTier.id) : undefined) ?? model;
+    const tokens = input.contextTokens ?? 0;
+    const price = priceFor(target, tokens);
+    return Math.round(
+      (tokens * priceToMicro(price.input) + 800 * priceToMicro(price.output)) / 1_000_000,
+    );
   };
 
   /**
@@ -5906,29 +5938,6 @@ export function ChatApp({
                 />
                 {thread && (
                   <>
-                    <Tip
-                      label={
-                        cacheRate === null
-                          ? "Total cost and tokens for this conversation"
-                          : `Total cost and tokens for this conversation. ${String(Math.round(cacheRate * 100))}% of the input was read from the provider's cache, at a tenth of the price or less.`
-                      }
-                    >
-                      <div
-                        tabIndex={0}
-                        aria-label="Thread total"
-                        className="flex items-center gap-2 rounded-md px-1 py-1 tabular-nums text-[10px] text-muted-foreground"
-                      >
-                        <Money micro={thread.costMicroUsd} />
-                        <span className="text-border">/</span>
-                        <span>{number(threadTokens(messages))} tokens</span>
-                        {cacheRate !== null && cacheRate > 0 && (
-                          <>
-                            <span className="text-border">/</span>
-                            <span>{Math.round(cacheRate * 100)}% cached</span>
-                          </>
-                        )}
-                      </div>
-                    </Tip>
                     {!thread.incognito && (
                       <ThreadMenu
                         handoff={
@@ -6094,6 +6103,18 @@ export function ChatApp({
                         }
                       : {})}
                     startedAt={messages[0]?.createdAt ?? null}
+                    {...(thread
+                      ? {
+                          total: {
+                            micro: thread.costMicroUsd,
+                            tokens: threadTokens(messages),
+                            cacheRate,
+                            answers: messages.filter(
+                              (m) => m.role === "assistant" && m.status === "complete",
+                            ).length,
+                          },
+                        }
+                      : {})}
                     onRetry={retry}
                     onEscalate={escalate}
                     onRegenerate={regenerateAnswer}
@@ -6196,8 +6217,9 @@ export function ChatApp({
                   )}
                   <Composer
                     key={`composer-${selectedId ?? "new"}`}
-                    model={modelOption(model)}
+                    model={{ ...modelOption(model), ...tierProp(model) }}
                     models={options}
+                    estimate={estimateDraft}
                     prompts={usablePrompts}
                     onPickPrompt={applyPrompt}
                     compare={{
@@ -6237,6 +6259,7 @@ export function ChatApp({
                         best: tierDescription("best"),
                       },
                       preview: previewTier,
+                      previewTier: previewTierId,
                       once: onceArmed || oneShot !== null,
                       onOnce: (on) => {
                         setOnceArmed(on);

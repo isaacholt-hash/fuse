@@ -445,9 +445,15 @@ test("send a message: the answer streams in, then shows model, tokens and cost",
 
   expect(await screen.findByText("Hello there.")).toBeInTheDocument();
   // 1,200 in × $2 + 400 out × $10 per MTok = $0.0064
+  // M10 step 24: the figure sits in the ledger margin under the model's name, the tokens below.
   const badge = await screen.findByRole("button", { name: "Cost breakdown for Test Claude" });
-  expect(badge).toHaveTextContent("Test Claude·1,200 in / 400 out·$0.0064");
-  expect(screen.getByLabelText("Thread total")).toHaveTextContent("$0.0064/1,600 tokens");
+  expect(badge).toHaveTextContent("$0.0064");
+  const margin = badge.closest("aside");
+  expect(margin).toHaveTextContent("Test Claude");
+  expect(margin).toHaveTextContent("1,200 in · 400 out");
+  const total = screen.getByLabelText("Thread total");
+  expect(total).toHaveTextContent(/\$0\.0064.*1,600 tokens/);
+  expect(total).toHaveTextContent("about $0.0064 a message");
   // The thread is saved, titled from the question, with its cost in the sidebar.
   await waitFor(() => {
     expect(sidebar().getByText("What is FUSE?")).toBeInTheDocument();
@@ -2057,7 +2063,8 @@ test("stop keeps the partial answer, marked Stopped", async () => {
   await user.type(await composer(), "Tell me a long story{Enter}");
   expect(await screen.findByText("Partial answer")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: /Stop/ }));
+  // M10 step 24: Stop sits in the answer's margin as well as on the composer.
+  await user.click(screen.getByRole("button", { name: "Stop answer" }));
   expect(await screen.findByText("Stopped")).toBeInTheDocument();
   expect(screen.getByText("Partial answer")).toBeInTheDocument();
 });
@@ -2308,7 +2315,7 @@ test("Notifications: the sound is off until turned on, switches persist, and a b
 test("nothing can be deleted while an answer streams", async () => {
   const { user } = setup({ anthropic: [untilStopped] });
   await user.type(await composer(), "Take your time{Enter}");
-  expect(await screen.findByRole("button", { name: /Stop/ })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Stop" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Delete from here" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Delete answer" })).not.toBeInTheDocument();
 });
@@ -2539,7 +2546,9 @@ test("web search: on by default, toggle per thread, live status, cited sources a
   );
   expect(sources.getByText("example.com")).toBeInTheDocument();
   // No search fee in the test catalog's tool prices, so the cost is tokens only; the count shows.
-  expect(screen.getByRole("button", { name: /Cost breakdown/ })).toHaveTextContent("1 search");
+  expect(screen.getByRole("button", { name: /Cost breakdown/ }).closest("aside")).toHaveTextContent(
+    "1 search",
+  );
   // Remembered on the thread.
   expect((await listThreads(db, DEFAULT_TENANT))[0]?.webSearch).toBe(true);
 });
