@@ -280,7 +280,13 @@ export function runView(
           : {}),
       });
     } else if (s.text.trim() && !(run.status === "done" && s === lastModel)) {
-      views.push({ id: s.id, kind: "note", label: s.text.trim(), error: null });
+      views.push({
+        id: s.id,
+        kind: "note",
+        label: s.text.trim(),
+        error: null,
+        ...(s.tokens !== undefined ? { tokens: s.tokens } : {}),
+      });
     }
   }
   return {

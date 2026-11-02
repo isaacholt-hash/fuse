@@ -52,6 +52,8 @@ export type RunStep =
       native: NativeTurn | null;
       requestId: string | null;
       costMicroUsd: number;
+      /** M10 step 25: the turn's tokens (in, cached and out), from its request log row. */
+      tokens?: number;
     }
   | {
       kind: "tool";
@@ -124,6 +126,7 @@ interface StepRow {
   images: string | null;
   flags: string | null;
   cost_micro_usd: number;
+  tokens: number | null;
 }
 
 const toRun = (r: RunRow): Run => ({
@@ -161,6 +164,7 @@ const toStep = (r: StepRow): RunStep =>
         native: r.native ? (JSON.parse(r.native) as NativeTurn) : null,
         requestId: r.request_id,
         costMicroUsd: r.cost_micro_usd,
+        ...(r.tokens !== null ? { tokens: r.tokens } : {}),
       }
     : {
         kind: "tool",
@@ -356,9 +360,11 @@ export async function raiseRunCap(
 
 export async function listSteps(db: SqlDb, tenant: Tenant, runId: string): Promise<RunStep[]> {
   const rows = await db.select<StepRow>(
-    `SELECT id, seq, kind, text, native, request_id, tool_name, tool_call_id, input, output,
-       is_error, approval, images, flags, cost_micro_usd
-     FROM run_steps WHERE workspace_id = ? AND run_id = ? ORDER BY seq`,
+    `SELECT s.id, s.seq, s.kind, s.text, s.native, s.request_id, s.tool_name, s.tool_call_id,
+       s.input, s.output, s.is_error, s.approval, s.images, s.flags, s.cost_micro_usd,
+       l.input_tokens + l.cached_input_tokens + l.cache_write_tokens + l.output_tokens AS tokens
+     FROM run_steps s LEFT JOIN request_log l ON l.id = s.request_id
+     WHERE s.workspace_id = ? AND s.run_id = ? ORDER BY s.seq`,
     [tenant.workspaceId, runId],
   );
   return rows.map(toStep);

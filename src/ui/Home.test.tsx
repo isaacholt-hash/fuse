@@ -53,7 +53,25 @@ test("each section when it has something, a row opens its chat, and the Code are
   // A run whose chat can't be opened here has no button.
   expect(screen.queryByRole("button", { name: "Open Fix the build" })).toBeNull();
   expect(screen.getByText("3 min")).toBeInTheDocument();
-  expect(screen.getByText(/of \$1\.00 today \(25%\)/)).toBeInTheDocument();
+  expect(screen.getByText(/of a \$1\.00 day cap/)).toBeInTheDocument();
+  expect(screen.getByRole("img", { name: "$0.25 of $1.00" })).toBeInTheDocument();
+  // M10 step 25: the pace sentence (CO-02).
+  expect(screen.queryByText(/At this pace/)).toBeNull();
+  rerender(
+    <Home
+      area="code"
+      view={{
+        ...view,
+        month: { spentMicro: 3_000_000, projectedMicro: 38_000_000, budgetMicro: 60_000_000 },
+      }}
+      empty={empty}
+      modelName="Auto"
+      onOpen={onOpen}
+    />,
+  );
+  expect(
+    screen.getByText("At this pace: about $38.00 by month end, budget $60.00."),
+  ).toBeInTheDocument();
   rerender(<Home area="chat" view={view} empty={empty} modelName="Auto" onOpen={onOpen} />);
   expect(
     within(screen.getByLabelText("What's happening"))

@@ -3,7 +3,7 @@
 import type { ApprovalRequest } from "@/agent/run";
 import type { RecentRun } from "@/storage/runs";
 import type { Schedule } from "@/storage/schedules";
-import { homeView, questionLine, whenLabel } from "./homeView";
+import { homeView, questionLine, whenLabel, projectedMonth } from "./homeView";
 
 const run = (over: Partial<RecentRun>): RecentRun => ({
   id: "r",
@@ -114,6 +114,26 @@ test("scheduled tasks: enabled ones still ahead, soonest first; today's spend ag
     ["late", "HULK", null],
   ]);
   expect(view.today).toEqual({ spentMicro: 250_000, budgetMicro: 1_000_000 });
+  expect(view.month).toBeNull();
+});
+
+test("M10 step 25: the month at this pace (CO-02)", () => {
+  // The 10th of a 30-day month, $3 so far: about $9 by month end.
+  const now = new Date(2026, 10, 10, 9, 0).getTime();
+  expect(projectedMonth(3_000_000, now)).toBe(9_000_000);
+  const view = homeView({
+    ...base,
+    recent: [],
+    spentMonth: 3_000_000,
+    monthBudget: 60_000_000,
+    now,
+  });
+  expect(view.month).toEqual({
+    spentMicro: 3_000_000,
+    projectedMicro: 9_000_000,
+    budgetMicro: 60_000_000,
+  });
+  expect(homeView({ ...base, recent: [], spentMonth: 0, monthBudget: null, now }).month).toBeNull();
 });
 
 test("a question's first line, and when a task runs next", () => {

@@ -3929,6 +3929,7 @@ export function ChatApp({
     recent: RecentRun[];
     schedules: Schedule[];
     spentToday: number;
+    spentMonth: number;
     at: number;
   } | null>(null);
   useEffect(() => {
@@ -3942,7 +3943,8 @@ export function ChatApp({
           ? await listSchedules(hulkDb(hulkLink), tenant).catch((): Schedule[] => [])
           : [];
       const spentToday = await spentSince(db, tenant, periodStart("day", Date.now()));
-      if (live) setHomeData({ recent, schedules, spentToday, at: Date.now() });
+      const spentMonth = await spentSince(db, tenant, periodStart("month", Date.now()));
+      if (live) setHomeData({ recent, schedules, spentToday, spentMonth, at: Date.now() });
     };
     const again = () => {
       load().catch(() => undefined);
@@ -6094,6 +6096,11 @@ export function ChatApp({
                                         budgets.find(
                                           (b) => b.period === "day" && b.projectId === null,
                                         )?.limitMicro ?? null,
+                                      spentMonth: homeData.spentMonth,
+                                      monthBudget:
+                                        budgets.find(
+                                          (b) => b.period === "month" && b.projectId === null,
+                                        )?.limitMicro ?? null,
                                       now: homeData.at,
                                     })
                                   : EMPTY_HOME
@@ -6220,6 +6227,11 @@ export function ChatApp({
                     model={{ ...modelOption(model), ...tierProp(model) }}
                     models={options}
                     estimate={estimateDraft}
+                    capLeft={
+                      thread && thread.kind !== "chat"
+                        ? Math.max(0, sessionCap - thread.costMicroUsd)
+                        : null
+                    }
                     prompts={usablePrompts}
                     onPickPrompt={applyPrompt}
                     compare={{

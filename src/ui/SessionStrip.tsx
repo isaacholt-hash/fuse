@@ -1,5 +1,4 @@
 import { FileDiff, FolderGit2, GitBranch, Laptop, Server } from "lucide-react";
-import { money } from "./format";
 import { Money } from "./primitives";
 
 const MODES = {
@@ -41,25 +40,27 @@ export function SessionStrip({
     <div
       aria-label="Session"
       role="group"
-      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-6 py-1.5 text-[11px] text-muted-foreground"
+      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-6 py-2 text-[12px] text-muted-foreground"
     >
       <span className="flex items-center gap-1.5">
-        {where === "hulk" ? <Server className="size-3" /> : <Laptop className="size-3" />}
-        {where === "hulk" ? "On HULK" : "On this computer"}
+        {where === "hulk" ? <Server className="size-3.5" /> : <Laptop className="size-3.5" />}
+        Runs on{" "}
+        <b className="font-medium text-foreground">{where === "hulk" ? "HULK" : "this computer"}</b>
       </span>
       <span className="flex min-w-0 items-center gap-1.5">
-        <FolderGit2 className="size-3 shrink-0" />
-        <span className="truncate">{folders.length > 0 ? folders.join(", ") : "No folder"}</span>
-      </span>
-      <span className="flex items-center gap-1.5">
-        <GitBranch className="size-3" />
-        <span className="font-mono">{branch ?? "current branch"}</span>
+        <FolderGit2 className="size-3.5 shrink-0" />
+        <b className="truncate font-medium text-foreground">
+          {folders.length > 0 ? folders.join(", ") : "No folder"}
+        </b>
+        <span className="text-border">·</span>
+        <GitBranch className="size-3.5" />
+        <span className="font-mono text-[11px]">{branch ?? "current branch"}</span>
       </span>
       <label className="flex items-center gap-1.5">
-        <span className="sr-only">What its runs may do</span>
+        Mode
         <select
           aria-label="What this session's runs may do"
-          className="h-6 rounded border border-input bg-background px-1 text-[11px]"
+          className="h-6 rounded-[4px] border-0 bg-muted px-1.5 text-[12px] font-medium text-foreground dark:scheme-dark"
           value={mode}
           onChange={(e) => {
             const v = e.target.value;
@@ -74,7 +75,7 @@ export function SessionStrip({
         </select>
       </label>
       <span className="tabular-nums" aria-label="Spent of cap">
-        <Money micro={spentMicro} /> of {money(capMicro)}
+        Cap <Money micro={capMicro} /> · spent <Money micro={spentMicro} />
       </span>
       <button
         type="button"
@@ -82,7 +83,7 @@ export function SessionStrip({
         className={`ml-auto flex items-center gap-1.5 rounded px-1.5 py-0.5 ${filesOpen ? "bg-muted text-foreground" : "hover:bg-muted"}`}
         onClick={onFiles}
       >
-        <FileDiff className="size-3" />
+        <FileDiff className="size-3.5" />
         Files{files > 0 ? ` (${String(files)})` : ""}
       </button>
     </div>

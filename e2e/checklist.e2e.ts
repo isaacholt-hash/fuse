@@ -201,7 +201,7 @@ test("3. a Code session with a project and a cost cap runs, named after its task
     await app.type(byLabel("Cost cap"), "0.50");
     await send("E2E edit checklist.txt");
     await app.click(
-      '//*[@aria-label="Make this change?"]//button[normalize-space()="Allow"]',
+      '//*[@aria-label="Make this change?"]//button[@aria-label="Allow once"]',
       60_000,
     );
     expect(await nextAnswer(0)).toContain("Command result:");

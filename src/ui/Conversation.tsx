@@ -90,7 +90,7 @@ function RouteBadge({ route }: { route: RouteView }) {
       }
     >
       <button
-        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground @max-[900px]:text-left"
+        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground @max-[760px]:text-left"
         aria-label={`Routing: ${route.label}`}
       >
         <span>{route.label}</span>
@@ -111,14 +111,14 @@ function TokensLine({ usage }: { usage: UsageView }) {
       {number(tokensIn(usage))} in · {number(usage.output)} out
       {usage.cachedInput > 0 && (
         <>
-          <br className="@max-[900px]:hidden" />
-          <span className="@max-[900px]:ml-1.5">{number(usage.cachedInput)} cached</span>
+          <br className="@max-[760px]:hidden" />
+          <span className="@max-[760px]:ml-1.5">{number(usage.cachedInput)} cached</span>
         </>
       )}
       {usage.webSearchCalls > 0 && (
         <>
-          <br className="@max-[900px]:hidden" />
-          <span className="@max-[900px]:ml-1.5">
+          <br className="@max-[760px]:hidden" />
+          <span className="@max-[760px]:ml-1.5">
             {number(usage.webSearchCalls)} search{usage.webSearchCalls === 1 ? "" : "es"}
           </span>
         </>
@@ -129,15 +129,16 @@ function TokensLine({ usage }: { usage: UsageView }) {
 
 /**
  * The reading column beside its 132 px ledger margin; one column when the main column (the
- * scroll area or the composer's footer, each a container) is under 900 px.
+ * scroll area or the composer's footer, each a container) is under 760 px: a window under about
+ * 900 px with the sidebar open, the spec's fold.
  */
 const LEDGER_GRID =
-  "grid grid-cols-[minmax(0,1fr)_132px] gap-x-6 @max-[900px]:grid-cols-[minmax(0,1fr)] @max-[900px]:gap-x-0";
+  "grid grid-cols-[minmax(0,1fr)_132px] gap-x-6 @max-[760px]:grid-cols-[minmax(0,1fr)] @max-[760px]:gap-x-0";
 /** The margin: right-aligned lines beside a message; one wrapping line under it below 900 px. */
 const MARGIN =
-  "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-center @max-[900px]:gap-x-2.5 @max-[900px]:pt-0 @max-[900px]:text-left";
+  "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-center @max-[760px]:gap-x-2.5 @max-[760px]:pt-0 @max-[760px]:text-left";
 const MARGIN_BUTTON =
-  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[900px]:text-left";
+  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[760px]:text-left";
 
 /** "about $0.03 a message", for the ledger head. */
 const perMessage = (micro: number, answers: number) =>
@@ -158,12 +159,12 @@ function LedgerTotal({ total }: { total: ThreadTotal }) {
       <div
         tabIndex={0}
         aria-label="Thread total"
-        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-baseline @max-[900px]:gap-x-2 @max-[900px]:text-left"
+        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-baseline @max-[760px]:gap-x-2 @max-[760px]:text-left"
       >
-        <span className="block text-[10px] @max-[900px]:hidden">this thread</span>
+        <span className="block text-[10px] @max-[760px]:hidden">this thread</span>
         <Money
           micro={total.micro}
-          className="block text-base leading-6 @max-[900px]:text-[13px] @max-[900px]:leading-5"
+          className="block text-base leading-6 @max-[760px]:text-[13px] @max-[760px]:leading-5"
         />
         <span className="block">
           {number(total.tokens)} tokens
@@ -598,7 +599,7 @@ export function Messages({
         ) : (
           <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
             <div
-              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[900px]:gap-y-1`}
+              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[760px]:gap-y-1`}
             >
               <div className="text-[11px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
@@ -701,7 +702,7 @@ export function Messages({
                         {message.images.length} file{message.images.length === 1 ? "" : "s"}
                       </span>
                     )}
-                    <div className="mt-1 flex items-center justify-end gap-0.5 @max-[900px]:mt-0 @max-[900px]:justify-start">
+                    <div className="mt-1 flex items-center justify-end gap-0.5 @max-[760px]:mt-0 @max-[760px]:justify-start">
                       {message.branch && (
                         <BranchPicker
                           branch={message.branch}
@@ -1150,6 +1151,7 @@ export function Composer({
   context,
   compare,
   estimate,
+  capLeft = null,
   prompts = [],
   onPickPrompt,
 }: {
@@ -1220,6 +1222,8 @@ export function Composer({
   compare?: CompareView;
   /** M10 step 24: what the next message would cost, in micro-dollars, for the ledger's estimate. */
   estimate?: (text: string) => number | null;
+  /** M10 step 25: in a Code session, what's left of its cap takes the estimate's place. */
+  capLeft?: number | null;
   /** CH-12: saved prompts, offered when the message starts with "/". */
   prompts?: { id: string; name: string }[];
   onPickPrompt?: (id: string) => void;
@@ -2039,16 +2043,25 @@ export function Composer({
             )}
           </div>
         </div>
-        {estimated !== null && (
-          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[900px]:order-last @max-[900px]:pt-1 @max-[900px]:pb-0 @max-[900px]:text-left">
-            {streaming ? "so far" : "next message"}
-            <span
-              className="block @max-[900px]:ml-1.5 @max-[900px]:inline"
-              aria-label="Estimated cost"
-            >
-              ≈ <Money micro={estimated} className="text-[13px]" />
+        {capLeft !== null ? (
+          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[760px]:order-last @max-[760px]:pt-1 @max-[760px]:pb-0 @max-[760px]:text-left">
+            cap left
+            <span className="block @max-[760px]:ml-1.5 @max-[760px]:inline" aria-label="Cap left">
+              <Money micro={capLeft} className="text-[13px]" />
             </span>
           </div>
+        ) : (
+          estimated !== null && (
+            <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[760px]:order-last @max-[760px]:pt-1 @max-[760px]:pb-0 @max-[760px]:text-left">
+              {streaming ? "so far" : "next message"}
+              <span
+                className="block @max-[760px]:ml-1.5 @max-[760px]:inline"
+                aria-label="Estimated cost"
+              >
+                ≈ <Money micro={estimated} className="text-[13px]" />
+              </span>
+            </div>
+          )
         )}
         <div className="mt-2.5 flex items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground">
           <span className="flex items-center gap-1.5">
@@ -2202,6 +2215,15 @@ function OrganisePlan({
   );
 }
 
+/** M10 step 25: a step's number, as in the mock. */
+function StepNumber({ n }: { n: number }) {
+  return (
+    <span className="w-4 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
+      {n}
+    </span>
+  );
+}
+
 /**
  * A coding run on its answer (M6): what it did, step by step, and what it cost against its cap.
  * Paused at the cap or stopped, it can go on from where it was.
@@ -2229,12 +2251,47 @@ function RunCard({
 }) {
   const live = run.status === "running";
   const [shown, setShown] = useState<string | null>(null);
+  // M10 step 25: "See diff" opens every file's diff at once.
+  const [allDiffs, setAllDiffs] = useState(false);
   const [openStep, setOpenStep] = useState<string | null>(null);
   const applied = run.changes.filter((c) => !c.undone);
+  // M10 step 25: Y and N answer the approval when the focus is not in a field.
+  const pending = run.approval && run.approval.kind !== "organise" ? run.approval.kind : null;
+  useEffect(() => {
+    if (!pending || !onApprove) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable || t.closest("input, textarea, select, [contenteditable]"))
+      )
+        return;
+      const key = e.key.toLowerCase();
+      if (key !== "y" && key !== "n") return;
+      e.preventDefault();
+      onApprove(run.id, key === "y" ? "yes" : "no");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pending, onApprove, run.id]);
   return (
-    <section aria-label={run.title} className="mb-4 rounded-xl border bg-muted/30 px-3 py-2.5">
-      <div className="flex items-center gap-2 text-[11px]">
-        <SquareTerminal className="size-3.5 text-muted-foreground" />
+    <section aria-label={run.title} className="mb-4 rounded-md border px-3 py-2.5 text-[13px]">
+      <div className="flex items-center gap-2 text-[12px]">
+        <span
+          aria-hidden
+          className={`inline-block size-2 shrink-0 rounded-full border-[1.5px] ${
+            run.approval
+              ? "border-foreground bg-foreground"
+              : live
+                ? "animate-pulse border-muted-foreground"
+                : run.status === "error"
+                  ? "border-destructive"
+                  : "border-border"
+          }`}
+        />
         <span className="font-medium">{run.title}</span>
         <span className="text-muted-foreground">{run.modeLabel}</span>
         {run.branch && (
@@ -2270,10 +2327,11 @@ function RunCard({
         )}
       </div>
       {(run.steps.length > 0 || run.streaming) && (
-        <ol className="mt-2 space-y-1 border-l pl-3 text-[11px]">
-          {run.steps.map((s) =>
+        <ol className="mt-2 space-y-1 text-[12px]">
+          {run.steps.map((s, i) =>
             s.kind === "tool" ? (
               <li key={s.id} className="flex items-start gap-1.5">
+                <StepNumber n={i + 1} />
                 {s.label.startsWith("Searched") ? (
                   <Search className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
                 ) : s.label.startsWith("Listed") ? (
@@ -2308,13 +2366,22 @@ function RunCard({
                 </span>
               </li>
             ) : (
-              <li key={s.id} className="whitespace-pre-wrap text-muted-foreground">
-                {s.label}
+              <li key={s.id} className="flex items-start gap-1.5 text-muted-foreground">
+                <StepNumber n={i + 1} />
+                <span className="min-w-0 flex-1 whitespace-pre-wrap">{s.label}</span>
+                {s.tokens !== undefined && (
+                  <span className="shrink-0 tabular-nums" aria-label={`${number(s.tokens)} tokens`}>
+                    {compact(s.tokens).toLowerCase()}
+                  </span>
+                )}
               </li>
             ),
           )}
           {run.streaming && (
-            <li className="whitespace-pre-wrap text-muted-foreground">{run.streaming}</li>
+            <li className="flex items-start gap-1.5 text-muted-foreground">
+              <StepNumber n={run.steps.length + 1} />
+              <span className="min-w-0 flex-1 whitespace-pre-wrap">{run.streaming}</span>
+            </li>
           )}
         </ol>
       )}
@@ -2495,14 +2562,15 @@ function RunCard({
                 )}
               </>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
-                size="xs"
+                size="sm"
+                aria-label="Allow once"
                 onClick={() => {
                   onApprove(run.id, "yes");
                 }}
               >
-                Allow
+                Allow once<Hint>Y</Hint>
               </Button>
               {run.approval.kind === "command" &&
                 !run.approval.destructive &&
@@ -2510,22 +2578,23 @@ function RunCard({
                 !run.approvalFlags?.length && (
                   <Button
                     variant="outline"
-                    size="xs"
+                    size="sm"
                     onClick={() => {
                       onApprove(run.id, "always");
                     }}
                   >
-                    Always allow in this project
+                    Always for this project
                   </Button>
                 )}
               <Button
                 variant="outline"
-                size="xs"
+                size="sm"
+                aria-label="Deny"
                 onClick={() => {
                   onApprove(run.id, "no");
                 }}
               >
-                Deny
+                Deny<Hint>N</Hint>
               </Button>
             </div>
           </div>
@@ -2541,13 +2610,24 @@ function RunCard({
       )}
       {run.changes.length > 0 && (
         <div className="mt-2 border-t pt-2" aria-label="Files changed">
-          <div className="mb-1 flex items-center gap-2 text-[10px] font-medium text-muted-foreground">
-            Files changed
+          <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+            <span>
+              {applied.length === run.changes.length ? "Edited" : "Changed"}{" "}
+              {number(run.changes.length)} file{run.changes.length === 1 ? "" : "s"}
+            </span>
+            <span className="font-mono text-[11px] tabular-nums">
+              <span className="text-emerald-600 dark:text-emerald-400">
+                +{number(applied.reduce((n, c) => n + c.added, 0))}
+              </span>{" "}
+              <span className="text-destructive">
+                −{number(applied.reduce((n, c) => n + c.removed, 0))}
+              </span>
+            </span>
             {onUndoRun && applied.length > 1 && !live && (
               <Button
                 variant="ghost"
                 size="xs"
-                className="ml-auto normal-case"
+                className="normal-case"
                 disabled={busy}
                 onClick={() => {
                   onUndoRun(run.id);
@@ -2556,15 +2636,29 @@ function RunCard({
                 Undo all
               </Button>
             )}
+            {run.changes.some((c) => c.lines.length > 0) && (
+              <Button
+                variant="ghost"
+                size="xs"
+                className="normal-case"
+                aria-pressed={allDiffs}
+                onClick={() => {
+                  setAllDiffs((on) => !on);
+                  setShown(null);
+                }}
+              >
+                {allDiffs ? "Hide diff" : "See diff"}
+              </Button>
+            )}
           </div>
-          <ul className="space-y-1 text-[11px]">
+          <ul className="space-y-1 text-[12px]">
             {run.changes.map((c) => (
               <li key={c.id}>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     className={`min-w-0 truncate text-left font-mono hover:underline ${c.undone ? "text-muted-foreground line-through" : ""}`}
-                    aria-expanded={shown === c.id}
+                    aria-expanded={allDiffs || shown === c.id}
                     onClick={() => {
                       setShown((s) => (s === c.id ? null : c.id));
                     }}
@@ -2608,7 +2702,7 @@ function RunCard({
                     )
                   )}
                 </div>
-                {shown === c.id && c.lines.length > 0 && (
+                {(allDiffs || shown === c.id) && c.lines.length > 0 && (
                   <div className="mt-1 max-h-80 overflow-auto rounded border bg-background">
                     <DiffView lines={c.lines} />
                   </div>

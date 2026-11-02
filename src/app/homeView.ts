@@ -42,7 +42,25 @@ export function whenLabel(at: number, now: number): string {
   return `${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })} ${time}`;
 }
 
-export const EMPTY_HOME: HomeView = { waiting: [], going: [], scheduled: [], today: null };
+export const EMPTY_HOME: HomeView = {
+  waiting: [],
+  going: [],
+  scheduled: [],
+  today: null,
+  month: null,
+};
+
+/**
+ * M10 step 25 (CO-02): where the month lands at this pace: what's spent so far, scaled by how
+ * much of the month has gone. Early in a day the first day counts as a whole one, so a fresh
+ * month never projects to a fortune.
+ */
+export function projectedMonth(spentMicro: number, now: number): number {
+  const d = new Date(now);
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  const dayOfMonth = d.getDate();
+  return Math.round((spentMicro / dayOfMonth) * daysInMonth);
+}
 
 export function homeView(input: {
   recent: readonly RecentRun[];
@@ -58,6 +76,9 @@ export function homeView(input: {
   openable: ReadonlySet<string>;
   spentToday: number;
   dayBudget: number | null;
+  /** M10 step 25: the month so far, and the month budget when there is one. */
+  spentMonth?: number;
+  monthBudget?: number | null;
   now: number;
 }): HomeView {
   const place = input.web ? ("hulk" as const) : ("local" as const);
@@ -110,6 +131,14 @@ export function homeView(input: {
     today:
       input.spentToday > 0 || input.dayBudget !== null
         ? { spentMicro: input.spentToday, budgetMicro: input.dayBudget }
+        : null,
+    month:
+      input.spentMonth !== undefined && (input.spentMonth > 0 || input.monthBudget != null)
+        ? {
+            spentMicro: input.spentMonth,
+            projectedMicro: projectedMonth(input.spentMonth, input.now),
+            budgetMicro: input.monthBudget ?? null,
+          }
         : null,
   };
 }
