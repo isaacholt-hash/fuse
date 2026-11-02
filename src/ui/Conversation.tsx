@@ -1755,7 +1755,7 @@ export function Composer({
                     className={`shrink-0 rounded-[4px] bg-muted text-xs font-medium ${tight ? "gap-1 px-2" : "gap-1.5"}`}
                     aria-label="Choose model (Ctrl+K)"
                   >
-                    <Sparkles className="size-3.5" />
+                    {!tight && <Sparkles className="size-3.5" />}
                     <span>{modeLabel ?? model.name}</span>
                     {routing?.once && <span className="text-muted-foreground">· once</span>}
                     {preview && (
@@ -1763,7 +1763,7 @@ export function Composer({
                         → {preview}
                       </span>
                     )}
-                    {(previewTier ?? model.tier) && (
+                    {!collapsed && (previewTier ?? model.tier) && (
                       <Tier tier={(previewTier ?? model.tier) as NonNullable<typeof model.tier>} />
                     )}
                     {!tight && <ChevronDown className="size-3" />}
