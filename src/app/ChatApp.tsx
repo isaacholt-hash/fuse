@@ -157,6 +157,8 @@ import {
   type Notifier,
 } from "@/handover/watch";
 import { HulkRuns, HulkSection } from "@/ui/Hulk";
+import { Undo, undoLabel } from "@/ui/Undo";
+import { usePendingDelete } from "./usePendingDelete";
 import { AgentAuditSection } from "@/ui/AgentAudit";
 import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
@@ -247,7 +249,15 @@ import {
   type Memory,
   type Proposal,
 } from "@/storage/memories";
-import { listPath, setFeedback, type Message } from "@/storage/messages";
+import {
+  deleteMessageTree,
+  listPath,
+  purgeMessages,
+  restoreMessages,
+  setFeedback,
+  type Message,
+} from "@/storage/messages";
+import { sweepDeleted } from "@/storage/purge";
 import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
@@ -283,6 +293,7 @@ import {
   setThreadTags,
   purgeIncognito,
   purgeThread,
+  restoreThread,
   setActiveLeaf,
   setThreadMemory,
   setThreadPins,
@@ -566,6 +577,8 @@ export interface ChatAppProps {
   notify?: Notifier;
   /** How often HULK is asked about the open chat's runs, and about all of them; tests go faster. */
   hulkPollMs?: { card: number; notify: number };
+  /** M10 step 18: how long a delete can be undone before it's purged; tests shorten it. */
+  undoMs?: number;
 }
 
 const LAST_THREAD_KEY = "fuse.lastThread";
@@ -772,6 +785,7 @@ export function ChatApp({
   hulk,
   notify,
   hulkPollMs,
+  undoMs = 8000,
 }: ChatAppProps) {
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
@@ -1419,6 +1433,8 @@ export function ChatApp({
   useEffect(() => {
     // Incognito chats left by a crash or a forced close go before anything is listed.
     purgeIncognito(db, tenant)
+      // M10 step 18: a delete whose undo window a close or crash cut short ends here.
+      .then(() => sweepDeleted(db, tenant))
       .then(() => settleSeen(db, tenant))
       .then(() => listThreads(db, tenant))
       .then(async (list) => {
@@ -2342,6 +2358,44 @@ export function ChatApp({
     if (question && routed) {
       void stream(selectedId, routed, { kind: "retry", questionId: question.id }, searchOn);
     }
+  };
+  // M10 step 18: a delete marks its rows and shows Undo; the purge runs when the window ends.
+  const pendingDelete = usePendingDelete(undoMs, {
+    finalise: async (p) => {
+      if (p.kind === "thread") {
+        await purgeThread(db, tenant, p.id);
+        await refreshThreads();
+      } else {
+        await purgeMessages(db, tenant, p.ids);
+      }
+    },
+    undo: async (p) => {
+      if (p.kind === "thread") {
+        await restoreThread(db, tenant, p.id);
+        await refreshThreads();
+        select(p.id);
+      } else {
+        await restoreMessages(db, tenant, p.threadId, p.ids, p.previousLeafId);
+        if (selectedRef.current === p.threadId) await reload(p.threadId);
+      }
+    },
+  });
+  /** Deletes a message and everything under it: an answer, or a question and all that followed. */
+  const deleteFromMessage = (id: string) => {
+    if (!selectedId || live[selectedId]) return;
+    const threadId = selectedId;
+    void (async () => {
+      const { ids, previousLeafId } = await deleteMessageTree(db, tenant, threadId, id);
+      if (ids.length === 0) return;
+      await reload(threadId);
+      await pendingDelete.start({
+        kind: "messages",
+        threadId,
+        ids,
+        previousLeafId,
+        count: ids.length,
+      });
+    })().catch(report);
   };
   /** A fresh answer to any question (CH-04); the old one stays on its own branch. */
   const regenerateAnswer = (answerId: string) => {
@@ -4491,6 +4545,16 @@ export function ChatApp({
         } else if (event.key === ",") {
           event.preventDefault();
           setView((current) => (current === "chat" ? "settings" : "chat"));
+        } else if (key === "z" && !event.shiftKey && pendingDelete.pending) {
+          // M10 step 18: Ctrl+Z undoes a delete while its notice shows, unless you're typing.
+          const el = event.target instanceof HTMLElement ? event.target : null;
+          const typing =
+            el !== null &&
+            (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+          if (!typing) {
+            event.preventDefault();
+            void pendingDelete.undo();
+          }
         } else if (key === "r" && shown.at(-1)?.status === "error") {
           event.preventDefault();
           retry();
@@ -4720,6 +4784,17 @@ export function ChatApp({
             </Button>
           </div>
         ))}
+        {pendingDelete.pending && (
+          <Undo
+            label={undoLabel(pendingDelete.pending)}
+            onUndo={() => {
+              void pendingDelete.undo();
+            }}
+            onDismiss={() => {
+              void pendingDelete.flush();
+            }}
+          />
+        )}
         <div className="flex min-h-0 flex-1">
           {sidebar && (
             <Sidebar
@@ -5881,6 +5956,7 @@ export function ChatApp({
                     onEscalate={escalate}
                     onRegenerate={regenerateAnswer}
                     onEdit={editAndSend}
+                    onDelete={deleteFromMessage}
                     onBranch={switchBranch}
                     onSideBySide={setSideBySide}
                     onOpenFile={(id) => {
@@ -6579,7 +6655,7 @@ export function ChatApp({
             if (!open) setDeleting(null);
           }}
           title="Delete this conversation?"
-          description={`“${deleting?.title ?? ""}” and its messages will be removed.`}
+          description={`“${deleting?.title ?? ""}”, its messages, summaries and search entries will be removed. Memories it produced stay. You can undo for a few seconds.`}
         >
           <div className="flex justify-end gap-2">
             <Button
@@ -6596,9 +6672,13 @@ export function ChatApp({
                 const id = deleting?.id;
                 setDeleting(null);
                 if (!id) return;
+                const title = deleting?.title ?? "";
                 controllers.current.get(id)?.abort();
                 if (selectedId === id) newChat();
-                deleteThread(db, tenant, id).then(refreshThreads).catch(report);
+                deleteThread(db, tenant, id)
+                  .then(refreshThreads)
+                  .then(() => pendingDelete.start({ kind: "thread", id, title }))
+                  .catch(report);
               }}
             >
               Delete conversation

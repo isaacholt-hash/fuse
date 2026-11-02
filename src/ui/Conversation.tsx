@@ -32,6 +32,7 @@ import {
   FolderTree,
   SquareTerminal,
   Server,
+  Trash2,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -385,7 +386,10 @@ export function Messages({
   onUndoRun,
   onApprove,
   onPreviewChange,
+  onDelete,
 }: {
+  /** M10 step 18: deletes a message and everything under it; undo-able for a few seconds. */
+  onDelete?: (id: string) => void;
   /** WF-05: opens a file a run made or changed in the side panel. */
   onPreviewChange?: (changeId: string) => void;
   /** M10 step 11: stops this run, wherever it is going. */
@@ -642,6 +646,20 @@ export function Messages({
                             </Button>
                           </Tip>
                         )}
+                      {onDelete && !busy && message.id !== "live-question" && (
+                        <Tip label="Delete this question and everything after it">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            aria-label="Delete from here"
+                            onClick={() => {
+                              onDelete(message.id);
+                            }}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </Tip>
+                      )}
                       <span className="ml-1">You</span>
                     </div>
                   </div>
@@ -909,6 +927,20 @@ export function Messages({
                                   </Tip>
                                 );
                               })}
+                            {onDelete && !busy && message.id !== "live-answer" && (
+                              <Tip label="Delete this answer and what followed it">
+                                <Button
+                                  variant="ghost"
+                                  size="icon-xs"
+                                  aria-label="Delete answer"
+                                  onClick={() => {
+                                    onDelete(message.id);
+                                  }}
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </Tip>
+                            )}
                           </div>
                         )}
                         {message.escalateTo && onEscalate && (

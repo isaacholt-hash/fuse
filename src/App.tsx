@@ -122,6 +122,8 @@ interface Props {
   notify?: Notifier;
   /** How often HULK is asked about the open chat's runs, and about all of them; tests go faster. */
   hulkPollMs?: { card: number; notify: number };
+  /** M10 step 18: how long a delete can be undone; tests shorten it. */
+  undoMs?: number;
   /** Starts the app over after delete-all (tests pass a spy). */
   onRestart?: () => void;
 }
@@ -156,6 +158,7 @@ export default function App({
   hulk = webApp ? undefined : tauriHulkApi,
   notify = webApp ? undefined : webviewNotifier,
   hulkPollMs,
+  undoMs,
   onRestart,
 }: Props) {
   // M10 step 17: Usage tells the desktop app's requests from the web app's.
@@ -324,6 +327,7 @@ export default function App({
       {...(hulk ? { hulk } : {})}
       {...(notify ? { notify } : {})}
       {...(hulkPollMs ? { hulkPollMs } : {})}
+      {...(undoMs !== undefined ? { undoMs } : {})}
       {...(onRestart ? { onRestart } : {})}
       prepareImage={prepareImage}
       updates={appUpdates}
