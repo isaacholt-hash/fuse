@@ -814,18 +814,28 @@ fn backup_before_migrations(
 }
 
 pub(crate) fn prune_backups(backups: &Path) -> std::io::Result<()> {
-    let mut dbs: Vec<PathBuf> = fs::read_dir(backups)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "db"))
-        .collect();
+    prune_backups_to(backups, BACKUPS_KEPT).map(|_| ())
+}
+
+/// Keeps the newest `keep` backups (by name, which starts with the time) and removes the rest
+/// with their side files. Returns how many were removed.
+pub(crate) fn prune_backups_to(backups: &Path, keep: usize) -> std::io::Result<usize> {
+    let mut dbs: Vec<PathBuf> = match fs::read_dir(backups) {
+        Ok(entries) => entries
+            .filter_map(|e| e.ok().map(|e| e.path()))
+            .filter(|p| p.extension().is_some_and(|x| x == "db"))
+            .collect(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
     dbs.sort();
-    let excess = dbs.len().saturating_sub(BACKUPS_KEPT);
-    for old in dbs.into_iter().take(excess) {
+    let excess = dbs.len().saturating_sub(keep);
+    for old in dbs.iter().take(excess) {
         for ext in ["", "-wal", "-shm"] {
             let _ = fs::remove_file(PathBuf::from(format!("{}{ext}", old.display())));
         }
     }
-    Ok(())
+    Ok(excess)
 }
 
 #[cfg(test)]

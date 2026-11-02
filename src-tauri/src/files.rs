@@ -90,6 +90,42 @@ pub fn wipe(root: &Path) -> Result<usize, String> {
     Ok(removed)
 }
 
+/// How many attachment files there are and what they take on disk (M10 step 20).
+pub fn usage(root: &Path) -> (u64, u64) {
+    let Ok(entries) = fs::read_dir(root.join(DIR)) else {
+        return (0, 0);
+    };
+    entries
+        .flatten()
+        .filter(|e| e.file_name().to_str().is_some_and(is_sha256))
+        .fold((0, 0), |(n, bytes), e| {
+            (n + 1, bytes + e.metadata().map(|m| m.len()).unwrap_or(0))
+        })
+}
+
+/// Removes every attachment file the database no longer names (M10 step 20): `keep` is the
+/// SHA-256 of every file still referenced. Returns how many were removed.
+pub fn prune(root: &Path, keep: &[String]) -> Result<usize, String> {
+    let dir = root.join(DIR);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Ok(0);
+    };
+    let keep: std::collections::HashSet<&str> = keep.iter().map(String::as_str).collect();
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(sha) = name.to_str().filter(|n| is_sha256(n)) else {
+            continue;
+        };
+        if keep.contains(sha) {
+            continue;
+        }
+        fs::remove_file(entry.path()).map_err(|e| format!("can't remove a file: {e}"))?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
 /// Body: the raw file bytes.
 pub(crate) fn file_put(
     ctx: &Ctx,

@@ -60,7 +60,7 @@ Requirement IDs refer to `docs/requirements.md`.
 | `http_status NULL`, `error_code NULL`, `error_message NULL` | Sanitised: no headers, no bodies. |
 | `provider_request_id NULL` | The provider's request id header, for support. |
 
-Routing columns (`tier`, `route_rule_id`) were added in M1 step 10 (`0008_routing.sql`); they are NULL on housekeeping calls. Cache hits come from `cached_input_tokens > 0`, so no separate column is needed. Retention: 90 days, then purge (section 16).
+Routing columns (`tier`, `route_rule_id`) were added in M1 step 10 (`0008_routing.sql`); they are NULL on housekeeping calls. Cache hits come from `cached_input_tokens > 0`, so no separate column is needed. Retention: rows are kept until you trim them in Settings → Your data → Storage (M10 step 20): "Trim rows older than 90 days" deletes them after unlinking the messages and run steps that pointed at them; the Usage page looks back two months, so what it shows keeps adding up. The same table shows the database, attached files, search index, backups and run output with a clean-up each (unreferenced files removed, embeddings cleared and rebuilt on demand, only the latest backup kept, old finished runs' tool output blanked); no clean-up touches chats or what they cost. Tests in `src/chat/sendMessage.test.ts` and `src/agent/run.test.ts` pin the writes per answer and per run (one log row and one step per turn, never one per streamed chunk).
 
 ### Routing and cost: M1+
 

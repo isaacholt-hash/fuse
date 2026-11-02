@@ -13,6 +13,7 @@ import { citationsForMessages } from "@/storage/citations";
 import { addFile } from "@/storage/files";
 import { listMessages, listPath } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
+import { countingDb } from "@/storage/testing/countWrites";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { setGlobalInstructions } from "@/storage/instructions";
 import { createProject, updateProject } from "@/storage/projects";
@@ -189,6 +190,39 @@ test("switching model mid-thread sends the whole conversation to the new model",
   ]);
   const msgs = await listMessages(db, t, thread.id);
   expect(msgs.map((m) => m.provider)).toEqual([null, "anthropic", null, "openai"]);
+});
+
+test("M10 step 20: a long streamed answer writes a fixed number of rows, never one per chunk", async () => {
+  const base = openTestDb();
+  const { db, writes } = countingDb(base);
+  const fakes = {
+    anthropic: fakeAdapter("anthropic", async function* () {
+      for (let i = 0; i < 1000; i++) {
+        yield { type: "text", text: `w${String(i)} ` } as const;
+      }
+      yield* answer("");
+    }),
+    openai: fakeAdapter("openai", () => answer("hi")),
+  };
+  const deps: ChatDeps = {
+    db,
+    tenant: t,
+    catalog,
+    adapterFor: (p) => (p === "local" ? unavailableLocalAdapter() : fakes[p].adapter),
+    // No time passes: the streamed text is saved on a clock, so never mid-stream here.
+    now: () => 1_800_000_000_000,
+    saveEveryMs: 1000,
+  };
+  const thread = await createThread(base, t);
+  writes.clear();
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "count" });
+  expect(writes.get("INSERT INTO request_log")).toBe(1);
+  expect(writes.get("INSERT INTO messages")).toBe(2);
+  expect(writes.get("UPDATE messages") ?? 0).toBeLessThanOrEqual(3);
+  const total = [...writes.values()].reduce((a, b) => a + b, 0);
+  expect(total, [...writes.entries()].map(([k, v]) => `${k}=${String(v)}`).join(", ")).toBeLessThan(
+    25,
+  );
 });
 
 test("streamed text is saved while it arrives (nothing lost if the app dies)", async () => {
