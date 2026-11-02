@@ -2949,7 +2949,7 @@ export function ChatApp({
   useEffect(() => {
     if (!hulkLink) return;
     hulkLink.status().then(setHulkStatus, () => {
-      setHulkStatus({ address: null, paired: false });
+      setHulkStatus({ address: null, paired: false, mine: null, server: null, mismatch: null });
     });
   }, [hulkLink]);
   const hulkPaired = Boolean(hulkStatus?.paired);
@@ -2993,6 +2993,13 @@ export function ChatApp({
     let live = true;
     const tasks = new Map(handovers.map((h) => [h.requestId, h.task]));
     const look = () => {
+      // M10 F2: the same poll keeps HULK's build current while runs are out there.
+      hulkLink.status().then(
+        (s) => {
+          if (live) setHulkStatus(s);
+        },
+        () => undefined,
+      );
       for (const [id, task] of tasks) {
         handoverState(hulkLink, tenant, id).then(
           (s) => {
@@ -3038,11 +3045,13 @@ export function ChatApp({
           ? "HULK needs the desktop app."
           : !hulkPaired
             ? "Pair with HULK in Settings first"
-            : !activeProjectId || !repoFolder
-              ? "HULK works from a project's repository with a remote: link one in the project's settings."
-              : sessionKind === "work"
-                ? "HULK takes Code sessions; Work runs on this computer."
-                : null,
+            : hulkStatus?.mismatch
+              ? hulkStatus.mismatch
+              : !activeProjectId || !repoFolder
+                ? "HULK works from a project's repository with a remote: link one in the project's settings."
+                : sessionKind === "work"
+                  ? "HULK takes Code sessions; Work runs on this computer."
+                  : null,
       };
   const runsWhere: "local" | "hulk" = webApp
     ? "hulk"
@@ -3670,10 +3679,18 @@ export function ChatApp({
   // desktop. `scheduledAt` reloads it after a change.
   const [scheduledRows, setScheduledRows] = useState<ScheduledRow[] | null>(null);
   const [scheduledAt, setScheduledAt] = useState(0);
+  // M10 F2: HULK's database is read only when its build runs this app's schema.
+  const hulkMismatch = hulkStatus?.mismatch ?? null;
   const scheduledSource = useMemo(
-    () => (webApp ? db : hulkLink && hulkPaired ? hulkDb(hulkLink) : null),
-    [webApp, db, hulkLink, hulkPaired],
+    () => (webApp ? db : hulkLink && hulkPaired && !hulkMismatch ? hulkDb(hulkLink) : null),
+    [webApp, db, hulkLink, hulkPaired, hulkMismatch],
   );
+  // HULK's build is asked again when Scheduled or Settings opens, so a redeploy there (or an
+  // update here) is noticed without a restart. The link keeps the answer a minute.
+  useEffect(() => {
+    if (!hulkLink || !hulkPaired || (view !== "scheduled" && view !== "settings")) return;
+    hulkLink.status().then(setHulkStatus, () => undefined);
+  }, [hulkLink, hulkPaired, view, scheduledAt]);
   useEffect(() => {
     if (view !== "scheduled" || !scheduledSource) return;
     const life = { live: true };
@@ -3729,7 +3746,7 @@ export function ChatApp({
       const recent = await recentRuns(db, tenant, 50);
       const schedules = webApp
         ? await listSchedules(db, tenant)
-        : hulkLink && hulkPaired
+        : hulkLink && hulkPaired && !hulkMismatch
           ? await listSchedules(hulkDb(hulkLink), tenant).catch((): Schedule[] => [])
           : [];
       const spentToday = await spentSince(db, tenant, periodStart("day", Date.now()));
@@ -3744,7 +3761,7 @@ export function ChatApp({
       live = false;
       clearInterval(timer);
     };
-  }, [homeShown, db, tenant, webApp, hulkLink, hulkPaired]);
+  }, [homeShown, db, tenant, webApp, hulkLink, hulkPaired, hulkMismatch]);
   // M10 step 13: when a run in the open chat starts or ends, the sidebar's dots look again.
   const runStatusKey = [...threadRuns.values()].map((r) => `${r.run.id}:${r.run.status}`).join();
   useEffect(() => {
@@ -4746,7 +4763,8 @@ export function ChatApp({
               unavailable={
                 scheduledSource
                   ? null
-                  : "Scheduled tasks run on HULK. Pair this computer with HULK in Settings to see them here."
+                  : (hulkMismatch ??
+                    "Scheduled tasks run on HULK. Pair this computer with HULK in Settings to see them here.")
               }
               projects={projects.map((p) => ({ id: p.id, name: p.name }))}
               prompts={prompts.map((p) => ({ id: p.id, name: p.name, body: p.body }))}

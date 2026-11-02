@@ -456,7 +456,8 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
     const token = await pair(page, "TCHALLA (bench)");
     const bearer = { authorization: `Bearer ${token}` };
     const hulk: HulkApi = {
-      status: () => Promise.resolve({ address: base, paired: true }),
+      status: () =>
+        Promise.resolve({ address: base, paired: true, mine: null, server: null, mismatch: null }),
       pair: () => Promise.reject(new Error("already paired")),
       unpair: () => Promise.reject(new Error("not in the benchmark")),
       invoke: <T>(command: string, args: Record<string, unknown> = {}) =>

@@ -16,6 +16,10 @@ export interface AuthState {
   signedIn: boolean;
   /** fuse-server's version (PL-06). */
   version: string;
+  /** M10 F2: the schema it runs (its count of migrations), and the commit and day it was built. */
+  schema?: number;
+  builtFrom?: string;
+  builtOn?: string;
 }
 
 /** A desktop or the runner, paired with a one-time code. Times are seconds since 1970. */

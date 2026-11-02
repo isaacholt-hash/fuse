@@ -1,4 +1,4 @@
-import { ExternalLink, Server } from "lucide-react";
+import { ExternalLink, Server, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -72,6 +72,24 @@ export function HulkSection({
               <ExternalLink className="size-3" />
             </button>
           </p>
+          {/* M10 F2: which build each side runs, and the reason when they don't match. */}
+          <p className="text-[11px] text-muted-foreground">
+            {status.server
+              ? `HULK: built from ${status.server.builtFrom} on ${status.server.builtOn}. `
+              : "HULK couldn't be reached just now. "}
+            {status.mine
+              ? `This app: built from ${status.mine.builtFrom} on ${status.mine.builtOn}.`
+              : ""}
+          </p>
+          {status.mismatch && (
+            <p
+              role="status"
+              className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"
+            >
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>{status.mismatch}</span>
+            </p>
+          )}
           <Button
             variant="outline"
             size="sm"

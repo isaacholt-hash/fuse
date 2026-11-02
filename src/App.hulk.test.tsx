@@ -34,10 +34,23 @@ const adapterFor = (provider: "anthropic" | "openai" | "local"): ProviderAdapter
   provider,
 });
 
-/** HULK: pairing, and its database and file store behind the link. */
-function fakeHulk(paired: boolean) {
+const mine = { schema: 54, builtFrom: "84b779b", builtOn: "2026-11-02" };
+const hulkBuild = { schema: 54, builtFrom: "a483e9b", builtOn: "2026-11-01" };
+
+/**
+ * HULK: pairing, and its database and file store behind the link. With `mismatch`, HULK runs
+ * another schema: the link says so and refuses every read, as src-tauri/src/hulk.rs does.
+ */
+function fakeHulk(paired: boolean, mismatch: string | null = null) {
   const db = openTestDb();
-  const initial: HulkStatus = { address: paired ? "https://hulk.test:4100" : null, paired };
+  const server = mismatch ? { ...hulkBuild, schema: 53 } : hulkBuild;
+  const initial: HulkStatus = {
+    address: paired ? "https://hulk.test:4100" : null,
+    paired,
+    mine,
+    server: paired ? server : null,
+    mismatch: paired ? mismatch : null,
+  };
   const state = {
     db,
     status: initial,
@@ -49,14 +62,15 @@ function fakeHulk(paired: boolean) {
     pair: (address, code, name) => {
       state.pairs.push({ address, code, name });
       if (code !== "ABCD-EFGH") return Promise.reject(new Error("That isn't right."));
-      state.status = { address, paired: true };
+      state.status = { ...state.status, address, paired: true, server, mismatch };
       return Promise.resolve(state.status);
     },
     unpair: () => {
-      state.status = { address: state.status.address, paired: false };
+      state.status = { ...state.status, paired: false, server: null, mismatch: null };
       return Promise.resolve(state.status);
     },
     invoke: async <T,>(command: string, args: Record<string, unknown> = {}): Promise<T> => {
+      if (state.status.mismatch) throw new Error(state.status.mismatch);
       const sql = args.sql as string;
       const params = (args.params ?? []) as SqlValue[];
       if (command === "db_open") return null as T;
@@ -187,6 +201,39 @@ test("Settings → HULK pairs with a code (the server's error shows), then unpai
     }),
   ).toBeInTheDocument();
   expect(hulk.state.status.paired).toBe(false);
+});
+
+test("M10 F2: HULK behind this app is named in Settings, Scheduled and Where, and not read", async () => {
+  const why =
+    "HULK runs an older FUSE (built from a483e9b on 2026-11-01). Redeploy it: `bash scripts/deploy-server.sh`";
+  const hulk = fakeHulk(true, why);
+  const { user } = start(hulk.api);
+  await screen.findByRole("complementary", { name: "Chat sidebar" });
+
+  // Settings → HULK: both builds, and the reason.
+  await user.keyboard("{Control>},{/Control}");
+  const section = within(await screen.findByRole("region", { name: "HULK" }));
+  expect(await section.findByRole("status")).toHaveTextContent(why);
+  expect(
+    section.getByText(
+      "HULK: built from a483e9b on 2026-11-01. This app: built from 84b779b on 2026-11-02.",
+    ),
+  ).toBeInTheDocument();
+
+  // The Scheduled page says why instead of showing HULK's error.
+  await user.keyboard("{Control>}2{/Control}");
+  await user.click(await screen.findByRole("button", { name: /^Scheduled/ }));
+  expect(await screen.findByText(why)).toBeInTheDocument();
+  expect(screen.queryByText(/no such column/)).not.toBeInTheDocument();
+
+  // Where: HULK is greyed with the same reason.
+  await codeInProject(user);
+  const button = within(await screen.findByRole("group", { name: "Where it runs" })).getByRole(
+    "button",
+    { name: "HULK" },
+  );
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("title", why);
 });
 
 test("not paired, HULK as the place to run is greyed with the reason", async () => {

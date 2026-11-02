@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use crate::db::Database;
 use crate::exec::Execs;
+use crate::hulk::HulkCache;
 use crate::keys::Keys;
 use crate::local::Local;
 use crate::mcp::McpServers;
@@ -31,6 +32,8 @@ pub struct Ctx {
     pub downloads: Downloads,
     pub python: PyInstall,
     pub mcp: McpServers,
+    /// HULK's build from the desktop's last look at it (M10 F2).
+    pub hulk: HulkCache,
 }
 
 impl Ctx {
@@ -47,6 +50,7 @@ impl Ctx {
             downloads: Downloads::default(),
             python: PyInstall::default(),
             mcp: McpServers::default(),
+            hulk: HulkCache::default(),
         }
     }
 }

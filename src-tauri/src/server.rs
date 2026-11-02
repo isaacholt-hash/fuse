@@ -208,10 +208,15 @@ struct PassphraseBody {
 }
 
 async fn auth_state(State(server): State<Arc<Server>>, headers: HeaderMap) -> Response {
+    // M10 F2: the schema and commit let a paired desktop tell whether it can read this database.
+    let build = crate::hulk::this_build();
     axum::Json(json!({
         "setUp": server.auth.is_set_up(),
         "signedIn": server.who(&headers).is_some(),
         "version": env!("CARGO_PKG_VERSION"),
+        "schema": build.schema,
+        "builtFrom": build.built_from,
+        "builtOn": build.built_on,
     }))
     .into_response()
 }
@@ -872,6 +877,9 @@ mod tests {
             (state["setUp"].clone(), state["signedIn"].clone()),
             (json!(true), json!(false))
         );
+        // M10 F2: the build a paired desktop compares with its own.
+        assert_eq!(state["schema"], json!(crate::db::schema_version()));
+        assert!(state["builtFrom"].as_str().is_some_and(|s| !s.is_empty()));
         let _ = std::fs::remove_dir_all(&home);
         let _ = std::fs::remove_dir_all(&ui);
     }
