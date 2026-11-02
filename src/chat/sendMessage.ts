@@ -109,6 +109,8 @@ export interface SendInput {
   signal?: AbortSignal;
   /** Called with the full answer text so far, for live rendering. */
   onText?: (textSoFar: string) => void;
+  /** M10 step 22: called with the reasoning summary so far, as the model thinks. */
+  onReasoning?: (summarySoFar: string) => void;
   /** Allow the model to search the web (only if the model supports it). */
   webSearch?: boolean;
   /** Called when the provider starts ("searching") or finishes (null) a web search. */
@@ -505,6 +507,7 @@ async function streamAnswer(
     const started = now();
     let firstTokenAt: number | null = null;
     let answer = "";
+    let reasoning = "";
     let lastSave = started;
     let done: StreamDone | null = null;
     let failure: ProviderError | null = null;
@@ -518,9 +521,13 @@ async function streamAnswer(
       if (refused) throw new ProviderError("blocked", refused, { code: "egress" });
       const adapter = deps.adapterFor(m.provider);
       const mine = input.defaults?.(m) ?? {};
-      // "Think harder" (max) beats everything; then your default; then the router's (RT-08).
       const routed = input.route?.effort ?? null;
-      const effort = routed === "max" ? routed : (mine.effort ?? routed);
+      // Your choice on the dial (or the old "max") beats everything; then your default; then
+      // the router's (RT-08).
+      const effort =
+        routed !== null && (input.route?.effortChosen || routed === "max")
+          ? routed
+          : (mine.effort ?? routed);
       const prefixed = mine.prefix
         ? system
           ? `${mine.prefix}\n\n${system}`
@@ -577,6 +584,9 @@ async function streamAnswer(
               lastSave = now();
               await updateMessageContent(db, tenant, assistantMessageId, answer);
             }
+          } else if (ev.type === "reasoning") {
+            reasoning += ev.text;
+            input.onReasoning?.(reasoning);
           } else if (ev.type === "tool_call") {
             calls.push(ev.call);
           } else {
@@ -697,6 +707,7 @@ async function streamAnswer(
       started,
       firstTokenAt,
       answer,
+      reasoning,
       done: done,
       failure: failure,
       sources,
@@ -741,7 +752,7 @@ async function streamAnswer(
     run = await attempt(model);
     toolRounds = addUsage(run.earlier, toolRounds);
   }
-  const { started, firstTokenAt, answer, done, failure, sources } = run;
+  const { started, firstTokenAt, answer, reasoning, done, failure, sources } = run;
 
   const latencyMs = now() - started;
   const ttftMs = firstTokenAt === null ? null : firstTokenAt - started;
@@ -809,6 +820,7 @@ async function streamAnswer(
     errorCode: failure ? failure.kind : truncated ? "length_limit" : paused ? "pause_turn" : null,
     errorMessage: message,
     requestId,
+    reasoningSummary: reasoning.trim() || null,
   });
   if (sources.length > 0) await addCitations(db, tenant, assistantMessageId, sources);
   // LL-06: a clean, complete answer to a cacheable question is kept for next time.

@@ -755,24 +755,65 @@ test("incognito: marked, no memory, not listed or searchable, and gone once you 
   expect(await listThreads(db, DEFAULT_TENANT)).toEqual([]);
 });
 
-test("Think harder sends maximum effort with the model's full output budget, for one message", async () => {
+test("M10 step 22: the effort dial sends the chosen level with the model's full output budget, for one message", async () => {
   const { options, user } = setup({
     anthropic: [() => answer("Deep answer."), () => answer("Normal answer.")],
   });
   await composer();
-  const think = screen.getByRole("button", { name: "Think harder" });
-  await user.click(think);
-  expect(think).toHaveAttribute("aria-pressed", "true");
+  // Shows the usual level for the model that would answer (the test model's own default).
+  const dial = screen.getByRole("button", { name: "Reasoning effort" });
+  expect(dial).toHaveAttribute("aria-pressed", "false");
+  await user.click(dial);
+  const menu = within(await screen.findByRole("dialog", { name: "Reasoning effort" }));
+  expect(menu.getByRole("menuitemradio", { name: /^Usual/ })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  await user.click(menu.getByRole("menuitemradio", { name: /^Max/ }));
+  expect(screen.getByRole("button", { name: "Reasoning effort" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await user.type(await composer(), "What is FUSE?{Enter}");
   expect(await screen.findByText("Deep answer.")).toBeInTheDocument();
   expect(options[0]).toMatchObject({ effort: "max", maxOutputTokens: 1000 });
-  expect(screen.getByRole("button", { name: "Think harder" })).toHaveAttribute(
+  expect(screen.getByRole("button", { name: "Reasoning effort" })).toHaveAttribute(
     "aria-pressed",
     "false",
   );
   await user.type(await composer(), "And then?{Enter}");
   expect(await screen.findByText("Normal answer.")).toBeInTheDocument();
   expect(options.at(-1)).not.toHaveProperty("effort");
+});
+
+test("M10 step 22: while a model thinks, the answer shows the summary so far with Stop; then its size and cost", async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((r) => (release = r));
+  const { user } = setup({
+    anthropic: [
+      async function* () {
+        yield { type: "reasoning", text: "Weighing the quotes." };
+        await gate;
+        for await (const ev of answer("Marrakech.")) {
+          yield ev.type === "done"
+            ? { ...ev, usage: { ...ev.usage, outputTokens: 430, reasoningTokens: 30 } }
+            : ev;
+        }
+      },
+    ],
+  });
+  await user.type(await composer(), "Which quote?{Enter}");
+  const line = within(await screen.findByRole("group", { name: "Reasoning" }));
+  expect(await line.findByText(/^Thinking…/)).toBeInTheDocument();
+  expect(line.getByRole("button", { name: /^Stop/ })).toBeInTheDocument();
+  await user.click(line.getByRole("button", { expanded: false }));
+  expect(line.getByText("Weighing the quotes.")).toBeInTheDocument();
+
+  release();
+  expect(await screen.findByText("Marrakech.")).toBeInTheDocument();
+  const done = within(await screen.findByRole("group", { name: "Reasoning" }));
+  expect(await done.findByText(/^Thought for \d+ s · 30 tokens · \$/)).toBeInTheDocument();
+  expect(done.queryByRole("button", { name: /^Stop/ })).not.toBeInTheDocument();
 });
 
 test("the usage dashboard shows spend for the period, against the one before, and where it went", async () => {

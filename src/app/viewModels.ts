@@ -3,7 +3,8 @@ import { HANDLER_LABELS } from "@/deterministic/handlers";
 import { explainPick, type PickReason } from "@/memory/inject";
 import { findModel, priceFor, toolPrice, type Catalog, type CatalogModel } from "@/catalog/catalog";
 import { PROVIDER_NAMES } from "@/chat/sendMessage";
-import { cost } from "@/cost/cost";
+import { cost, priceToMicro } from "@/cost/cost";
+import { guessReasoningTokens } from "@/routing/effort";
 import { splitAnswer } from "@/artifacts/parse";
 import { INTENT_LABELS } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
@@ -23,6 +24,7 @@ import type {
   ThreadState,
   ThreadView,
   UsageView,
+  ReasoningView,
 } from "@/ui/types";
 
 const DAY_MS = 86_400_000;
@@ -164,6 +166,43 @@ function usageView(m: Message, catalog: Catalog, model: CatalogModel | undefined
   };
 }
 
+/**
+ * M10 step 22 (RT-08): the reasoning line. While the answer streams with no text yet the model is
+ * thinking: the count is guessed from the summary so far and the clock runs. After, the real
+ * count from usage, priced at the output rate, and the time to the first token.
+ */
+function reasoningView(
+  m: Message,
+  model: CatalogModel | undefined,
+  now: number,
+): ReasoningView | null {
+  const summary = m.reasoningSummary;
+  const perToken = model ? priceToMicro(model.price.output) / 1_000_000 : 0;
+  if (m.status === "streaming") {
+    if (m.content && !summary) return null;
+    const tokens = guessReasoningTokens(summary?.length ?? 0);
+    return {
+      live: !m.content,
+      tokens,
+      estimated: true,
+      costMicro: Math.round(tokens * perToken),
+      seconds: Math.max(0, Math.floor((now - m.createdAt) / 1000)),
+      summary: summary ?? null,
+    };
+  }
+  const tokens = m.usage.reasoningTokens;
+  if (tokens <= 0 && !summary) return null;
+  const thinkMs = m.usage.ttftMs ?? m.usage.latencyMs ?? 0;
+  return {
+    live: false,
+    tokens,
+    estimated: false,
+    costMicro: Math.round(tokens * perToken),
+    seconds: Math.round(thinkMs / 1000),
+    summary: summary ?? null,
+  };
+}
+
 const TIER_LABELS: Record<string, string> = { cheap: "Cheap", balanced: "Balanced", best: "Best" };
 
 /** The routing badge: how the model was picked, and the same tokens priced on Best (RT-09). */
@@ -196,6 +235,8 @@ export function messageViews(
     string,
     { text: string; reason: PickReason | null; score: number | null }[]
   > = new Map(),
+  /** For the live reasoning line's clock. */
+  now: number = Date.now(),
 ): MessageView[] {
   const out: MessageView[] = [];
   let lastModel: string | null = null;
@@ -285,6 +326,8 @@ export function messageViews(
     if (m.status !== "streaming" && (m.usage.priceVersion !== null || m.status === "complete")) {
       view.usage = usageView(m, catalog, model);
     }
+    const reasoning = reasoningView(m, model, now);
+    if (reasoning) view.reasoning = reasoning;
     const routed = m.status === "streaming" ? undefined : routeView(m);
     if (routed) view.route = routed;
     const cited = sources.get(m.id);
@@ -337,6 +380,9 @@ export interface LiveAnswer {
   searching?: boolean;
   /** Sources cited so far. */
   sources?: SourceView[];
+  /** M10 step 22: the reasoning summary so far, and when the answer was asked for. */
+  reasoning?: string;
+  startedAt?: number;
   /**
    * Where the answer goes until its saved row loads: after this message id (rows after it are
    * replaced), at the start (null), or at the end (undefined, a new question).
@@ -351,7 +397,18 @@ export interface LiveAnswer {
 export function withLive(base: Message[], live: LiveAnswer | undefined): Message[] {
   if (!live) return base;
   const saved = base.findLastIndex((m) => m.role === "assistant" && m.status === "streaming");
-  if (saved >= 0) return base.map((m, i) => (i === saved ? { ...m, content: live.text } : m));
+  if (saved >= 0) {
+    return base.map((m, i) =>
+      i === saved
+        ? {
+            ...m,
+            content: live.text,
+            reasoningSummary: live.reasoning || null,
+            createdAt: live.startedAt ?? m.createdAt,
+          }
+        : m,
+    );
+  }
   // Retry, regenerate and edit replace what came after `after`; a stronger re-run goes under it.
   const cut =
     live.after === undefined
@@ -377,6 +434,7 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
     bestCostMicroUsd: null,
     escalatedFromId: null,
     feedback: null,
+    reasoningSummary: null,
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...fields,
@@ -390,6 +448,8 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
       status: "streaming",
       provider: live.model.provider,
       model: live.model.id,
+      reasoningSummary: live.reasoning || null,
+      ...(live.startedAt ? { createdAt: live.startedAt } : {}),
     }),
   ];
 }

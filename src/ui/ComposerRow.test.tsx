@@ -67,6 +67,11 @@ function show(at: number) {
         onPickerOpen={() => undefined}
         onSelectModel={() => undefined}
         onSend={() => undefined}
+        effortFor={() => ({
+          auto: "medium",
+          options: ["low", "medium", "high", "xhigh", "max"],
+          extraMicro: () => 0,
+        })}
         onStop={() => undefined}
         onSettings={() => undefined}
         folders={[{ id: "a", name: "lighthouse", path: "/home/me/lighthouse", own: true }]}
@@ -116,7 +121,7 @@ test("F4: wide, everything fits in one row", () => {
   show(800);
   mainControls();
   expect(screen.queryByRole("button", { name: "More options" })).toBeNull();
-  expect(screen.getByRole("button", { name: "Think harder" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Reasoning effort" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Compare models" })).toBeTruthy();
   expect(screen.getByLabelText("New branch")).toBeTruthy();
   expect(screen.getByLabelText("What the coding run may do")).toBeTruthy();
@@ -126,7 +131,7 @@ for (const at of [600, 400]) {
   test(`F4: at ${String(at)} px, run mode, New branch, Think and Compare move into More`, () => {
     const { onCodeBranch } = show(at);
     mainControls(at > 450);
-    expect(screen.queryByRole("button", { name: "Think harder" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reasoning effort" })).toBeNull();
     expect(screen.queryByLabelText("New branch")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "More options" }));
     const more = within(screen.getByRole("dialog", { name: "More options" }));
@@ -135,11 +140,10 @@ for (const at of [600, 400]) {
     expect(more.getByLabelText<HTMLInputElement>("New branch").checked).toBe(true);
     fireEvent.click(more.getByLabelText("New branch"));
     expect(onCodeBranch).toHaveBeenCalledWith(false);
-    const think = more.getByRole("button", { name: "Think harder" });
-    expect(think.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(think);
-    expect(think.getAttribute("aria-pressed")).toBe("true");
-    expect(think.textContent).toContain("on");
+    // M10 step 22: the effort dial, showing the usual level until one is chosen.
+    const dial = more.getByRole("button", { name: "Reasoning effort" });
+    expect(dial.getAttribute("aria-pressed")).toBe("false");
+    expect(dial.textContent).toContain("Medium");
     expect(more.getByRole("group", { name: "Models to compare" })).toBeTruthy();
   });
 }

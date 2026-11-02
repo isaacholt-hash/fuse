@@ -21,3 +21,12 @@ if (typeof URL !== "undefined" && !("createObjectURL" in URL)) {
     revokeObjectURL: () => undefined,
   });
 }
+
+// Radix popovers measure with ResizeObserver, which jsdom lacks (M10 step 22's effort dial).
+if (!("ResizeObserver" in globalThis)) {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

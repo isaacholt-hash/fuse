@@ -1,0 +1,10 @@
+{
+  "notes": "Typical reasoning tokens an answer spends at each effort level, for the composer's estimate of what a choice adds (RT-08, M10 step 22). A starting guess made on 2026-11-02; the real count comes back with every answer and shows in its cost breakdown. Revisit against the Usage page.",
+  "typical_reasoning_tokens": {
+    "low": 300,
+    "medium": 1200,
+    "high": 3000,
+    "xhigh": 6000,
+    "max": 12000
+  }
+}

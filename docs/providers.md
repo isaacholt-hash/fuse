@@ -218,7 +218,8 @@ Checked against the Markdown copies of the live docs on 2026-10-28. Decisions fo
 **FUSE:**
 - **Effort comes from complexity:** high → `high`. Everything else is omitted and keeps the model's default. Built in M2 step 9.
   - **Why easy questions aren't lowered:** on Anthropic a top-level effort change rewrites the thread's cache, and easy and medium questions alternate constantly. Hard questions mostly go to Best, a different model with its own cache anyway.
-- **"Think harder" sends `max`** on both providers.
+- **The composer's effort dial (M10 step 22) sends the level you choose for that message**, which beats your defaults and the router's; Max only where the model lists it (`efforts` and `default_effort` per model in `data/models.json`, from the tables above; medium and all five levels when absent). The dial shows the usual level and what each other level is likely to add, from the typical reasoning tokens in `data/effort.json` at the output rate.
+- **Reasoning summaries:** OpenAI requests are always sent with `reasoning.summary: "auto"`, and `response.reasoning_summary_text.delta` events stream as `reasoning` events to the chat, which shows them under a "Thinking…" line with a guessed token count (the real one comes with usage) and saves the summary with the answer (`messages.reasoning_summary`). Anthropic sends no thinking text on 5.5 models; any `thinking_delta` text that does arrive streams the same way.
 - **No beta header for per-message effort yet.** A changed effort costs one cache rewrite, which is acceptable.
 - **`max_tokens` is the hard cap on thinking plus text,** so at `max` effort send the model's full `max_output`.
 

@@ -26,6 +26,7 @@ const m = (
   bestCostMicroUsd: null,
   escalatedFromId: null,
   feedback: null,
+  reasoningSummary: null,
   createdAt: ++clock,
   updatedAt: clock,
   ...extra,

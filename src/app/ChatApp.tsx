@@ -192,7 +192,7 @@ import {
   type RoutingPolicy,
   type TierId,
 } from "@/routing/policy";
-import { AUTO, modeOf, route, type RouteMode } from "@/routing/route";
+import { AUTO, effortFor as routedEffortFor, modeOf, route, type RouteMode } from "@/routing/route";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { maybeSummarize, pathTokens, summaryThreshold } from "@/chat/summary";
 import { activeSummary, listSummaries } from "@/storage/summaries";
@@ -270,6 +270,9 @@ import {
   type SystemKind,
 } from "@/data/notifications";
 import { NotificationsSection } from "@/ui/Notifications";
+import type { EffortLevel } from "@/catalog/catalog";
+import { EFFORT_LABELS, defaultEffortOf, effortsOf, extraReasoningMicro } from "@/routing/effort";
+import type { EffortView } from "@/ui/EffortDial";
 import { branchesOf, leafUnder, type BranchInfo } from "@/storage/tree";
 import {
   createProject,
@@ -961,12 +964,12 @@ export function ChatApp({
   const [overAsk, setOverAsk] = useState<{
     state: BudgetState;
     text: string;
-    thinkHarder: boolean;
+    effort: EffortLevel | null;
   } | null>(null);
   // A big message waiting for "this costs about $X, send?" (CO-05).
   const [bigAsk, setBigAsk] = useState<{
     text: string;
-    thinkHarder: boolean;
+    effort: EffortLevel | null;
     overConfirmed: boolean;
     added: number;
     micro: number;
@@ -1892,6 +1895,37 @@ export function ChatApp({
     return policy.tiers.find((t) => t.id === tier)?.label ?? tier;
   };
 
+  /**
+   * M10 step 22 (RT-08): what the effort dial shows for the draft: the usual level for the
+   * model that would answer (your default, else routing's, else the model's own), the levels
+   * it offers, and what each adds to this message.
+   */
+  const effortForDraft = (text: string): EffortView | null => {
+    const ready = attachments.pending.flatMap((p) => (p.file ? [p.file] : []));
+    const task = classify(classifyInput(text, ready, messages, searchOn));
+    const tier =
+      mode.kind === "auto"
+        ? chooseTier(policy, task).tier
+        : mode.kind === "tier"
+          ? mode.tier
+          : null;
+    const firstOfTier = tier ? policy.tiers.find((t) => t.id === tier)?.models[0] : undefined;
+    const target =
+      (firstOfTier ? findModel(catalog, firstOfTier.provider, firstOfTier.id) : undefined) ?? model;
+    const mine = resolveDefaults(modelDefaults, {
+      provider: target.provider,
+      id: target.id,
+      tier,
+      projectId: activeProjectId ?? null,
+    });
+    const auto = mine.effort ?? routedEffortFor(task.complexity) ?? defaultEffortOf(target);
+    return {
+      auto,
+      options: effortsOf(target),
+      extraMicro: (level) => extraReasoningMicro(target, auto, level),
+    };
+  };
+
   /** After a chat's first answer, the housekeeping model gives it a real title (CH-09). */
   const nameThread = (threadId: string, rows: Message[]) => {
     const current = threads.find((t) => t.id === threadId);
@@ -1972,7 +2006,7 @@ export function ChatApp({
             };
     setLive((all) => ({
       ...all,
-      [threadId]: { threadId, model: routed.model, text: "", ...placement },
+      [threadId]: { threadId, model: routed.model, text: "", startedAt: Date.now(), ...placement },
     }));
     let loaded = false;
     const onText = (text: string) => {
@@ -1998,6 +2032,10 @@ export function ChatApp({
       threadId,
       model: routed.model,
       route: routed.info,
+      // M10 step 22: the reasoning summary as it streams, for the line above the answer.
+      onReasoning: (summary: string) => {
+        patchLive({ reasoning: summary });
+      },
       fallback: routed.fallback,
       defaults: (m: CatalogModel) =>
         resolveDefaults(modelDefaults, {
@@ -2186,7 +2224,8 @@ export function ChatApp({
 
   const send = async (
     text: string,
-    thinkHarder = false,
+    /** M10 step 22: the effort chosen on the dial for this message; null = routing's. */
+    effort: EffortLevel | null = null,
     confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
   ) => {
     // What was put in the composer is in this message now: don't add it again on a remount.
@@ -2210,7 +2249,7 @@ export function ChatApp({
     // when the project hasn't turned it off.
     const fixed =
       mode.kind === "auto" &&
-      !thinkHarder &&
+      effort === null &&
       ready.length === 0 &&
       compareKeys.length < 2 &&
       !codeActive &&
@@ -2231,7 +2270,7 @@ export function ChatApp({
     // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
     const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
     if (gate.over && !confirmed.over) {
-      setOverAsk({ state: gate.over, text, thinkHarder });
+      setOverAsk({ state: gate.over, text, effort });
       return;
     }
     // RT-12: compare mode answers with each chosen model; the first goes like a normal send.
@@ -2300,7 +2339,7 @@ export function ChatApp({
       const total = classifyInput(text, ready, messages, false).contextTokens ?? added;
       setBigAsk({
         text,
-        thinkHarder,
+        effort,
         overConfirmed: Boolean(confirmed.over),
         added,
         micro: Math.round((total * priceToMicro(found.model.price.input)) / 1_000_000),
@@ -2309,14 +2348,15 @@ export function ChatApp({
       });
       return;
     }
-    // RT-08: "Think harder" asks for the most reasoning the model has, for this message only.
-    const routed = thinkHarder
+    // RT-08 (M10 step 22): the dial sets this message's effort over routing and your defaults.
+    const routed = effort
       ? {
           ...found,
           info: {
             ...found.info,
-            effort: "max" as const,
-            reason: `${found.info.reason}; you asked it to think harder`,
+            effort,
+            effortChosen: true,
+            reason: `${found.info.reason}; you chose ${EFFORT_LABELS[effort].toLowerCase()} effort`,
           },
         }
       : found;
@@ -6059,6 +6099,7 @@ export function ChatApp({
                     onRegenerate={regenerateAnswer}
                     onEdit={editAndSend}
                     onDelete={deleteFromMessage}
+                    onStop={stop}
                     onBranch={switchBranch}
                     onSideBySide={setSideBySide}
                     onOpenFile={(id) => {
@@ -6205,7 +6246,8 @@ export function ChatApp({
                         chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
                       },
                     }}
-                    onSend={(text, opts) => void send(text, opts?.thinkHarder)}
+                    onSend={(text, opts) => void send(text, opts?.effort ?? null)}
+                    effortFor={effortForDraft}
                     onStop={stop}
                     onSettings={() => {
                       setView("settings");
@@ -6814,7 +6856,7 @@ export function ChatApp({
                 onClick={() => {
                   const ask = bigAsk;
                   setBigAsk(null);
-                  void send(ask.text, ask.thinkHarder, {
+                  void send(ask.text, ask.effort, {
                     over: ask.overConfirmed,
                     dropFiles: true,
                   });
@@ -6827,8 +6869,7 @@ export function ChatApp({
               onClick={() => {
                 const ask = bigAsk;
                 setBigAsk(null);
-                if (ask)
-                  void send(ask.text, ask.thinkHarder, { over: ask.overConfirmed, big: true });
+                if (ask) void send(ask.text, ask.effort, { over: ask.overConfirmed, big: true });
               }}
             >
               Send
@@ -6867,7 +6908,7 @@ export function ChatApp({
                   .then(() => listBudgets(db, tenant))
                   .then(async (list) => {
                     setBudgets(list);
-                    await send(ask.text, ask.thinkHarder, { over: true });
+                    await send(ask.text, ask.effort, { over: true });
                   })
                   .catch(report);
               }}
@@ -6879,7 +6920,7 @@ export function ChatApp({
                 onClick={() => {
                   const ask = overAsk;
                   setOverAsk(null);
-                  if (ask) void send(ask.text, ask.thinkHarder, { over: true });
+                  if (ask) void send(ask.text, ask.effort, { over: true });
                 }}
               >
                 Send anyway

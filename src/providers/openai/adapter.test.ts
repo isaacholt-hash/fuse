@@ -69,13 +69,53 @@ test("request: Responses API, store false, Standard tier, no temperature, no key
     service_tier: "default",
     max_output_tokens: 500,
     instructions: "Be brief.",
+    reasoning: { summary: "auto" },
   });
 });
 
-test("effort goes in reasoning.effort; omitted when not set", async () => {
-  const { a, sent } = adapter([sse(STREAM)]);
+test("effort goes in reasoning.effort, with a summary asked for either way", async () => {
+  const { a, sent } = adapter([sse(STREAM), sse(STREAM)]);
   await collect(a.streamChat([{ role: "user", content: "a" }], "gpt-6.1-sol", { effort: "max" }));
-  expect(sent[0]?.body).toMatchObject({ reasoning: { effort: "max" } });
+  expect(sent[0]?.body).toMatchObject({ reasoning: { effort: "max", summary: "auto" } });
+  await collect(a.streamChat([{ role: "user", content: "a" }], "gpt-6.1-sol", {}));
+  expect(sent[1]?.body).toMatchObject({ reasoning: { summary: "auto" } });
+  expect((sent[1]?.body as { reasoning: Record<string, unknown> }).reasoning).not.toHaveProperty(
+    "effort",
+  );
+});
+
+test("M10 step 22: the reasoning summary streams as reasoning events, parts apart", async () => {
+  const stream = [
+    event({ type: "response.reasoning_summary_text.delta", delta: "Weighing the " }),
+    event({ type: "response.reasoning_summary_text.delta", delta: "two quotes." }),
+    event({ type: "response.reasoning_summary_text.done", text: "Weighing the two quotes." }),
+    event({ type: "response.reasoning_summary_text.delta", delta: "Checking trim." }),
+    event({ type: "response.reasoning_summary_text.done", text: "Checking trim." }),
+    event({ type: "response.output_text.delta", delta: "Marrakech." }),
+    event({
+      type: "response.completed",
+      response: {
+        output: [],
+        usage: {
+          input_tokens: 10,
+          output_tokens: 30,
+          output_tokens_details: { reasoning_tokens: 25 },
+        },
+      },
+    }),
+  ].join("");
+  const { a } = adapter([sse(stream)]);
+  const { text, events } = await collect(
+    a.streamChat([{ role: "user", content: "a" }], "gpt-6.1-sol", {}),
+  );
+  expect(text).toBe("Marrakech.");
+  const summary = events
+    .filter((e): e is { type: "reasoning"; text: string } => e.type === "reasoning")
+    .map((e) => e.text)
+    .join("");
+  expect(summary).toBe("Weighing the two quotes.\n\nChecking trim.\n\n");
+  const done = events.find((e) => e.type === "done");
+  expect(done).toMatchObject({ usage: { reasoningTokens: 25 } });
 });
 
 test("usage: cache reads and writes are taken out of input_tokens", () => {

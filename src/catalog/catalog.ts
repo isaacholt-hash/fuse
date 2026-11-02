@@ -8,6 +8,10 @@ export const isCloud = (p: ProviderId): p is CloudProviderId => p !== "local";
 
 export type Capability = "vision" | "reasoning" | "tools" | "json" | "streaming" | "web_search";
 
+/** Reasoning effort (RT-08): the same names on both providers; not every model has every one. */
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export const EFFORT_LEVELS: readonly EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
+
 /** US dollars per 1M tokens. Optional fields fall back to `input` in cost(). */
 export interface ModelPrice {
   input: number;
@@ -26,6 +30,10 @@ export interface CatalogModel {
   /** Higher rates once a request's input passes `aboveInputTokens`. */
   longContextPrice?: ModelPrice & { aboveInputTokens: number };
   capabilities: Capability[];
+  /** M10 step 22: the effort levels the model takes, low to high; all five when absent. */
+  efforts?: EffortLevel[];
+  /** What the model does when no effort is asked for; medium when absent. */
+  defaultEffort?: EffortLevel;
   verifiedOn: string;
   sourceUrl: string;
   notes?: string;
@@ -156,6 +164,29 @@ export function parseCatalog(raw: unknown): Catalog {
       verifiedOn,
       sourceUrl,
     };
+    if (o.efforts !== undefined) {
+      const e = o.efforts;
+      if (
+        !Array.isArray(e) ||
+        e.length === 0 ||
+        !e.every((x) => EFFORT_LEVELS.includes(x as EffortLevel))
+      ) {
+        throw new CatalogError(`${where}.efforts: expected a list of ${EFFORT_LEVELS.join(", ")}`);
+      }
+      model.efforts = e as EffortLevel[];
+    }
+    if (o.default_effort !== undefined) {
+      const d = o.default_effort;
+      if (typeof d !== "string" || !EFFORT_LEVELS.includes(d as EffortLevel)) {
+        throw new CatalogError(
+          `${where}.default_effort: expected one of ${EFFORT_LEVELS.join(", ")}`,
+        );
+      }
+      if (model.efforts && !model.efforts.includes(d as EffortLevel)) {
+        throw new CatalogError(`${where}.default_effort: not in its efforts`);
+      }
+      model.defaultEffort = d as EffortLevel;
+    }
     if (o.long_context_price !== undefined) {
       const lw = `${where}.long_context_price`;
       const lo = obj(o.long_context_price, lw);
