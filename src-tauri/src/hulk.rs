@@ -89,7 +89,12 @@ async fn hulk_build(ctx: &Ctx, address: &str, fresh: bool) -> Result<Build, Stri
         .json()
         .await
         .map_err(|_| "HULK's answer wasn't readable.".to_owned())?;
-    let text = |key: &str| v.get(key).and_then(Value::as_str).unwrap_or("unknown").to_owned();
+    let text = |key: &str| {
+        v.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_owned()
+    };
     let build = Build {
         schema: v.get("schema").and_then(Value::as_i64).unwrap_or(0),
         built_from: text("builtFrom"),
@@ -412,7 +417,10 @@ mod tests {
         };
         let s = mismatch(&mine, &older).unwrap();
         assert!(s.starts_with("HULK runs an older FUSE (built from "), "{s}");
-        assert!(s.ends_with("Redeploy it: `bash scripts/deploy-server.sh`"), "{s}");
+        assert!(
+            s.ends_with("Redeploy it: `bash scripts/deploy-server.sh`"),
+            "{s}"
+        );
         let before_f2 = Build {
             schema: 0,
             built_from: "unknown".into(),
@@ -453,7 +461,9 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(e, why);
-        let e = hulk_put_file(&ctx, vec![1], &HashMap::new()).await.unwrap_err();
+        let e = hulk_put_file(&ctx, vec![1], &HashMap::new())
+            .await
+            .unwrap_err();
         assert_eq!(e, why);
     }
 
@@ -478,7 +488,9 @@ mod tests {
         assert_eq!(s.mismatch, None);
         assert_eq!(s.server.map(|b| b.schema), Some(this_build().schema));
         // The request goes through to the server (which, being a fake, answers its state).
-        let v = hulk_invoke(&ctx, "db_open".into(), Value::Null).await.unwrap();
+        let v = hulk_invoke(&ctx, "db_open".into(), Value::Null)
+            .await
+            .unwrap();
         assert_eq!(v["setUp"], Value::Bool(true));
     }
 }
