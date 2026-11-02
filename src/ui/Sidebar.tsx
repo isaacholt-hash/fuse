@@ -1,4 +1,3 @@
-import { money } from "./format";
 import {
   Archive,
   ArchiveRestore,
@@ -28,7 +27,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Hint, Mark, Tip } from "./primitives";
+import { Hint, Mark, Money, Tip } from "./primitives";
 import { AreaTabs } from "./AreaTabs";
 import type { Area, ProjectView, ThreadState, ThreadView } from "./types";
 
@@ -63,8 +62,7 @@ interface Props {
   onScheduled?: () => void;
 }
 
-const sectionTitle =
-  "px-3 text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase";
+const sectionTitle = "px-3 text-[10px] font-medium tracking-[0.1em] text-muted-foreground";
 
 export function Sidebar({
   area,
@@ -166,7 +164,7 @@ export function Sidebar({
     >
       <div className="flex h-[76px] shrink-0 items-center gap-2.5 px-5">
         <Mark small />
-        <span className="text-lg font-semibold tracking-[0.12em]">FUSE</span>
+        <span className="text-lg font-semibold tracking-[0.04em]">FUSE</span>
         <Tip label="Collapse sidebar · Ctrl+B">
           <Button
             variant="ghost"
@@ -314,7 +312,7 @@ export function Sidebar({
                     )}
                     <span className="truncate text-[12px] font-medium">{project.name}</span>
                     {project.state && <StateDot state={project.state} />}
-                    <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                    <span className="ml-auto tabular-nums text-[10px] text-muted-foreground">
                       {project.threads.length}
                     </span>
                   </button>
@@ -516,8 +514,8 @@ function ThreadRow({
                 </span>
               )}
             </span>
-            <span className="mt-1 block truncate font-mono text-[10px] text-muted-foreground">
-              {money(thread.costMicro)}
+            <span className="mt-1 block truncate tabular-nums text-[10px] text-muted-foreground">
+              <Money micro={thread.costMicro} />
               {thread.tags.map((t) => (
                 <span key={t} className="ml-1.5">
                   #{t}

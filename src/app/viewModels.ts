@@ -71,19 +71,9 @@ export function inArea(t: Pick<ThreadView, "kind">, area: Area): boolean {
 }
 
 /** The empty state of each area's main column. */
-export function emptyState(area: Area): { kicker: string; heading: string; blurb: string } {
-  return area === "code"
-    ? {
-        kicker: "Code and Work sessions",
-        heading: "Describe a task",
-        blurb: "A session in a folder or repository. Every edit shown, every step accounted for.",
-      }
-    : {
-        kicker: "A little less friction",
-        heading: "What are you working on?",
-        blurb:
-          "A fresh conversation. The right model for each message. Every answer, accounted for.",
-      };
+export function emptyState(area: Area): { heading: string } {
+  // M10 step 23: a heading, no eyebrow and no tagline; the composer says what to do.
+  return area === "code" ? { heading: "Describe a task" } : { heading: "What are you working on?" };
 }
 
 /**
@@ -222,6 +212,7 @@ export function routeView(m: Message): RouteView | undefined {
     reason: r.reason,
     readAs: intent && r.complexity ? `${intent}, ${r.complexity}` : null,
     bestMicro: r.tier === "best" ? null : m.bestCostMicroUsd,
+    tier: r.tier,
   };
 }
 

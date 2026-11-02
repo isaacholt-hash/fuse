@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { money } from "./format";
+import { Money } from "./primitives";
 
 export interface BudgetView {
   id: string;
@@ -68,8 +69,8 @@ export function BudgetsSection({
                       {b.hardStop ? " · hard stop" : ""}
                     </span>
                   </span>
-                  <span className="font-mono text-[11px]">
-                    {money(b.spentMicro)} ({Math.round(used * 100)}%)
+                  <span className="tabular-nums text-[11px]">
+                    <Money micro={b.spentMicro} /> ({Math.round(used * 100)}%)
                   </span>
                   <Button
                     variant="ghost"

@@ -101,7 +101,7 @@ export function KnowledgeSection({
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{f.name}</span>
-                <span className="block font-mono text-[10px] text-muted-foreground">
+                <span className="block tabular-nums text-[10px] text-muted-foreground">
                   ~{number(f.tokens)} tokens · {money(f.wholeMicro)} a message if sent whole
                 </span>
               </span>
@@ -249,7 +249,7 @@ export function ProjectDialog({
             <label htmlFor={ids.instructions} className="text-xs font-medium">
               Project instructions
             </label>
-            <span className="font-mono text-[10px] text-muted-foreground">
+            <span className="tabular-nums text-[10px] text-muted-foreground">
               {number(form.instructions.length)} / {number(maxChars)}
             </span>
           </div>

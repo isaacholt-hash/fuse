@@ -95,7 +95,7 @@ export function EffortDial({
                   {level === null ? `Usual (${EFFORT_LABELS[effort.auto]})` : EFFORT_LABELS[level]}
                 </span>
                 {level !== null && level !== current && delta !== 0 && (
-                  <span className="font-mono text-[10px] text-muted-foreground">
+                  <span className="tabular-nums text-[10px] text-muted-foreground">
                     {signed(delta)}
                   </span>
                 )}

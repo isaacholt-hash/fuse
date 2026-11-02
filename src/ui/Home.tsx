@@ -1,7 +1,7 @@
 import { CalendarClock, CircleDot, Hand, Laptop, Server, Sparkles, Wallet } from "lucide-react";
 import type { ReactNode } from "react";
 import { money } from "./format";
-import { Mark } from "./primitives";
+import { Mark, Money } from "./primitives";
 import { RunningFor } from "./RunningFor";
 import type { Area } from "./types";
 
@@ -54,7 +54,7 @@ export function Home({
 }: {
   area: Area;
   view: HomeView;
-  empty: { kicker: string; heading: string; blurb: string };
+  empty: { heading: string };
   modelName: string;
   onOpen: (threadId: string) => void;
 }) {
@@ -70,13 +70,9 @@ export function Home({
       <div className="mb-5">
         <Mark />
       </div>
-      <p className="mb-2 text-[10px] font-medium tracking-[0.18em] text-muted-foreground uppercase">
-        {empty.kicker}
-      </p>
       <h1 className="text-2xl font-medium tracking-tight">{empty.heading}</h1>
       {!busy && (
         <>
-          <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">{empty.blurb}</p>
           <div className="mt-7 flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] text-muted-foreground">
             <Sparkles className="size-3" />
             {modelName}
@@ -115,7 +111,9 @@ export function Home({
                 </span>
               )}
               {r.spentMicro !== null && (
-                <span className="shrink-0 font-mono">{money(r.spentMicro)}</span>
+                <span className="shrink-0 tabular-nums">
+                  <Money micro={r.spentMicro} />
+                </span>
               )}
             </span>
           </Row>
@@ -144,7 +142,9 @@ export function Home({
   const today = view.today && (
     <Section title="Today" icon={<Wallet className="size-3.5" />} key="today">
       <p className="px-3 py-2 text-sm">
-        <span className="font-mono">{money(view.today.spentMicro)}</span>
+        <span className="tabular-nums">
+          <Money micro={view.today.spentMicro} />
+        </span>
         {view.today.budgetMicro !== null && (
           <span className="text-muted-foreground">
             {" "}
@@ -186,7 +186,7 @@ function Section({
 }) {
   return (
     <section aria-label={title}>
-      <h2 className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium tracking-[0.1em] text-muted-foreground uppercase">
+      <h2 className="mb-1.5 flex items-center gap-1.5 px-1 text-[10px] font-medium tracking-[0.1em] text-muted-foreground">
         {icon}
         {title}
       </h2>

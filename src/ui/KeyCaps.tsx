@@ -3,7 +3,7 @@ import { Gauge } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { money } from "./format";
+import { Money } from "./primitives";
 
 export interface KeyCapView {
   provider: ProviderId;
@@ -72,7 +72,7 @@ function CapRow({
       <p className="mb-2 font-medium">
         {cap.name}
         <span className="ml-2 font-normal text-muted-foreground">
-          today {money(cap.spentToday)} · this month {money(cap.spentMonth)}
+          today <Money micro={cap.spentToday} /> · this month <Money micro={cap.spentMonth} />
         </span>
       </p>
       <div className="flex flex-wrap items-end gap-2">

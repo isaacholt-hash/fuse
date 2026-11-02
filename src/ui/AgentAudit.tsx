@@ -67,7 +67,7 @@ export function AgentAuditSection({
       ) : (
         <div className="max-h-96 overflow-auto rounded-lg border">
           <table className="w-full text-left text-[11px]">
-            <thead className="sticky top-0 bg-muted text-[10px] text-muted-foreground uppercase">
+            <thead className="sticky top-0 bg-muted text-[10px] text-muted-foreground">
               <tr>
                 <th className="px-2 py-1 font-medium">When</th>
                 <th className="px-2 py-1 font-medium">What</th>

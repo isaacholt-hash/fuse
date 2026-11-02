@@ -559,7 +559,7 @@ export function MemorySection({
             if (list.length === 0) return null;
             return (
               <div key={c} className="mb-3">
-                <h3 className="mb-1 px-3 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                <h3 className="mb-1 px-3 text-[10px] font-medium text-muted-foreground">
                   {KIND_LABELS[c]}
                 </h3>
                 <ul aria-label={KIND_LABELS[c]}>
@@ -590,7 +590,7 @@ export function MemorySection({
             <p className="px-3 text-[11px] text-muted-foreground">No memories match.</p>
           )}
           <div className="mt-4 flex items-center gap-2">
-            <span className="flex-1 font-mono text-[10px] text-muted-foreground">
+            <span className="flex-1 tabular-nums text-[10px] text-muted-foreground">
               {number(inUse.length)} memor{inUse.length === 1 ? "y" : "ies"} in use · ~
               {number(tokens)} tokens
             </span>

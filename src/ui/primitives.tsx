@@ -20,17 +20,65 @@ import {
   Tag,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { money } from "./format";
 
+/** The mark: a fuse, its end caps in ink and the filament in copper (M10 step 23). */
 export function Mark({ small = false }: { small?: boolean }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-foreground text-background ${small ? "size-7" : "size-9"}`}
+      className={`inline-flex shrink-0 items-center justify-center text-foreground ${small ? "size-7" : "size-9"}`}
+      aria-hidden
     >
-      <Zap className={small ? "size-4" : "size-5"} fill="currentColor" strokeWidth={1.5} />
+      <svg viewBox="0 0 24 24" className={small ? "size-6" : "size-8"}>
+        <rect
+          x="2"
+          y="8"
+          width="20"
+          height="8"
+          rx="4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+        />
+        <rect x="2" y="8" width="4.5" height="8" rx="1.5" fill="currentColor" />
+        <rect x="17.5" y="8" width="4.5" height="8" rx="1.5" fill="currentColor" />
+        <path d="M6.5 12h11" stroke="var(--copper)" strokeWidth="1.8" />
+      </svg>
+    </span>
+  );
+}
+
+/** A sum of money: copper, tabular figures, the one coloured thing on the page (M10 step 23). */
+export function Money({ micro, className = "" }: { micro: number; className?: string }) {
+  return (
+    <span className={`text-copper font-medium tabular-nums ${className}`}>{money(micro)}</span>
+  );
+}
+
+/**
+ * The tier as a fuse rating: one, two or three bars (cheap, balanced, best), beside a model's
+ * name so the "why" of routing reads without a tooltip (M10 step 23). Decorative: the label
+ * beside it carries the words.
+ */
+export function Tier({
+  tier,
+  className = "",
+}: {
+  tier: "cheap" | "balanced" | "best";
+  className?: string;
+}) {
+  const lit = tier === "cheap" ? 1 : tier === "balanced" ? 2 : 3;
+  return (
+    <span className={`inline-flex items-end gap-px align-[-1px] ${className}`} aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <i
+          key={i}
+          className={`block h-2.5 w-[3px] rounded-[1px] ${i < lit ? "bg-copper" : "bg-border"}`}
+        />
+      ))}
     </span>
   );
 }
@@ -220,7 +268,7 @@ export function ThreadMenu({
           {targets.length > 0 && (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
                 Move to
               </DropdownMenu.Label>
               {targets.map((p) => (
@@ -240,7 +288,7 @@ export function ThreadMenu({
           )}
           {onExport && (
             <>
-              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
                 Export
               </DropdownMenu.Label>
               <DropdownMenu.Item

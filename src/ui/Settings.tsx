@@ -335,13 +335,7 @@ export function SettingsView({
         </Button>
       </header>
       <div className="mx-auto max-w-[660px] px-8 py-9">
-        <p className="mb-2 text-[10px] font-medium tracking-[0.15em] text-muted-foreground uppercase">
-          Make yourself at home
-        </p>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Your models, your keys, your workspace.
-        </p>
         <div className="mt-8 mb-4 flex items-center gap-2">
           <KeyRound className="size-4 text-muted-foreground" />
           <h2 className="text-sm font-medium">API keys</h2>
@@ -383,9 +377,7 @@ export function SettingsView({
         {(server ?? hulk ?? agent ?? python) && (
           <section aria-label="Code" className="mt-10 border-t pt-6">
             {/* M10 step 17 (CH-19): what the Code area's sessions use, in one place. */}
-            <h2 className="text-xs font-medium tracking-[0.1em] text-muted-foreground uppercase">
-              Code
-            </h2>
+            <h2 className="text-xs font-medium tracking-[0.1em] text-muted-foreground">Code</h2>
             <p className="mt-1 text-[11px] text-muted-foreground">
               Where sessions run, what their runs did, and the sandbox and Python they use. A
               project&apos;s run mode, cap and time limits are in its settings.

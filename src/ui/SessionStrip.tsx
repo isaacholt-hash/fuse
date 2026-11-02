@@ -1,5 +1,6 @@
 import { FileDiff, FolderGit2, GitBranch, Laptop, Server } from "lucide-react";
 import { money } from "./format";
+import { Money } from "./primitives";
 
 const MODES = {
   plan: "Read-only",
@@ -72,8 +73,8 @@ export function SessionStrip({
           ))}
         </select>
       </label>
-      <span className="font-mono tabular-nums" aria-label="Spent of cap">
-        {money(spentMicro)} of {money(capMicro)}
+      <span className="tabular-nums" aria-label="Spent of cap">
+        <Money micro={spentMicro} /> of {money(capMicro)}
       </span>
       <button
         type="button"

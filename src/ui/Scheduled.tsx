@@ -2,8 +2,7 @@ import { ArrowLeft, CalendarClock } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { describeRepeat, type Schedule } from "@/storage/schedules";
-import { money } from "./format";
-import { Greyed, Modal } from "./primitives";
+import { Greyed, Modal, Money } from "./primitives";
 import { TaskDialog } from "./Schedules";
 import {
   draftOf,
@@ -212,7 +211,12 @@ export function ScheduledScreen({
                             className={`mt-0.5 block text-[11px] ${last.failed ? "text-destructive" : "text-muted-foreground"}`}
                           >
                             {last.text}
-                            {lastCostMicro !== null && <> · {money(lastCostMicro)}</>}
+                            {lastCostMicro !== null && (
+                              <>
+                                {" "}
+                                · <Money micro={lastCostMicro} />
+                              </>
+                            )}
                           </span>
                         )}
                       </span>
