@@ -14,6 +14,8 @@ export interface ModelOption {
   /** $ per 1M tokens */
   inputPrice: number;
   outputPrice: number;
+  /** M10 step 24: the routing tier it answers from, for the glyph on the composer chip. */
+  tier?: "cheap" | "balanced" | "best";
 }
 
 /** Token counts and integer micro-dollar costs for one answer. */
@@ -85,6 +87,12 @@ export interface MessageView {
   role: "user" | "assistant";
   content: string;
   status: "complete" | "streaming" | "stopped" | "error";
+  /** When it was sent or asked for (Unix ms); the ledger margin shows the time of day. */
+  time?: number;
+  /** M10 step 24: the tier the model answers from, for the glyph beside its name. */
+  tier?: "cheap" | "balanced" | "best";
+  /** While the answer streams: the output so far, guessed from the text, priced at the output rate. */
+  live?: { outTokens: number; costMicro: number };
   /** The model's reasoning on this answer: live while it thinks, then its size and cost. */
   reasoning?: ReasoningView;
   providerName?: string;
@@ -242,6 +250,8 @@ export interface RoutingView {
   descriptions: Record<ModeChoice, string>;
   /** The tier Auto would pick for this draft (e.g. "Best"), or null. Runs as you type. */
   preview: (text: string) => string | null;
+  /** M10 step 24: the same pick as a tier id, for the glyph on the chip. */
+  previewTier?: (text: string) => "cheap" | "balanced" | "best" | null;
   onSelect: (choice: ModeChoice) => void;
   /** RT-01: the next pick applies to the next message only. */
   once?: boolean;

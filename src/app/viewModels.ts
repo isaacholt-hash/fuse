@@ -239,6 +239,7 @@ export function messageViews(
         role: "user",
         content: m.content,
         status: "complete",
+        time: m.createdAt,
         ...(attached ? { images: attached } : {}),
       });
       continue;
@@ -288,10 +289,19 @@ export function messageViews(
       role: "assistant",
       content: m.content,
       status: m.status,
+      time: m.createdAt,
       providerName: provider ? PROVIDER_NAMES[provider] : (m.provider ?? ""),
       model: name,
       feedback: m.feedback,
     };
+    const tier = m.route?.tier;
+    if (tier === "cheap" || tier === "balanced" || tier === "best") view.tier = tier;
+    if (m.status === "streaming" && m.content) {
+      // M10 step 24: the margin's running figure; the real count comes with the answer.
+      const outTokens = guessReasoningTokens(m.content.length);
+      const perToken = model ? priceToMicro(model.price.output) / 1_000_000 : 0;
+      view.live = { outTokens, costMicro: Math.round(outTokens * perToken) };
+    }
     const parts = splitAnswer(m.content);
     if (parts.some((p) => p.kind === "artifact")) {
       view.parts = parts.map((p) =>

@@ -90,19 +90,98 @@ function RouteBadge({ route }: { route: RouteView }) {
       }
     >
       <button
-        className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground @max-[900px]:text-left"
         aria-label={`Routing: ${route.label}`}
       >
-        {route.tier && <Tier tier={route.tier} />}
-        <span className="text-foreground/70">{route.label}</span>
+        <span>{route.label}</span>
         {route.bestMicro !== null && (
           <span>
-            · <Money micro={route.bestMicro} /> on Best
+            · <Money micro={route.bestMicro} className="font-normal" /> on Best
           </span>
         )}
       </button>
     </Tip>
   );
+}
+
+/** M10 step 24: the margin's token line: in, out and (on its own line) cached. */
+function TokensLine({ usage }: { usage: UsageView }) {
+  return (
+    <span className="block">
+      {number(tokensIn(usage))} in · {number(usage.output)} out
+      {usage.cachedInput > 0 && (
+        <>
+          <br className="@max-[900px]:hidden" />
+          <span className="@max-[900px]:ml-1.5">{number(usage.cachedInput)} cached</span>
+        </>
+      )}
+      {usage.webSearchCalls > 0 && (
+        <>
+          <br className="@max-[900px]:hidden" />
+          <span className="@max-[900px]:ml-1.5">
+            {number(usage.webSearchCalls)} search{usage.webSearchCalls === 1 ? "" : "es"}
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+/**
+ * The reading column beside its 132 px ledger margin; one column when the main column (the
+ * scroll area or the composer's footer, each a container) is under 900 px.
+ */
+const LEDGER_GRID =
+  "grid grid-cols-[minmax(0,1fr)_132px] gap-x-6 @max-[900px]:grid-cols-[minmax(0,1fr)] @max-[900px]:gap-x-0";
+/** The margin: right-aligned lines beside a message; one wrapping line under it below 900 px. */
+const MARGIN =
+  "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-center @max-[900px]:gap-x-2.5 @max-[900px]:pt-0 @max-[900px]:text-left";
+const MARGIN_BUTTON =
+  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[900px]:text-left";
+
+/** "about $0.03 a message", for the ledger head. */
+const perMessage = (micro: number, answers: number) =>
+  answers > 0 ? Math.round(micro / answers) : null;
+
+/** The column's head: the thread's total, its tokens and what a message costs on average. */
+function LedgerTotal({ total }: { total: ThreadTotal }) {
+  const per = perMessage(total.micro, total.answers);
+  const rate = total.cacheRate;
+  return (
+    <Tip
+      label={
+        rate === null
+          ? "Total cost and tokens for this conversation"
+          : `Total cost and tokens for this conversation. ${String(Math.round(rate * 100))}% of the input was read from the provider's cache, at a tenth of the price or less.`
+      }
+    >
+      <div
+        tabIndex={0}
+        aria-label="Thread total"
+        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums @max-[900px]:flex @max-[900px]:flex-wrap @max-[900px]:items-baseline @max-[900px]:gap-x-2 @max-[900px]:text-left"
+      >
+        <span className="block text-[10px] @max-[900px]:hidden">this thread</span>
+        <Money
+          micro={total.micro}
+          className="block text-base leading-6 @max-[900px]:text-[13px] @max-[900px]:leading-5"
+        />
+        <span className="block">
+          {number(total.tokens)} tokens
+          {rate !== null && rate > 0 && ` · ${String(Math.round(rate * 100))}% cached`}
+        </span>
+        {per !== null && <span className="block">about {money(per)} a message</span>}
+      </div>
+    </Tip>
+  );
+}
+
+export interface ThreadTotal {
+  micro: number;
+  tokens: number;
+  /** Share of input read from the cache; null with no input yet. */
+  cacheRate: number | null;
+  /** Finished answers, for the average. */
+  answers: number;
 }
 
 /** 45K, 1M: token counts for the context meter. */
@@ -121,10 +200,7 @@ function CostBadge({ message }: { message: MessageView }) {
       <Tip
         label={`${message.cachedFrom} answered the same first question, in the same context, earlier; FUSE reused that answer at no cost. Regenerate asks the model again.`}
       >
-        <button
-          className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
-          aria-label="Answered from the cache"
-        >
+        <button className={MARGIN_BUTTON} aria-label="Answered from the cache">
           <span>from cache · {message.cachedFrom}</span>
           <span>·</span>
           <span className="text-foreground/70">$0</span>
@@ -135,10 +211,7 @@ function CostBadge({ message }: { message: MessageView }) {
   if (message.noModel) {
     return (
       <Tip label={`${message.noModel}: worked out by a fixed rule in FUSE, so no model was asked.`}>
-        <button
-          className="mt-4 flex items-center gap-1.5 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
-          aria-label="Answered without a model"
-        >
+        <button className={MARGIN_BUTTON} aria-label="Answered without a model">
           <span>answered without a model</span>
           <span>·</span>
           <span className="text-foreground/70">$0</span>
@@ -193,31 +266,22 @@ function CostBadge({ message }: { message: MessageView }) {
       }
     >
       <button
-        className="mt-4 flex max-w-full flex-wrap items-center gap-x-1.5 gap-y-1 rounded py-1 text-left tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className={`${MARGIN_BUTTON} text-[13px] leading-5`}
         aria-label={`Cost breakdown for ${message.model ?? "model"}`}
       >
-        <span>{message.model}</span>
-        <span>·</span>
-        <span>
-          {number(tokensIn(usage))} in / {number(usage.output)} out
-        </span>
-        {usage.cachedInput > 0 && <span>· {number(usage.cachedInput)} cached</span>}
-        {usage.webSearchCalls > 0 && (
-          <span>
-            · {number(usage.webSearchCalls)} search{usage.webSearchCalls === 1 ? "" : "es"}
-          </span>
-        )}
-        <span>·</span>
         {usage.totalMicro === null ? (
           <span className="text-foreground/70">cost unknown</span>
         ) : (
-          <Money micro={usage.totalMicro} />
+          <Money micro={usage.totalMicro} className="motion-safe:animate-settle" />
         )}
-        <ChevronDown className="ml-0.5 size-3 opacity-60" />
       </button>
     </Tip>
   );
 }
+
+/** 14:02, for the margin. */
+const clock = (ms: number) =>
+  new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
 function MemoryBadge({ memories }: { memories: { text: string; why: string }[] }) {
   return (
@@ -371,6 +435,7 @@ const startedLabel = (ms: number) => {
 };
 
 export function Messages({
+  total,
   messages,
   modelName,
   empty,
@@ -430,6 +495,8 @@ export function Messages({
   home?: ReactNode;
   /** When the conversation started (Unix ms). */
   startedAt: number | null;
+  /** M10 step 24: the thread's total, at the head of the ledger margin. */
+  total?: ThreadTotal;
   onRetry: () => void;
   /** "Try a stronger model" on the latest answer (RT-04). */
   onEscalate?: () => void;
@@ -498,7 +565,7 @@ export function Messages({
       )}
       <div
         ref={scrollRef}
-        className="h-full overflow-y-auto scroll-smooth"
+        className="@container h-full overflow-y-auto scroll-smooth"
         onScroll={(e) => {
           const el = e.currentTarget;
           setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 240);
@@ -529,25 +596,28 @@ export function Messages({
             </div>
           </div>
         ) : (
-          <div className="mx-auto max-w-[780px] px-8 pt-8 pb-12 max-[800px]:px-5">
-            <div className="mb-7 flex items-center justify-center gap-3 text-[10px] text-muted-foreground">
-              <span className="h-px w-8 bg-border" />
-              {startedAt !== null && startedLabel(startedAt)}
-              <span className="h-px w-8 bg-border" />
+          <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
+            <div
+              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[900px]:gap-y-1`}
+            >
+              <div className="text-[11px] text-muted-foreground">
+                {startedAt !== null && startedLabel(startedAt)}
+              </div>
+              {total && <LedgerTotal total={total} />}
             </div>
             {messages.map((message) => (
               <div
                 key={message.id}
                 id={`message-${message.id}`}
-                className={
+                className={`${LEDGER_GRID} py-3.5 ${
                   focusId === message.id
-                    ? "-mx-3 rounded-xl bg-amber-100/40 px-3 dark:bg-amber-500/10"
-                    : undefined
-                }
+                    ? "-mx-3 rounded-[10px] bg-amber-100/40 px-3 dark:bg-amber-500/10"
+                    : ""
+                }`}
               >
                 {message.summaryAbove && (
                   <div
-                    className="my-8 flex items-center gap-3 tabular-nums text-[10px] text-muted-foreground"
+                    className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[11px] text-muted-foreground"
                     role="separator"
                     aria-label="Earlier messages are summarized"
                   >
@@ -560,16 +630,16 @@ export function Messages({
                   </div>
                 )}
                 {message.switchLabel && (
-                  <div className="my-8 flex items-center gap-3 tabular-nums text-[10px] text-muted-foreground">
+                  <div className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[11px] text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />
                     <span className="text-center">{message.switchLabel}</span>
                     <div className="h-px flex-1 bg-border" />
                   </div>
                 )}
                 {message.role === "user" ? (
-                  <div className="mb-8 ml-auto flex max-w-[86%] flex-col items-end">
+                  <div className="min-w-0 max-w-[68ch] text-[14px] leading-[1.6] text-muted-foreground">
                     {message.images && message.images.length > 0 && (
-                      <div className="mb-2 flex flex-wrap justify-end gap-2">
+                      <div className="mb-2 flex flex-wrap gap-2">
                         {message.images.map((img) =>
                           img.kind === "document" ? (
                             <button
@@ -616,12 +686,22 @@ export function Messages({
                       />
                     ) : (
                       message.content && (
-                        <div className="self-stretch rounded-2xl rounded-tr-md border border-border/50 bg-muted/65 px-4 py-3.5 text-[13px] leading-[1.8] whitespace-pre-wrap">
-                          {message.content}
-                        </div>
+                        <div className="whitespace-pre-wrap">{message.content}</div>
                       )
                     )}
-                    <div className="mt-1 flex items-center gap-1 pr-1 text-[10px] text-muted-foreground">
+                  </div>
+                ) : null}
+                {message.role === "user" ? (
+                  <aside className={MARGIN}>
+                    <span className="block">
+                      You{message.time !== undefined && ` · ${clock(message.time)}`}
+                    </span>
+                    {message.images && message.images.length > 0 && (
+                      <span className="block">
+                        {message.images.length} file{message.images.length === 1 ? "" : "s"}
+                      </span>
+                    )}
+                    <div className="mt-1 flex items-center justify-end gap-0.5 @max-[900px]:mt-0 @max-[900px]:justify-start">
                       {message.branch && (
                         <BranchPicker
                           branch={message.branch}
@@ -666,18 +746,10 @@ export function Messages({
                           </Button>
                         </Tip>
                       )}
-                      <span className="ml-1">You</span>
                     </div>
-                  </div>
+                  </aside>
                 ) : (
-                  <article className="mb-9">
-                    <div className="mb-4 flex items-center gap-2">
-                      <span className="flex size-6 items-center justify-center rounded-md border bg-background">
-                        <Sparkles className="size-3" />
-                      </span>
-                      <span className="text-xs font-semibold">{message.providerName}</span>
-                      <span className="text-[10px] text-muted-foreground">{message.model}</span>
-                    </div>
+                  <article className="min-w-0 max-w-[68ch]">
                     {message.run && (
                       <RunCard
                         run={message.run}
@@ -697,10 +769,7 @@ export function Messages({
                       />
                     )}
                     {message.content && (
-                      <div
-                        data-answer={message.id}
-                        className="text-[13px] leading-[1.85] text-foreground/85"
-                      >
+                      <div data-answer={message.id} className="leading-[1.6]">
                         {message.parts ? (
                           message.parts.map((part, i) =>
                             part.kind === "text" ? (
@@ -835,11 +904,6 @@ export function Messages({
                     )}
                     {message.status !== "streaming" && (
                       <div className="flex flex-wrap items-center gap-x-3">
-                        {message.route && <RouteBadge route={message.route} />}
-                        <CostBadge message={message} />
-                        {message.memories && message.memories.length > 0 && (
-                          <MemoryBadge memories={message.memories} />
-                        )}
                         {message.content && (
                           <div
                             className="mt-4 flex items-center gap-0.5"
@@ -971,6 +1035,50 @@ export function Messages({
                     )}
                   </article>
                 )}
+                {message.role === "assistant" && (
+                  <aside className={MARGIN}>
+                    {!message.cachedFrom && !message.noModel && message.model && (
+                      <span className="block font-medium text-foreground">
+                        {message.model}
+                        {message.tier && <Tier tier={message.tier} className="ml-1.5" />}
+                      </span>
+                    )}
+                    {message.status === "streaming" ? (
+                      <>
+                        {message.live && (
+                          <>
+                            <Money
+                              micro={message.live.costMicro}
+                              className="block text-[13px] leading-5"
+                            />
+                            <span className="block" aria-live="off">
+                              {number(message.live.outTokens)} out so far
+                            </span>
+                          </>
+                        )}
+                        {onStop && !message.reasoning?.live && (
+                          <button
+                            type="button"
+                            className="mt-1 inline-flex items-center gap-1.5 rounded-[4px] border px-1.5 py-px text-[11px] text-foreground hover:bg-muted"
+                            aria-label="Stop answer"
+                            onClick={onStop}
+                          >
+                            Stop <Hint>Esc</Hint>
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <CostBadge message={message} />
+                        {message.route && <RouteBadge route={message.route} />}
+                        {message.usage && <TokensLine usage={message.usage} />}
+                        {message.memories && message.memories.length > 0 && (
+                          <MemoryBadge memories={message.memories} />
+                        )}
+                      </>
+                    )}
+                  </aside>
+                )}
               </div>
             ))}
           </div>
@@ -1041,6 +1149,7 @@ export function Composer({
   status = null,
   context,
   compare,
+  estimate,
   prompts = [],
   onPickPrompt,
 }: {
@@ -1109,6 +1218,8 @@ export function Composer({
   context?: { used: number; window: number; summarizeAt: number };
   /** RT-12: send the next message to two or three models and compare the answers. */
   compare?: CompareView;
+  /** M10 step 24: what the next message would cost, in micro-dollars, for the ledger's estimate. */
+  estimate?: (text: string) => number | null;
   /** CH-12: saved prompts, offered when the message starts with "/". */
   prompts?: { id: string; name: string }[];
   onPickPrompt?: (id: string) => void;
@@ -1165,7 +1276,9 @@ export function Composer({
   };
   const modelPinned = !routing || routing.selected === null;
   const preview = routing?.selected === "auto" ? routing.preview(text) : null;
+  const previewTier = preview ? (routing?.previewTier?.(text) ?? null) : null;
   const effortView = effortFor?.(text) ?? null;
+  const estimated = estimate?.(text) ?? null;
   const modeLabel = routing?.selected ? MODE_LABELS[routing.selected] : null;
   const filtered = models.filter((item) =>
     `${item.providerName} ${item.name} ${item.id}`.toLowerCase().includes(search.toLowerCase()),
@@ -1400,567 +1513,598 @@ export function Composer({
     </Popover.Root>
   );
   return (
-    <footer className="shrink-0 px-8 pt-2 pb-3 max-[800px]:px-5">
+    <footer className="@container shrink-0 px-8 pt-2 pb-3 max-[800px]:px-5">
       <div
-        className={`mx-auto max-w-[716px] rounded-2xl border bg-background p-3 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/10 ${dragging ? "border-ring ring-2 ring-ring/20" : "border-input"}`}
-        onDragOver={(e) => {
-          if (!onAddFiles || !e.dataTransfer.types.includes("Files")) return;
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => {
-          setDragging(false);
-        }}
-        onDrop={(e) => {
-          if (!onAddFiles) return;
-          e.preventDefault();
-          setDragging(false);
-          addFiles(e.dataTransfer.files);
-        }}
+        className={`${LEDGER_GRID} mx-auto w-[min(100%,calc(68ch+132px+24px))] items-end text-[15px]`}
       >
-        {attachments.length > 0 && (
-          <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments">
-            {attachments.map((a) => (
-              <li
-                key={a.id}
-                className={`flex max-w-96 items-center gap-2 rounded-lg border py-1 pr-1 pl-1 text-[11px] ${a.status === "error" ? "border-destructive/40 text-destructive" : ""}`}
-              >
-                {a.url ? (
-                  <img src={a.url} alt="" className="size-9 shrink-0 rounded object-cover" />
-                ) : (
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded bg-muted">
-                    {a.status === "processing" ? (
-                      <LoaderCircle className="size-3.5 animate-spin" />
-                    ) : a.status === "error" ? (
-                      <CircleAlert className="size-3.5" />
-                    ) : (
-                      <FileText className="size-3.5" />
-                    )}
-                  </span>
-                )}
-                <span className="min-w-0">
-                  <span className="block truncate font-medium">{a.name}</span>
-                  <span
-                    className={`block truncate font-mono text-[10px] ${a.large ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
-                    title={
-                      a.large
-                        ? "Large file: it's resent with every message in this chat"
-                        : undefined
-                    }
-                  >
-                    {a.status === "error"
-                      ? a.error
-                      : a.status === "processing"
-                        ? "Preparing…"
-                        : a.detail}
-                  </span>
-                </span>
-                {a.mode && onAttachmentMode && (
-                  <span
-                    className="flex shrink-0 rounded-md border p-0.5 text-[10px]"
-                    role="group"
-                    aria-label={`How ${a.name} is sent`}
-                  >
-                    {(["retrieval", "whole"] as const).map((m) => (
-                      <button
-                        key={m}
-                        aria-pressed={a.mode === m}
-                        disabled={m === "whole" && !a.canWhole}
-                        title={
-                          m === "retrieval"
-                            ? "Send only the parts that match each question"
-                            : a.canWhole
-                              ? "Send the whole file with every message"
-                              : "Too long to send whole"
-                        }
-                        className={`rounded px-1.5 py-0.5 disabled:opacity-40 ${a.mode === m ? "bg-accent font-medium" : "text-muted-foreground"}`}
-                        onClick={() => {
-                          onAttachmentMode(a.id, m);
-                        }}
-                      >
-                        {m === "retrieval" ? "Search" : "Whole"}
-                      </button>
-                    ))}
-                  </span>
-                )}
-                {a.secrets && onAttachmentSecrets && (
-                  <span
-                    role="alert"
-                    className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px]"
-                    title={`Looks like it holds ${a.secrets.summary}`}
-                  >
-                    <CircleAlert className="size-3 text-amber-600" />
-                    <span className="max-w-40 truncate">Secrets? {a.secrets.summary}</span>
-                    {a.secrets.canRemove && (
-                      <button
-                        className="rounded px-1 font-medium hover:bg-accent"
-                        onClick={() => {
-                          onAttachmentSecrets(a.id, "remove");
-                        }}
-                      >
-                        Remove those lines
-                      </button>
-                    )}
-                    <button
-                      className="rounded px-1 hover:bg-accent"
-                      onClick={() => {
-                        onAttachmentSecrets(a.id, "keep");
-                      }}
+        <div
+          data-composer-box
+          className={`min-w-0 rounded-[10px] border bg-background p-3 shadow-sm focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/10 ${dragging ? "border-ring ring-2 ring-ring/20" : "border-input"}`}
+          onDragOver={(e) => {
+            if (!onAddFiles || !e.dataTransfer.types.includes("Files")) return;
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => {
+            setDragging(false);
+          }}
+          onDrop={(e) => {
+            if (!onAddFiles) return;
+            e.preventDefault();
+            setDragging(false);
+            addFiles(e.dataTransfer.files);
+          }}
+        >
+          {attachments.length > 0 && (
+            <ul className="mb-2 flex flex-wrap gap-2" aria-label="Attachments">
+              {attachments.map((a) => (
+                <li
+                  key={a.id}
+                  className={`flex max-w-96 items-center gap-2 rounded-lg border py-1 pr-1 pl-1 text-[11px] ${a.status === "error" ? "border-destructive/40 text-destructive" : ""}`}
+                >
+                  {a.url ? (
+                    <img src={a.url} alt="" className="size-9 shrink-0 rounded object-cover" />
+                  ) : (
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded bg-muted">
+                      {a.status === "processing" ? (
+                        <LoaderCircle className="size-3.5 animate-spin" />
+                      ) : a.status === "error" ? (
+                        <CircleAlert className="size-3.5" />
+                      ) : (
+                        <FileText className="size-3.5" />
+                      )}
+                    </span>
+                  )}
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{a.name}</span>
+                    <span
+                      className={`block truncate font-mono text-[10px] ${a.large ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                      title={
+                        a.large
+                          ? "Large file: it's resent with every message in this chat"
+                          : undefined
+                      }
                     >
-                      Send anyway
-                    </button>
+                      {a.status === "error"
+                        ? a.error
+                        : a.status === "processing"
+                          ? "Preparing…"
+                          : a.detail}
+                    </span>
                   </span>
-                )}
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  aria-label={`Remove ${a.name}`}
-                  onClick={() => onRemoveAttachment?.(a.id)}
-                >
-                  <X />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-        {missingKey ? (
-          <button
-            className="flex w-full items-center gap-2 px-1 py-3 text-left text-sm text-muted-foreground underline underline-offset-4"
-            onClick={onSettings}
-          >
-            Add {/^[AEIOU]/.test(missingKey) ? "an" : "a"} {missingKey} key in Settings
-            <CircleAlert className="size-3.5" />
-          </button>
-        ) : (
-          <textarea
-            ref={field}
-            aria-label="Message"
-            placeholder={
-              code ? "Reply, or type / for commands" : "Ask anything. Auto picks the model."
-            }
-            rows={2}
-            value={text}
-            onChange={(e) => {
-              setText(e.target.value);
-            }}
-            onPaste={(e) => {
-              if (onAddFiles && e.clipboardData.files.length > 0) {
-                e.preventDefault();
-                addFiles(e.clipboardData.files);
-                return;
-              }
-              // A pasted link is also read as an attachment; the link text stays in the message.
-              const pasted = e.clipboardData.getData("text/plain").trim();
-              if (onAddLink && /^https?:\/\/\S+$/i.test(pasted)) onAddLink(pasted);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault();
-                const first = slashMatches[0];
-                if (first) pickPrompt(first.id);
-                else send();
-              }
-            }}
-            className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/75"
-          />
-        )}
-        {slashMatches.length > 0 && (
-          <ul
-            role="listbox"
-            aria-label="Saved prompts"
-            className="mb-1 max-h-48 overflow-y-auto rounded-lg border bg-popover p-1 text-xs"
-          >
-            {slashMatches.map((p, i) => (
-              <li
-                key={p.id}
-                role="option"
-                aria-selected={i === 0}
-                className={`cursor-pointer rounded px-2 py-1.5 ${i === 0 ? "bg-accent" : "hover:bg-accent/60"}`}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  pickPrompt(p.id);
-                }}
-              >
-                {p.name}
-              </li>
-            ))}
-          </ul>
-        )}
-        {blocked && (
-          <p role="status" className="px-1 pb-1 text-[11px] text-destructive">
-            {blocked}
-          </p>
-        )}
-        <div className="relative mt-1 flex items-center justify-between gap-2">
-          <div
-            ref={row}
-            data-composer-row
-            className={`flex min-w-0 flex-1 items-center overflow-hidden ${tight ? "gap-0.5" : "gap-1"}`}
-          >
-            {onAddFiles && (
-              <>
-                <input
-                  ref={picker}
-                  type="file"
-                  multiple
-                  accept={`image/png,image/jpeg,image/webp,image/gif,${DOCUMENT_ACCEPT}`}
-                  className="hidden"
-                  aria-label="Attach files"
-                  onChange={(e) => {
-                    addFiles(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                <Tip label="Attach images, PDFs, Word, text or code · or paste / drop them">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0"
-                    aria-label="Attach a file"
-                    onClick={() => picker.current?.click()}
-                  >
-                    <Paperclip />
-                  </Button>
-                </Tip>
-              </>
-            )}
-            <Popover.Root
-              open={pickerOpen}
-              onOpenChange={(open) => {
-                onPickerOpen(open);
-                if (!open) setSearch("");
-              }}
-            >
-              <Popover.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`shrink-0 text-xs ${tight ? "gap-1 px-2" : "gap-2"}`}
-                  aria-label="Choose model (Ctrl+K)"
-                >
-                  <Sparkles className="size-3.5" />
-                  <span>{modeLabel ?? model.name}</span>
-                  {routing?.once && <span className="text-muted-foreground">· once</span>}
-                  {preview && (
-                    <span className="text-muted-foreground" aria-label={`Auto picks ${preview}`}>
-                      → {preview}
-                    </span>
-                  )}
-                  {!tight && <ChevronDown className="size-3" />}
-                  {!collapsed && (
-                    <span className="ml-1 hidden min-[900px]:inline">
-                      <Hint>Ctrl K</Hint>
-                    </span>
-                  )}
-                </Button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  align="start"
-                  side="top"
-                  sideOffset={12}
-                  collisionPadding={16}
-                  className="z-30 w-[390px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl"
-                  aria-label="Model picker"
-                  onKeyDown={(event) => {
-                    const buttons = Array.from(
-                      event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
-                    );
-                    const index = buttons.findIndex((button) => button === document.activeElement);
-                    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                      event.preventDefault();
-                      const next =
-                        event.key === "ArrowDown"
-                          ? index + 1
-                          : index <= 0
-                            ? buttons.length - 1
-                            : index - 1;
-                      buttons[next % buttons.length]?.focus();
-                    }
-                    if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
-                      event.preventDefault();
-                      buttons[0]?.click();
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-2.5 border-b px-4 py-3">
-                    <Search className="size-4 text-muted-foreground" />
-                    <input
-                      aria-label="Search models"
-                      autoFocus
-                      placeholder="Find a model…"
-                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                      value={search}
-                      onChange={(e) => {
-                        setSearch(e.target.value);
-                      }}
-                    />
-                    <Hint>Esc</Hint>
-                  </div>
-                  {routing && !search && (
-                    <div className="border-b p-2" role="group" aria-label="Routing">
-                      {(["auto", "balanced", "best"] as const).map((choice) => (
+                  {a.mode && onAttachmentMode && (
+                    <span
+                      className="flex shrink-0 rounded-md border p-0.5 text-[10px]"
+                      role="group"
+                      aria-label={`How ${a.name} is sent`}
+                    >
+                      {(["retrieval", "whole"] as const).map((m) => (
                         <button
-                          key={choice}
-                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${routing.selected === choice ? "bg-accent/70" : ""}`}
+                          key={m}
+                          aria-pressed={a.mode === m}
+                          disabled={m === "whole" && !a.canWhole}
+                          title={
+                            m === "retrieval"
+                              ? "Send only the parts that match each question"
+                              : a.canWhole
+                                ? "Send the whole file with every message"
+                                : "Too long to send whole"
+                          }
+                          className={`rounded px-1.5 py-0.5 disabled:opacity-40 ${a.mode === m ? "bg-accent font-medium" : "text-muted-foreground"}`}
                           onClick={() => {
-                            routing.onSelect(choice);
-                            onPickerOpen(false);
-                            field.current?.focus();
+                            onAttachmentMode(a.id, m);
                           }}
                         >
-                          <span className="flex-1">
-                            <span className="block text-xs font-medium">
-                              {choice === "auto" ? "Auto" : `${MODE_LABELS[choice]} tier`}
-                            </span>
-                            <span className="mt-0.5 block text-[10px] text-muted-foreground">
-                              {routing.descriptions[choice]}
-                            </span>
-                          </span>
-                          <span className="w-4">
-                            {routing.selected === choice && <Check className="size-3.5" />}
-                          </span>
+                          {m === "retrieval" ? "Search" : "Whole"}
                         </button>
                       ))}
-                    </div>
+                    </span>
                   )}
-                  <div className="flex justify-between px-4 pt-3 text-[9px] text-muted-foreground">
-                    <span>{routing ? "Or pin a model" : "Model / context"}</span>
-                    <span>Input / output per 1M</span>
-                  </div>
-                  <div className="max-h-[45dvh] overflow-y-auto p-2">
-                    {[...new Set(models.map((item) => item.providerName))].map((provider) => (
-                      <div key={provider}>
-                        {filtered.some((item) => item.providerName === provider) && (
-                          <h3 className="px-2 pt-3 pb-1.5 text-[10px] font-semibold text-muted-foreground">
-                            {provider}
-                          </h3>
-                        )}
-                        {filtered
-                          .filter((item) => item.providerName === provider)
-                          .map((item) => (
-                            <button
-                              key={item.id}
-                              className={`flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${modelPinned && item.id === model.id ? "bg-accent/70" : ""}`}
-                              onClick={() => {
-                                onSelectModel(item);
-                                onPickerOpen(false);
-                                setSearch("");
-                                field.current?.focus();
-                              }}
-                            >
-                              <span className="flex-1">
-                                <span className="block text-xs font-medium">{item.name}</span>
-                                <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
-                                  {item.context} context
-                                </span>
-                              </span>
-                              <span className="font-mono text-[10px] text-muted-foreground">
-                                ${item.inputPrice.toFixed(2)} / ${item.outputPrice.toFixed(2)}
-                              </span>
-                              <span className="w-4">
-                                {modelPinned && item.id === model.id && (
-                                  <Check className="size-3.5" />
-                                )}
-                              </span>
-                            </button>
-                          ))}
-                      </div>
-                    ))}
-                    {filtered.length === 0 && (
-                      <p className="p-6 text-center text-sm text-muted-foreground">
-                        No models found.
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[10px] text-muted-foreground">
-                    <Command className="size-3" />
-                    <span className="flex-1">Switch models anytime. Your history comes along.</span>
-                    {routing?.onOnce && (
-                      <label className="flex items-center gap-1.5 text-foreground">
-                        <input
-                          type="checkbox"
-                          aria-label="Next message only"
-                          checked={routing.once ?? false}
-                          onChange={(e) => {
-                            routing.onOnce?.(e.target.checked);
+                  {a.secrets && onAttachmentSecrets && (
+                    <span
+                      role="alert"
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px]"
+                      title={`Looks like it holds ${a.secrets.summary}`}
+                    >
+                      <CircleAlert className="size-3 text-amber-600" />
+                      <span className="max-w-40 truncate">Secrets? {a.secrets.summary}</span>
+                      {a.secrets.canRemove && (
+                        <button
+                          className="rounded px-1 font-medium hover:bg-accent"
+                          onClick={() => {
+                            onAttachmentSecrets(a.id, "remove");
                           }}
-                        />
-                        Next message only
-                      </label>
-                    )}
-                  </div>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
-            {!tight && searchButton(false)}
-            {folders.map((f) => (
-              <span
-                key={f.id}
-                className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
-                title={f.own ? f.path : `${f.path} (from the project)`}
+                        >
+                          Remove those lines
+                        </button>
+                      )}
+                      <button
+                        className="rounded px-1 hover:bg-accent"
+                        onClick={() => {
+                          onAttachmentSecrets(a.id, "keep");
+                        }}
+                      >
+                        Send anyway
+                      </button>
+                    </span>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    aria-label={`Remove ${a.name}`}
+                    onClick={() => onRemoveAttachment?.(a.id)}
+                  >
+                    <X />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {missingKey ? (
+            <button
+              className="flex w-full items-center gap-2 px-1 py-3 text-left text-sm text-muted-foreground underline underline-offset-4"
+              onClick={onSettings}
+            >
+              Add {/^[AEIOU]/.test(missingKey) ? "an" : "a"} {missingKey} key in Settings
+              <CircleAlert className="size-3.5" />
+            </button>
+          ) : (
+            <textarea
+              ref={field}
+              aria-label="Message"
+              placeholder={
+                code ? "Reply, or type / for commands" : "Ask anything. Auto picks the model."
+              }
+              rows={2}
+              value={text}
+              onChange={(e) => {
+                setText(e.target.value);
+              }}
+              onPaste={(e) => {
+                if (onAddFiles && e.clipboardData.files.length > 0) {
+                  e.preventDefault();
+                  addFiles(e.clipboardData.files);
+                  return;
+                }
+                // A pasted link is also read as an attachment; the link text stays in the message.
+                const pasted = e.clipboardData.getData("text/plain").trim();
+                if (onAddLink && /^https?:\/\/\S+$/i.test(pasted)) onAddLink(pasted);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  const first = slashMatches[0];
+                  if (first) pickPrompt(first.id);
+                  else send();
+                }
+              }}
+              className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/75"
+            />
+          )}
+          {slashMatches.length > 0 && (
+            <ul
+              role="listbox"
+              aria-label="Saved prompts"
+              className="mb-1 max-h-48 overflow-y-auto rounded-lg border bg-popover p-1 text-xs"
+            >
+              {slashMatches.map((p, i) => (
+                <li
+                  key={p.id}
+                  role="option"
+                  aria-selected={i === 0}
+                  className={`cursor-pointer rounded px-2 py-1.5 ${i === 0 ? "bg-accent" : "hover:bg-accent/60"}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    pickPrompt(p.id);
+                  }}
+                >
+                  {p.name}
+                </li>
+              ))}
+            </ul>
+          )}
+          {blocked && (
+            <p role="status" className="px-1 pb-1 text-[11px] text-destructive">
+              {blocked}
+            </p>
+          )}
+          <div className="relative mt-1 flex items-center justify-between gap-2">
+            <div
+              ref={row}
+              data-composer-row
+              className={`flex min-w-0 flex-1 items-center overflow-hidden ${tight ? "gap-0.5" : "gap-1"}`}
+            >
+              {onAddFiles && (
+                <>
+                  <input
+                    ref={picker}
+                    type="file"
+                    multiple
+                    accept={`image/png,image/jpeg,image/webp,image/gif,${DOCUMENT_ACCEPT}`}
+                    className="hidden"
+                    aria-label="Attach files"
+                    onChange={(e) => {
+                      addFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                  <Tip label="Attach images, PDFs, Word, text or code · or paste / drop them">
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="shrink-0"
+                      aria-label="Attach a file"
+                      onClick={() => picker.current?.click()}
+                    >
+                      <Paperclip />
+                    </Button>
+                  </Tip>
+                </>
+              )}
+              <Popover.Root
+                open={pickerOpen}
+                onOpenChange={(open) => {
+                  onPickerOpen(open);
+                  if (!open) setSearch("");
+                }}
               >
-                <FolderOpen className="size-3 shrink-0" />
-                <span className="truncate">{f.name}</span>
-                {f.own && onRemoveFolder && (
-                  <button
-                    type="button"
-                    aria-label={`Remove folder ${f.name}`}
-                    className="shrink-0 hover:text-foreground"
-                    onClick={() => {
-                      onRemoveFolder(f.id);
+                <Popover.Trigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`shrink-0 rounded-[4px] bg-muted text-xs font-medium ${tight ? "gap-1 px-2" : "gap-1.5"}`}
+                    aria-label="Choose model (Ctrl+K)"
+                  >
+                    {!tight && <Sparkles className="size-3.5" />}
+                    <span>{modeLabel ?? model.name}</span>
+                    {routing?.once && <span className="text-muted-foreground">· once</span>}
+                    {preview && (
+                      <span className="text-muted-foreground" aria-label={`Auto picks ${preview}`}>
+                        → {preview}
+                      </span>
+                    )}
+                    {!collapsed && (previewTier ?? model.tier) && (
+                      <Tier tier={(previewTier ?? model.tier) as NonNullable<typeof model.tier>} />
+                    )}
+                    {!tight && <ChevronDown className="size-3" />}
+                    {!collapsed && (
+                      <span className="ml-1 hidden min-[900px]:inline">
+                        <Hint>Ctrl K</Hint>
+                      </span>
+                    )}
+                  </Button>
+                </Popover.Trigger>
+                <Popover.Portal>
+                  <Popover.Content
+                    align="start"
+                    side="top"
+                    sideOffset={12}
+                    collisionPadding={16}
+                    className="z-30 w-[390px] max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl"
+                    aria-label="Model picker"
+                    onKeyDown={(event) => {
+                      const buttons = Array.from(
+                        event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
+                      );
+                      const index = buttons.findIndex(
+                        (button) => button === document.activeElement,
+                      );
+                      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                        event.preventDefault();
+                        const next =
+                          event.key === "ArrowDown"
+                            ? index + 1
+                            : index <= 0
+                              ? buttons.length - 1
+                              : index - 1;
+                        buttons[next % buttons.length]?.focus();
+                      }
+                      if (event.key === "Enter" && event.target instanceof HTMLInputElement) {
+                        event.preventDefault();
+                        buttons[0]?.click();
+                      }
                     }}
                   >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </span>
-            ))}
-            {onAddFolder && (
-              <Tip label="Pick a folder on this computer for this chat to work in">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Add a folder"
-                  className="shrink-0 gap-1.5 text-xs text-muted-foreground"
-                  onClick={onAddFolder}
+                    <div className="flex items-center gap-2.5 border-b px-4 py-3">
+                      <Search className="size-4 text-muted-foreground" />
+                      <input
+                        aria-label="Search models"
+                        autoFocus
+                        placeholder="Find a model…"
+                        className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                        value={search}
+                        onChange={(e) => {
+                          setSearch(e.target.value);
+                        }}
+                      />
+                      <Hint>Esc</Hint>
+                    </div>
+                    {routing && !search && (
+                      <div className="border-b p-2" role="group" aria-label="Routing">
+                        {(["auto", "balanced", "best"] as const).map((choice) => (
+                          <button
+                            key={choice}
+                            className={`flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${routing.selected === choice ? "bg-accent/70" : ""}`}
+                            onClick={() => {
+                              routing.onSelect(choice);
+                              onPickerOpen(false);
+                              field.current?.focus();
+                            }}
+                          >
+                            <span className="flex-1">
+                              <span className="block text-xs font-medium">
+                                {choice === "auto" ? "Auto" : `${MODE_LABELS[choice]} tier`}
+                              </span>
+                              <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                                {routing.descriptions[choice]}
+                              </span>
+                            </span>
+                            <span className="w-4">
+                              {routing.selected === choice && <Check className="size-3.5" />}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex justify-between px-4 pt-3 text-[9px] text-muted-foreground">
+                      <span>{routing ? "Or pin a model" : "Model / context"}</span>
+                      <span>Input / output per 1M</span>
+                    </div>
+                    <div className="max-h-[45dvh] overflow-y-auto p-2">
+                      {[...new Set(models.map((item) => item.providerName))].map((provider) => (
+                        <div key={provider}>
+                          {filtered.some((item) => item.providerName === provider) && (
+                            <h3 className="px-2 pt-3 pb-1.5 text-[10px] font-semibold text-muted-foreground">
+                              {provider}
+                            </h3>
+                          )}
+                          {filtered
+                            .filter((item) => item.providerName === provider)
+                            .map((item) => (
+                              <button
+                                key={item.id}
+                                className={`flex w-full items-center gap-2 rounded-lg px-2 py-2.5 text-left outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${modelPinned && item.id === model.id ? "bg-accent/70" : ""}`}
+                                onClick={() => {
+                                  onSelectModel(item);
+                                  onPickerOpen(false);
+                                  setSearch("");
+                                  field.current?.focus();
+                                }}
+                              >
+                                <span className="flex-1">
+                                  <span className="block text-xs font-medium">{item.name}</span>
+                                  <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+                                    {item.context} context
+                                  </span>
+                                </span>
+                                <span className="font-mono text-[10px] text-muted-foreground">
+                                  ${item.inputPrice.toFixed(2)} / ${item.outputPrice.toFixed(2)}
+                                </span>
+                                <span className="w-4">
+                                  {modelPinned && item.id === model.id && (
+                                    <Check className="size-3.5" />
+                                  )}
+                                </span>
+                              </button>
+                            ))}
+                        </div>
+                      ))}
+                      {filtered.length === 0 && (
+                        <p className="p-6 text-center text-sm text-muted-foreground">
+                          No models found.
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[10px] text-muted-foreground">
+                      <Command className="size-3" />
+                      <span className="flex-1">
+                        Switch models anytime. Your history comes along.
+                      </span>
+                      {routing?.onOnce && (
+                        <label className="flex items-center gap-1.5 text-foreground">
+                          <input
+                            type="checkbox"
+                            aria-label="Next message only"
+                            checked={routing.once ?? false}
+                            onChange={(e) => {
+                              routing.onOnce?.(e.target.checked);
+                            }}
+                          />
+                          Next message only
+                        </label>
+                      )}
+                    </div>
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover.Root>
+              {!tight && searchButton(false)}
+              {folders.map((f) => (
+                <span
+                  key={f.id}
+                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-md border px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  title={f.own ? f.path : `${f.path} (from the project)`}
                 >
-                  <FolderPlus className="size-3.5" />
-                  {folders.length === 0 && (
-                    <span className="hidden min-[900px]:inline">Folder</span>
+                  <FolderOpen className="size-3 shrink-0" />
+                  <span className="truncate">{f.name}</span>
+                  {f.own && onRemoveFolder && (
+                    <button
+                      type="button"
+                      aria-label={`Remove folder ${f.name}`}
+                      className="shrink-0 hover:text-foreground"
+                      onClick={() => {
+                        onRemoveFolder(f.id);
+                      }}
+                    >
+                      <X className="size-3" />
+                    </button>
                   )}
-                </Button>
-              </Tip>
-            )}
-            {onToggleCode && (
-              <Tip
-                label={
-                  code
-                    ? "Code on: the next message starts a run that works in this chat's folders"
-                    : "Code off"
-                }
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Coding run"
-                  aria-pressed={code}
-                  className={`shrink-0 gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                  onClick={onToggleCode}
+                </span>
+              ))}
+              {onAddFolder && (
+                <Tip label="Pick a folder on this computer for this chat to work in">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Add a folder"
+                    className="shrink-0 gap-1.5 text-xs text-muted-foreground"
+                    onClick={onAddFolder}
+                  >
+                    <FolderPlus className="size-3.5" />
+                    {folders.length === 0 && (
+                      <span className="hidden min-[900px]:inline">Folder</span>
+                    )}
+                  </Button>
+                </Tip>
+              )}
+              {onToggleCode && (
+                <Tip
+                  label={
+                    code
+                      ? "Code on: the next message starts a run that works in this chat's folders"
+                      : "Code off"
+                  }
                 >
-                  <SquareTerminal className="size-3.5" />
-                  <span className="hidden min-[900px]:inline">Code</span>
-                </Button>
-              </Tip>
-            )}
-            {onToggleWork && (
-              <Tip
-                label={
-                  work
-                    ? "Work on: the next message starts a run on the documents in this chat's folders"
-                    : "Work off"
-                }
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-label="Work run"
-                  aria-pressed={work}
-                  className={`shrink-0 gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
-                  onClick={onToggleWork}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Coding run"
+                    aria-pressed={code}
+                    className={`shrink-0 gap-1.5 text-xs ${code ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                    onClick={onToggleCode}
+                  >
+                    <SquareTerminal className="size-3.5" />
+                    <span className="hidden min-[900px]:inline">Code</span>
+                  </Button>
+                </Tip>
+              )}
+              {onToggleWork && (
+                <Tip
+                  label={
+                    work
+                      ? "Work on: the next message starts a run on the documents in this chat's folders"
+                      : "Work off"
+                  }
                 >
-                  <Briefcase className="size-3.5" />
-                  <span className="hidden min-[900px]:inline">Work</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-label="Work run"
+                    aria-pressed={work}
+                    className={`shrink-0 gap-1.5 text-xs ${work ? "bg-accent text-foreground" : "text-muted-foreground"}`}
+                    onClick={onToggleWork}
+                  >
+                    <Briefcase className="size-3.5" />
+                    <span className="hidden min-[900px]:inline">Work</span>
+                  </Button>
+                </Tip>
+              )}
+              {!collapsed && extras(false)}
+            </div>
+            {/* Outside the clipped row, so it can't be cut off itself. */}
+            {collapsed && moreMenu}
+            {/* Outside the row, which clips what spills out of it. */}
+            {!collapsed && showCompare && compareOpen && (
+              <span
+                role="group"
+                aria-label="Models to compare"
+                className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
+              >
+                {compareList}
+              </span>
+            )}
+            {streaming ? (
+              <Tip label="Stop · Esc">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="shrink-0 rounded-md"
+                  aria-label="Stop"
+                  onClick={onStop}
+                >
+                  <Square className="size-3.5 fill-current" />
+                </Button>
+              </Tip>
+            ) : (
+              <Tip label="Send message · Enter">
+                <Button
+                  size="icon"
+                  className="shrink-0 rounded-md"
+                  aria-label="Send message (Enter)"
+                  disabled={Boolean(missingKey) || !canSend}
+                  onClick={send}
+                >
+                  <ArrowUp className="size-4" />
                 </Button>
               </Tip>
             )}
-            {!collapsed && extras(false)}
           </div>
-          {/* Outside the clipped row, so it can't be cut off itself. */}
-          {collapsed && moreMenu}
-          {/* Outside the row, which clips what spills out of it. */}
-          {!collapsed && showCompare && compareOpen && (
+        </div>
+        {estimated !== null && (
+          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[900px]:order-last @max-[900px]:pt-1 @max-[900px]:pb-0 @max-[900px]:text-left">
+            {streaming ? "so far" : "next message"}
             <span
-              role="group"
-              aria-label="Models to compare"
-              className="absolute bottom-full left-0 z-30 mb-2 flex w-64 flex-col gap-1 rounded-lg border bg-popover p-2 text-xs shadow-lg"
+              className="block @max-[900px]:ml-1.5 @max-[900px]:inline"
+              aria-label="Estimated cost"
             >
-              {compareList}
+              ≈ <Money micro={estimated} className="text-[13px]" />
             </span>
-          )}
-          {streaming ? (
-            <Button size="sm" variant="outline" className="shrink-0" onClick={onStop}>
-              <Square className="size-3 fill-current" />
-              Stop<Hint>Esc</Hint>
-            </Button>
-          ) : (
-            <Tip label="Send message · Enter">
-              <Button
-                size="icon"
-                className="shrink-0 rounded-xl"
-                aria-label="Send message (Enter)"
-                disabled={Boolean(missingKey) || !canSend}
-                onClick={send}
+          </div>
+        )}
+        <div className="mt-2.5 flex items-center justify-between gap-2 px-1 text-[10px] text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            {streaming ? (
+              <>
+                <LoaderCircle className="size-2.5 animate-spin" />
+                Generating response
+              </>
+            ) : status ? (
+              <span
+                role="status"
+                className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
               >
-                <ArrowUp className="size-4" />
-              </Button>
+                <CircleAlert className="size-2.5" />
+                {status}
+              </span>
+            ) : compare && comparing ? (
+              <span aria-label="Compare cost" className="flex items-center gap-1.5">
+                <Columns2 className="size-2.5" />
+                Sends to {compare.selected.length} models
+                {compare.estimate(text) ? ` · ${compare.estimate(text) ?? ""} in all` : ""}
+              </span>
+            ) : (
+              <>
+                <span className="size-1 rounded-full bg-muted-foreground/60" />
+                Your keys. Your conversations.
+              </>
+            )}
+          </span>
+          {context && context.used > 0 && (
+            <Tip
+              label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
+            >
+              <span
+                tabIndex={0}
+                aria-label="Context used"
+                className={`flex items-center gap-1.5 font-mono ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
+              >
+                <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
+                  <span
+                    className="block h-full bg-current"
+                    style={{
+                      width: `${String(Math.min(100, (context.used / context.window) * 100))}%`,
+                    }}
+                  />
+                </span>
+                {String(Math.min(100, Math.round((context.used / context.window) * 100)))}% of{" "}
+                {compact(context.window)}
+              </span>
             </Tip>
           )}
+          <span className="flex items-center gap-1.5">
+            <CornerDownLeft className="size-2.5" />
+            Enter to send<span className="mx-1 opacity-30">/</span>Shift+Enter for a new line
+          </span>
         </div>
-      </div>
-      <div className="mx-auto mt-2.5 flex max-w-[716px] items-center justify-between gap-2 px-1 text-[9px] text-muted-foreground">
-        <span className="flex items-center gap-1.5">
-          {streaming ? (
-            <>
-              <LoaderCircle className="size-2.5 animate-spin" />
-              Generating response
-            </>
-          ) : status ? (
-            <span
-              role="status"
-              className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
-            >
-              <CircleAlert className="size-2.5" />
-              {status}
-            </span>
-          ) : compare && comparing ? (
-            <span aria-label="Compare cost" className="flex items-center gap-1.5">
-              <Columns2 className="size-2.5" />
-              Sends to {compare.selected.length} models
-              {compare.estimate(text) ? ` · ${compare.estimate(text) ?? ""} in all` : ""}
-            </span>
-          ) : (
-            <>
-              <span className="size-1 rounded-full bg-muted-foreground/60" />
-              Your keys. Your conversations.
-            </>
-          )}
-        </span>
-        {context && context.used > 0 && (
-          <Tip
-            label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
-          >
-            <span
-              tabIndex={0}
-              aria-label="Context used"
-              className={`flex items-center gap-1.5 font-mono ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
-            >
-              <span className="h-1 w-10 overflow-hidden rounded-full bg-muted">
-                <span
-                  className="block h-full bg-current"
-                  style={{
-                    width: `${String(Math.min(100, (context.used / context.window) * 100))}%`,
-                  }}
-                />
-              </span>
-              {compact(context.used)} / {compact(context.window)}
-            </span>
-          </Tip>
-        )}
-        <span className="flex items-center gap-1.5">
-          <CornerDownLeft className="size-2.5" />
-          Enter to send<span className="mx-1 opacity-30">/</span>Shift+Enter for a new line
-        </span>
       </div>
     </footer>
   );

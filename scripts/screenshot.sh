@@ -4,6 +4,8 @@
 #   FUSE_VIEW=settings   open on a given screen (dev builds only)
 #   FUSE_BEFORE_SHOT=cmd  run cmd (e.g. xdotool clicks/typing) right before the screenshot
 #   FUSE_SEED_DIR=dir     start from a copy of an existing data folder (upgrade tests)
+#   FUSE_SCRIPTED=1       the test build's scripted model answers (M8 step 14), so a chat with
+#                         answers can be staged with no key: type a question in FUSE_BEFORE_SHOT
 # Needs: xvfb, imagemagick, x11-utils, gnome-keyring (installed on HULK 2026-10-26).
 # Runs in a private D-Bus session with a throwaway, unlocked keyring in a temp dir,
 # so it never touches the real login keyring, and with a throwaway database.
@@ -34,7 +36,11 @@ fi
 
 # WebKitGTK renders black under Xvfb without these.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1
-setsid pnpm tauri dev >"$LOG" 2>&1 &
+TAURI_ARGS=()
+if [[ -n "${FUSE_SCRIPTED:-}" ]]; then
+  TAURI_ARGS=(--config '{"build":{"beforeDevCommand":"pnpm dev --mode e2e"}}')
+fi
+setsid pnpm tauri dev "${TAURI_ARGS[@]}" >"$LOG" 2>&1 &
 PG=$!
 cleanup() {
   kill -TERM -- "-$PG" 2>/dev/null || true

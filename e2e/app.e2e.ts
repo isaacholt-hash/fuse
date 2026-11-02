@@ -150,7 +150,7 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
       await app.resize(w, h);
       await new Promise((r) => setTimeout(r, 500));
       const outside = await app.run<string[]>(`
-        const box = document.querySelector('textarea[aria-label="Message"]').closest('.rounded-2xl').getBoundingClientRect();
+        const box = document.querySelector('textarea[aria-label="Message"]').closest('[data-composer-box]').getBoundingClientRect();
         // The row clips what doesn't fit, so its controls must end inside the row itself.
         const row = document.querySelector('[data-composer-row]').getBoundingClientRect();
         const names = ["Choose model (Ctrl+K)", "Add a folder", "Coding run", "Work run"];
