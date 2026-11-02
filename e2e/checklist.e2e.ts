@@ -213,7 +213,7 @@ test("3. a Code session with a project and a cost cap runs, named after its task
       ),
     ).toBe("");
     await app.find(`${row("E2E edit checklist.txt")}[@aria-current="page"]`);
-    expect(await app.text(byLabel("Spent of cap"))).toContain("of $0.50");
+    expect(await app.text(byLabel("Spent of cap"))).toContain("Cap $0.50");
   });
 });
 
