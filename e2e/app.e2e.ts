@@ -205,7 +205,8 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     return;
   }
   await step("check-5-nul", async () => {
-    const out = await check(5, 2);
+    // The fourth answer: checks 2 and 3, then the page read, then this one.
+    const out = await check(5, 3);
     expect(out).toContain("shown");
     expect(out).toContain("exit code 0");
   });
