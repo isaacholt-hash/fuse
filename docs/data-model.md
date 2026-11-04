@@ -24,6 +24,32 @@ Requirement IDs refer to `docs/requirements.md`.
 
 ## Tables
 
+### Replication foundation: M11
+
+`0057_sync_tracking.sql` adds `sync_state`, `sync_records`, `sync_outbox`, `sync_inbox`,
+`sync_revisions`, `sync_conflicts`, `sync_tombstones` and `sync_devices`. They carry the same
+workspace/user columns as application tables. Tracking is off until explicit enrollment;
+pausing a worker will not stop tracking enrolled local edits. Existing `device.id` is reused
+when present; otherwise the migration creates an installation identity in `sync_state` without
+changing existing application rows. Memory edits use that same identity.
+
+`data/sync.json` is the replication registry: portable and local columns, natural keys,
+dependencies, privacy eligibility and finished-record eligibility. Unreviewed memory proposals
+remain local; promoted memory replicates. Schema coverage tests require every application
+table and column to be classified. Machine grants, transient run coordination, search and
+caches never acquire capture triggers. Portable tables have insert/update/delete triggers;
+their payloads remain inside SQLCipher until native transport encryption. Streaming answers
+and the deletion undo window produce no intermediate payloads. Deletion and withdrawal clear
+older unsent puts for that record.
+
+The triggers advance a durable installation sequence and logical clock, merge the record's
+causal vector, and atomically append the outgoing change with its metadata. Incoming apply
+sets the capture guard only within its transaction and resets it before committing; a rollback
+also restores the guard. `SqlDb.batch()` / `db_batch` uses one connection and transaction,
+including on the HTTP and test adapters. Thread/message purges, global deletion and egress
+rule replacement use batches. A global wipe keeps content-free replication identity and
+causality plus outgoing deletion events so offline replicas cannot restore wiped content.
+
 ### Core: built in M0
 
 | Table | Purpose | Key columns (besides conventions) | Built in |

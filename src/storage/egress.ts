@@ -1,7 +1,7 @@
 import type { ProviderId } from "@/catalog/catalog";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
-import type { SqlDb } from "./sql";
+import type { SqlDb, SqlStatement } from "./sql";
 
 /** SE-13: a provider allowed or blocked everywhere (`projectId` null) or in one project. */
 export interface EgressRule {
@@ -27,18 +27,30 @@ export async function setEgressRule(
   provider: ProviderId,
   allow: boolean | null,
 ): Promise<void> {
-  await db.execute(
-    `DELETE FROM egress_rules WHERE workspace_id = ? AND COALESCE(project_id, '') = ? AND provider = ?`,
-    [tenant.workspaceId, projectId ?? "", provider],
-  );
-  if (allow === null) return;
+  const statements: SqlStatement[] = [
+    {
+      sql: `DELETE FROM egress_rules WHERE workspace_id = ? AND COALESCE(project_id, '') = ? AND provider = ?`,
+      params: [tenant.workspaceId, projectId ?? "", provider],
+    },
+  ];
   const now = Date.now();
-  await db.execute(
-    `INSERT INTO egress_rules (id, workspace_id, user_id, project_id, provider, allow, created_at,
+  if (allow !== null)
+    statements.push({
+      sql: `INSERT INTO egress_rules (id, workspace_id, user_id, project_id, provider, allow, created_at,
        updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [uuidv7(now), tenant.workspaceId, tenant.userId, projectId, provider, allow ? 1 : 0, now, now],
-  );
+      params: [
+        uuidv7(now),
+        tenant.workspaceId,
+        tenant.userId,
+        projectId,
+        provider,
+        allow ? 1 : 0,
+        now,
+        now,
+      ],
+    });
+  await db.batch(statements);
 }
 
 /** SE-13 per record: a knowledge file kept on this device is never sent or embedded. */

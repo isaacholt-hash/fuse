@@ -38,6 +38,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      # The SQLCipher/WebKit/llama.cpp cache can exceed the runner's free disk. M11 hit
+      # ENOSPC while restoring it, before any checks ran. These SDKs aren't used by FUSE.
+      - name: Make room for the Rust cache
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       # The runners' Ubuntu mirror is sometimes very slow, hence the long limit and retries.
       # (Caching the packages with cache-apt-pkgs-action broke linking: it drops the .so symlinks.)
       - name: Tauri system dependencies
@@ -73,6 +77,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+      - name: Make room for the Rust cache
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
       # The same packages as the Rust job (see there for the mirror and the long limit).
       - name: Tauri system dependencies
         timeout-minutes: 25

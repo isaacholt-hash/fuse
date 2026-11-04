@@ -5,10 +5,13 @@
  */
 import type { FilesApi } from "@/files/api";
 import type { Tenant } from "@/storage/defaults";
-import type { SqlDb } from "@/storage/sql";
+import type { SqlDb, SqlStatement } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  "sync_revisions",
+  "sync_conflicts",
+  "sync_inbox",
   // M10: scheduled tasks, what pages asked the runner, and its questions and streaming text,
   // before runs.
   "schedules",
@@ -61,6 +64,15 @@ export const DELETE_ORDER = [
   "projects",
 ] as const;
 
+/** Content-free sync identity/causality must survive a wipe so deletion can propagate. */
+export const SYNC_KEPT_ON_DELETE = [
+  "sync_state",
+  "sync_records",
+  "sync_outbox",
+  "sync_tombstones",
+  "sync_devices",
+] as const;
+
 export async function deleteAllData(
   db: SqlDb,
   tenant: Tenant,
@@ -68,10 +80,16 @@ export async function deleteAllData(
 ): Promise<{ rows: number; files: number }> {
   const ws = tenant.workspaceId;
   // Threads point at messages (their active leaf); unhook that first.
-  await db.execute(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ?`, [ws]);
-  let rows = 0;
+  const statements: SqlStatement[] = [
+    {
+      sql: `UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ?`,
+      params: [ws],
+    },
+  ];
   for (const table of DELETE_ORDER) {
-    rows += (await db.execute(`DELETE FROM ${table} WHERE workspace_id = ?`, [ws])).rowsAffected;
+    statements.push({ sql: `DELETE FROM ${table} WHERE workspace_id = ?`, params: [ws] });
   }
+  const results = await db.batch(statements);
+  const rows = results.slice(1).reduce((sum, row) => sum + row.rowsAffected, 0);
   return { rows, files: files.wipe ? await files.wipe() : 0 };
 }

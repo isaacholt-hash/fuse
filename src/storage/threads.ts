@@ -2,7 +2,7 @@ import type { ProviderId } from "@/catalog/catalog";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import { getSetting, setSetting } from "./settings";
-import type { SqlDb } from "./sql";
+import type { SqlDb, SqlStatement, SqlValue } from "./sql";
 
 /** M10 step 16: how a session's runs go. Null: the project's default, then FUSE's. */
 export interface ThreadSession {
@@ -342,6 +342,10 @@ export async function purgeThread(
   keep?: PurgeKeep,
 ): Promise<void> {
   const ws = tenant.workspaceId;
+  const statements: SqlStatement[] = [];
+  const write = (sql: string, params: SqlValue[] = []) => {
+    statements.push({ sql, params });
+  };
   if (keep === undefined) {
     const rows = await db.select<{ incognito: number }>(
       `SELECT incognito FROM threads WHERE workspace_id = ? AND id = ?`,
@@ -354,112 +358,104 @@ export async function purgeThread(
   // Runs of the chat, or of one of its messages: params [ws, id, ws, id].
   const runs = `SELECT id FROM runs WHERE workspace_id = ? AND (thread_id = ? OR message_id IN (${inThread}))`;
   const ownMemories = `SELECT id FROM memories WHERE workspace_id = ? AND thread_id = ?`;
-  await db.execute(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND id = ?`, [
-    ws,
-    id,
-  ]);
+  write(`UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND id = ?`, [ws, id]);
   // Runs and what points at them.
-  await db.execute(
+  write(
     `UPDATE schedules SET last_run_id = NULL WHERE workspace_id = ? AND last_run_id IN (${runs})`,
     [ws, ws, id, ws, id],
   );
-  await db.execute(
+  write(
     `UPDATE schedules SET last_thread_id = NULL WHERE workspace_id = ? AND last_thread_id = ?`,
     [ws, id],
   );
-  await db.execute(
+  write(
     `DELETE FROM run_requests WHERE workspace_id = ?
        AND (run_id IN (${runs}) OR json_extract(input, '$.threadId') = ?)`,
     [ws, ws, id, ws, id, id],
   );
   for (const table of ["run_approvals", "run_live", "run_changes", "run_folders", "run_steps"]) {
-    await db.execute(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, id, ws, id]);
+    write(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, id, ws, id]);
   }
-  await db.execute(`DELETE FROM runs WHERE id IN (${runs})`, [ws, id, ws, id]);
-  await db.execute(
+  write(`DELETE FROM runs WHERE id IN (${runs})`, [ws, id, ws, id]);
+  write(
     `DELETE FROM network_grants WHERE workspace_id = ? AND scope_kind = 'thread' AND scope_id = ?`,
     [ws, id],
   );
-  await db.execute(`DELETE FROM thread_folders WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM thread_folders WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   // Memories scoped to this chat go (the scope is tied to thread_id); the rest are unlinked.
-  await db.execute(
+  write(
     `UPDATE memories SET superseded_by_id = NULL WHERE workspace_id = ? AND superseded_by_id IN (${ownMemories})`,
     [ws, ws, id],
   );
-  await db.execute(`DELETE FROM memory_proposals WHERE memory_id IN (${ownMemories})`, [ws, id]);
-  await db.execute(`DELETE FROM message_memories WHERE memory_id IN (${ownMemories})`, [ws, id]);
+  write(`DELETE FROM memory_proposals WHERE memory_id IN (${ownMemories})`, [ws, id]);
+  write(`DELETE FROM message_memories WHERE memory_id IN (${ownMemories})`, [ws, id]);
   const ownChunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'memory' AND source_id IN (${ownMemories})`;
-  await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${ownChunks})`, [ws, ws, id]);
-  await db.execute(
+  write(`DELETE FROM chunk_vectors WHERE chunk_id IN (${ownChunks})`, [ws, ws, id]);
+  write(
     `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'memory' AND source_id IN (${ownMemories})`,
     [ws, ws, id],
   );
-  await db.execute(`DELETE FROM memories WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
-  await db.execute(
+  write(`DELETE FROM memories WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(
     `UPDATE memories SET source_thread_id = NULL WHERE workspace_id = ? AND source_thread_id = ?`,
     [ws, id],
   );
-  await db.execute(
+  write(
     `UPDATE memories SET source_message_id = NULL WHERE workspace_id = ? AND source_message_id IN (${inThread})`,
     [ws, ws, id],
   );
-  await db.execute(
+  write(
     `DELETE FROM memory_proposals WHERE workspace_id = ? AND source_thread_id = ? AND status = 'pending'`,
     [ws, id],
   );
-  await db.execute(
+  write(
     `UPDATE memory_proposals SET source_thread_id = NULL WHERE workspace_id = ? AND source_thread_id = ?`,
     [ws, id],
   );
   // The messages' links, chunks and search entries.
   for (const table of ["message_files", "message_citations", "message_memories"]) {
-    await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inThread})`, [ws, id]);
+    write(`DELETE FROM ${table} WHERE message_id IN (${inThread})`, [ws, id]);
   }
   const messageChunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inThread})`;
-  await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${messageChunks})`, [ws, ws, id]);
-  await db.execute(
+  write(`DELETE FROM chunk_vectors WHERE chunk_id IN (${messageChunks})`, [ws, ws, id]);
+  write(
     `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inThread})`,
     [ws, ws, id],
   );
-  await db.execute(
+  write(
     keep === "tombstone"
       ? `UPDATE request_log SET message_id = NULL WHERE workspace_id = ? AND thread_id = ?`
       : `UPDATE request_log SET thread_id = NULL, message_id = NULL WHERE workspace_id = ? AND thread_id = ?`,
     [ws, id],
   );
-  await db.execute(
+  write(
     `DELETE FROM artifact_versions WHERE workspace_id = ? AND artifact_id IN
        (SELECT id FROM artifacts WHERE workspace_id = ? AND thread_id = ?)`,
     [ws, ws, id],
   );
-  await db.execute(`DELETE FROM artifacts WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
-  await db.execute(`DELETE FROM thread_summaries WHERE workspace_id = ? AND thread_id = ?`, [
-    ws,
-    id,
-  ]);
-  await db.execute(`DELETE FROM messages WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
-  await db.execute(`UPDATE files SET thread_id = NULL WHERE workspace_id = ? AND thread_id = ?`, [
-    ws,
-    id,
-  ]);
-  await db.execute(`DELETE FROM imports WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
-  await db.execute(`DELETE FROM thread_tags WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM artifacts WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM thread_summaries WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM messages WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`UPDATE files SET thread_id = NULL WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM imports WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  write(`DELETE FROM thread_tags WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   // The chat this one was handed off to no longer has a chat to point back at.
-  await db.execute(
+  write(
     `UPDATE threads SET handoff_from_id = NULL WHERE workspace_id = ? AND handoff_from_id = ?`,
     [ws, id],
   );
   if (keep === "tombstone") {
     const now = Date.now();
-    await db.execute(
+    write(
       `UPDATE threads SET title = '', title_source = 'auto', instructions = '', pinned_at = NULL,
          archived_at = NULL, deleted_at = COALESCE(deleted_at, ?), purged_at = ?, updated_at = ?
        WHERE workspace_id = ? AND id = ?`,
       [now, now, now, ws, id],
     );
   } else {
-    await db.execute(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
+    write(`DELETE FROM threads WHERE workspace_id = ? AND id = ?`, [ws, id]);
   }
+  await db.batch(statements);
 }
 
 /** Undo of a delete that hasn't been purged yet. False when it's too late. */

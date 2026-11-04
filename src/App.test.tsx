@@ -404,6 +404,7 @@ test("F5: a slow reload from mid-answer can't put the finished answer back to st
     {},
     {
       wrapDb: (db) => ({
+        batch: (statements) => db.batch(statements),
         execute: (sql, params) => db.execute(sql, params),
         select: async <Row,>(sql: string, params?: SqlValue[]) => {
           const rows = await db.select<Row>(sql, params);
@@ -525,6 +526,7 @@ test("F6: a model picked just before sending is the one used, even while its pin
     {},
     {
       wrapDb: (db) => ({
+        batch: (statements) => db.batch(statements),
         execute: async (sql, params) => {
           if (hold && sql.includes("SET pinned_tier")) await held;
           return db.execute(sql, params);
@@ -2217,8 +2219,8 @@ test("delete an answer takes what followed it; Ctrl+Z puts it back, unless you'r
   expect(screen.queryByText(/^Deleted /)).not.toBeInTheDocument();
 });
 
-test("delete from a question: the rows and their search entries go once the notice ends", async () => {
-  const { db, user } = setup({}, undefined, {}, { undoMs: 50 });
+test("delete from a question: the rows and their search entries go when the notice is dismissed", async () => {
+  const { db, user } = setup();
   await user.type(await composer(), "A question to forget{Enter}");
   await screen.findByText("Hello there.");
   await user.click(screen.getByRole("button", { name: "Delete from here" }));
@@ -2226,6 +2228,8 @@ test("delete from a question: the rows and their search entries go once the noti
     expect(screen.queryByText("Hello there.")).not.toBeInTheDocument();
   });
   expect(screen.getByText("Deleted 2 messages")).toBeInTheDocument();
+  expect(await db.select("SELECT COUNT(*) AS n FROM messages")).toEqual([{ n: 2 }]);
+  await user.click(screen.getByRole("button", { name: /^Dismiss$/ }));
   await waitFor(async () => {
     expect(await db.select("SELECT COUNT(*) AS n FROM messages")).toEqual([{ n: 0 }]);
   });

@@ -97,6 +97,7 @@ pub fn run() {
             db::commands::db_recover,
             db::commands::db_recovery_key,
             db::commands::db_execute,
+            db::commands::db_batch,
             db::commands::db_select,
             repo::commands::repo_pick,
             repo::commands::repo_check,

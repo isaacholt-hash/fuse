@@ -1,7 +1,7 @@
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import { buildPath, leafUnder } from "./tree";
-import type { SqlDb } from "./sql";
+import type { SqlDb, SqlStatement, SqlValue } from "./sql";
 import {
   EMPTY_USAGE,
   USAGE_COLUMNS,
@@ -253,6 +253,10 @@ export async function deleteMessageTree(
   rootId: string,
 ): Promise<{ ids: string[]; previousLeafId: string | null }> {
   const ws = tenant.workspaceId;
+  const statements: SqlStatement[] = [];
+  const write = (sql: string, params: SqlValue[] = []) => {
+    statements.push({ sql, params });
+  };
   const leafRows = await db.select<{ active_leaf_id: string | null }>(
     `SELECT active_leaf_id FROM threads WHERE workspace_id = ? AND id = ?`,
     [ws, threadId],
@@ -273,7 +277,7 @@ export async function deleteMessageTree(
   const all = await listMessages(db, tenant, threadId);
   const now = Date.now();
   for (const slice of slices(ids)) {
-    await db.execute(
+    write(
       `UPDATE messages SET deleted_at = ?, updated_at = ?
        WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
       [now, now, ws, ...slice],
@@ -285,12 +289,13 @@ export async function deleteMessageTree(
     const anchor = all.find((m) => m.id === rootId)?.parentId ?? null;
     const leaf =
       anchor !== null && rest.some((m) => m.id === anchor) ? leafUnder(rest, anchor) : null;
-    await db.execute(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
+    write(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
       leaf,
       ws,
       threadId,
     ]);
   }
+  await db.batch(statements);
   return { ids, previousLeafId };
 }
 
@@ -303,19 +308,24 @@ export async function restoreMessages(
   leafId: string | null,
 ): Promise<void> {
   const ws = tenant.workspaceId;
+  const statements: SqlStatement[] = [];
+  const write = (sql: string, params: SqlValue[] = []) => {
+    statements.push({ sql, params });
+  };
   const now = Date.now();
   for (const slice of slices(ids)) {
-    await db.execute(
+    write(
       `UPDATE messages SET deleted_at = NULL, updated_at = ?
        WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
       [now, ws, ...slice],
     );
   }
-  await db.execute(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
+  write(`UPDATE threads SET active_leaf_id = ? WHERE workspace_id = ? AND id = ?`, [
     leafId,
     ws,
     threadId,
   ]);
+  await db.batch(statements);
 }
 
 /**
@@ -332,48 +342,52 @@ export async function purgeMessages(
 ): Promise<void> {
   if (ids.length === 0) return;
   const ws = tenant.workspaceId;
+  const statements: SqlStatement[] = [];
+  const write = (sql: string, params: SqlValue[] = []) => {
+    statements.push({ sql, params });
+  };
   for (const slice of slices(ids)) {
     const inIds = marks(slice.length);
     const runs = `SELECT id FROM runs WHERE workspace_id = ? AND message_id IN (${inIds})`;
-    await db.execute(
+    write(
       `UPDATE schedules SET last_run_id = NULL WHERE workspace_id = ? AND last_run_id IN (${runs})`,
       [ws, ws, ...slice],
     );
-    await db.execute(`DELETE FROM run_requests WHERE workspace_id = ? AND run_id IN (${runs})`, [
+    write(`DELETE FROM run_requests WHERE workspace_id = ? AND run_id IN (${runs})`, [
       ws,
       ws,
       ...slice,
     ]);
     for (const table of ["run_approvals", "run_live", "run_changes", "run_folders", "run_steps"]) {
-      await db.execute(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, ...slice]);
+      write(`DELETE FROM ${table} WHERE run_id IN (${runs})`, [ws, ...slice]);
     }
-    await db.execute(`DELETE FROM runs WHERE id IN (${runs})`, [ws, ...slice]);
+    write(`DELETE FROM runs WHERE id IN (${runs})`, [ws, ...slice]);
     for (const table of ["message_files", "message_citations", "message_memories"]) {
-      await db.execute(`DELETE FROM ${table} WHERE message_id IN (${inIds})`, slice);
+      write(`DELETE FROM ${table} WHERE message_id IN (${inIds})`, slice);
     }
     const chunks = `SELECT id FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inIds})`;
-    await db.execute(`DELETE FROM chunk_vectors WHERE chunk_id IN (${chunks})`, [ws, ...slice]);
-    await db.execute(
+    write(`DELETE FROM chunk_vectors WHERE chunk_id IN (${chunks})`, [ws, ...slice]);
+    write(
       `DELETE FROM chunks WHERE workspace_id = ? AND source_kind = 'message' AND source_id IN (${inIds})`,
       [ws, ...slice],
     );
-    await db.execute(
+    write(
       `UPDATE memories SET source_message_id = NULL WHERE workspace_id = ? AND source_message_id IN (${inIds})`,
       [ws, ...slice],
     );
-    await db.execute(
+    write(
       `UPDATE artifact_versions SET message_id = NULL WHERE workspace_id = ? AND message_id IN (${inIds})`,
       [ws, ...slice],
     );
-    await db.execute(
-      `DELETE FROM thread_summaries WHERE workspace_id = ? AND upto_message_id IN (${inIds})`,
-      [ws, ...slice],
-    );
-    await db.execute(
+    write(`DELETE FROM thread_summaries WHERE workspace_id = ? AND upto_message_id IN (${inIds})`, [
+      ws,
+      ...slice,
+    ]);
+    write(
       `UPDATE request_log SET message_id = NULL WHERE workspace_id = ? AND message_id IN (${inIds})`,
       [ws, ...slice],
     );
-    await db.execute(
+    write(
       `UPDATE threads SET active_leaf_id = NULL WHERE workspace_id = ? AND active_leaf_id IN (${inIds})`,
       [ws, ...slice],
     );
@@ -391,11 +405,12 @@ export async function purgeMessages(
   }
   order.sort((a, b) => b.created_at - a.created_at || b.id.localeCompare(a.id));
   for (const slice of slices(order.map((r) => r.id))) {
-    await db.execute(
-      `DELETE FROM messages WHERE workspace_id = ? AND id IN (${marks(slice.length)})`,
-      [ws, ...slice],
-    );
+    write(`DELETE FROM messages WHERE workspace_id = ? AND id IN (${marks(slice.length)})`, [
+      ws,
+      ...slice,
+    ]);
   }
+  await db.batch(statements);
 }
 
 /** Messages of a thread in order. M0 threads are linear, so this is the path to the leaf. */

@@ -31,5 +31,26 @@ export function openTestDb(): SqlDb & { raw: DatabaseSync } {
     select<Row>(sql: string, params: SqlValue[] = []) {
       return Promise.resolve(raw.prepare(sql).all(...params) as Row[]);
     },
+    batch(statements) {
+      raw.exec("BEGIN IMMEDIATE");
+      try {
+        const results = statements.map(({ sql, params = [] }) => {
+          if (!/^(INSERT|UPDATE|DELETE|WITH)\b/i.test(sql.trimStart())) {
+            throw new Error("A database batch accepts only data writes.");
+          }
+          if (sql.trimEnd().replace(/;+$/, "").includes(";")) {
+            throw new Error("Use one SQL statement per database batch entry.");
+          }
+          return { rowsAffected: Number(raw.prepare(sql).run(...params).changes) };
+        });
+        raw.exec("COMMIT");
+        return Promise.resolve(results);
+      } catch (error) {
+        raw.exec("ROLLBACK");
+        return Promise.reject(
+          error instanceof Error ? error : new Error("Database batch failed", { cause: error }),
+        );
+      }
+    },
   };
 }

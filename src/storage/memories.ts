@@ -202,6 +202,11 @@ const DEVICE_KEY = "device.id";
 
 /** This install's id, made once; every change records it so sync (PL-04) can tell devices apart. */
 export async function deviceId(db: SqlDb, tenant: Tenant): Promise<string> {
+  const sync = await db.select<{ device_id: string }>(
+    "SELECT device_id FROM sync_state WHERE workspace_id = ? AND user_id = ?",
+    [tenant.workspaceId, tenant.userId],
+  );
+  if (sync[0]) return sync[0].device_id;
   const known = await getSetting(db, tenant, DEVICE_KEY);
   if (known) return known;
   const id = uuidv7();

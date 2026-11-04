@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sqlx::migrate::{Migration as SqlxMigration, MigrationType, Migrator};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions, SqliteRow};
@@ -315,6 +315,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         version: 56,
         description: "reasoning_summary",
         sql: include_str!("../migrations/0056_reasoning_summary.sql"),
+    },
+    MigrationFile {
+        version: 57,
+        description: "sync_tracking",
+        sql: include_str!("../migrations/0057_sync_tracking.sql"),
     },
 ];
 
@@ -648,6 +653,48 @@ pub async fn execute(pool: &SqlitePool, sql: &str, params: &[Value]) -> Result<u
         .map_err(|e| e.to_string())
 }
 
+#[derive(Deserialize)]
+pub struct Statement {
+    pub sql: String,
+    #[serde(default)]
+    pub params: Vec<Value>,
+}
+
+/// A batch uses one SQLx transaction, never BEGIN/COMMIT on unrelated pooled connections.
+pub async fn batch(
+    pool: &SqlitePool,
+    statements: &[Statement],
+) -> Result<Vec<ExecuteResult>, String> {
+    let mut transaction = pool.begin().await.map_err(|e| e.to_string())?;
+    let mut results = Vec::with_capacity(statements.len());
+    for statement in statements {
+        // The caller cannot escape the transaction (including through an ATTACH or PRAGMA).
+        let verb = statement
+            .sql
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        if !["INSERT", "UPDATE", "DELETE", "WITH"].contains(&verb.as_str()) {
+            return Err("A database batch accepts only data writes.".into());
+        }
+        // SQLx can execute multiple SQLite statements in one query. Values containing a
+        // semicolon must be bound parameters, so no entry can smuggle a COMMIT after a write.
+        if statement.sql.trim_end().trim_end_matches(';').contains(';') {
+            return Err("Use one SQL statement per database batch entry.".into());
+        }
+        let result = bind(sqlx::query(&statement.sql), &statement.params)
+            .execute(&mut *transaction)
+            .await
+            .map_err(|e| e.to_string())?;
+        results.push(ExecuteResult {
+            rows_affected: result.rows_affected(),
+        });
+    }
+    transaction.commit().await.map_err(|e| e.to_string())?;
+    Ok(results)
+}
+
 pub async fn select(
     pool: &SqlitePool,
     sql: &str,
@@ -730,6 +777,13 @@ pub(crate) async fn db_execute(
     Ok(ExecuteResult { rows_affected })
 }
 
+pub(crate) async fn db_batch(
+    ctx: &Ctx,
+    statements: Vec<Statement>,
+) -> Result<Vec<ExecuteResult>, String> {
+    batch(&ctx.db.pool()?, &statements).await
+}
+
 pub(crate) async fn db_select(
     ctx: &Ctx,
     sql: String,
@@ -741,6 +795,14 @@ pub(crate) async fn db_select(
 pub mod commands {
     use super::*;
     use tauri::State;
+
+    #[tauri::command]
+    pub async fn db_batch(
+        ctx: State<'_, Ctx>,
+        statements: Vec<Statement>,
+    ) -> Result<Vec<ExecuteResult>, String> {
+        super::db_batch(&ctx, statements).await
+    }
 
     #[tauri::command]
     pub async fn db_open(ctx: State<'_, Ctx>) -> Result<OpenStatus, String> {
@@ -846,6 +908,91 @@ pub(crate) fn prune_backups_to(backups: &Path, keep: usize) -> std::io::Result<u
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn batches_roll_back_data_and_replication_state_on_failure() {
+        let dir = temp_dir("batch");
+        let pool = ready(open(&dir, &MemoryStore::default()).await.unwrap());
+        execute(&pool, "UPDATE sync_state SET enabled=1", &[])
+            .await
+            .unwrap();
+        execute(&pool, "INSERT INTO projects (id,workspace_id,user_id,name,created_at,updated_at) SELECT 'batch-project',workspace_id,id,'before',0,0 FROM users", &[]).await.unwrap();
+        let data_before = select(&pool, "SELECT name FROM projects", &[])
+            .await
+            .unwrap();
+        let outbox_before = select(&pool, "SELECT * FROM sync_outbox", &[])
+            .await
+            .unwrap();
+        let write = || Statement {
+            sql: "UPDATE projects SET name='changed'".into(),
+            params: vec![],
+        };
+        let before = select(&pool, "SELECT * FROM sync_state", &[])
+            .await
+            .unwrap();
+        let result = batch(
+            &pool,
+            &[
+                write(),
+                Statement {
+                    sql: "INSERT INTO absent_table VALUES (1)".into(),
+                    params: vec![],
+                },
+            ],
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            select(&pool, "SELECT * FROM sync_state", &[])
+                .await
+                .unwrap(),
+            before
+        );
+        let escaped = batch(
+            &pool,
+            &[Statement {
+                sql: "UPDATE projects SET name='escaped'; COMMIT".into(),
+                params: vec![],
+            }],
+        )
+        .await;
+        assert!(escaped.is_err());
+        assert_eq!(
+            select(&pool, "SELECT name FROM projects", &[])
+                .await
+                .unwrap(),
+            data_before
+        );
+        assert_eq!(
+            select(&pool, "SELECT * FROM sync_outbox", &[])
+                .await
+                .unwrap(),
+            outbox_before
+        );
+        let result = batch(
+            &pool,
+            &[
+                Statement {
+                    sql: "UPDATE sync_state SET applying=1".into(),
+                    params: vec![],
+                },
+                Statement {
+                    sql: "COMMIT".into(),
+                    params: vec![],
+                },
+            ],
+        )
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            select(&pool, "SELECT * FROM sync_state", &[])
+                .await
+                .unwrap(),
+            before
+        );
+        pool.close().await;
+        fs::remove_dir_all(dir).unwrap();
+    }
     use crate::keys::MemoryStore;
 
     fn temp_dir(name: &str) -> PathBuf {
