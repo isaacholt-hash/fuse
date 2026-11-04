@@ -1,5 +1,6 @@
 // M10 step 17 (CH-19): what a handoff between a chat and a session starts with. It goes into the
 // new thread's composer, so you read and change it before anything is sent.
+import type { Intent } from "@/routing/policy";
 
 /** A turn, as the brief quotes it. */
 export interface HandoffTurn {
@@ -13,6 +14,18 @@ const EDIT_VERBS =
 /** Whether a chat message reads like a change to files (the Continue in Code hint). */
 export function asksForAChange(text: string): boolean {
   return EDIT_VERBS.test(text);
+}
+
+/** File handoffs are a UI suggestion, independent of the model's routing classification. */
+export function offersCodeHandoff(text: string, intent: Intent | null): boolean {
+  if (!asksForAChange(text)) return false;
+  if (intent === null || intent === "coding") return true;
+  // Links and email addresses aren't file targets. Match filenames and explicit paths locally;
+  // this never opens a folder or sends another classification request.
+  const targets = text.replace(/\b(?:https?:\/\/|www\.)\S+|\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b/gi, " ");
+  return /(?:^|[\s`"'(])(?:[a-z]:[\\/]|\.{0,2}[\\/]|[\p{L}\p{N}_.-]+[\\/])[\p{L}\p{N}_./\\-]+|(?:^|[\s`"'(])[\p{L}\p{N}_-][\p{L}\p{N}_.-]*\.[a-z][a-z0-9]{0,11}(?=$|[\s`"'),.!?:;])/iu.test(
+    targets,
+  );
 }
 
 const quote = (text: string, max = 600) => {

@@ -3705,7 +3705,12 @@ test("M10 step 16: a chat in a project with a repository never starts a run", as
 });
 
 test("M10 step 17: Continue in Code opens a session in the same project, linked both ways", async () => {
-  const { user, db } = setup({}, undefined, {}, { repo: pickingRepo });
+  const { user, db, calls } = setup(
+    {},
+    undefined,
+    { classify: ['{"intent":"chat","complexity":"low"}'] },
+    { repo: pickingRepo },
+  );
   await user.click(await screen.findByRole("button", { name: "New project" }));
   const create = within(await screen.findByRole("dialog"));
   await user.type(create.getByLabelText("Name"), "Lighthouse");
@@ -3715,11 +3720,13 @@ test("M10 step 17: Continue in Code opens a session in the same project, linked 
   await user.click(settings.getByRole("button", { name: "Link a folder…" }));
   await settings.findByText("/home/me/lighthouse");
   await user.keyboard("{Escape}");
-  await user.type(await composer(), "The footer link is wrong{Enter}");
+  await user.type(await composer(), "Fix the typo in notes.txt{Enter}");
   expect(await screen.findByText("Hello there.")).toBeInTheDocument();
 
-  await user.click(screen.getByRole("button", { name: "Conversation actions" }));
-  await user.click(await screen.findByRole("menuitem", { name: "Continue in Code" }));
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
+  const sent = calls.anthropic?.length;
+  const hint = within(await screen.findByLabelText("Continue in Code"));
+  await user.click(hint.getByRole("button", { name: "Continue in Code" }));
   // The Code area, in the same project, with a brief to read before sending.
   expect(
     within(screen.getByRole("group", { name: "Area" })).getByRole("button", { name: "Code" }),
@@ -3729,6 +3736,9 @@ test("M10 step 17: Continue in Code opens a session in the same project, linked 
   await waitFor(() => {
     expect((box as HTMLTextAreaElement).value).toMatch(/^Continuing from the chat/);
   });
+  expect((box as HTMLTextAreaElement).value).toContain("Fix the typo in notes.txt");
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
+  expect(calls.anthropic?.length).toBe(sent);
   await user.type(box, "fix it{Enter}");
   await within(await screen.findByRole("region", { name: "Coding run" })).findByText("Done");
   // Sent: the saved session's composer is empty, not holding the brief again.
@@ -3744,7 +3754,48 @@ test("M10 step 17: Continue in Code opens a session in the same project, linked 
   // Back in the chat, which says where it went.
   expect(
     await within(screen.getByRole("group", { name: "Handoff" })).findByRole("button", {
-      name: session?.title ?? "",
+      name: session?.title.trim() ?? "",
     }),
   ).toBeInTheDocument();
+});
+
+test("M10 F4: a file hint requires a linked folder", async () => {
+  const { user, db } = setup();
+  await user.type(await composer(), "Fix the typo in notes.txt{Enter}");
+  expect(await screen.findByText("Hello there.")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Continue in Code")).toBeNull();
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
+});
+
+test("M10 F4: the file hint respects its notification switch and dismissal", async () => {
+  const { user, db } = setup({}, undefined, {}, { repo: pickingRepo });
+  await user.click(await screen.findByRole("button", { name: "New project" }));
+  const create = within(await screen.findByRole("dialog"));
+  await user.type(create.getByLabelText("Name"), "Lighthouse");
+  await user.click(create.getByRole("button", { name: "Create project" }));
+  await user.click(await screen.findByRole("button", { name: "Lighthouse settings" }));
+  const settings = within(await screen.findByRole("dialog"));
+  await user.click(settings.getByRole("button", { name: "Link a folder…" }));
+  await settings.findByText("/home/me/lighthouse");
+  await user.keyboard("{Escape}");
+  await user.type(await composer(), "Fix notes.txt{Enter}");
+  await screen.findByText("Hello there.");
+  await screen.findByLabelText("Continue in Code");
+  await user.keyboard("{Control>},{/Control}");
+  const notifications = within(await screen.findByRole("region", { name: "Notifications" }));
+  await user.click(notifications.getByRole("checkbox", { name: "Continue in Code" }));
+  await user.keyboard("{Control>},{/Control}");
+  await screen.findByText("Hello there.");
+  expect(screen.queryByLabelText("Continue in Code")).toBeNull();
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(
+    within(await screen.findByRole("region", { name: "Notifications" })).getByRole("checkbox", {
+      name: "Continue in Code",
+    }),
+  );
+  // The existing hint becomes visible again when its switch is enabled.
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Dismiss Continue in Code" }));
+  expect(screen.queryByLabelText("Continue in Code")).toBeNull();
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
 });
