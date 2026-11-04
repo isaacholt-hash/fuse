@@ -328,6 +328,7 @@ import { EMPTY_USAGE } from "@/storage/usage";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
+import { PanelActivity } from "@/ui/panelActivity";
 import type { SettingsTargetId } from "@/ui/settingsRegistry";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
@@ -1195,10 +1196,27 @@ export function ChatApp({
         ? "usage"
         : "chat",
   );
-  const [settingsTarget, setSettingsTarget] = useState<SettingsTargetId | undefined>();
+  const settingsReturnFocus = useRef<HTMLElement | null>(null);
+  const [settingsTarget, setSettingsTarget] = useState<SettingsTargetId | undefined>(() =>
+    window.location.hash === "#sync" ? "sync" : undefined,
+  );
   const openSettings = (target?: SettingsTargetId) => {
+    if (view !== "settings")
+      settingsReturnFocus.current =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (view !== "settings") settingsReturnFocus.current?.blur();
     setSettingsTarget(target);
+    setPicker(false);
+    setInstructionsOpen(false);
     setView("settings");
+  };
+  const closeSettings = () => {
+    setView("chat");
+    requestAnimationFrame(() => {
+      const previous = settingsReturnFocus.current;
+      if (previous?.isConnected) previous.focus();
+      else document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    });
   };
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   const [picker, setPicker] = useState(false);
@@ -4760,7 +4778,7 @@ export function ChatApp({
           setPicker((open) => !open);
         } else if (event.key === ",") {
           event.preventDefault();
-          if (view === "settings") setView("chat");
+          if (view === "settings") closeSettings();
           else openSettings();
         } else if (key === "z" && !event.shiftKey && pendingDelete.pending) {
           // M10 step 18: Ctrl+Z undoes a delete while its notice shows, unless you're typing.
@@ -4899,7 +4917,7 @@ export function ChatApp({
               variant="outline"
               onClick={() => {
                 setSuggestionNoticeOff(true);
-                openSettings();
+                openSettings("routing-policy");
               }}
             >
               See it
@@ -4937,7 +4955,7 @@ export function ChatApp({
                 variant="outline"
                 onClick={() => {
                   setModelsNoticeOff(true);
-                  openSettings();
+                  openSettings("models");
                 }}
               >
                 See models
@@ -4969,7 +4987,7 @@ export function ChatApp({
               variant="outline"
               onClick={() => {
                 setPricesNoticeOff(true);
-                openSettings();
+                openSettings("prices");
               }}
             >
               Check prices
@@ -5018,7 +5036,7 @@ export function ChatApp({
           />
         )}
         <div className="flex min-h-0 flex-1">
-          {sidebar && (
+          {sidebar && view !== "settings" && (
             <Sidebar
               area={area}
               onArea={switchArea}
@@ -5122,8 +5140,10 @@ export function ChatApp({
                 setView("chat");
               }}
             />
-          ) : view === "settings" ? (
+          ) : null}
+          {view === "settings" && (
             <SettingsView
+              area={area}
               {...(settingsTarget ? { target: settingsTarget } : {})}
               web={webApp}
               {...(server ? { server } : {})}
@@ -5932,9 +5952,7 @@ export function ChatApp({
               onTextSize={appearance.setTextSize}
               motion={appearance.motion}
               onMotion={appearance.setMotion}
-              onBack={() => {
-                setView("chat");
-              }}
+              onBack={closeSettings}
               onSaveKey={keys.save}
               onTestKey={keys.test}
               onDeleteKey={keys.remove}
@@ -5945,618 +5963,626 @@ export function ChatApp({
                 }, report);
               }}
             />
-          ) : (
-            <main className="flex min-w-0 flex-1 flex-col">
-              <header className="flex h-[66px] shrink-0 items-center gap-3 border-b px-7 max-[800px]:px-5">
-                {!sidebar && (
-                  <Tip label="Show sidebar · Ctrl+B">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label="Show sidebar (Ctrl+B)"
-                      onClick={() => {
-                        setSidebar(true);
-                      }}
-                    >
-                      <PanelLeft />
-                    </Button>
-                  </Tip>
-                )}
-                <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                  {activeProject && (
-                    <>
-                      <button
-                        className="flex max-w-[40%] shrink-0 items-center gap-1.5 rounded text-[12px] text-muted-foreground hover:text-foreground"
-                        aria-label={`Project: ${activeProject.name}`}
-                        onClick={() => {
-                          setProjectDialog(activeProject.id);
-                        }}
-                      >
-                        <Folder className="size-3.5 shrink-0" />
-                        <span className="truncate">{activeProject.name}</span>
-                      </button>
-                      <span className="text-border">/</span>
-                    </>
-                  )}
-                  <button
-                    className="group flex min-w-0 items-center gap-2 text-left"
-                    onClick={showRename}
-                    disabled={!thread}
-                  >
-                    <h1 className="truncate text-[13px] font-semibold tracking-tight">
-                      {thread?.title ?? (area === "code" ? "New session" : "New chat")}
-                    </h1>
-                    {thread && (
-                      <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
-                    )}
-                  </button>
-                </div>
-                {incognito ? (
-                  <span
-                    className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground"
-                    aria-label="Incognito chat"
-                  >
-                    <EyeOff className="size-3" />
-                    Incognito
-                  </span>
-                ) : (
-                  !thread && (
-                    <Tip label="Incognito: not saved, no memory · Ctrl+Shift+N">
+          )}
+          <PanelActivity value={view === "chat"}>
+            <div
+              className={view === "chat" ? "flex min-h-0 min-w-0 flex-1" : "hidden"}
+              hidden={view !== "chat"}
+              inert={view !== "chat"}
+            >
+              <main className="flex min-w-0 flex-1 flex-col">
+                <header className="flex h-[66px] shrink-0 items-center gap-3 border-b px-7 max-[800px]:px-5">
+                  {!sidebar && (
+                    <Tip label="Show sidebar · Ctrl+B">
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        aria-label="Make this chat incognito"
+                        aria-label="Show sidebar (Ctrl+B)"
                         onClick={() => {
-                          setDraftIncognito(true);
+                          setSidebar(true);
                         }}
                       >
-                        <EyeOff />
+                        <PanelLeft />
                       </Button>
                     </Tip>
-                  )
-                )}
-                <InstructionsButton
-                  count={instructionParts.length}
-                  onClick={() => {
-                    setInstructionsOpen(true);
-                  }}
-                />
-                {thread && (
-                  <>
-                    {!thread.incognito && (
-                      <ThreadMenu
-                        handoff={
-                          thread.kind === "chat"
-                            ? {
-                                label: "Continue in Code",
-                                onSelect: () => {
-                                  handOffTo("code");
-                                },
-                              }
-                            : {
-                                label: "Discuss in Chat",
-                                onSelect: () => {
-                                  handOffTo("chat");
-                                },
-                              }
-                        }
-                        projects={projects}
-                        projectId={thread.projectId}
-                        onMove={moveThread}
-                        memoryOn={thread.memoryOn}
-                        onToggleMemory={() => {
-                          setThreadMemory(db, tenant, thread.id, !thread.memoryOn)
-                            .then(refreshThreads)
-                            .catch(report);
-                        }}
-                        onSuggestMemories={() => {
-                          checkMemory(thread.id, true).catch(report);
-                        }}
-                        onRename={showRename}
-                        onDelete={() => {
-                          setDeleting(threadView(thread, at));
-                        }}
-                        pinned={thread.pinnedAt !== null}
-                        archived={thread.archivedAt !== null}
-                        onTogglePin={() => {
-                          togglePin({ id: thread.id, pinned: thread.pinnedAt !== null });
-                        }}
-                        onToggleArchive={() => {
-                          toggleArchive({ id: thread.id, archived: thread.archivedAt !== null });
-                        }}
-                        onEditTags={() => {
-                          setTagging(thread.id);
-                        }}
-                        onExport={(format) => {
-                          exportThread(format).catch(report);
-                        }}
-                        stay={{
-                          provider: thread.stayProvider ?? stayOn ?? null,
-                          on: thread.stayProvider !== null,
-                          onToggle: () => {
-                            setThreadStay(
-                              db,
-                              tenant,
-                              thread.id,
-                              thread.stayProvider ? null : (stayOn ?? null),
-                            )
-                              .then(refreshThreads)
-                              .catch(report);
-                          },
-                        }}
-                      />
-                    )}
-                  </>
-                )}
-              </header>
-              {thread && (handedFrom || handedTo.length > 0) && (
-                <div
-                  role="group"
-                  aria-label="Handoff"
-                  className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-1 text-[11px] text-muted-foreground"
-                >
-                  <ArrowRightLeft className="size-3" />
-                  {handedFrom && (
-                    <span>
-                      From{" "}
-                      <button
-                        type="button"
-                        className="underline underline-offset-2 hover:text-foreground"
-                        onClick={() => {
-                          select(handedFrom.id);
-                        }}
-                      >
-                        {handedFrom.title}
-                      </button>
-                    </span>
                   )}
-                  {handedTo.map((t) => (
-                    <span key={t.id}>
-                      Continued in{" "}
-                      <button
-                        type="button"
-                        className="underline underline-offset-2 hover:text-foreground"
-                        onClick={() => {
-                          select(t.id);
-                        }}
-                      >
-                        {t.title}
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {thread && thread.kind !== "chat" && (
-                <SessionStrip
-                  where={runsWhere}
-                  folders={chatFolders.map((f) => folderName(f.path))}
-                  branch={
-                    [...threadRuns.values()]
-                      .map((r) => r.run)
-                      .filter((r) => r.branch)
-                      .sort((a, b) => b.createdAt - a.createdAt)[0]?.branch ?? null
-                  }
-                  mode={sessionMode}
-                  onMode={setSessionMode}
-                  spentMicro={thread.costMicroUsd}
-                  capMicro={sessionCap}
-                  files={sessionChanges.length + threadArtifacts.length}
-                  filesOpen={filesOpen}
-                  onFiles={() => {
-                    setFilesOpen((open) => !open);
-                  }}
-                />
-              )}
-              <div className="flex min-h-0 flex-1">
-                <div className="flex min-w-0 flex-1 flex-col">
-                  <Messages
-                    key={selectedId ?? "new"}
-                    messages={withEscalation}
-                    empty={emptyState(area)}
-                    {...(homeShown
-                      ? {
-                          home: (
-                            <Home
-                              area={area}
-                              empty={emptyState(area)}
-                              onOpen={select}
-                              view={
-                                homeData
-                                  ? homeView({
-                                      recent: homeData.recent,
-                                      questions: new Map(
-                                        [...approvals].map(([id, a]) => [id, a.request]),
-                                      ),
-                                      handovers,
-                                      hulkStates,
-                                      schedules: homeData.schedules,
-                                      web: webApp,
-                                      openable: new Set(threads.map((t) => t.id)),
-                                      spentToday: homeData.spentToday,
-                                      dayBudget:
-                                        budgets.find(
-                                          (b) => b.period === "day" && b.projectId === null,
-                                        )?.limitMicro ?? null,
-                                      spentMonth: homeData.spentMonth,
-                                      monthBudget:
-                                        budgets.find(
-                                          (b) => b.period === "month" && b.projectId === null,
-                                        )?.limitMicro ?? null,
-                                      now: homeData.at,
-                                    })
-                                  : EMPTY_HOME
-                              }
-                            />
-                          ),
-                        }
-                      : {})}
-                    startedAt={messages[0]?.createdAt ?? null}
-                    {...(thread
-                      ? {
-                          total: {
-                            micro: thread.costMicroUsd,
-                            tokens: threadTokens(messages),
-                            cacheRate,
-                            answers: messages.filter(
-                              (m) => m.role === "assistant" && m.status === "complete",
-                            ).length,
-                          },
-                        }
-                      : {})}
-                    onRetry={retry}
-                    onEscalate={escalate}
-                    onRegenerate={regenerateAnswer}
-                    onEdit={editAndSend}
-                    onDelete={deleteFromMessage}
-                    onStop={stop}
-                    onBranch={switchBranch}
-                    onSideBySide={setSideBySide}
-                    onOpenFile={(id) => {
-                      openFile(id).catch(report);
-                    }}
-                    onOpenSource={(chunkId) => {
-                      openSource(chunkId).catch(report);
-                    }}
-                    onContinueRun={continueRunHere}
-                    onStopRun={stopRun}
-                    onApprove={(runId, answer) => {
-                      approvals.get(runId)?.answer(answer);
-                    }}
-                    onPreviewChange={(changeId) => {
-                      previewChange(changeId).catch(report);
-                    }}
-                    onUndoChange={undoChangeHere}
-                    onUndoRun={(runId) => {
-                      if (!repoApi || !selectedId) return;
-                      const threadId = selectedId;
-                      undoRun(runDeps(repoApi), runId)
-                        .catch((e: unknown) => {
-                          setProblem(e instanceof Error ? e.message : String(e));
-                        })
-                        .finally(() => void reload(threadId).catch(report));
-                    }}
-                    busy={streaming}
-                    focusId={focusId}
-                    openArtifact={openArtifact}
-                    onOpenArtifact={showArtifact}
-                    onFeedback={(id, value) => {
-                      const threadId = selectedId;
-                      if (!threadId) return;
-                      setFeedback(db, tenant, id, value)
-                        .then(() => reload(threadId))
-                        .catch(report);
-                    }}
-                    onQuote={(text) => {
-                      putInComposer(quoteOf(text));
-                    }}
-                  />
-                  {incognito && (
-                    <p
-                      role="note"
-                      className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
+                  <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                    {activeProject && (
+                      <>
+                        <button
+                          className="flex max-w-[40%] shrink-0 items-center gap-1.5 rounded text-[12px] text-muted-foreground hover:text-foreground"
+                          aria-label={`Project: ${activeProject.name}`}
+                          onClick={() => {
+                            setProjectDialog(activeProject.id);
+                          }}
+                        >
+                          <Folder className="size-3.5 shrink-0" />
+                          <span className="truncate">{activeProject.name}</span>
+                        </button>
+                        <span className="text-border">/</span>
+                      </>
+                    )}
+                    <button
+                      className="group flex min-w-0 items-center gap-2 text-left"
+                      onClick={showRename}
+                      disabled={!thread}
+                    >
+                      <h1 className="truncate text-[13px] font-semibold tracking-tight">
+                        {thread?.title ?? (area === "code" ? "New session" : "New chat")}
+                      </h1>
+                      {thread && (
+                        <Pencil className="size-3 shrink-0 text-muted-foreground opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />
+                      )}
+                    </button>
+                  </div>
+                  {incognito ? (
+                    <span
+                      className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground"
+                      aria-label="Incognito chat"
                     >
                       <EyeOff className="size-3" />
-                      Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use or
-                      add memories. It&apos;s deleted when you leave it.
-                    </p>
+                      Incognito
+                    </span>
+                  ) : (
+                    !thread && (
+                      <Tip label="Incognito: not saved, no memory · Ctrl+Shift+N">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Make this chat incognito"
+                          onClick={() => {
+                            setDraftIncognito(true);
+                          }}
+                        >
+                          <EyeOff />
+                        </Button>
+                      </Tip>
+                    )
                   )}
-                  <HulkRuns
-                    address={hulkStatus?.address ?? null}
-                    runs={handoversHere.map((h) => {
-                      const s = hulkStates.get(h.requestId);
-                      return {
-                        requestId: h.requestId,
-                        task: h.task,
-                        look: s ? lookOf(s) : null,
-                        note: s?.note ?? null,
-                        branch: s?.branch ?? null,
-                      };
-                    })}
+                  <InstructionsButton
+                    count={instructionParts.length}
+                    onClick={() => {
+                      setInstructionsOpen(true);
+                    }}
                   />
-                  <Composer
-                    key={`composer-${selectedId ?? "new"}`}
-                    {...(area === "code" && selectedId === null
-                      ? {
-                          top: (
-                            <NewSessionBar
-                              projects={projects.map((p) => ({ id: p.id, name: p.name }))}
-                              projectId={activeProjectId}
-                              onProject={(projectId) => {
-                                newChat(projectId);
-                              }}
-                              where={runsWhere}
-                              onWhere={setDraftWhere}
-                              whereReasons={whereReasons}
-                              onOpenHulkSettings={() => {
-                                openSettings();
-                              }}
-                              capMicroUsd={draftCap}
-                              defaultCapMicroUsd={
-                                activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD
-                              }
-                              onCap={setDraftCap}
-                              {...(runKind
-                                ? {
-                                    run: {
-                                      kind: runKind,
-                                      onKind: (kind: "code" | "work") => {
-                                        setCodeOn((all) => ({ ...all, [codeKey]: kind }));
-                                      },
-                                      mode: sessionMode,
-                                      onMode: setSessionMode,
-                                      branch: sessionBranch,
-                                      onBranch: (on: boolean) => {
-                                        setCodeBranch((all) => ({ ...all, [codeKey]: on }));
-                                      },
-                                    },
-                                  }
-                                : {})}
-                            />
-                          ),
-                        }
-                      : {})}
-                    footnote={
-                      <MemoryBar
-                        count={proposals.length}
-                        checking={checkingMemory}
-                        skipped={skippedSecrets}
-                        onReview={() => {
-                          setReviewOpen(true);
-                        }}
-                        onDismissSkipped={() => {
-                          setSkippedSecrets([]);
-                        }}
-                      />
-                    }
-                    model={{ ...modelOption(model), ...tierProp(model) }}
-                    models={options}
-                    estimate={estimateDraft}
-                    capLeft={
-                      thread && thread.kind !== "chat"
-                        ? Math.max(0, sessionCap - thread.costMicroUsd)
-                        : null
-                    }
-                    prompts={usablePrompts}
-                    onPickPrompt={applyPrompt}
-                    compare={{
-                      options: compareOptions,
-                      selected: compareKeys,
-                      onChange: setCompareKeys,
-                      estimate: compareEstimate,
-                    }}
-                    streaming={streaming}
-                    missingKey={missingKey}
-                    pickerOpen={picker}
-                    onPickerOpen={setPicker}
-                    onSelectModel={(o) => {
-                      chooseMode({ kind: "model", provider: o.provider, id: o.id });
-                    }}
-                    insert={quote && quote.for === selectedId ? quote : null}
-                    {...(messages.length > 0
-                      ? {
-                          context: {
-                            used: pathTokens(messages),
-                            window: model.contextWindow,
-                            summarizeAt: summaryThreshold(model),
-                          },
-                        }
-                      : {})}
-                    status={
-                      trouble
-                        ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
-                        : null
-                    }
-                    routing={{
-                      selected:
-                        mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
-                      descriptions: {
-                        auto: "Picks Balanced or Best for each message from what you ask",
-                        balanced: tierDescription("balanced"),
-                        best: tierDescription("best"),
-                      },
-                      preview: previewTier,
-                      previewTier: previewTierId,
-                      once: onceArmed || oneShot !== null,
-                      onOnce: (on) => {
-                        setOnceArmed(on);
-                        if (!on) setOneShot(null);
-                      },
-                      onSelect: (choice) => {
-                        chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
-                      },
-                    }}
-                    onSend={(text, opts) => void send(text, opts?.effort ?? null)}
-                    effortFor={effortForDraft}
-                    onStop={stop}
-                    onSettings={() => {
-                      openSettings();
-                    }}
-                    attachments={pendingViews}
-                    blocked={blocked}
-                    guide={sessionGuide}
-                    {...(area === "code" && selectedId === null
-                      ? { placeholder: "Describe your task…" }
-                      : {})}
-                    onAddFiles={attachments.add}
-                    onRemoveAttachment={attachments.remove}
-                    onAttachmentMode={attachments.setMode}
-                    onAttachmentSecrets={(id, action) => {
-                      attachments.resolveSecrets(id, action).catch(report);
-                    }}
-                    {...(web ? { onAddLink: attachments.addLink } : {})}
-                    webSearch={model.capabilities.includes("web_search") ? searchOn : null}
-                    onToggleWebSearch={toggleSearch}
-                    {...(repoApi && area === "code"
-                      ? {
-                          folders: chatFolders.map((f) => ({
-                            id: f.id,
-                            name: folderName(f.path),
-                            path: f.path,
-                            own: chatOwnFolders.some((o) => o.id === f.id),
-                          })),
-                          onAddFolder: addChatFolder,
-                          onRemoveFolder: removeChatFolder,
-                        }
-                      : {})}
-                    {...(area === "code" && codeAvailable && selectedId !== null
-                      ? {
-                          // M10 step 16 (step 26: a new session sets these in the row above): in the Code area these are the session's Kind, mode and
-                          // branch; a session always runs, so Kind picks Code or Work, never off.
-                          codeMode: sessionMode,
-                          onCodeMode: setSessionMode,
-                          codeBranch: sessionBranch,
-                          onCodeBranch: (on: boolean) => {
-                            setCodeBranch((all) => ({ ...all, [codeKey]: on }));
-                            if (selectedId)
-                              setThreadSession(db, tenant, selectedId, { newBranch: on })
+                  {thread && (
+                    <>
+                      {!thread.incognito && (
+                        <ThreadMenu
+                          handoff={
+                            thread.kind === "chat"
+                              ? {
+                                  label: "Continue in Code",
+                                  onSelect: () => {
+                                    handOffTo("code");
+                                  },
+                                }
+                              : {
+                                  label: "Discuss in Chat",
+                                  onSelect: () => {
+                                    handOffTo("chat");
+                                  },
+                                }
+                          }
+                          projects={projects}
+                          projectId={thread.projectId}
+                          onMove={moveThread}
+                          memoryOn={thread.memoryOn}
+                          onToggleMemory={() => {
+                            setThreadMemory(db, tenant, thread.id, !thread.memoryOn)
+                              .then(refreshThreads)
+                              .catch(report);
+                          }}
+                          onSuggestMemories={() => {
+                            checkMemory(thread.id, true).catch(report);
+                          }}
+                          onRename={showRename}
+                          onDelete={() => {
+                            setDeleting(threadView(thread, at));
+                          }}
+                          pinned={thread.pinnedAt !== null}
+                          archived={thread.archivedAt !== null}
+                          onTogglePin={() => {
+                            togglePin({ id: thread.id, pinned: thread.pinnedAt !== null });
+                          }}
+                          onToggleArchive={() => {
+                            toggleArchive({ id: thread.id, archived: thread.archivedAt !== null });
+                          }}
+                          onEditTags={() => {
+                            setTagging(thread.id);
+                          }}
+                          onExport={(format) => {
+                            exportThread(format).catch(report);
+                          }}
+                          stay={{
+                            provider: thread.stayProvider ?? stayOn ?? null,
+                            on: thread.stayProvider !== null,
+                            onToggle: () => {
+                              setThreadStay(
+                                db,
+                                tenant,
+                                thread.id,
+                                thread.stayProvider ? null : (stayOn ?? null),
+                              )
                                 .then(refreshThreads)
                                 .catch(report);
-                          },
-                          code: runKind === "code",
-                          onToggleCode: () => {
-                            setCodeOn((all) => ({ ...all, [codeKey]: "code" }));
-                          },
-                          work: runKind === "work",
-                          onToggleWork: () => {
-                            setCodeOn((all) => ({
-                              ...all,
-                              [codeKey]: runKind === "work" ? "code" : "work",
-                            }));
-                          },
-                        }
-                      : {})}
-                  />
-                </div>
-                {!viewer && !panelArtifact && filesOpen && thread && thread.kind !== "chat" && (
-                  <FilesPanel
-                    changes={sessionChanges}
-                    artifacts={threadArtifacts.map((a) => ({ key: a.key, title: a.title }))}
-                    busy={streaming}
-                    {...(repoApi ? { onUndo: undoChangeHere } : {})}
-                    onPreview={(changeId) => {
-                      previewChange(changeId).catch(report);
-                    }}
-                    onOpenArtifact={showArtifact}
-                    onClose={() => {
-                      setFilesOpen(false);
+                            },
+                          }}
+                        />
+                      )}
+                    </>
+                  )}
+                </header>
+                {thread && (handedFrom || handedTo.length > 0) && (
+                  <div
+                    role="group"
+                    aria-label="Handoff"
+                    className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-1 text-[11px] text-muted-foreground"
+                  >
+                    <ArrowRightLeft className="size-3" />
+                    {handedFrom && (
+                      <span>
+                        From{" "}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={() => {
+                            select(handedFrom.id);
+                          }}
+                        >
+                          {handedFrom.title}
+                        </button>
+                      </span>
+                    )}
+                    {handedTo.map((t) => (
+                      <span key={t.id}>
+                        Continued in{" "}
+                        <button
+                          type="button"
+                          className="underline underline-offset-2 hover:text-foreground"
+                          onClick={() => {
+                            select(t.id);
+                          }}
+                        >
+                          {t.title}
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {thread && thread.kind !== "chat" && (
+                  <SessionStrip
+                    where={runsWhere}
+                    folders={chatFolders.map((f) => folderName(f.path))}
+                    branch={
+                      [...threadRuns.values()]
+                        .map((r) => r.run)
+                        .filter((r) => r.branch)
+                        .sort((a, b) => b.createdAt - a.createdAt)[0]?.branch ?? null
+                    }
+                    mode={sessionMode}
+                    onMode={setSessionMode}
+                    spentMicro={thread.costMicroUsd}
+                    capMicro={sessionCap}
+                    files={sessionChanges.length + threadArtifacts.length}
+                    filesOpen={filesOpen}
+                    onFiles={() => {
+                      setFilesOpen((open) => !open);
                     }}
                   />
                 )}
-                {viewer && (
-                  <FileViewer
-                    file={viewer}
-                    onClose={() => {
-                      if (viewer.url) URL.revokeObjectURL(viewer.url);
-                      setViewer(null);
-                    }}
-                  />
-                )}
-                {!viewer && panelArtifact && (
-                  <ArtifactPanel
-                    key={panelArtifact.key}
-                    artifact={panelArtifact}
-                    {...(preview ? { preview } : {})}
-                    {...(openSaved
-                      ? {
-                          onAllowCdn: (allow: boolean) => {
-                            const id = openSaved.id;
-                            setArtifactCdn(db, tenant, id, allow)
-                              .then(() => {
-                                setThreadArtifacts((all) =>
-                                  all.map((a) => (a.id === id ? { ...a, allowCdn: allow } : a)),
-                                );
-                              })
-                              .catch(report);
-                          },
-                        }
-                      : {})}
-                    {...(exporter
-                      ? {
-                          onExport: async (format: "file" | "docx" | "pdf") => {
-                            const a = panelArtifact;
-                            const name = (ext: string) => fileName(a.title, ext);
-                            if (format === "docx") {
-                              return exporter.save(name("docx"), markdownToDocx(a.content));
-                            }
-                            if (format === "pdf") {
-                              return exporter.save(
-                                name("pdf"),
-                                await markdownToPdf(a.content, a.title),
-                              );
-                            }
-                            return exporter.save(
-                              name(extensionFor(a.type, a.language)),
-                              new TextEncoder().encode(a.content),
-                            );
-                          },
-                        }
-                      : {})}
-                    onClose={() => {
-                      showArtifact(null);
-                    }}
-                    versions={{
-                      versions: versions.map((v) => ({
-                        version: v.version,
-                        by: v.source === "model" ? "AI" : v.source === "user" ? "You" : "Restored",
-                        when: new Date(v.createdAt).toLocaleString([], {
-                          month: "short",
-                          day: "numeric",
-                          hour: "numeric",
-                          minute: "2-digit",
-                        }),
-                      })),
-                      shown: shownVersion,
-                      compareWith,
-                      diff: artifactDiff,
-                      onShow: (v) => {
-                        setShownVersion(versions.find((x) => x.version === v)?.id ?? null);
-                        setCompareWith(null);
-                      },
-                      onCompare: (v) => {
-                        setCompareWith(versions.find((x) => x.version === v)?.id ?? null);
-                      },
-                      onRestore: (v) => {
-                        const old = versions.find((x) => x.version === v);
-                        if (old) newVersion(old.content, "restore");
-                      },
-                      onSaveEdit: (content) => {
-                        newVersion(content, "user");
-                      },
-                      onAskEdit: (selection, instruction) => {
-                        if (!openSaved || streaming) return;
-                        editFrom.current = {
-                          key: openSaved.key,
-                          versionId: versions.at(-1)?.id ?? null,
+                <div className="flex min-h-0 flex-1">
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <Messages
+                      key={selectedId ?? "new"}
+                      messages={withEscalation}
+                      empty={emptyState(area)}
+                      {...(homeShown
+                        ? {
+                            home: (
+                              <Home
+                                area={area}
+                                empty={emptyState(area)}
+                                onOpen={select}
+                                view={
+                                  homeData
+                                    ? homeView({
+                                        recent: homeData.recent,
+                                        questions: new Map(
+                                          [...approvals].map(([id, a]) => [id, a.request]),
+                                        ),
+                                        handovers,
+                                        hulkStates,
+                                        schedules: homeData.schedules,
+                                        web: webApp,
+                                        openable: new Set(threads.map((t) => t.id)),
+                                        spentToday: homeData.spentToday,
+                                        dayBudget:
+                                          budgets.find(
+                                            (b) => b.period === "day" && b.projectId === null,
+                                          )?.limitMicro ?? null,
+                                        spentMonth: homeData.spentMonth,
+                                        monthBudget:
+                                          budgets.find(
+                                            (b) => b.period === "month" && b.projectId === null,
+                                          )?.limitMicro ?? null,
+                                        now: homeData.at,
+                                      })
+                                    : EMPTY_HOME
+                                }
+                              />
+                            ),
+                          }
+                        : {})}
+                      startedAt={messages[0]?.createdAt ?? null}
+                      {...(thread
+                        ? {
+                            total: {
+                              micro: thread.costMicroUsd,
+                              tokens: threadTokens(messages),
+                              cacheRate,
+                              answers: messages.filter(
+                                (m) => m.role === "assistant" && m.status === "complete",
+                              ).length,
+                            },
+                          }
+                        : {})}
+                      onRetry={retry}
+                      onEscalate={escalate}
+                      onRegenerate={regenerateAnswer}
+                      onEdit={editAndSend}
+                      onDelete={deleteFromMessage}
+                      onStop={stop}
+                      onBranch={switchBranch}
+                      onSideBySide={setSideBySide}
+                      onOpenFile={(id) => {
+                        openFile(id).catch(report);
+                      }}
+                      onOpenSource={(chunkId) => {
+                        openSource(chunkId).catch(report);
+                      }}
+                      onContinueRun={continueRunHere}
+                      onStopRun={stopRun}
+                      onApprove={(runId, answer) => {
+                        approvals.get(runId)?.answer(answer);
+                      }}
+                      onPreviewChange={(changeId) => {
+                        previewChange(changeId).catch(report);
+                      }}
+                      onUndoChange={undoChangeHere}
+                      onUndoRun={(runId) => {
+                        if (!repoApi || !selectedId) return;
+                        const threadId = selectedId;
+                        undoRun(runDeps(repoApi), runId)
+                          .catch((e: unknown) => {
+                            setProblem(e instanceof Error ? e.message : String(e));
+                          })
+                          .finally(() => void reload(threadId).catch(report));
+                      }}
+                      busy={streaming}
+                      focusId={focusId}
+                      openArtifact={openArtifact}
+                      onOpenArtifact={showArtifact}
+                      onFeedback={(id, value) => {
+                        const threadId = selectedId;
+                        if (!threadId) return;
+                        setFeedback(db, tenant, id, value)
+                          .then(() => reload(threadId))
+                          .catch(report);
+                      }}
+                      onQuote={(text) => {
+                        putInComposer(quoteOf(text));
+                      }}
+                    />
+                    {incognito && (
+                      <p
+                        role="note"
+                        className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
+                      >
+                        <EyeOff className="size-3" />
+                        Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use or
+                        add memories. It&apos;s deleted when you leave it.
+                      </p>
+                    )}
+                    <HulkRuns
+                      address={hulkStatus?.address ?? null}
+                      runs={handoversHere.map((h) => {
+                        const s = hulkStates.get(h.requestId);
+                        return {
+                          requestId: h.requestId,
+                          task: h.task,
+                          look: s ? lookOf(s) : null,
+                          note: s?.note ?? null,
+                          branch: s?.branch ?? null,
                         };
-                        void send(artifactEditRequest(openSaved, selection, instruction));
-                      },
-                    }}
-                  />
-                )}
-              </div>
-              <AreaTabs variant="bar" area={area} onArea={switchArea} />
-            </main>
-          )}
+                      })}
+                    />
+                    <Composer
+                      key={`composer-${selectedId ?? "new"}`}
+                      {...(area === "code" && selectedId === null
+                        ? {
+                            top: (
+                              <NewSessionBar
+                                projects={projects.map((p) => ({ id: p.id, name: p.name }))}
+                                projectId={activeProjectId}
+                                onProject={(projectId) => {
+                                  newChat(projectId);
+                                }}
+                                where={runsWhere}
+                                onWhere={setDraftWhere}
+                                whereReasons={whereReasons}
+                                onOpenHulkSettings={() => {
+                                  openSettings("hulk");
+                                }}
+                                capMicroUsd={draftCap}
+                                defaultCapMicroUsd={
+                                  activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD
+                                }
+                                onCap={setDraftCap}
+                                {...(runKind
+                                  ? {
+                                      run: {
+                                        kind: runKind,
+                                        onKind: (kind: "code" | "work") => {
+                                          setCodeOn((all) => ({ ...all, [codeKey]: kind }));
+                                        },
+                                        mode: sessionMode,
+                                        onMode: setSessionMode,
+                                        branch: sessionBranch,
+                                        onBranch: (on: boolean) => {
+                                          setCodeBranch((all) => ({ ...all, [codeKey]: on }));
+                                        },
+                                      },
+                                    }
+                                  : {})}
+                              />
+                            ),
+                          }
+                        : {})}
+                      footnote={
+                        <MemoryBar
+                          count={proposals.length}
+                          checking={checkingMemory}
+                          skipped={skippedSecrets}
+                          onReview={() => {
+                            setReviewOpen(true);
+                          }}
+                          onDismissSkipped={() => {
+                            setSkippedSecrets([]);
+                          }}
+                        />
+                      }
+                      model={{ ...modelOption(model), ...tierProp(model) }}
+                      models={options}
+                      estimate={estimateDraft}
+                      capLeft={
+                        thread && thread.kind !== "chat"
+                          ? Math.max(0, sessionCap - thread.costMicroUsd)
+                          : null
+                      }
+                      prompts={usablePrompts}
+                      onPickPrompt={applyPrompt}
+                      compare={{
+                        options: compareOptions,
+                        selected: compareKeys,
+                        onChange: setCompareKeys,
+                        estimate: compareEstimate,
+                      }}
+                      streaming={streaming}
+                      missingKey={missingKey}
+                      pickerOpen={picker}
+                      onPickerOpen={setPicker}
+                      onSelectModel={(o) => {
+                        chooseMode({ kind: "model", provider: o.provider, id: o.id });
+                      }}
+                      insert={quote && quote.for === selectedId ? quote : null}
+                      {...(messages.length > 0
+                        ? {
+                            context: {
+                              used: pathTokens(messages),
+                              window: model.contextWindow,
+                              summarizeAt: summaryThreshold(model),
+                            },
+                          }
+                        : {})}
+                      status={
+                        trouble
+                          ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
+                          : null
+                      }
+                      routing={{
+                        selected:
+                          mode.kind === "auto" ? "auto" : mode.kind === "tier" ? mode.tier : null,
+                        descriptions: {
+                          auto: "Picks Balanced or Best for each message from what you ask",
+                          balanced: tierDescription("balanced"),
+                          best: tierDescription("best"),
+                        },
+                        preview: previewTier,
+                        previewTier: previewTierId,
+                        once: onceArmed || oneShot !== null,
+                        onOnce: (on) => {
+                          setOnceArmed(on);
+                          if (!on) setOneShot(null);
+                        },
+                        onSelect: (choice) => {
+                          chooseMode(choice === "auto" ? AUTO : { kind: "tier", tier: choice });
+                        },
+                      }}
+                      onSend={(text, opts) => void send(text, opts?.effort ?? null)}
+                      effortFor={effortForDraft}
+                      onStop={stop}
+                      onSettings={() => {
+                        openSettings("api-keys");
+                      }}
+                      attachments={pendingViews}
+                      blocked={blocked}
+                      guide={sessionGuide}
+                      {...(area === "code" && selectedId === null
+                        ? { placeholder: "Describe your task…" }
+                        : {})}
+                      onAddFiles={attachments.add}
+                      onRemoveAttachment={attachments.remove}
+                      onAttachmentMode={attachments.setMode}
+                      onAttachmentSecrets={(id, action) => {
+                        attachments.resolveSecrets(id, action).catch(report);
+                      }}
+                      {...(web ? { onAddLink: attachments.addLink } : {})}
+                      webSearch={model.capabilities.includes("web_search") ? searchOn : null}
+                      onToggleWebSearch={toggleSearch}
+                      {...(repoApi && area === "code"
+                        ? {
+                            folders: chatFolders.map((f) => ({
+                              id: f.id,
+                              name: folderName(f.path),
+                              path: f.path,
+                              own: chatOwnFolders.some((o) => o.id === f.id),
+                            })),
+                            onAddFolder: addChatFolder,
+                            onRemoveFolder: removeChatFolder,
+                          }
+                        : {})}
+                      {...(area === "code" && codeAvailable && selectedId !== null
+                        ? {
+                            // M10 step 16 (step 26: a new session sets these in the row above): in the Code area these are the session's Kind, mode and
+                            // branch; a session always runs, so Kind picks Code or Work, never off.
+                            codeMode: sessionMode,
+                            onCodeMode: setSessionMode,
+                            codeBranch: sessionBranch,
+                            onCodeBranch: (on: boolean) => {
+                              setCodeBranch((all) => ({ ...all, [codeKey]: on }));
+                              if (selectedId)
+                                setThreadSession(db, tenant, selectedId, { newBranch: on })
+                                  .then(refreshThreads)
+                                  .catch(report);
+                            },
+                            code: runKind === "code",
+                            onToggleCode: () => {
+                              setCodeOn((all) => ({ ...all, [codeKey]: "code" }));
+                            },
+                            work: runKind === "work",
+                            onToggleWork: () => {
+                              setCodeOn((all) => ({
+                                ...all,
+                                [codeKey]: runKind === "work" ? "code" : "work",
+                              }));
+                            },
+                          }
+                        : {})}
+                    />
+                  </div>
+                  {!viewer && !panelArtifact && filesOpen && thread && thread.kind !== "chat" && (
+                    <FilesPanel
+                      changes={sessionChanges}
+                      artifacts={threadArtifacts.map((a) => ({ key: a.key, title: a.title }))}
+                      busy={streaming}
+                      {...(repoApi ? { onUndo: undoChangeHere } : {})}
+                      onPreview={(changeId) => {
+                        previewChange(changeId).catch(report);
+                      }}
+                      onOpenArtifact={showArtifact}
+                      onClose={() => {
+                        setFilesOpen(false);
+                      }}
+                    />
+                  )}
+                  {viewer && (
+                    <FileViewer
+                      file={viewer}
+                      onClose={() => {
+                        if (viewer.url) URL.revokeObjectURL(viewer.url);
+                        setViewer(null);
+                      }}
+                    />
+                  )}
+                  {!viewer && panelArtifact && (
+                    <ArtifactPanel
+                      key={panelArtifact.key}
+                      artifact={panelArtifact}
+                      {...(preview ? { preview } : {})}
+                      {...(openSaved
+                        ? {
+                            onAllowCdn: (allow: boolean) => {
+                              const id = openSaved.id;
+                              setArtifactCdn(db, tenant, id, allow)
+                                .then(() => {
+                                  setThreadArtifacts((all) =>
+                                    all.map((a) => (a.id === id ? { ...a, allowCdn: allow } : a)),
+                                  );
+                                })
+                                .catch(report);
+                            },
+                          }
+                        : {})}
+                      {...(exporter
+                        ? {
+                            onExport: async (format: "file" | "docx" | "pdf") => {
+                              const a = panelArtifact;
+                              const name = (ext: string) => fileName(a.title, ext);
+                              if (format === "docx") {
+                                return exporter.save(name("docx"), markdownToDocx(a.content));
+                              }
+                              if (format === "pdf") {
+                                return exporter.save(
+                                  name("pdf"),
+                                  await markdownToPdf(a.content, a.title),
+                                );
+                              }
+                              return exporter.save(
+                                name(extensionFor(a.type, a.language)),
+                                new TextEncoder().encode(a.content),
+                              );
+                            },
+                          }
+                        : {})}
+                      onClose={() => {
+                        showArtifact(null);
+                      }}
+                      versions={{
+                        versions: versions.map((v) => ({
+                          version: v.version,
+                          by:
+                            v.source === "model" ? "AI" : v.source === "user" ? "You" : "Restored",
+                          when: new Date(v.createdAt).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          }),
+                        })),
+                        shown: shownVersion,
+                        compareWith,
+                        diff: artifactDiff,
+                        onShow: (v) => {
+                          setShownVersion(versions.find((x) => x.version === v)?.id ?? null);
+                          setCompareWith(null);
+                        },
+                        onCompare: (v) => {
+                          setCompareWith(versions.find((x) => x.version === v)?.id ?? null);
+                        },
+                        onRestore: (v) => {
+                          const old = versions.find((x) => x.version === v);
+                          if (old) newVersion(old.content, "restore");
+                        },
+                        onSaveEdit: (content) => {
+                          newVersion(content, "user");
+                        },
+                        onAskEdit: (selection, instruction) => {
+                          if (!openSaved || streaming) return;
+                          editFrom.current = {
+                            key: openSaved.key,
+                            versionId: versions.at(-1)?.id ?? null,
+                          };
+                          void send(artifactEditRequest(openSaved, selection, instruction));
+                        },
+                      }}
+                    />
+                  )}
+                </div>
+                <AreaTabs variant="bar" area={area} onArea={switchArea} />
+              </main>
+            </div>
+          </PanelActivity>
         </div>
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} items={paletteItems} />
         <SearchDialog
@@ -6893,7 +6919,7 @@ export function ChatApp({
           onSave={saveChatInstructions}
           onEditGlobal={() => {
             setInstructionsOpen(false);
-            openSettings();
+            openSettings("instructions");
           }}
         />
         {filling && (

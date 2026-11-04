@@ -1,3 +1,4 @@
+import { usePanelLeave } from "./panelActivity";
 import { ExternalLink, Server, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,9 @@ export function HulkSection({
   const [name, setName] = useState("This desktop");
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
+  usePanelLeave(() => {
+    setCode("");
+  });
   const ids = { address: useId(), code: useId(), name: useId() };
   const run = (task: () => Promise<string | null>) => {
     setBusy(true);

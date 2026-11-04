@@ -1,3 +1,4 @@
+import { usePanelActive, usePanelLeave } from "./panelActivity";
 import { Check, ChevronDown, FolderOpen, Laptop, Server, SlidersHorizontal } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useRef, useState } from "react";
@@ -59,7 +60,13 @@ export function NewSessionBar({
     onBranch: (on: boolean) => void;
   };
 }) {
+  const active = usePanelActive();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [placeOpen, setPlaceOpen] = useState(false);
+  usePanelLeave(() => {
+    setPlaceOpen(false);
+    setSettingsOpen(false);
+  });
   const capField = useRef<HTMLInputElement>(null);
   /** Saves what's typed in the cap: on blur, Enter, or when Run settings closes. */
   const commitCap = () => {
@@ -116,7 +123,7 @@ export function NewSessionBar({
           aria-hidden
         />
       </label>
-      <Popover.Root open={placeOpen} onOpenChange={setPlaceOpen}>
+      <Popover.Root open={placeOpen && active} onOpenChange={setPlaceOpen}>
         <Popover.Trigger asChild>
           <Button
             variant="ghost"
@@ -187,7 +194,9 @@ export function NewSessionBar({
       </Popover.Root>
       <span className="flex-1" />
       <Popover.Root
+        open={settingsOpen && active}
         onOpenChange={(open) => {
+          setSettingsOpen(open);
           if (!open) commitCap();
         }}
       >

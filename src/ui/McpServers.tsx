@@ -1,3 +1,4 @@
+import { usePanelLeave } from "./panelActivity";
 // Settings → MCP servers (M9 step 8, AG-02): add a local command or a remote URL, its variables
 // (kept in the OS keychain), and whether a local one may use the network. Projects switch them
 // on (step 9).
@@ -70,6 +71,16 @@ export function McpServersSection({
 }) {
   const [draft, setDraft] = useState<McpServerDraft | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  usePanelLeave(() => {
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            variables: current.variables.map((variable) => ({ ...variable, value: "" })),
+          }
+        : null,
+    );
+  });
   const ids = { name: useId(), cmd: useId(), url: useId() };
   const set = (patch: Partial<McpServerDraft>) => {
     setDraft((d) => (d ? { ...d, ...patch } : d));

@@ -1,3 +1,4 @@
+import { usePanelLeave } from "./panelActivity";
 import { Fingerprint, Lock, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -156,6 +157,11 @@ export function AppLockSection({
   const [next, setNext] = useState("");
   const [again, setAgain] = useState("");
   const [status, setStatus] = useState<string | null>(null);
+  usePanelLeave(() => {
+    setCurrent("");
+    setNext("");
+    setAgain("");
+  });
   const mismatch = next !== again;
   const ok = next.length >= minLength && !mismatch && (!enabled || current.length > 0);
   const done = (msg: string | null, success: string) => {

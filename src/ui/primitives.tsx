@@ -21,7 +21,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { useEffect, useEffectEvent, useState, type ReactNode } from "react";
+import { usePanelActive, usePanelLeave } from "./panelActivity";
 import { Button } from "@/components/ui/button";
 import { money } from "./format";
 
@@ -129,8 +130,15 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const active = usePanelActive();
+  const close = useEffectEvent(() => {
+    onOpenChange(false);
+  });
+  useEffect(() => {
+    if (!active && open) close();
+  }, [active, open]);
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open && active} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-foreground/20 backdrop-blur-[3px]" />
         <Dialog.Content
@@ -200,13 +208,18 @@ export function ThreadMenu({
   projectId: string | null;
   onMove: (projectId: string | null) => void;
 }) {
+  const active = usePanelActive();
+  const [open, setOpen] = useState(false);
+  usePanelLeave(() => {
+    setOpen(false);
+  });
   const item =
     "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm outline-none focus:bg-accent";
   const targets = [...projects, ...(projectId ? [{ id: null, name: "No project" }] : [])].filter(
     (p) => p.id !== projectId,
   );
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={open && active} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>
         <Button variant="ghost" size="icon-sm" aria-label="Conversation actions">
           <MoreHorizontal />

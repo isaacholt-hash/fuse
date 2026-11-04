@@ -1,3 +1,4 @@
+import { usePanelRequestGuard, usePanelLeave } from "./panelActivity";
 import { LogOut, MonitorSmartphone, Server } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,11 @@ export function ServerSection({
   const [code, setCode] = useState<PairCode | null>(null);
   const [revoking, setRevoking] = useState<Device | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const requestGuard = usePanelRequestGuard();
+  usePanelLeave(() => {
+    setCode(null);
+    setRevoking(null);
+  });
   const said = (e: unknown) => {
     setError(e instanceof Error ? e.message : String(e));
   };
@@ -72,7 +78,10 @@ export function ServerSection({
             size="sm"
             onClick={() => {
               setError(null);
-              auth.pairCode().then(setCode, said);
+              const current = requestGuard();
+              auth.pairCode().then((value) => {
+                if (current()) setCode(value);
+              }, said);
             }}
           >
             Pair a device

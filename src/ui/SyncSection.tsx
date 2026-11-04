@@ -1,3 +1,4 @@
+import { usePanelRequestGuard, usePanelLeave } from "./panelActivity";
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,15 @@ export function SyncSection({
   const [code, setCode] = useState("");
   const [shownCode, setShownCode] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<{ id: string; name: string } | null>(null);
+  const requestGuard = usePanelRequestGuard();
+  usePanelLeave(() => {
+    setCode("");
+    setShownCode(null);
+    setSetup(false);
+    setReview(null);
+    setRecovering(false);
+    setRevoking(null);
+  });
   const run = async (task: () => Promise<unknown>) => {
     setBusy(true);
     setSaid(null);
@@ -220,7 +230,9 @@ export function SyncSection({
           </p>
           {status.epoch > 0 && (
             <>
-              <h3 className="mt-5 text-xs font-medium">Devices</h3>
+              <h3 data-settings-control="sync-devices" className="mt-5 text-xs font-medium">
+                Devices
+              </h3>
               <ul className="mt-2 space-y-2">
                 {status.devices.map((device) => (
                   <li className="flex flex-wrap items-center gap-2 text-xs" key={device.id}>
@@ -247,7 +259,9 @@ export function SyncSection({
                   </li>
                 ))}
               </ul>
-              <h3 className="mt-5 text-xs font-medium">Recovery</h3>
+              <h3 data-settings-control="sync-recovery" className="mt-5 text-xs font-medium">
+                Recovery
+              </h3>
               <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
                 Keep the separate sync recovery code safely away from this computer. Recovery also
                 requires signing in to HULK. Without surviving keys or this code, encrypted sync
@@ -261,7 +275,9 @@ export function SyncSection({
                     disabled={busy}
                     onClick={() => {
                       void run(async () => {
-                        setShownCode(await api.recoveryCode());
+                        const current = requestGuard();
+                        const recovery = await api.recoveryCode();
+                        if (current()) setShownCode(recovery);
                       });
                     }}
                   >

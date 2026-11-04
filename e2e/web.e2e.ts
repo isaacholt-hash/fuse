@@ -154,4 +154,34 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
       await app.sees("Usage");
     });
   });
+  test("M12: Settings uses categories on desktop and a picker on narrow screens", async () => {
+    await step("settings-general-light", async () => {
+      await app.chord(",");
+      await app.find('//nav[@aria-label="Settings categories"]');
+      await app.click(button("General"));
+      await app.find('//*[@aria-label="Theme"]');
+      await app.click(button("Light"));
+      await new Promise((done) => setTimeout(done, 250));
+    });
+    await step("settings-general-dark", async () => {
+      await app.click(button("Dark"));
+      await new Promise((done) => setTimeout(done, 250));
+      expect(await app.run('return document.documentElement.classList.contains("dark");')).toBe(
+        true,
+      );
+    });
+    await step("settings-mobile", async () => {
+      await app.resize(390, 844);
+      await app.choose("Settings category", "Privacy & security");
+      await app.find('//h2[normalize-space()="Privacy & security"]');
+      expect(
+        await app.run("return document.documentElement.scrollWidth <= window.innerWidth;"),
+      ).toBe(true);
+    });
+    await app.resize(1280, 800);
+    await app.click(button("General"));
+    await app.click(button("Light"));
+    await app.click(button("Back to Code"));
+    await app.find(areas);
+  });
 });

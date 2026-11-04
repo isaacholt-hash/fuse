@@ -15,14 +15,30 @@ import {
   Terminal,
   Trash2,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  Children,
+  Fragment,
+  isValidElement,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CloudProviderId } from "@/catalog/catalog";
 import { openExternal } from "./openExternal";
 import { Greyed, Modal } from "./primitives";
 import type { KeyView, Motion, RequestRow, TextSize, Theme } from "./types";
-import type { SettingsTargetId } from "./settingsRegistry";
+import {
+  SETTINGS_CATEGORIES,
+  SETTINGS_SECTIONS,
+  settingsTarget,
+  type SettingsCategoryId,
+  type SettingsSectionId,
+  type SettingsTargetId,
+} from "./settingsRegistry";
+import { PanelActivity, usePanelRequestGuard, usePanelLeave } from "./panelActivity";
 import { WEB_REASONS } from "./webReasons";
 
 function KeyResult({ state }: { state: KeyView }) {
@@ -61,6 +77,13 @@ export function KeyCard({
   const [hasInput, setHasInput] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  usePanelLeave(() => {
+    formRef.current?.reset();
+    setHasInput(false);
+    setReplacing(false);
+    setConfirmDelete(false);
+  });
   const busy = state.busy !== null;
   const showForm = !state.saved || replacing;
   return (
@@ -131,6 +154,7 @@ export function KeyCard({
           )}
           {showForm && (
             <form
+              ref={formRef}
               className={state.saved ? "mt-3" : ""}
               onSubmit={(e) => {
                 e.preventDefault();
@@ -221,6 +245,8 @@ export function KeyCard({
 }
 export function SettingsView({
   keys,
+  target,
+  area = "chat",
   version,
   onCheckUpdates,
   onRecoveryKey,
@@ -263,6 +289,7 @@ export function SettingsView({
 }: {
   /** Settings → HULK: pairing this desktop with FUSE on HULK (desktop only, M10 step 7). */
   target?: SettingsTargetId;
+  area?: "chat" | "code";
   sync?: ReactNode;
   hulk?: ReactNode;
   /** PL-02: the web app on HULK; desktop-only settings are greyed with their reason. */
@@ -329,86 +356,46 @@ export function SettingsView({
   onDeleteKey: (provider: CloudProviderId) => void;
   onShowLog: () => void;
 }) {
-  return (
-    <main className="min-w-0 flex-1 overflow-y-auto">
-      <header className="flex h-[66px] items-center border-b px-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-2 text-xs text-muted-foreground"
-          onClick={onBack}
-        >
-          <ArrowLeft className="size-3.5" />
-          Back to conversation
-        </Button>
-      </header>
-      <div className="mx-auto max-w-[660px] px-8 py-9">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <div className="mt-8 mb-4 flex items-center gap-2">
-          <KeyRound className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">API keys</h2>
-        </div>
-        <div className="space-y-3">
-          {keys.map((key) => (
-            <KeyCard
-              key={key.provider}
-              state={key}
-              onSave={(value) => {
-                onSaveKey(key.provider, value);
-              }}
-              onTest={() => {
-                onTestKey(key.provider);
-              }}
-              onDelete={() => {
-                onDeleteKey(key.provider);
-              }}
-            />
-          ))}
-        </div>
-        <div className="mt-4 flex items-start gap-2.5 text-[11px] leading-5 text-muted-foreground">
-          <ShieldCheck className="mt-0.5 size-4 shrink-0" />
-          <p>
-            {web
-              ? "Keys are stored on HULK, encrypted by its system (systemd-creds), and never leave it except to call the provider."
-              : "Keys are stored in your OS keychain and never leave this device except to call the provider."}
-          </p>
-        </div>
-        {sync}
-        {privacy}
-        {instructions}
-        {memory}
-        {budgets}
-        {prompts}
-        {modelDefaults}
-        {keyCaps}
-        {models}
-        {local}
-        {(server ?? hulk ?? agent ?? python) && (
-          <section aria-label="Code" className="mt-10 border-t pt-6">
-            {/* M10 step 17 (CH-19): what the Code area's sessions use, in one place. */}
-            <h2 className="text-xs font-medium tracking-[0.1em] text-muted-foreground">Code</h2>
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Where sessions run, what their runs did, and the sandbox and Python they use. A
-              project&apos;s run mode, cap and time limits are in its settings.
-            </p>
-            {server}
-            {hulk}
-            {agent}
-            {sandbox}
-            {python}
-          </section>
-        )}
-        {mcp}
-        {prices}
-        {appLock}
-        {quickCapture}
-        {notifications}
-        {importer}
-        {data}
-        {routing}
-        {routingDiagnostics}
-        <RecoveryKeySection load={onRecoveryKey} />
-        <section className="mt-8 border-t pt-6">
+  const [category, setCategory] = useState<SettingsCategoryId>(
+    () => settingsTarget(target ?? "")?.category ?? readSettingsCategory(),
+  );
+  const [visited, setVisited] = useState<ReadonlySet<SettingsCategoryId>>(
+    () => new Set([category]),
+  );
+  const [lastTarget, setLastTarget] = useState(target);
+  if (target !== lastTarget) {
+    setLastTarget(target);
+    const next = settingsTarget(target ?? "")?.category;
+    if (next) {
+      setCategory(next);
+      setVisited((current) => new Set([...current, next]));
+    }
+  }
+  const content = useRef<HTMLDivElement>(null);
+  const navigate = (next: SettingsCategoryId) => {
+    setCategory(next);
+    setVisited((current) => new Set([...current, next]));
+    rememberSettingsCategory(next);
+    if (content.current) content.current.scrollTop = 0;
+  };
+  useEffect(() => {
+    if (!target) return;
+    const frame = requestAnimationFrame(() => {
+      const section = settingsTarget(target);
+      const el =
+        section &&
+        content.current?.querySelector<HTMLElement>(`[data-settings-section="${section.section}"]`);
+      if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [target]);
+  const sections: Record<SettingsSectionId, ReactNode> = {
+    appearance: (
+      <>
+        {" "}
+        <section aria-label="Appearance">
           <h2 className="text-sm font-medium">Appearance</h2>
           <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Theme">
             {(
@@ -456,6 +443,69 @@ export function SettingsView({
             onChange={onMotion}
           />
         </section>
+      </>
+    ),
+    "api-keys": (
+      <>
+        {" "}
+        <div className="mt-8 mb-4 flex items-center gap-2">
+          <KeyRound className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-medium">API keys</h2>
+        </div>
+        <div className="space-y-3">
+          {keys.map((key) => (
+            <KeyCard
+              key={key.provider}
+              state={key}
+              onSave={(value) => {
+                onSaveKey(key.provider, value);
+              }}
+              onTest={() => {
+                onTestKey(key.provider);
+              }}
+              onDelete={() => {
+                onDeleteKey(key.provider);
+              }}
+            />
+          ))}
+        </div>
+        <div className="mt-4 flex items-start gap-2.5 text-[11px] leading-5 text-muted-foreground">
+          <ShieldCheck className="mt-0.5 size-4 shrink-0" />
+          <p>
+            {web
+              ? "Keys are stored on HULK, encrypted by its system (systemd-creds), and never leave it except to call the provider."
+              : "Keys are stored in your OS keychain and never leave this device except to call the provider."}
+          </p>
+        </div>
+      </>
+    ),
+    notifications,
+    "quick-capture": quickCapture,
+    models,
+    "model-defaults": modelDefaults,
+    "routing-policy": routing,
+    "local-model": local,
+    instructions,
+    memory,
+    prompts,
+    budgets,
+    "key-caps": keyCaps,
+    prices,
+    hulk,
+    sandbox,
+    python,
+    mcp,
+    sync,
+    server,
+    privacy,
+    "app-lock": appLock,
+    "database-recovery": <RecoveryKeySection load={onRecoveryKey} />,
+    import: importer,
+    data,
+    version: version ? <VersionLine version={version} onCheck={onCheckUpdates} web={web} /> : null,
+    "request-log": (
+      <>
+        {" "}
         <button
           className="mt-7 flex w-full items-center gap-3 border-t pt-5 text-left"
           onClick={onShowLog}
@@ -469,10 +519,154 @@ export function SettingsView({
           </span>
           <span className="text-muted-foreground">↗</span>
         </button>
-        {version && <VersionLine version={version} onCheck={onCheckUpdates} web={web} />}
+      </>
+    ),
+    "agent-activity": agent,
+    "routing-diagnostics": routingDiagnostics,
+  };
+  const selected =
+    SETTINGS_CATEGORIES.find((item) => item.id === category) ?? SETTINGS_CATEGORIES[0];
+  return (
+    <main className="flex min-h-0 min-w-0 flex-1 flex-col" aria-label="Settings">
+      <header className="flex min-h-[66px] shrink-0 flex-wrap items-center gap-4 border-b px-5 py-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2 text-xs text-muted-foreground"
+          onClick={onBack}
+        >
+          <ArrowLeft className="size-3.5" />
+          Back to {area === "code" ? "Code" : "Chat"}
+        </Button>
+        <h1 className="text-lg font-medium">Settings</h1>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col min-[800px]:flex-row">
+        <aside className="hidden w-[220px] shrink-0 overflow-y-auto border-r bg-paper p-3 min-[800px]:block">
+          <nav aria-label="Settings categories" className="space-y-1">
+            {SETTINGS_CATEGORIES.map((item) => (
+              <Button
+                key={item.id}
+                variant="ghost"
+                className={`h-auto w-full justify-start px-3 py-2 text-left text-sm whitespace-normal ${category === item.id ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                aria-current={category === item.id ? "page" : undefined}
+                onClick={() => {
+                  navigate(item.id);
+                }}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </nav>
+        </aside>
+        <div className="shrink-0 border-b bg-paper px-5 py-3 min-[800px]:hidden">
+          <label htmlFor="settings-category" className="mb-1 block text-xs text-muted-foreground">
+            Settings category
+          </label>
+          <select
+            id="settings-category"
+            aria-label="Settings category"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            value={category}
+            onChange={(event) => {
+              const next = SETTINGS_CATEGORIES.find((item) => item.id === event.target.value);
+              if (next) navigate(next.id);
+            }}
+          >
+            {SETTINGS_CATEGORIES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div
+          ref={content}
+          className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-7 min-[800px]:px-8"
+        >
+          <div className="mx-auto max-w-[760px]">
+            <h2 className="text-xl font-medium" id="settings-category-title">
+              {selected.label}
+            </h2>
+            <p className="mt-1 mb-7 text-sm text-muted-foreground">{selected.description}</p>
+            {(category === "code-tools" ||
+              category === "providers-models" ||
+              category === "privacy-security") && (
+              <p className="mb-6 text-xs text-muted-foreground">
+                Project overrides stay in project settings. Run mode, cost caps, time limits and
+                tool permissions apply to the project where they are set.
+              </p>
+            )}
+            {SETTINGS_CATEGORIES.filter((item) => visited.has(item.id)).map((item) => (
+              <PanelActivity key={item.id} value={category === item.id}>
+                <div
+                  hidden={category !== item.id}
+                  inert={category !== item.id}
+                  className="space-y-8"
+                  aria-label={`${item.label} settings`}
+                >
+                  {SETTINGS_SECTIONS.filter((section) => section.category === item.id).map(
+                    (section) => (
+                      <div
+                        key={section.id}
+                        data-settings-section={section.id}
+                        className="scroll-mt-5 [&>section]:mt-0 [&>section]:border-t-0 [&>section]:pt-0"
+                      >
+                        {hasSettingsContent(sections[section.id]) ? (
+                          sections[section.id]
+                        ) : (
+                          <section aria-label={section.label}>
+                            <h2 className="text-sm font-medium">{section.label}</h2>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {section.description} {unavailableSetting(section.id, web)}
+                            </p>
+                          </section>
+                        )}
+                      </div>
+                    ),
+                  )}
+                </div>
+              </PanelActivity>
+            ))}
+          </div>
+        </div>
       </div>
     </main>
   );
+}
+
+let lastSettingsCategory: SettingsCategoryId = "general";
+function readSettingsCategory(): SettingsCategoryId {
+  try {
+    const stored = localStorage.getItem("fuse.settings.category");
+    const known = SETTINGS_CATEGORIES.find((item) => item.id === stored);
+    return known?.id ?? "general";
+  } catch {
+    return lastSettingsCategory;
+  }
+}
+function rememberSettingsCategory(category: SettingsCategoryId) {
+  lastSettingsCategory = category;
+  try {
+    localStorage.setItem("fuse.settings.category", category);
+  } catch {
+    /* In-memory fallback for restricted browser storage. */
+  }
+}
+function hasSettingsContent(node: ReactNode): boolean {
+  return Children.toArray(node).some((child) =>
+    isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment
+      ? hasSettingsContent(child.props.children)
+      : true,
+  );
+}
+function unavailableSetting(section: SettingsSectionId, web: boolean): string {
+  if (section === "sandbox" && !web)
+    return "Sandbox preferences are available on Windows; Linux uses its OS sandbox automatically.";
+  if (web && section === "hulk")
+    return "The web app already runs on HULK. Pair a desktop from its Code & tools settings.";
+  if (!web && section === "server")
+    return "Manage server devices and sign out in the web app on HULK.";
+  return "Unavailable in this installation.";
 }
 
 /** The installed version, and F1's "Check for updates" with what it found. */
@@ -583,9 +777,14 @@ export function RequestLog({ rows }: { rows: RequestRow[] }) {
 
 /** Settings → Recovery key (M1 C2): the way back in if the keychain loses the database key. */
 function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
+  const requestGuard = usePanelRequestGuard();
   const [key, setKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  usePanelLeave(() => {
+    setKey(null);
+    setCopied(false);
+  });
   return (
     <section className="mt-8 border-t pt-6" aria-label="Recovery key">
       <div className="mb-1 flex items-center gap-2">
@@ -630,9 +829,15 @@ function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
           variant="outline"
           size="sm"
           onClick={() => {
-            load().then(setKey, (e: unknown) => {
-              setError(String(e));
-            });
+            const current = requestGuard();
+            load().then(
+              (value) => {
+                if (current()) setKey(value);
+              },
+              (e: unknown) => {
+                setError(String(e));
+              },
+            );
           }}
         >
           Show recovery key
