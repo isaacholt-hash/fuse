@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Check,
   CircleAlert,
+  ChevronDown,
   Copy,
   ExternalLink,
   KeyRound,
@@ -694,27 +695,33 @@ export function SettingsView({
           <label htmlFor="settings-category" className="mb-1 block text-xs text-muted-foreground">
             Settings category
           </label>
-          <select
-            id="settings-category"
-            aria-label="Settings category"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            value={searching ? "" : category}
-            onChange={(event) => {
-              const next = SETTINGS_CATEGORIES.find((item) => item.id === event.target.value);
-              if (next) navigate(next.id);
-            }}
-          >
-            {searching && (
-              <option value="" disabled>
-                Search results
-              </option>
-            )}
-            {SETTINGS_CATEGORIES.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              id="settings-category"
+              aria-label="Settings category"
+              className="w-full appearance-none rounded-md border bg-background py-2 pr-9 pl-3 text-sm text-foreground [color-scheme:light] dark:[color-scheme:dark]"
+              value={searching ? "" : category}
+              onChange={(event) => {
+                const next = SETTINGS_CATEGORIES.find((item) => item.id === event.target.value);
+                if (next) navigate(next.id);
+              }}
+            >
+              {searching && (
+                <option value="" disabled>
+                  Search results
+                </option>
+              )}
+              {SETTINGS_CATEGORIES.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+          </div>
         </div>
         <div
           ref={content}
@@ -741,6 +748,12 @@ export function SettingsView({
                   tool permissions apply to the project where they are set.
                 </p>
               )}
+            {!searching && category === "personalization" && (
+              <p className="mb-6 text-xs text-muted-foreground">
+                For instructions and memory that apply to one project, open that project's settings
+                from the conversation sidebar.
+              </p>
+            )}
             {searching && (
               <>
                 <p role="status" className="mb-3 text-xs text-muted-foreground">

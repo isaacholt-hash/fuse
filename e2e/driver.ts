@@ -21,6 +21,7 @@ const KEYS: Partial<Record<string, { key: string; code: string; vk: number; text
 
 export class Session {
   private next = 0;
+  private loads = 0;
   private readonly waiting = new Map<
     number,
     { ok: (v: unknown) => void; fail: (e: Error) => void }
@@ -68,6 +69,7 @@ export class Session {
       | undefined,
   ) {
     const at = `${((Date.now() - this.started) / 1000).toFixed(1)}s`;
+    if (method === "Page.loadEventFired") this.loads += 1;
     if (method === "Runtime.consoleAPICalled") {
       const text = (params?.args ?? [])
         .map((a) =>
@@ -305,6 +307,18 @@ export class Session {
   async navigate(url: string): Promise<void> {
     await this.send("Page.enable");
     await this.send("Page.navigate", { url });
+  }
+
+  /** A full document reload, including a URL whose fragment has not changed. */
+  async reload(): Promise<void> {
+    await this.send("Page.enable");
+    const before = this.loads;
+    await this.send("Page.reload", { ignoreCache: true });
+    const until = Date.now() + 30_000;
+    while (this.loads === before) {
+      if (Date.now() > until) throw new Error("The page did not reload");
+      await sleep(100);
+    }
   }
 
   /** Lays the page out at this size, as a window of it would. */

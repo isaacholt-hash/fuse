@@ -2,7 +2,7 @@
 
 **F**rontier models, **U**nified, **S**pend-**E**fficient — one desktop app for Claude and ChatGPT models on your own API keys, with routing that matches each request to the model it needs and shows what every answer cost.
 
-Status: **M0–M11 complete.** M10 includes the F4 file-handoff fix and a passed fresh live handover with verified push and temporary-device cleanup. M11 deployment, enrollment and verification are owner-confirmed, separately from its automated benchmark evidence. See `docs/milestones/M10-runs-on-hulk.md` and `docs/milestones/M11-encrypted-sync.md`. Dictation and deep research need a separately approved plan.
+Status: **M0–M12 complete.** M10 includes the F4 file-handoff fix and a passed fresh live handover with verified push and temporary-device cleanup. M11 deployment, enrollment and verification are owner-confirmed, separately from its automated benchmark evidence. See `docs/milestones/M10-runs-on-hulk.md` and `docs/milestones/M11-encrypted-sync.md`. M12 adds searchable Settings categories, direct links and preserved conversation state; see `docs/milestones/M12-settings-navigation.md`. Dictation and deep research need a separately approved plan.
 
 ## Start building on HULK
 

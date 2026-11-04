@@ -120,13 +120,31 @@ test("the update bar shows, and Later hides it (M7 F1)", async () => {
 });
 
 test("open Settings", async () => {
+  await app.type(composer, "An unsent desktop draft");
   await step("settings", async () => {
     await app.chord(",");
     await app.find('//h1[normalize-space()="Settings"] | //h2[normalize-space()="Settings"]');
     await app.click(button("Code & tools"));
     await app.find('//*[normalize-space()="Run commands in the sandbox"]');
+    await app.type(byLabel("Search settings"), "dark mode");
+    await app.press("Enter");
+    await app.find('//*[@aria-label="Theme"]');
+    await app.run('window.location.hash = "#settings/personalization/about-you";');
+    await app.type(byLabel("About you"), "An unsaved desktop instruction");
+    await app.click(button("General"));
+    await app.click(button("Personalization"));
+    expect(await app.run(`return document.querySelector('[aria-label="About you"]').value;`)).toBe(
+      "An unsaved desktop instruction",
+    );
+    await app.run('window.location.hash = "#settings/code-tools/python";');
+    await app.find('//*[@aria-label="Python for data work"]');
+    await app.screenshot(join(SHOTS, "m12-settings-desktop.png"));
     await app.chord(",");
     await app.find(composer);
+    expect(
+      await app.run(`return document.querySelector('textarea[aria-label="Message"]').value;`),
+    ).toBe("An unsent desktop draft");
+    await app.clear(composer);
   });
 });
 
