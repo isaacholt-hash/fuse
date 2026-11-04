@@ -25,6 +25,7 @@
     "chat:live": "vitest run --mode chat src/chat/chat.live.test.ts",
     "tools:live": "vitest run --mode tools src/agent/tools.live.test.ts",
     "local:bench": "vitest run --mode localbench src/local/local.bench.test.ts",
+    "sync:bench": "mkdir -p dist src-tauri/target && FUSE_SYNC_BENCH_OUTPUT=\"$(pwd)/src-tauri/target/sync-benchmark.json\" cargo test --manifest-path src-tauri/Cargo.toml --features server encrypted_sync_benchmark -- --nocapture --test-threads=1",
     "hulk:bench": "mkdir -p dist && cargo build --manifest-path src-tauri/Cargo.toml --features server --bin fuse-server && FUSE_SERVER_BIN=${CARGO_TARGET_DIR:-src-tauri/target}/debug/fuse-server vitest run src/runner/hulk.bench.test.ts"
   },
   "dependencies": {

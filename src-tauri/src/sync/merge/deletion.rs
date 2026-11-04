@@ -28,6 +28,98 @@ async fn markers(
     .into_iter()
     .next())
 }
+
+/// None means an explicit public link is waiting for its parent; it must be staged, not lost.
+fn public_parent<'a>(
+    conn: &'a mut SqliteConnection,
+    table: &'a str,
+    id: &'a str,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<Option<bool>, String>> + Send + 'a>>
+{
+    Box::pin(async move {
+        let value = select(
+            conn,
+            &format!("SELECT * FROM {table} WHERE workspace_id=? AND id=?"),
+            &[json!(WORKSPACE), json!(id)],
+        )
+        .await?
+        .into_iter()
+        .next();
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        let pending=select(conn,"SELECT 1 AS n FROM sync_inbox WHERE applied=0 AND json_extract(event,'$.table')=? AND json_extract(event,'$.key')=? AND json_extract(event,'$.operation')='put' LIMIT 1",&[json!(table),json!(id)]).await?;
+        let no = if pending.is_empty() {
+            Some(false)
+        } else {
+            None
+        };
+        if value.get("deleted_at").is_some_and(|v| !v.is_null())
+            || value.get("incognito") == Some(&json!(1))
+            || value.get("local_only") == Some(&json!(1))
+            || value.get("privacy_mode") == Some(&json!("local_only"))
+        {
+            return Ok(no);
+        }
+        if let Some(marker) = markers(conn, table, id).await? {
+            let current=select(conn,"SELECT version,operation FROM sync_records WHERE workspace_id=? AND table_name=? AND record_key=?",&[json!(WORKSPACE),json!(table),json!(id)]).await?;
+            let marker_version = parse_vector(&marker["version"])?;
+            let live = match current.first() {
+                Some(m) if m["operation"] == "put" => {
+                    relation(&parse_vector(&m["version"])?, &marker_version) == Relation::After
+                }
+                _ => false,
+            };
+            if !live {
+                return Ok(no);
+            }
+        }
+        let parent = match table {
+            "messages" => Some(("threads", "thread_id")),
+            "threads" => Some(("projects", "project_id")),
+            _ => None,
+        };
+        if let Some((parent, column)) = parent
+            && let Some(id) = value.get(column).and_then(Value::as_str)
+        {
+            return public_parent(conn, parent, id).await;
+        }
+        Ok(Some(true))
+    })
+}
+async fn file_share(conn: &mut SqliteConnection, event: &Change) -> Result<Option<bool>, String> {
+    let mut waiting = false;
+    for (table, column, parent) in [
+        ("project_files", "project_id", "projects"),
+        ("message_files", "message_id", "messages"),
+    ] {
+        let links = select(
+            conn,
+            &format!(
+                "SELECT {column} AS parent FROM {table} WHERE workspace_id=? AND file_id=?{}",
+                if table == "project_files" {
+                    " AND deleted_at IS NULL"
+                } else {
+                    ""
+                }
+            ),
+            &[json!(WORKSPACE), json!(event.key)],
+        )
+        .await?;
+        let staged=select(conn,"SELECT json_extract(event,?) AS parent FROM sync_inbox WHERE applied=0 AND json_extract(event,'$.operation')='put' AND json_extract(event,'$.table')=? AND json_extract(event,'$.payload.file_id')=?",&[json!(format!("$.payload.{column}")),json!(table),json!(event.key)]).await?;
+        for link in links.into_iter().chain(staged) {
+            let Some(id) = link["parent"].as_str() else {
+                continue;
+            };
+            match public_parent(conn, parent, id).await? {
+                Some(true) => return Ok(Some(true)),
+                None => waiting = true,
+                _ => {}
+            }
+        }
+    }
+    Ok(if waiting { None } else { Some(false) })
+}
 /// Returns true for old/concurrent puts. Separate lifecycle acknowledgements avoid falsely
 /// ordering unrelated record edits merely because their parents were delivered first.
 pub(super) async fn stale(conn: &mut SqliteConnection, event: &Change) -> Result<bool, String> {
@@ -67,16 +159,21 @@ pub(super) async fn stale(conn: &mut SqliteConnection, event: &Change) -> Result
     };
     let mut ancestors = Vec::new();
     let mut seen = BTreeSet::new();
+
     for reference in registry()["tables"][&event.table]["references"]
         .as_array()
         .ok_or("Invalid ownership registry.")?
     {
-        if reference["ownership"] != true {
-            continue;
-        }
         let column = reference["column"]
             .as_str()
             .ok_or("Invalid ownership field.")?;
+        let ownership = reference["ownership"] == true;
+        // Ledger links survive ordinary conversation deletion, but may not bypass a privacy
+        // withdrawal. Shared files are evaluated through their explicit public relationships.
+        let privacy_scope = matches!(column, "project_id" | "thread_id" | "run_id");
+        if !ownership && !privacy_scope {
+            continue;
+        }
         if let Some(id) = payload.get(column).and_then(Value::as_str) {
             ancestors.push((
                 reference["table"]
@@ -84,11 +181,12 @@ pub(super) async fn stale(conn: &mut SqliteConnection, event: &Change) -> Result
                     .ok_or("Invalid ownership table.")?
                     .to_owned(),
                 id.to_owned(),
+                !ownership && event.table != "files",
             ));
         }
     }
-    while let Some((table, id)) = ancestors.pop() {
-        if !seen.insert((table.clone(), id.clone())) {
+    while let Some((table, id, privacy_only)) = ancestors.pop() {
+        if !seen.insert((table.clone(), id.clone(), privacy_only)) {
             continue;
         }
         let entity=select(conn,"SELECT record_key FROM sync_entities WHERE workspace_id=? AND table_name=? AND original_id=?",&[json!(WORKSPACE),json!(table),json!(id)]).await?;
@@ -102,42 +200,73 @@ pub(super) async fn stale(conn: &mut SqliteConnection, event: &Change) -> Result
         };
         if let Some(marker) = markers(conn, &table, &key).await?
             && marker["scope"] != "archive"
+            && (!privacy_only || marker["operation"] == "withdraw")
             && !barriers(
                 event,
                 &format!("{table}:{key}"),
                 &parse_vector(&marker["version"])?,
             )
+            && (event.table != "files" || file_share(conn, event).await? == Some(false))
         {
             return Ok(true);
         }
         for parent in select(conn,"SELECT column_name,parent_table,parent_id FROM sync_lineage WHERE workspace_id=? AND table_name=? AND record_key=?",&[json!(WORKSPACE),json!(table),json!(key)]).await? {
-            let ownership=registry()["tables"][&table]["references"].as_array().is_some_and(|refs|refs.iter().any(|r|r["column"]==parent["column_name"] && r["ownership"]==true));
-            if ownership {ancestors.push((parent["parent_table"].as_str().ok_or("Invalid ownership table.")?.into(),parent["parent_id"].as_str().ok_or("Invalid ownership identity.")?.into()));}
+            let ownership=registry()["tables"][&table]["references"].as_array().is_some_and(|refs|refs.iter().any(|r|r["column"]==parent["column_name"]&&r["ownership"]==true));
+            let scope=table!="files" && matches!(parent["column_name"].as_str(),Some("project_id"|"thread_id"|"run_id"));
+            if ownership||scope {ancestors.push((parent["parent_table"].as_str().ok_or("Invalid ownership table.")?.into(),parent["parent_id"].as_str().ok_or("Invalid ownership identity.")?.into(),privacy_only||!ownership));}
+        }
+        // Reordered children must also see the ownership of parents still staged in this page.
+        for staged in select(conn,"SELECT event FROM sync_inbox WHERE applied=0 AND json_extract(event,'$.table')=? AND json_extract(event,'$.key')=? AND json_extract(event,'$.operation')='put'",&[json!(table),json!(key)]).await? {
+            let parent:Change=serde_json::from_str(staged["event"].as_str().ok_or("Missing staged ancestry.")?).map_err(|_|"Invalid staged ancestry.")?;
+            if let Some(payload)=parent.payload {
+                for reference in registry()["tables"][&table]["references"].as_array().ok_or("Invalid ownership registry.")? {
+                    let column=reference["column"].as_str().ok_or("Invalid ownership field.")?;
+                    let ownership=reference["ownership"]==true;
+                    if !ownership && !matches!(column,"project_id"|"thread_id"|"run_id"){continue;}
+                    if let Some(id)=payload.get(column).and_then(Value::as_str){ancestors.push((reference["table"].as_str().ok_or("Invalid ownership table.")?.into(),id.into(),privacy_only||!ownership));}
+                }
+            }
         }
     }
+
     Ok(false)
 }
 
 async fn remember(conn: &mut SqliteConnection, event: &Change) -> Result<(), String> {
     let mut version = event.version.clone();
     let mut operation = event.operation.clone();
+    let mut previous_scope = None;
     if let Some(previous) = markers(conn, &event.table, &event.key).await? {
         let prior = parse_vector(&previous["version"])?;
-        version = union(&version, &prior);
-        if previous["operation"] == "delete" {
-            operation = Operation::Delete;
+        match relation(&event.version, &prior) {
+            Relation::Before => {
+                operation = if previous["operation"] == "withdraw" {
+                    Operation::Withdraw
+                } else {
+                    Operation::Delete
+                };
+                previous_scope = previous["scope"].as_str().map(str::to_owned);
+            }
+            Relation::Concurrent | Relation::Equal if previous["operation"] == "withdraw" => {
+                operation = Operation::Withdraw
+            }
+            _ => {}
         }
+        version = union(&version, &prior);
     }
-    let scope = if event.table == "projects"
-        && event
-            .retained
-            .as_ref()
-            .is_some_and(|r| r.get("mode") == Some(&json!("archive")))
-    {
-        "archive"
-    } else {
-        "record"
-    };
+    let scope = previous_scope.unwrap_or_else(|| {
+        if operation == Operation::Delete
+            && event.table == "projects"
+            && event
+                .retained
+                .as_ref()
+                .is_some_and(|r| r.get("mode") == Some(&json!("archive")))
+        {
+            "archive".into()
+        } else {
+            "record".into()
+        }
+    });
     execute(conn,"INSERT INTO sync_tombstones(workspace_id,user_id,table_name,record_key,event_id,operation,version,scope,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,table_name,record_key) DO UPDATE SET event_id=excluded.event_id,operation=excluded.operation,version=excluded.version,scope=excluded.scope,updated_at=excluded.updated_at",&[json!(WORKSPACE),json!(USER),json!(event.table),json!(event.key),json!(event.id),json!(match operation {Operation::Delete=>"delete",_=>"withdraw"}),json!(serde_json::to_string(&version).map_err(|_|"Couldn't retain deletion causality.")?),json!(scope),json!(now()),json!(now())]).await?;
     if let Some(retained) = &event.retained
         && let Some(ids) = retained.get("ids").and_then(Value::as_array)
@@ -429,7 +558,7 @@ pub(super) async fn entity(
     event: &Change,
     value: &Record,
 ) -> Result<(), String> {
-    if let Some(id) = value.get("id") {
+    if let Some(id) = value.get("id").filter(|id| !id.is_null()) {
         execute(conn,"INSERT INTO sync_entities(workspace_id,user_id,table_name,original_id,record_key,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(workspace_id,table_name,original_id) DO NOTHING",&[json!(WORKSPACE),json!(USER),json!(event.table),id.clone(),json!(event.key),json!(now()),json!(now())]).await?;
     }
     Ok(())
@@ -663,6 +792,18 @@ pub(super) async fn apply(conn: &mut SqliteConnection, event: &Change) -> Result
         return Ok(true);
     }
     remember(conn, event).await?;
+    let marker = markers(conn, &event.table, &event.key)
+        .await?
+        .ok_or("Missing deletion marker.")?;
+    let mut root = event.clone();
+    root.version = parse_vector(&marker["version"])?;
+    if marker["operation"] == "withdraw" {
+        root.operation = Operation::Withdraw;
+        if let Some(retained) = root.retained.as_mut() {
+            retained.remove("mode");
+        }
+    }
+
     if execution_owned(conn, event).await? {
         block(conn,event,"Waiting for the execution owner to finish the run or disable its schedule through the existing controls.").await?;
         return Ok(false);
@@ -759,15 +900,15 @@ pub(super) async fn apply(conn: &mut SqliteConnection, event: &Change) -> Result
         }
         if let Some(existing) = row(conn, event).await? {
             if private_copy(conn, event, &existing, &mut BTreeSet::new()).await? {
-                record_meta(conn, event, &event.version).await?;
+                record_meta(conn, event, &root.version).await?;
                 if event.table == "memories" {
                     execute(conn,"UPDATE sync_records SET revision=? WHERE workspace_id=? AND table_name='memories' AND record_key=?",&[existing["revision"].clone(),json!(WORKSPACE),json!(event.key)]).await?;
                 }
             } else {
-                erase(conn, event.clone(), event, &mut BTreeSet::new()).await?;
+                erase(conn, root.clone(), &root, &mut BTreeSet::new()).await?;
             }
         } else {
-            record_meta(conn, event, &event.version).await?;
+            record_meta(conn, event, &root.version).await?;
         }
     }
     archive(conn, event).await?;
@@ -781,6 +922,9 @@ pub(super) async fn incoming_guard(
 ) -> Result<Option<&'static str>, String> {
     if stale(conn, event).await? {
         return Ok(Some("deleted"));
+    }
+    if event.table == "files" && file_share(conn, event).await?.is_none() {
+        return Ok(Some("public_parent"));
     }
     if let Some(payload) = &event.payload
         && private_copy(conn, event, payload, &mut BTreeSet::new()).await?

@@ -109,3 +109,15 @@ systemctl --user restart fuse-server
 - **Backups:** this folder **isn't** in HULK's nightly backup (HOST_CONTRACT §8). The sealed credentials only open on HULK anyway. To keep the server's chats, use Settings → Data → Export from the web app now and then.
 
 - **Lost the passphrase:** stop the service and delete `~/.local/share/fuse-server/auth.json`. On the next visit you set a new one, and paired devices must pair again. Chats and keys stay.
+
+## M11 sync activation and updates
+
+The server and each desktop must run matching schema/protocol builds. Updating or pairing
+does not enroll desktop history. After deploying the verified build and updating desktops,
+use the explicit preview in [HULK Settings → Sync](https://hulk.tailb7c872.ts.net:4100/#sync),
+then pair/enroll each desktop separately. See [setup, recovery and backup boundaries](sync.md).
+The build did not deploy this service or activate any installation.
+
+Migrations are forward-only. The older-build symlink above does not roll back the database;
+do not run an older schema against a newer database. Sync pauses on incompatible builds and
+retains pending edits. Encrypted sync history is not a replacement for backups or exports.
