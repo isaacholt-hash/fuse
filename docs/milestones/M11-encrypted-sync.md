@@ -1,5 +1,7 @@
 # M11 — Encrypted sync
 
+**Status: closed 2026-11-04.** All eight build steps are complete; deployment, enrollment and verification are owner-confirmed below.
+
 Approved by Isaac on 2026-11-04, including building and merging the steps unattended.
 
 ## Goal and trust boundary
@@ -47,4 +49,20 @@ The eight sequential PRs implement the approved scope. The release runbook is
 [encrypted sync](../sync.md), including explicit deployment/enrollment and backup boundaries.
 The [recorded benchmark](../benchmarks/M11-sync.md) uses two independent native replicas and
 a real throwaway HULK with in-memory secrets; CI also retains the existing HULK benchmark
-and runs Windows sync/file compatibility checks. No production activation was performed.
+and runs Windows sync/file compatibility checks. No production activation was performed during the build.
+
+## Owner acceptance
+
+- [x] **Close M11.** Build verification is complete and Isaac confirmed live activation.
+
+On 2026-11-04 Isaac confirmed that deployment, explicit enrollment and verification were
+completed. This is owner-reported live acceptance, separate from the recorded synthetic
+benchmark and CI evidence. The closeout does not redeploy HULK, re-enroll existing devices or
+exercise deletion, recovery or revocation against production sync members.
+
+The [closeout CI run](https://github.com/isaacholt-hash/fuse/actions/runs/41821253051)
+passed all five gates, including both benchmarks and Windows compatibility. Its synthetic
+sync benchmark passed all 16 scenarios with two desktop replicas and one throwaway HULK:
+16 messages, two threads, three cost requests totaling 123,490 micro-dollars and a
+2,097,169-byte file in three chunks. Initial union took 12,993 ms; the full run took 35,832 ms.
+Secrets remained in memory; sync made no provider calls.

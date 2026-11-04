@@ -2,7 +2,7 @@
 
 **F**rontier models, **U**nified, **S**pend-**E**fficient — one desktop app for Claude and ChatGPT models on your own API keys, with routing that matches each request to the model it needs and shows what every answer cost.
 
-Status: **M1 — daily driver** (see `docs/milestones/M1-daily-driver.md`). M0 (thin slice) is done.
+Status: **M0–M11 complete.** M10 includes the F4 file-handoff fix and a passed fresh live handover with verified push and temporary-device cleanup. M11 deployment, enrollment and verification are owner-confirmed, separately from its automated benchmark evidence. See `docs/milestones/M10-runs-on-hulk.md` and `docs/milestones/M11-encrypted-sync.md`. Dictation and deep research need a separately approved plan.
 
 ## Start building on HULK
 
@@ -16,7 +16,7 @@ claude                         # start Claude Code in the repo
 
 Then paste this into Claude Code:
 
-> Read CLAUDE.md and docs/milestones/M1-daily-driver.md. Do the next unchecked step only. Open a PR, merge it once checks pass, tell me how to test it, and stop.
+> Read CLAUDE.md and the milestone it identifies. Work only on the next explicitly approved step; if no step is approved, report the current roadmap status. Open a PR, merge it once checks pass, tell me how to test it, and stop.
 
 Claude merges each PR itself once checks pass. After each one: look at the screenshot (and try it if you like), then `git switch main && git pull` and send the same prompt again.
 

@@ -1,5 +1,7 @@
 # M10 — Runs on HULK (P2, part 3)
 
+**Status: closed 2026-11-04**, including steps 11–26, F1–F4 and fresh live acceptance below.
+
 **Goal:** FUSE runs without you watching. The same app is served from HULK as a self-hosted, single-user web app (PL-03, PL-02). Runs started there, or handed over from the desktop, keep going with the laptop closed (CA-15). You follow them and answer their approvals from any signed-in browser (the core of CA-16), and scheduled tasks start runs on a clock (AG-07). It builds on M6's runs, M8's sandbox, M9's tools and injection guard, and M5's export and restore.
 
 **Done when:** the recorded runs-on-HULK benchmark (step 10) passes:
@@ -9,7 +11,7 @@
 - A scheduled task fires.
 - An interrupted run continues.
 
-Then Isaac deploys with the step 10 kit and does the live check: hand over a Code run from TCHALLA, close the laptop, and find the pushed branch afterwards.
+Live acceptance additionally requires a deployed installation and a desktop-style Code handover that pushes its branch after the caller disconnects. The completed check is recorded below.
 
 **Out of scope:**
 - Sync between the desktop and server databases (PL-04).
@@ -165,4 +167,39 @@ Then Isaac deploys with the step 10 kit and does the live check: hand over a Cod
 
 ## Notes
 
-- [x] **F4. File edits offer Continue in Code independently of routing.** Explicit file and path edit requests, including “Fix the typo in notes.txt”, offer the existing handoff in Chat when a folder is linked. The notification switch and dismissal still apply; the hint opens an editable draft and never edits, runs or grants access itself. Model routing is unchanged. Regression coverage includes text files, Windows/Unix paths and desktop click-through. The live-check verifier now requires exactly the expected committed file, contents and handover author before deleting its temporary branch; failures retain the branch. Fresh live acceptance and milestone closure follow separately.
+- [x] **F4. File edits offer Continue in Code independently of routing.** Explicit file and path edit requests, including “Fix the typo in notes.txt”, offer the existing handoff in Chat when a folder is linked. The notification switch and dismissal still apply; the hint opens an editable draft and never edits, runs or grants access itself. Model routing is unchanged. Regression coverage includes text files, Windows/Unix paths and desktop click-through. The live-check verifier now requires exactly the expected committed file, contents and handover author before deleting its temporary branch; failures retain the branch. Fresh live acceptance and milestone closure are recorded below.
+
+## Closeout acceptance
+
+- [x] **Close M10.** F4 is shipped; the fresh live handover and temporary-device cleanup are complete.
+
+F4 shipped in [PR #276](https://github.com/isaacholt-hash/fuse/pull/276). Its
+[CI run](https://github.com/isaacholt-hash/fuse/actions/runs/41821253051) passed all five gates,
+including the existing HULK and encrypted-sync benchmarks, Windows compatibility and
+Windows click-through. Local `pnpm check` passed 938 tests; desktop/web handoff screenshots
+were reviewed in both themes.
+
+The [fresh live workflow](https://github.com/isaacholt-hash/fuse/actions/runs/41825002238)
+passed on 2026-11-04 against the activated installation. The Windows runner on BANNER
+handed over and disconnected while the run was active; its job completed at 07:04:12 EST.
+Isaac then answered the push approval through the existing web UI. The verifier confirmed
+the result at 07:05:51 EST, after the caller had left, and deleted only its verified branch.
+The existing 500,000 micro-dollar ($0.50) cap was retained.
+
+| Evidence | Value |
+| --- | --- |
+| Desktop-style workflow build | `2340a1b02dbdc4fbd176245837b19287af137e0b` |
+| Published desktop release | [v0.1.205](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.205) |
+| Activated HULK build / schema | `86ac0de` / `61` |
+| Handover request | `01a1a671-cc9a-7000-b1ba-8ec724d330df` |
+| Verified commit | [96dd4f84fc1c26bf2bd4b9cef8adf237984b2c09](https://github.com/isaacholt-hash/fuse/commit/96dd4f84fc1c26bf2bd4b9cef8adf237984b2c09) |
+| Exactly one added file | `live-check/2026-11-04T12-03-56-282Z.md` |
+| Exact contents | `Handed over from BANNER at 2026-11-04T12-03-56-282Z.` followed by one LF |
+| Commit author | `FUSE Benchmark` |
+| Temporary branch | `fuse/create-the-file-live-check-df13`, deleted after verification |
+| Workflow evidence | `hulk-live-evidence` artifact: builds, commit, file, request, device identity and successful branch deletion |
+
+Isaac confirmed Done with a Pushed note and revocation of only the temporary device,
+`Live check (BANNER) 2026-11-04T12-03-56-282Z`, ID `00aca515d1816ad3`.
+This cleanup is owner-confirmed. Existing deployment, enrollment and permissions were used
+throughout; the closeout did not redeploy HULK or re-enroll existing devices.
