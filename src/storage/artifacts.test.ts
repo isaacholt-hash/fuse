@@ -38,3 +38,37 @@ test("the same key makes a new version only when the content changed; purge remo
   await purgeThread(db, t, thread.id);
   expect(await listArtifacts(db, t, thread.id)).toEqual([]);
 });
+
+test("simultaneous version counters keep UUID identity and deterministic display numbering", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const message = await addMessage(db, t, {
+    threadId: thread.id,
+    parentId: null,
+    role: "assistant",
+    content: "Synthetic",
+  });
+  await saveArtifacts(db, t, thread.id, message, [block("first")]);
+  const artifact = (await listArtifacts(db, t, thread.id))[0];
+  if (!artifact) throw new Error("Fixture artifact is missing");
+  await db.execute(
+    "INSERT INTO artifact_versions(id,workspace_id,user_id,artifact_id,version,content,source,created_at,updated_at) VALUES (?,?,?,?,1,?,'user',1,1)",
+    ["concurrent-version", t.workspaceId, t.userId, artifact.id, "simultaneous"],
+  );
+  const versions = await listVersions(db, t, artifact.id);
+  expect(versions.map((v) => v.version)).toEqual([1, 2]);
+  expect(new Set(versions.map((v) => v.id)).size).toBe(2);
+  const firstId = versions[0]?.id;
+  if (!firstId) throw new Error("Fixture version is missing");
+  await db.execute(
+    "INSERT INTO sync_aliases(workspace_id,user_id,table_name,original_id,canonical_id,created_at,updated_at) VALUES (?,?,'artifacts','prior-id',?,1,1)",
+    [t.workspaceId, t.userId, artifact.id],
+  );
+  expect((await listVersions(db, t, "prior-id")).map((v) => v.id)).toContain(firstId);
+  expect(await addVersion(db, t, "prior-id", "third", "user")).toBe(3);
+  expect(await listArtifacts(db, t, thread.id)).toHaveLength(1);
+  expect((await listArtifacts(db, t, thread.id))[0]).toMatchObject({
+    version: 3,
+    content: "third",
+  });
+});

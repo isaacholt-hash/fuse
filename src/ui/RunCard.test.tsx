@@ -167,3 +167,38 @@ test("live check F3: a finished handover says whether it pushed", () => {
   show({ ...base, status: "done" });
   expect(screen.queryByText(/Pushed|Couldn't/)).toBeNull();
 });
+
+test("synced history exposes no continue or approval controls", () => {
+  const onContinue = vi.fn();
+  const onApprove = vi.fn();
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        onContinueRun={onContinue}
+        onApprove={onApprove}
+        messages={[
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "complete",
+            run: {
+              ...base,
+              readOnly: true,
+              status: "stopped",
+              approval: { kind: "command", command: "fixture command", destructive: null },
+            },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  expect(screen.getByText("Synced history · read-only")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /Continue/ })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Allow once" })).toBeNull();
+  fireEvent.keyDown(window, { key: "y" });
+  expect(onApprove).not.toHaveBeenCalled();
+  expect(onContinue).not.toHaveBeenCalled();
+});

@@ -54,9 +54,10 @@
         "kind",
         "handoff_from_id",
         "run_cap_micro_usd",
-        "purged_at"
+        "purged_at",
+        "schedule_id"
       ],
-      "localColumns": ["seen_at", "schedule_id", "run_mode", "run_branch", "run_where"],
+      "localColumns": ["seen_at", "run_mode", "run_branch", "run_where"],
       "key": ["id"],
       "eligible": "{a}.incognito=0 AND (({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only')))",
       "ready": "({a}.deleted_at IS NULL OR {a}.purged_at IS NOT NULL)",
@@ -487,9 +488,9 @@
         "started_at",
         "waited_ms"
       ],
-      "localColumns": [],
+      "localColumns": ["sync_owner"],
       "key": ["id"],
-      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "{a}.status IN ('done','stopped','error')",
       "dependencies": ["messages", "projects", "threads"]
     },
@@ -518,7 +519,7 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM runs r JOIN threads t ON t.id=r.thread_id WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
+      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
       "ready": "1",
       "dependencies": ["request_log", "runs"]
     },
@@ -542,7 +543,7 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM runs r JOIN threads t ON t.id=r.thread_id WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
+      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
       "ready": "1",
       "dependencies": ["run_steps", "runs"]
     },
@@ -600,6 +601,7 @@
     "sync_devices",
     "sync_relay",
     "sync_receipts",
-    "sync_blobs"
+    "sync_blobs",
+    "sync_aliases"
   ]
 }

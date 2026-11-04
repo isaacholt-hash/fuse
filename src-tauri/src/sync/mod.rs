@@ -1,5 +1,6 @@
 //! Opt-in native sync. HULK is a trusted participant, not a blind relay.
 pub mod crypto;
+pub mod merge;
 pub mod transport;
 pub mod worker;
 
@@ -637,6 +638,14 @@ pub async fn enroll(ctx: &Ctx, name: String, confirmed: bool) -> Result<Status, 
 pub mod commands {
     use super::*;
     use tauri::State;
+    #[tauri::command]
+    pub async fn sync_resolve(
+        ctx: State<'_, Ctx>,
+        id: String,
+        choice: String,
+    ) -> Result<(), String> {
+        merge::resolve(&ctx, id, choice).await
+    }
     #[tauri::command]
     pub async fn sync_pause(ctx: State<'_, Ctx>, paused: bool) -> Result<Status, String> {
         worker::pause(&ctx, paused).await

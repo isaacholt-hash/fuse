@@ -326,6 +326,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "sync_transport",
         sql: include_str!("../migrations/0058_sync_transport.sql"),
     },
+    MigrationFile {
+        version: 59,
+        description: "sync_merge",
+        sql: include_str!("../migrations/0059_sync_merge.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
@@ -611,7 +616,7 @@ fn remove_plaintext_backups(backups: &Path) {
 // ---------------------------------------------------------------------------------------------
 // Queries from the frontend (src/storage/tauriDb.ts)
 
-fn bind<'q>(
+pub(crate) fn bind<'q>(
     mut query: sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>>,
     params: &'q [Value],
 ) -> sqlx::query::Query<'q, sqlx::Sqlite, sqlx::sqlite::SqliteArguments<'q>> {
@@ -630,7 +635,7 @@ fn bind<'q>(
     query
 }
 
-fn row_to_json(row: &SqliteRow) -> Result<Map<String, Value>, sqlx::Error> {
+pub(crate) fn row_to_json(row: &SqliteRow) -> Result<Map<String, Value>, sqlx::Error> {
     let mut out = Map::new();
     for (i, column) in row.columns().iter().enumerate() {
         let raw = row.try_get_raw(i)?;

@@ -66,3 +66,31 @@ content is refused. The relay stores signed ciphertext and opaque encrypted chun
 headers contain no entity names or filenames. Record application follows in step 5, file manifests
 and retention in step 6, and management/revocation controls in step 7. Intermediate builds expose
 no setup UI; transport acceptance alone does not mean records have been merged.
+
+## Merge and review
+
+Causal vectors distinguish later edits from edits made independently while offline. Later edits
+win regardless of wall-clock skew. Concurrent ordinary edits use logical clock, device ID and
+event ID in that order; the losing revision remains in encrypted revision history. Unresolved
+fact/decision conflicts retain both complete versions and provenance. Active memory/context
+queries exclude that record until an explicit review resolution creates another replicated
+revision. Changing an expiry or making an ordinary edit does not dismiss the review.
+
+Concurrent provider rules choose deny over allow. Project restrictions combine conservatively;
+when that combination differs from the selected edit, the worker captures a new causal revision
+containing the restrictive result. It never changes the body of an already accepted event.
+Natural-key collisions select a deterministic canonical ID and preserve earlier IDs as durable
+aliases. Artifact version UUIDs identify versions; displayed numbers follow deterministic
+ordering, so equal counters from offline edits preserve both versions. UI selection keeps UUIDs
+as new versions arrive. Request-log IDs deduplicate costs without changing integer amounts or
+original desktop/web/runner attribution. A schedule ID can preserve attribution without copying
+the schedule or its execution state.
+
+Missing parents remain staged with a reason. Complete dependency components, including circular
+thread/message references, apply in one transaction with foreign keys checked at commit. Failed
+batches restore both application data and incoming-capture suppression. Replicated terminal run
+history is read-only: Continue and Undo are refused before any execution/folder path is selected.
+No execution queue, approval, schedule, repository root or machine grant is created. Legacy
+completed project runs without a conversation are included when their project is eligible.
+File installation, privacy withdrawal and final deletion processing follow in step 6; their
+staged records remain pending in this intermediate build. The setup UI arrives in step 7.

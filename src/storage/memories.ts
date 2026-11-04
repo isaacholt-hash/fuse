@@ -149,7 +149,7 @@ const SELECT_MEMORY = `
   LEFT JOIN threads t ON t.id = m.source_thread_id AND t.deleted_at IS NULL`;
 /** In use: active and not past its expiry. */
 const ACTIVE =
-  "m.status = 'active' AND (m.expires_at IS NULL OR m.expires_at > CAST(strftime('%s', 'now') AS INTEGER) * 1000)";
+  "m.status = 'active' AND NOT EXISTS (SELECT 1 FROM sync_conflicts c WHERE c.workspace_id=m.workspace_id AND c.table_name='memories' AND c.record_key=m.id AND c.resolved_at IS NULL) AND (m.expires_at IS NULL OR m.expires_at > CAST(strftime('%s', 'now') AS INTEGER) * 1000)";
 
 /** Facts in use (not deleted, not replaced by a newer version), oldest first. */
 export async function listMemories(db: SqlDb, tenant: Tenant): Promise<Memory[]> {

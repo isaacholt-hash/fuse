@@ -39,6 +39,7 @@ import {
   createRun,
   getChange,
   getRun,
+  assertRunWritable,
   listChanges,
   listSteps,
   markUndone,
@@ -1448,6 +1449,7 @@ async function runCommand(
 
 /** The run's dependencies, with files, commands and git scoped to its recorded folders. */
 async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
+  await assertRunWritable(deps.db, deps.tenant, runId);
   const folders = await listRunFolders(deps.db, deps.tenant, runId);
   return {
     ...deps,
@@ -1620,6 +1622,7 @@ export async function continueRun(
   input: { raiseCapBy?: number; signal?: AbortSignal; onProgress?: (p: RunProgress) => void },
 ): Promise<Run> {
   const { db, tenant } = deps;
+  await assertRunWritable(db, tenant, runId);
   if (input.raiseCapBy) await raiseRunCap(db, tenant, runId, input.raiseCapBy);
   // M10 step 11: a new leg, with its own clock.
   await markRunContinued(db, tenant, runId);
@@ -1688,6 +1691,7 @@ export async function undoChange(base: RunDeps, changeId: string): Promise<void>
 
 /** Undoes every change a run made that's still in place, newest first; stops at a refusal. */
 export async function undoRun(deps: RunDeps, runId: string): Promise<void> {
+  await assertRunWritable(deps.db, deps.tenant, runId);
   const applied = (await listChanges(deps.db, deps.tenant, runId)).filter(
     (c: RunChange) => c.status === "applied",
   );
