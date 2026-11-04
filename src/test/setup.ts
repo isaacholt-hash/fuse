@@ -1,4 +1,10 @@
 import "@testing-library/jest-dom/vitest";
+import { beforeEach } from "vitest";
+
+// Each mounted app starts with its own location, like a fresh browser tab.
+beforeEach(() => {
+  if (typeof window !== "undefined") window.history.replaceState(null, "", "/");
+});
 
 // jsdom has no matchMedia; the theme hook reads it (always "light" in tests).
 if (typeof window !== "undefined") {

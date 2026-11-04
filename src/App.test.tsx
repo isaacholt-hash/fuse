@@ -1467,6 +1467,8 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   await user.type(lockScreen.getByLabelText("Passcode"), "0000{Enter}");
   expect(await lockScreen.findByText("That passcode isn't right.")).toBeInTheDocument();
   await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
+  // Reload preserves the Settings destination behind the lock.
+  await user.click(await screen.findByRole("button", { name: "Back to Chat" }));
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
 }, 20_000);
 
@@ -1492,7 +1494,8 @@ test("app lock with Windows Hello: turned on in Settings, asked as soon as the l
       hello={hello}
     />,
   );
-  // Hello confirms it's you: the app opens without the passcode.
+  // Hello confirms it's you and restores the Settings URL without the passcode.
+  await user.click(await screen.findByRole("button", { name: "Back to Chat" }));
   expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
   expect(hello.asks).toEqual(["Unlock FUSE"]);
 }, 20_000);
@@ -3895,4 +3898,105 @@ test("M12: returning from Settings preserves the selected conversation, scroll a
   await waitFor(() => {
     expect(field).toHaveFocus();
   });
+});
+
+for (const hash of ["#settings/personalization/about-you", "#sync", "#settings/not-a-category"]) {
+  test(`M12: initial destination ${hash} opens without going through the sidebar`, async () => {
+    window.history.replaceState(null, "", hash);
+    setup();
+    if (hash === "#sync") {
+      expect(await screen.findByRole("heading", { name: "Sync & devices" })).toBeVisible();
+    } else if (hash.includes("not-a-category")) {
+      expect(
+        await screen.findByText("That settings destination is unavailable. Showing General."),
+      ).toBeVisible();
+      expect(screen.getByRole("region", { name: "Appearance" })).toBeVisible();
+    } else {
+      await waitFor(() => {
+        expect(screen.getByLabelText("About you")).toHaveFocus();
+      });
+    }
+  });
+}
+
+test("M12: category/search history, browser Back/Forward and palette share destinations", async () => {
+  const { user } = setup();
+  const field = await composer();
+  await user.type(field, "An unsent conversation");
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "General" }));
+  await user.type(screen.getByRole("combobox", { name: "Search settings" }), "About you");
+  await user.keyboard("{Enter}");
+  expect(window.location.hash).toBe("#settings/personalization/about-you");
+  await user.type(screen.getByLabelText("About you"), "Unsaved content stays private");
+  expect(window.location.hash).not.toContain("Unsaved");
+  act(() => {
+    window.history.back();
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("region", { name: "Appearance" })).toBeVisible();
+  });
+  act(() => {
+    window.history.forward();
+  });
+  await waitFor(() => {
+    expect(screen.getByLabelText("About you")).toHaveFocus();
+  });
+  expect(screen.getByLabelText("About you")).toHaveValue("Unsaved content stays private");
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
+  expect(window.location.hash).toBe("");
+  expect(await composer()).toHaveValue("An unsent conversation");
+  await user.keyboard("{Control>}{Shift>}p{/Shift}{/Control}");
+  await user.type(
+    screen.getByRole("textbox", { name: "Type a command or a chat" }),
+    "Routing policy",
+  );
+  await user.keyboard("{Enter}");
+  expect(window.location.hash).toBe("#settings/providers-models/routing-policy");
+  expect(screen.getByRole("region", { name: "Routing policy" })).toBeVisible();
+});
+
+test("M12: route changes close Settings dialogs and stale log replies cannot reopen them", async () => {
+  let release: (() => void) | undefined;
+  let delay = false;
+  const { user } = setup(
+    {},
+    undefined,
+    {},
+    {
+      wrapDb: (db) => ({
+        ...db,
+        select: async <T,>(sql: string, args?: SqlValue[]) => {
+          if (delay && sql.includes("FROM request_log"))
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          return db.select<T>(sql, args);
+        },
+      }),
+    },
+  );
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "About & diagnostics" }));
+  await user.click(screen.getByRole("button", { name: /Request log/ }));
+  await screen.findByRole("dialog", { name: "Request log" });
+  act(() => {
+    window.location.hash = "#settings/general/theme";
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog", { name: "Request log" })).toBeNull();
+  });
+  await user.click(screen.getByRole("button", { name: "About & diagnostics" }));
+  delay = true;
+  await user.click(screen.getByRole("button", { name: /Request log/ }));
+  await waitFor(() => {
+    expect(release).toBeDefined();
+  });
+  await user.type(screen.getByRole("combobox", { name: "Search settings" }), "theme");
+  await act(async () => {
+    release?.();
+    await Promise.resolve();
+  });
+  expect(screen.queryByRole("dialog", { name: "Request log" })).toBeNull();
 });
