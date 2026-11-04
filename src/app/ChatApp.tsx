@@ -328,6 +328,7 @@ import { EMPTY_USAGE } from "@/storage/usage";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
+import type { SettingsTargetId } from "@/ui/settingsRegistry";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
 import { PolicyEditor } from "@/ui/PolicyEditor";
@@ -1194,6 +1195,11 @@ export function ChatApp({
         ? "usage"
         : "chat",
   );
+  const [settingsTarget, setSettingsTarget] = useState<SettingsTargetId | undefined>();
+  const openSettings = (target?: SettingsTargetId) => {
+    setSettingsTarget(target);
+    setView("settings");
+  };
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   const [picker, setPicker] = useState(false);
   const [deleting, setDeleting] = useState<ThreadView | null>(null);
@@ -4681,7 +4687,7 @@ export function ChatApp({
       label: "Settings",
       shortcut: "Ctrl ,",
       run: () => {
-        setView("settings");
+        openSettings();
       },
     },
     { id: "usage", group: "View", label: "Usage and savings", run: openUsage },
@@ -4754,7 +4760,8 @@ export function ChatApp({
           setPicker((open) => !open);
         } else if (event.key === ",") {
           event.preventDefault();
-          setView((current) => (current === "chat" ? "settings" : "chat"));
+          if (view === "settings") setView("chat");
+          else openSettings();
         } else if (key === "z" && !event.shiftKey && pendingDelete.pending) {
           // M10 step 18: Ctrl+Z undoes a delete while its notice shows, unless you're typing.
           const el = event.target instanceof HTMLElement ? event.target : null;
@@ -4892,7 +4899,7 @@ export function ChatApp({
               variant="outline"
               onClick={() => {
                 setSuggestionNoticeOff(true);
-                setView("settings");
+                openSettings();
               }}
             >
               See it
@@ -4930,7 +4937,7 @@ export function ChatApp({
                 variant="outline"
                 onClick={() => {
                   setModelsNoticeOff(true);
-                  setView("settings");
+                  openSettings();
                 }}
               >
                 See models
@@ -4962,7 +4969,7 @@ export function ChatApp({
               variant="outline"
               onClick={() => {
                 setPricesNoticeOff(true);
-                setView("settings");
+                openSettings();
               }}
             >
               Check prices
@@ -5030,7 +5037,7 @@ export function ChatApp({
                 setSidebar(false);
               }}
               onSettings={() => {
-                setView("settings");
+                openSettings();
               }}
               onRename={rename}
               onDelete={setDeleting}
@@ -5117,6 +5124,7 @@ export function ChatApp({
             />
           ) : view === "settings" ? (
             <SettingsView
+              {...(settingsTarget ? { target: settingsTarget } : {})}
               web={webApp}
               {...(server ? { server } : {})}
               {...(hulkLink
@@ -5276,6 +5284,10 @@ export function ChatApp({
                         }
                       : {})}
                   />
+                </>
+              }
+              sandbox={
+                <>
                   {windowsSandbox && execApi?.windowsSandbox && (
                     <WindowsSandboxSection
                       on={windowsSandbox.on}
@@ -5869,6 +5881,10 @@ export function ChatApp({
                       })
                     }
                   />
+                </>
+              }
+              routingDiagnostics={
+                <>
                   {golden && (
                     <GoldenSetSection
                       summary={summarize(golden)}
@@ -6272,7 +6288,7 @@ export function ChatApp({
                               onWhere={setDraftWhere}
                               whereReasons={whereReasons}
                               onOpenHulkSettings={() => {
-                                setView("settings");
+                                openSettings();
                               }}
                               capMicroUsd={draftCap}
                               defaultCapMicroUsd={
@@ -6373,7 +6389,7 @@ export function ChatApp({
                     effortFor={effortForDraft}
                     onStop={stop}
                     onSettings={() => {
-                      setView("settings");
+                      openSettings();
                     }}
                     attachments={pendingViews}
                     blocked={blocked}
@@ -6877,7 +6893,7 @@ export function ChatApp({
           onSave={saveChatInstructions}
           onEditGlobal={() => {
             setInstructionsOpen(false);
-            setView("settings");
+            openSettings();
           }}
         />
         {filling && (
