@@ -336,6 +336,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "sync_files_deletion",
         sql: include_str!("../migrations/0060_sync_files_deletion.sql"),
     },
+    MigrationFile {
+        version: 61,
+        description: "sync_rotation",
+        sql: include_str!("../migrations/0061_sync_rotation.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same

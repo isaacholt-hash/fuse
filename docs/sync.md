@@ -1,96 +1,108 @@
-# Encrypted sync on HULK (M11)
+# Encrypted sync with HULK
 
-M11 is being built; the controls and full activation instructions arrive with steps 7 and 8.
-Installing an intermediate build or pairing with HULK does not upload desktop history.
+Sync is optional and separate from pairing. HULK is a trusted participant: it can decrypt
+synced content for its web app and runner. Browsers use HULK's database; they are not replicas.
+No provider request or run starts because of syncing.
 
-## Trust and enrollment
+## Enable
 
-HULK hosts encrypted logical records and participates in sync so the web app and runner can
-use them. HULK can read the synced data. Browsers use its database; each enrolled desktop
-has its own encrypted database, identity and durable outbox. The database file never syncs.
+1. Use matching desktop and HULK builds. Sign in to HULK and open **Settings → Sync**
+   (the `/#sync` link opens that section).
+2. Choose **Preview & enable sync**, review the eligible records and file bytes, acknowledge
+   HULK's trusted role, then choose **Enable sync and merge histories**.
+3. On each desktop, pair through **Settings → HULK** first. Then open **Settings → Sync**,
+   preview that desktop's eligible content, name the device and explicitly enable sync.
+4. Leave the apps online while the initial union completes. Stable record IDs are preserved;
+   repeated delivery does not duplicate costs or execute runs. **Sync now** requests a cycle.
 
-Setup first previews the portable content. The HULK setup command requires explicit confirmation;
-desktop enrollment requires both pairing and a separate confirmation. The native enrollment route
-requires a non-runner device bearer token. Browser cookies cannot obtain the workspace keys.
-Status and preview return counts/state and public device identities, never encryption or signing
-keys. Workspace keys travel only between native participants over the configured HTTPS connection
-(loopback HTTP is for recorded fixtures). Redirects are refused. Both builds must have the same
-schema and sync protocol before enrollment.
-HULK setup and recovery commands require its signed-in browser session. Device tokens and
-the internal runner cannot call them; sync responses are marked `no-store`.
+Incognito history, local-only projects, records kept on this device, credentials, app-lock
+information, caches and indexes are excluded. Repositories, absolute paths, installations and
+folder/command/network permissions remain specific to each machine. Portable preferences
+use the allowlist in `data/sync.json`. Opening received history grants no new access.
 
-Private/incognito content, local-only projects, device-kept records, machine folder/network/command
-grants and credentials are excluded. An indexed folder document is not an uploaded file. A pending
-file must have an eligible conversation or knowledge relationship before it can replicate. Merely
-opening a synced session cannot grant local file access or execute its historical run.
+## Status and conflicts
 
-## Keys and recovery
+Settings shows the last successful cycle, pending changes, verified file progress, devices,
+errors and records waiting for their dependencies or execution owner. The worker runs without
+an open conversation or browser tab. It debounces local changes for one second, polls every
+five seconds and backs off failed connections to sixty seconds. Update both sides when versions
+differ. Authentication or malformed-data failures pause transfers and preserve pending work.
 
-The approved native dependencies are `chacha20poly1305 = 0.11.0` and `ed25519-dalek = 3.0.0`.
-They encrypt packet bodies with fresh nonces and sign authenticated metadata/ciphertext per device.
-The already-bundled `zeroize` crate clears owned key material where its wrappers are used.
-Metadata exposes protocol/schema, workspace/user/dataset IDs, epoch, device/event IDs, sequence,
-logical clock and encrypted sizes. Names, entity contents and file hashes stay inside encryption.
+Concurrent facts and decisions stay out of model context until **Review conflicts** selects
+a version. Both texts, rationale, alternatives and provenance are shown. Resolution creates a
+new replicated revision while preserving current privacy and scope. Ordinary losing revisions
+are kept thirty days; unresolved conflicts remain until resolved.
 
-Each epoch key is a separate OS secret-store entry, avoiding Windows credential-size limits.
-Ordinary settings, backups/exports and replication tables contain no plaintext sync keys or provider
-credentials. A separate random recovery code encrypts the recovery bundle, including the host's
-signing identity and roster. Preserving the identity allows outstanding changes and historical
-signatures to survive recovery. The code can be displayed only by an explicit action on HULK.
+## Pause, disable and delete
 
-The encrypted bundle lives in the app data folder at `sync/recovery.json`; keep it with the
-encrypted sync store and keep its code separately. Recovery requires signing in on HULK and
-supplying the current code. It cannot substitute for the separate SQLCipher database recovery
-key. Without surviving keys or the current recovery code/bundle, old ciphertext is unrecoverable.
+**Pause** temporarily stops transfers. **Resume** retries after the underlying issue is fixed.
+**Disable sync** preserves local data and the sync identity, and stops transfers. It does not
+delete other copies. Later local changes remain pending until explicit re-enrollment.
 
-If recovery fails while changing the key store or database, sync stays paused and pending changes
-remain available; retry recovery after correcting the storage problem. A desktop refuses older or
-inconsistent HULK keys rather than overwriting its surviving keys. Revocation cannot erase copies
-that were already downloaded. Sync and backup remain separate.
+**Your data → Delete everything** explicitly propagates deletion of synced content to enrolled
+replicas when they reconnect. If transfers are paused or disabled, explicitly resume/re-enable
+sync to send the deletion. Conversation/message deletion keeps the existing eight-second undo
+window. Permanent content-free markers prevent old devices from restoring deleted content.
+Privacy withdrawal removes remote copies while retaining the source's private local copy.
+Completed imported runs are read-only; active runs and schedules keep their execution owner.
+Deletion waits for that owner's existing controls when necessary.
 
-## Native transport and worker
+Sync deletion does not erase backups or copies already downloaded by revoked devices. Backups
+retain their independent policy; sync is not a backup.
 
-The desktop and HULK each run one leased worker after the database opens; tabs and chats do
-not own it. SQLite triggers capture writes, including browser/runner writes on HULK. The worker
-seeds eligible pre-enrollment rows, debounces changes for one second (bounded during continuous
-writes), polls every five seconds, and retries network/storage failures exponentially up to sixty
-seconds. Pause stops subsequent transfers; an already-sent request can finish. Sync now bypasses
-the retry delay. Incompatible builds, failed authentication and malformed packets pause with the
-pending outbox intact. A database lease renews during slow operations and expires after a crash.
+## Recovery and revocation
 
-Native authenticated `/api/sync/{keys,push,pull,ack,blob-put,blob-get}` interfaces accept typed
-versioned records, never remote SQL. Browser cookies and runner tokens cannot use these routes.
-Every received packet is verified before a page and its cursor commit together. Acknowledgements
-follow that commit; replaying a page or a push is harmless. Reusing an event ID for different
-content is refused. The relay stores signed ciphertext and opaque encrypted chunks; public
-headers contain no entity names or filenames. Record application follows in step 5, file manifests
-and retention in step 6, and management/revocation controls in step 7. Intermediate builds expose
-no setup UI; transport acceptance alone does not mean records have been merged.
+In HULK's signed-in **Settings → Sync**, explicitly show and securely store the separate sync
+recovery code. The code and encrypted `data_dir/sync/recovery.json` bundle are both required
+when the surviving sync keys are lost. HULK authentication is also required. The code alone
+cannot enroll a desktop, and it does not unlock the separate SQLCipher database. Without
+surviving keys or the current recovery code and bundle, encrypted sync data cannot be recovered.
+Use **Recover sync** on HULK; desktop recovery/revocation controls link to that signed-in page.
 
-## Merge and review
+Revoke a desktop in HULK's Sync device list or existing Devices list. Its bearer token is blocked
+immediately, its sync membership is revoked, and encryption and recovery material rotate.
+Save the new recovery code. Active offline devices receive current keys after authenticated
+reconnect and re-encrypt pending transfers. Revocation cannot erase their previously downloaded
+copies. An interrupted rotation keeps transfers blocked; **Finish device revocation** safely
+retries it before sync can resume. Recovery cannot downgrade a completed encryption epoch or
+undo a recorded revocation.
 
-Causal vectors distinguish later edits from edits made independently while offline. Later edits
-win regardless of wall-clock skew. Concurrent ordinary edits use logical clock, device ID and
-event ID in that order; the losing revision remains in encrypted revision history. Unresolved
-fact/decision conflicts retain both complete versions and provenance. Active memory/context
-queries exclude that record until an explicit review resolution creates another replicated
-revision. Changing an expiry or making an ordinary edit does not dismiss the review.
+Deployment, update and benchmark instructions are completed in M11's release step. Building
+the milestone does not deploy HULK, change production data or enable any existing installation.
 
-Concurrent provider rules choose deny over allow. Project restrictions combine conservatively;
-when that combination differs from the selected edit, the worker captures a new causal revision
-containing the restrictive result. It never changes the body of an already accepted event.
-Natural-key collisions select a deterministic canonical ID and preserve earlier IDs as durable
-aliases. Artifact version UUIDs identify versions; displayed numbers follow deterministic
-ordering, so equal counters from offline edits preserve both versions. UI selection keeps UUIDs
-as new versions arrive. Request-log IDs deduplicate costs without changing integer amounts or
-original desktop/web/runner attribution. A schedule ID can preserve attribution without copying
-the schedule or its execution state.
+## Protocol and storage
 
-Missing parents remain staged with a reason. Complete dependency components, including circular
-thread/message references, apply in one transaction with foreign keys checked at commit. Failed
-batches restore both application data and incoming-capture suppression. Replicated terminal run
-history is read-only: Continue and Undo are refused before any execution/folder path is selected.
-No execution queue, approval, schedule, repository root or machine grant is created. Legacy
-completed project runs without a conversation are included when their project is eligible.
-File installation, privacy withdrawal and final deletion processing follow in step 6; their
-staged records remain pending in this intermediate build. The setup UI arrives in step 7.
+Encryption and signing stay in Rust: pinned `chacha20poly1305 = 0.11.0` supplies
+XChaCha20-Poly1305 with fresh nonces, and `ed25519-dalek = 3.0.0` supplies strict per-device
+signature verification. Owned key material uses the bundled zeroize interfaces. Each epoch key
+occupies a separate secret-store entry, including on Windows. Ordinary UI replies contain
+status, counts and public identities, never encryption or signing keys. Native enrollment uses
+verified HTTPS, refuses redirects and requires matching schema/protocol versions. Browser
+cookies and internal runner tokens cannot obtain native enrollment keys. Responses are `no-store`.
+
+Authenticated `/api/sync/{keys,push,pull,ack,blob-put,blob-get,blob-probe,blob-release}` routes
+exchange typed records. Event IDs, originating device/sequence, protocol/schema, dataset,
+workspace/user, logical clock, epoch, encrypted sizes and traffic timing are visible metadata;
+record contents, entity names, filenames, paths and plaintext hashes remain inside ciphertext.
+HULK's participating database and local replication bookkeeping use SQLCipher. The database
+file itself is never replicated.
+
+Each installation has a durable worker lease, renewed during long operations. Inbox bodies
+and their cursor commit before acknowledgement. Stable event IDs and content-free digests
+make retries harmless, including after payload cleanup; reusing an ID for another body fails.
+Complete dependency batches, including circular thread/message references, commit together.
+Missing parents remain staged rather than silently dropped. Optional private/deleted provenance
+is explicitly marked unavailable. Sync never creates a machine grant or execution queue.
+
+Causal vectors distinguish later edits from independent offline edits. Ordinary concurrency
+uses logical clock, device ID and event ID, retaining the loser. Provider rules and project
+policies merge restrictively. Natural-key collisions keep durable identity aliases. Artifact
+version UUIDs remain authoritative and displayed ordinals follow deterministic ordering.
+Request IDs deduplicate costs while retaining integer micro-dollar amounts and original
+surface attribution. Schedules retain ownership and attribution without being replicated.
+
+App-managed files use authenticated encrypted 1 MiB chunks, resumable progress and complete-file
+hash verification before atomic installation at a locally generated path. Existing limits are
+50 MiB per file and 64 MiB per structured sync record. Shared references protect bytes;
+abandoned incomplete uploads expire after one hour unless renewed. Names and hashes occur only
+inside encrypted manifests. Repository and indexed-folder contents are not uploaded by sync.

@@ -1,6 +1,7 @@
 //! Opt-in native sync. HULK is a trusted participant, not a blind relay.
 pub mod attachments;
 pub mod crypto;
+pub mod management;
 pub mod merge;
 pub mod privacy;
 pub mod retention;
@@ -190,6 +191,11 @@ pub struct Status {
     pub last_success_at: Option<i64>,
     pub error: Option<String>,
     pub devices: Vec<Device>,
+    pub rotation_pending: bool,
+    pub conflicts: i64,
+    pub blocked: Vec<String>,
+    pub file_bytes: i64,
+    pub file_bytes_done: i64,
 }
 
 pub async fn status(ctx: &Ctx) -> Result<Status, String> {
@@ -207,6 +213,11 @@ pub async fn status(ctx: &Ctx) -> Result<Status, String> {
         last_success_at: state.get("last_success_at"),
         error: state.get("error"),
         devices: devices(ctx).await?,
+        rotation_pending:state.get::<i64,_>("rotation_pending")==1,
+        conflicts:sqlx::query_scalar("SELECT COUNT(*) FROM sync_conflicts WHERE workspace_id=? AND resolved_at IS NULL").bind(WORKSPACE).fetch_one(&pool).await.map_err(fail)?,
+        blocked:sqlx::query_scalar("SELECT DISTINCT blocked FROM sync_inbox WHERE workspace_id=? AND applied=0 AND blocked IS NOT NULL ORDER BY blocked").bind(WORKSPACE).fetch_all(&pool).await.map_err(fail)?,
+        file_bytes:sqlx::query_scalar("SELECT COALESCE(SUM(total_bytes),0) FROM sync_transfers t WHERE workspace_id=? AND (EXISTS(SELECT 1 FROM sync_outbox o WHERE o.id=t.event_id) OR EXISTS(SELECT 1 FROM sync_inbox i WHERE i.id=t.event_id AND i.applied=0))").bind(WORKSPACE).fetch_one(&pool).await.map_err(fail)?,
+        file_bytes_done:sqlx::query_scalar("SELECT COALESCE(SUM(bytes_done),0) FROM sync_transfers t WHERE workspace_id=? AND (EXISTS(SELECT 1 FROM sync_outbox o WHERE o.id=t.event_id) OR EXISTS(SELECT 1 FROM sync_inbox i WHERE i.id=t.event_id AND i.applied=0))").bind(WORKSPACE).fetch_one(&pool).await.map_err(fail)?,
     })
 }
 
@@ -352,6 +363,9 @@ pub async fn setup(ctx: &Ctx, confirmed: bool) -> Result<Status, String> {
     }
     let _lock = ctx.sync.administration.lock().await;
     db::db_open(ctx).await?;
+    if status(ctx).await?.rotation_pending {
+        return Err("Finish device revocation before enabling sync.".into());
+    }
     if load_keys(ctx.keys.store.as_ref())?.is_none() {
         let epoch = crypto::hex(&crypto::random::<32>()?);
         let keys = KeySet {
@@ -462,6 +476,9 @@ pub async fn recover(ctx: &Ctx, code: String) -> Result<Status, String> {
     for device in &contents.devices {
         crypto::verifying(&device.public_key)?;
     }
+    if contents.keys.epoch < status(ctx).await?.epoch as u64 {
+        return Err("This recovery bundle predates device revocation. Use the current recovery bundle and code.".into());
+    }
     let pool = ctx.db.pool()?;
     db::execute(&pool,"UPDATE sync_state SET paused=1,error='Sync recovery did not finish. Retry recovery before syncing.' WHERE workspace_id=?",&[json!(WORKSPACE)]).await?;
     save_keys(ctx.keys.store.as_ref(), &contents.keys)?;
@@ -470,9 +487,9 @@ pub async fn recover(ctx: &Ctx, code: String) -> Result<Status, String> {
     let stamp = now();
     let mut statements = Vec::new();
     for device in contents.devices {
-        statements.push(db::Statement {sql:"INSERT INTO sync_devices (id,workspace_id,user_id,name,public_key,auth_id,revoked_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET public_key=excluded.public_key,auth_id=excluded.auth_id,revoked_at=excluded.revoked_at".into(),params:vec![json!(device.id),json!(WORKSPACE),json!(USER),json!(device.name),json!(device.public_key),json!(device.auth_id),json!(device.revoked_at),json!(stamp),json!(stamp)]});
+        statements.push(db::Statement {sql:"INSERT INTO sync_devices (id,workspace_id,user_id,name,public_key,auth_id,revoked_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET public_key=excluded.public_key,auth_id=excluded.auth_id,revoked_at=COALESCE(sync_devices.revoked_at,excluded.revoked_at)".into(),params:vec![json!(device.id),json!(WORKSPACE),json!(USER),json!(device.name),json!(device.public_key),json!(device.auth_id),json!(device.revoked_at),json!(stamp),json!(stamp)]});
     }
-    statements.push(db::Statement {sql:"UPDATE sync_state SET enabled=1,paused=0,epoch=?,device_id=?,error=NULL WHERE workspace_id=?".into(),params:vec![json!(contents.keys.epoch),json!(contents.device_id),json!(WORKSPACE)]});
+    statements.push(db::Statement {sql:"UPDATE sync_state SET enabled=1,paused=rotation_pending,epoch=?,device_id=?,error=CASE WHEN rotation_pending=1 THEN 'Finish pending device revocation.' ELSE NULL END WHERE workspace_id=?".into(),params:vec![json!(contents.keys.epoch),json!(contents.device_id),json!(WORKSPACE)]});
     db::batch(&pool, &statements).await?;
     status(ctx).await
 }
@@ -641,6 +658,19 @@ pub async fn enroll(ctx: &Ctx, name: String, confirmed: bool) -> Result<Status, 
 pub mod commands {
     use super::*;
     use tauri::State;
+    #[tauri::command]
+    pub async fn sync_finish_rotation(ctx: State<'_, Ctx>) -> Result<Status, String> {
+        management::finish_rotation(&ctx).await?;
+        status(&ctx).await
+    }
+    #[tauri::command]
+    pub async fn sync_disable(ctx: State<'_, Ctx>) -> Result<Status, String> {
+        management::disable(&ctx).await
+    }
+    #[tauri::command]
+    pub async fn sync_conflicts(ctx: State<'_, Ctx>) -> Result<Vec<management::Conflict>, String> {
+        management::conflicts(&ctx).await
+    }
     #[tauri::command]
     pub async fn sync_resolve(
         ctx: State<'_, Ctx>,

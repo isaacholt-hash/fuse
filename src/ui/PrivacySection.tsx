@@ -15,7 +15,11 @@ const selectClass = "h-8 rounded-lg border border-input bg-background px-2 text-
 export function PrivacySection({
   providers,
   onProvider,
+  syncEnabled = false,
+  web = false,
 }: {
+  syncEnabled?: boolean;
+  web?: boolean;
   providers: GlobalProviderRule[];
   onProvider: (provider: GlobalProviderRule["id"], allow: boolean) => void;
 }) {
@@ -27,9 +31,15 @@ export function PrivacySection({
       </div>
       <div className="space-y-2 text-[11px] leading-5 text-muted-foreground">
         <p>
-          <span className="font-medium text-foreground">Stored on this computer.</span> Your chats,
-          memories, decisions, tasks, projects and files live in an encrypted database here, and
-          your API keys in the OS keychain. Nothing is synced anywhere.
+          <span className="font-medium text-foreground">
+            {web ? "Stored on HULK." : "Stored on this computer."}
+          </span>{" "}
+          Your chats, memories, decisions, tasks, projects and files live in an encrypted database{" "}
+          {web ? "on HULK" : "here"}. Credentials stay in{" "}
+          {web ? "HULK’s secret store" : "the OS keychain"}.{" "}
+          {syncEnabled
+            ? "Eligible content syncs with enrolled devices; HULK is a trusted participant that can read it. Private content and machine permissions remain excluded."
+            : "Nothing is synced anywhere."}
         </p>
         <p>
           <span className="font-medium text-foreground">

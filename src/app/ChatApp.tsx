@@ -1,3 +1,6 @@
+import type { SyncApi } from "@/sync/api";
+import { useSync } from "@/sync/useSync";
+import { SyncSection } from "@/ui/SyncSection";
 // The chat screen: Astra's presentational components (src/ui) wired to storage, keys and the chat
 // engine. All state that matters lives in SQLite; this holds only what's on screen.
 import { allowNetwork, disallowNetwork, networkFolders } from "@/storage/network";
@@ -543,6 +546,8 @@ import {
 } from "./viewModels";
 
 export interface ChatAppProps {
+  syncApi?: SyncApi;
+  onSyncRevoke?: (authId: string) => Promise<void>;
   db: SqlDb;
   tenant: Tenant;
   catalog: Catalog;
@@ -771,6 +776,8 @@ function localModelView(
 }
 
 export function ChatApp({
+  syncApi,
+  onSyncRevoke,
   db,
   tenant,
   catalog: shippedCatalog,
@@ -1181,7 +1188,7 @@ export function ChatApp({
   // this, a message sent before the pin was saved and read back went out on the old mode.
   const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
   const [view, setView] = useState<"chat" | "settings" | "usage" | "scheduled">(
-    import.meta.env.VITE_FUSE_VIEW === "settings"
+    window.location.hash === "#sync" || import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
       : import.meta.env.VITE_FUSE_VIEW === "usage"
         ? "usage"
@@ -1471,6 +1478,52 @@ export function ChatApp({
     },
     [loadThread, repoApi, db, tenant],
   );
+
+  const syncReceived = useCallback(async () => {
+    await Promise.all([
+      refreshThreads(),
+      refreshProjects(),
+      refreshMemory(),
+      getMemorySettings(db, tenant).then(setMemorySettingsState),
+      getNotificationSettings(db, tenant).then(setNotif),
+      listBudgets(db, tenant).then(setBudgets),
+      listPrompts(db, tenant).then(setPrompts),
+      getGlobalInstructions(db, tenant).then(setGlobal),
+      getSetting(db, tenant, DEFAULTS_SETTING).then((raw) => {
+        setModelDefaults(parseDefaults(raw));
+      }),
+      getSetting(db, tenant, CAPS_SETTING).then((raw) => {
+        setCaps(parseCaps(raw));
+      }),
+      getSetting(db, tenant, POLICY_SETTING).then(setSavedPolicy),
+      getSetting(db, tenant, PROJECT_RULES_SETTING).then(setProjectRulesRaw),
+      getSetting(db, tenant, MODEL_CHECK_SETTING).then((raw) => {
+        setModelCheck(parseModelCheck(raw));
+      }),
+      getSetting(db, tenant, OVERRIDES_SETTING).then((raw) => {
+        setOverrides(parseJsonList<Override>(raw));
+      }),
+      getSetting(db, tenant, DISMISSED_SETTING).then((raw) => {
+        setDismissedSuggestions(parseJsonList<string>(raw));
+      }),
+      getSetting(db, tenant, FETCHED_SETTING).then(setFetchedPrices),
+      getSetting(db, tenant, EDITS_SETTING).then((raw) => {
+        setPriceEdits(parseEdits(raw));
+      }),
+      getSetting(db, tenant, CUSTOM_MODELS_SETTING).then((raw) => {
+        setCustomModels(parseCustomModels(raw));
+      }),
+    ]);
+    const id = selectedRef.current;
+    if (id && controllers.current.size === 0) {
+      const active = await db.select<{ n: number }>(
+        "SELECT COUNT(*) AS n FROM runs WHERE thread_id=? AND status IN ('running','paused')",
+        [id],
+      );
+      if (active[0]?.n === 0) await reload(id);
+    }
+  }, [db, tenant, refreshThreads, refreshProjects, refreshMemory, reload]);
+  const syncState = useSync(syncApi, syncReceived);
 
   useEffect(() => {
     // Incognito chats left by a crash or a forced close go before anything is listed.
@@ -5097,6 +5150,21 @@ export function ChatApp({
                     ),
                   }
                 : {})}
+              {...(syncApi
+                ? {
+                    sync: (
+                      <SyncSection
+                        api={syncApi}
+                        status={syncState.status}
+                        error={syncState.error}
+                        paired={hulkStatus?.paired ?? false}
+                        address={hulkStatus?.address ?? null}
+                        onRefresh={syncState.refresh}
+                        {...(onSyncRevoke ? { onRevoke: onSyncRevoke } : {})}
+                      />
+                    ),
+                  }
+                : {})}
               keys={keys.keys}
               version={appUpdate.version}
               onCheckUpdates={async () => {
@@ -5249,6 +5317,8 @@ export function ChatApp({
               }
               privacy={
                 <PrivacySection
+                  syncEnabled={syncState.status?.enabled ?? false}
+                  web={webApp}
                   providers={(["anthropic", "openai"] as const).map((id) => ({
                     id,
                     name: providerName(id),
@@ -5267,6 +5337,7 @@ export function ChatApp({
               data={
                 exporter && (
                   <DataSection
+                    syncEnrolled={(syncState.status?.epoch ?? 0) > 0}
                     {...(backups ? { backups } : {})}
                     {...(storageApi ? { storage: storageApi } : {})}
                     {...(webApp ? { backupRestoreReason: WEB_REASONS.restore } : {})}

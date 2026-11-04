@@ -47,6 +47,9 @@ pub const WEB_COMMANDS: &[&str] = &[
     "db_execute",
     "db_batch",
     "sync_status",
+    "sync_disable",
+    "sync_finish_rotation",
+    "sync_conflicts",
     "sync_preview",
     "sync_setup",
     "sync_recovery_code",
@@ -210,6 +213,14 @@ pub async fn dispatch(
     };
     match name {
         "sync_status" => json(crate::sync::status(ctx).await),
+        "sync_disable" => json(crate::sync::management::disable(ctx).await),
+        "sync_finish_rotation" => {
+            crate::sync::management::finish_rotation(ctx)
+                .await
+                .map_err(Value::String)?;
+            json(crate::sync::status(ctx).await)
+        }
+        "sync_conflicts" => json(crate::sync::management::conflicts(ctx).await),
         "sync_resolve" => {
             args!(name,args,id:String,choice:String);
             json(crate::sync::merge::resolve(ctx, id, choice).await)
@@ -503,6 +514,9 @@ mod tests {
     const NO_ARGS: &[&str] = &[
         "sync_now",
         "sync_status",
+        "sync_disable",
+        "sync_finish_rotation",
+        "sync_conflicts",
         "sync_preview",
         "sync_recovery_code",
         "file_wipe",
@@ -628,10 +642,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 86 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 89 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            86
+            89
         );
     }
 

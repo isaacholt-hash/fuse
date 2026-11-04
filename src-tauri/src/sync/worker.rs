@@ -53,7 +53,7 @@ pub fn start(ctx: &Ctx) -> Result<(), String> {
 
 pub(crate) async fn active(ctx: &Ctx) -> Result<bool, Fault> {
     let enabled: i64 = sqlx::query_scalar(
-        "SELECT enabled=1 AND paused=0 FROM sync_state WHERE workspace_id=? AND user_id=?",
+        "SELECT enabled=1 AND paused=0 AND rotation_pending=0 FROM sync_state WHERE workspace_id=? AND user_id=?",
     )
     .bind(WORKSPACE)
     .bind(USER)
@@ -634,6 +634,9 @@ async fn run(ctx: Ctx) {
 }
 
 pub async fn pause(ctx: &Ctx, paused: bool) -> Result<super::Status, String> {
+    if !paused && super::status(ctx).await?.rotation_pending {
+        return Err("Finish device revocation before resuming sync.".into());
+    }
     db::db_open(ctx).await?;
     db::execute(
         &ctx.db.pool()?,

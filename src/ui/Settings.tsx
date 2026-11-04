@@ -241,6 +241,7 @@ export function SettingsView({
   appLock,
   importer,
   privacy,
+  sync,
   agent,
   theme,
   onTheme,
@@ -258,6 +259,7 @@ export function SettingsView({
   hulk,
 }: {
   /** Settings → HULK: pairing this desktop with FUSE on HULK (desktop only, M10 step 7). */
+  sync?: ReactNode;
   hulk?: ReactNode;
   /** PL-02: the web app on HULK; desktop-only settings are greyed with their reason. */
   web?: boolean;
@@ -365,6 +367,7 @@ export function SettingsView({
               : "Keys are stored in your OS keychain and never leave this device except to call the provider."}
           </p>
         </div>
+        {sync}
         {privacy}
         {instructions}
         {memory}

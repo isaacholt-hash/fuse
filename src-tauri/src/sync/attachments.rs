@@ -157,6 +157,9 @@ async fn bytes_progress(
     let keys = super::load_keys(ctx.keys.store.as_ref())?.ok_or("Sync keys are missing.")?;
     let mut bytes = Zeroizing::new(Vec::with_capacity(manifest.size));
     for (index, chunk) in manifest.chunks.iter().enumerate() {
+        if !worker::active(ctx).await? {
+            return Err(Fault::Idle);
+        }
         let envelope = fetch(ctx, &chunk.id).await?;
         if envelope.header.event_id != format!("blob:{}", chunk.id) || envelope.header.seq != 0 {
             return Err("An encrypted chunk belongs to another transfer.".into());
@@ -443,6 +446,9 @@ pub async fn receive(ctx: &Ctx, event: &Change) -> Result<bool, Fault> {
             }
             let current = super::privacy::live(ctx, event).await?;
             if current.present && (!current.eligible || !current.ready) {
+                return Err(Fault::Idle);
+            }
+            if !worker::active(ctx).await? {
                 return Err(Fault::Idle);
             }
             let stored = files::put(&ctx.data_dir, &data)?;

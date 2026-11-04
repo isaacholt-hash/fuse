@@ -318,11 +318,13 @@ function Restore({ api }: { api: RestoreApi }) {
 export function DataSection({
   onExport,
   onDeleteAll,
+  syncEnrolled = false,
   backups,
   storage,
   restore,
   backupRestoreReason,
 }: {
+  syncEnrolled?: boolean;
   /** M10 step 20: sizes by part, with clean-ups. */
   storage?: StorageApi;
   restore?: RestoreApi;
@@ -411,7 +413,11 @@ export function DataSection({
               if (!deleting) setConfirming(open);
             }}
             title="Delete everything?"
-            description="Every chat, memory, project, artifact, budget, usage record and attached file on this computer is deleted for good. Export first if you might want any of it."
+            description={
+              syncEnrolled
+                ? "Delete this installation’s data and propagate deletion of synced content across enrolled replicas when they reconnect. Paused or disabled sync must be explicitly resumed or re-enabled to send the deletion. This does not erase backups or copies on revoked devices. Export first if needed."
+                : "Every chat, memory, project, artifact, budget, usage record and attached file on this computer is deleted for good. Export first if you might want any of it."
+            }
           >
             <label className="mb-1.5 block text-xs">
               Type <span className="font-mono font-medium">{DELETE_PHRASE}</span> to confirm
