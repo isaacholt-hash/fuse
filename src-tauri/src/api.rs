@@ -51,6 +51,8 @@ pub const WEB_COMMANDS: &[&str] = &[
     "sync_setup",
     "sync_recovery_code",
     "sync_recover",
+    "sync_pause",
+    "sync_now",
     "db_select",
     "repo_check",
     "repo_list",
@@ -207,6 +209,11 @@ pub async fn dispatch(
     };
     match name {
         "sync_status" => json(crate::sync::status(ctx).await),
+        "sync_now" => json(crate::sync::worker::now(ctx).await),
+        "sync_pause" => {
+            args!(name,args,paused:bool);
+            json(crate::sync::worker::pause(ctx, paused).await)
+        }
         "sync_preview" => json(crate::sync::preview(ctx).await),
         "sync_setup" => {
             args!(name,args,confirmed:bool);
@@ -489,6 +496,7 @@ mod tests {
 
     /// Commands the frontend calls with no arguments: `{}` is all they take, so they run.
     const NO_ARGS: &[&str] = &[
+        "sync_now",
         "sync_status",
         "sync_preview",
         "sync_recovery_code",
@@ -615,10 +623,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 83 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 85 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            83
+            85
         );
     }
 

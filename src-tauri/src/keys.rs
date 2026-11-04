@@ -265,8 +265,9 @@ pub fn delete_key(store: &dyn SecretStore, provider: Provider) -> Result<KeyStat
 }
 
 /// Shared state for the Tauri commands.
+#[derive(Clone)]
 pub struct Keys {
-    pub store: Box<dyn SecretStore>,
+    pub store: std::sync::Arc<dyn SecretStore>,
     pub client: reqwest::Client,
 }
 
@@ -274,7 +275,7 @@ impl Keys {
     /// Keys kept in `store`: the OS keychain on the desktop, the server's own store there.
     pub(crate) fn with_store(store: Box<dyn SecretStore>) -> Self {
         Keys {
-            store,
+            store: std::sync::Arc::from(store),
             client: reqwest::Client::new(),
         }
     }

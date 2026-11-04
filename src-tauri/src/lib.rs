@@ -105,6 +105,8 @@ pub fn run() {
             sync::commands::sync_enroll,
             sync::commands::sync_recovery_code,
             sync::commands::sync_recover,
+            sync::commands::sync_pause,
+            sync::commands::sync_now,
             db::commands::db_select,
             repo::commands::repo_pick,
             repo::commands::repo_check,

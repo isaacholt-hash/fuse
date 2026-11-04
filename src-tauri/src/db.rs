@@ -321,6 +321,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "sync_tracking",
         sql: include_str!("../migrations/0057_sync_tracking.sql"),
     },
+    MigrationFile {
+        version: 58,
+        description: "sync_transport",
+        sql: include_str!("../migrations/0058_sync_transport.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
@@ -720,6 +725,12 @@ pub struct Database {
 }
 
 impl Database {
+    pub(crate) fn from_pool(pool: SqlitePool) -> Self {
+        Self {
+            pool: Mutex::new(Some(pool)),
+            opening: tauri::async_runtime::Mutex::new(()),
+        }
+    }
     pub(crate) fn pool(&self) -> Result<SqlitePool, String> {
         self.pool
             .lock()
@@ -749,13 +760,23 @@ pub(crate) async fn db_open(ctx: &Ctx) -> Result<OpenStatus, String> {
     if db.pool().is_ok() {
         return Ok(OpenStatus::Ready);
     }
-    db.settle(open(&ctx.config_dir, ctx.keys.store.as_ref()).await?)
+    let status = db.settle(open(&ctx.config_dir, ctx.keys.store.as_ref()).await?)?;
+    #[cfg(not(test))]
+    if matches!(status, OpenStatus::Ready) {
+        crate::sync::worker::start(ctx)?;
+    }
+    Ok(status)
 }
 
 pub(crate) async fn db_recover(ctx: &Ctx, key: String) -> Result<OpenStatus, String> {
     let db = &ctx.db;
     let _one_at_a_time = db.opening.lock().await;
-    db.settle(recover(&ctx.config_dir, ctx.keys.store.as_ref(), &key).await?)
+    let status = db.settle(recover(&ctx.config_dir, ctx.keys.store.as_ref(), &key).await?)?;
+    #[cfg(not(test))]
+    if matches!(status, OpenStatus::Ready) {
+        crate::sync::worker::start(ctx)?;
+    }
+    Ok(status)
 }
 
 pub(crate) fn db_recovery_key(ctx: &Ctx) -> Result<String, String> {
@@ -774,6 +795,7 @@ pub(crate) async fn db_execute(
     params: Vec<Value>,
 ) -> Result<ExecuteResult, String> {
     let rows_affected = execute(&ctx.db.pool()?, &sql, &params).await?;
+    ctx.sync.wake.notify_one();
     Ok(ExecuteResult { rows_affected })
 }
 
@@ -781,7 +803,9 @@ pub(crate) async fn db_batch(
     ctx: &Ctx,
     statements: Vec<Statement>,
 ) -> Result<Vec<ExecuteResult>, String> {
-    batch(&ctx.db.pool()?, &statements).await
+    let results = batch(&ctx.db.pool()?, &statements).await?;
+    ctx.sync.wake.notify_one();
+    Ok(results)
 }
 
 pub(crate) async fn db_select(

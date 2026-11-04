@@ -597,6 +597,9 @@
     "sync_revisions",
     "sync_conflicts",
     "sync_tombstones",
-    "sync_devices"
+    "sync_devices",
+    "sync_relay",
+    "sync_receipts",
+    "sync_blobs"
   ]
 }

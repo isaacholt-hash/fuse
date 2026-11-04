@@ -47,3 +47,22 @@ If recovery fails while changing the key store or database, sync stays paused an
 remain available; retry recovery after correcting the storage problem. A desktop refuses older or
 inconsistent HULK keys rather than overwriting its surviving keys. Revocation cannot erase copies
 that were already downloaded. Sync and backup remain separate.
+
+## Native transport and worker
+
+The desktop and HULK each run one leased worker after the database opens; tabs and chats do
+not own it. SQLite triggers capture writes, including browser/runner writes on HULK. The worker
+seeds eligible pre-enrollment rows, debounces changes for one second (bounded during continuous
+writes), polls every five seconds, and retries network/storage failures exponentially up to sixty
+seconds. Pause stops subsequent transfers; an already-sent request can finish. Sync now bypasses
+the retry delay. Incompatible builds, failed authentication and malformed packets pause with the
+pending outbox intact. A database lease renews during slow operations and expires after a crash.
+
+Native authenticated `/api/sync/{keys,push,pull,ack,blob-put,blob-get}` interfaces accept typed
+versioned records, never remote SQL. Browser cookies and runner tokens cannot use these routes.
+Every received packet is verified before a page and its cursor commit together. Acknowledgements
+follow that commit; replaying a page or a push is harmless. Reusing an event ID for different
+content is refused. The relay stores signed ciphertext and opaque encrypted chunks; public
+headers contain no entity names or filenames. Record application follows in step 5, file manifests
+and retention in step 6, and management/revocation controls in step 7. Intermediate builds expose
+no setup UI; transport acceptance alone does not mean records have been merged.
