@@ -52,6 +52,7 @@ export function NotificationsSection({
 
       <label htmlFor={ids.sound} className={row}>
         <input
+          data-settings-control="notification-sound"
           id={ids.sound}
           type="checkbox"
           className={box}
@@ -63,7 +64,7 @@ export function NotificationsSection({
         Play a sound with notifications
       </label>
 
-      <fieldset className="mt-4">
+      <fieldset data-settings-control="system-notifications" className="mt-4">
         <legend className="mb-1 text-xs font-medium">System notifications</legend>
         <div className="grid gap-1.5">
           {SYSTEM_KINDS.map((k) => (
@@ -82,7 +83,7 @@ export function NotificationsSection({
         </div>
       </fieldset>
 
-      <fieldset className="mt-4">
+      <fieldset data-settings-control="notification-banners" className="mt-4">
         <legend className="mb-1 text-xs font-medium">Banners in the app</legend>
         <div className="grid gap-1.5 sm:grid-cols-2">
           {BANNER_KINDS.map((k) => (

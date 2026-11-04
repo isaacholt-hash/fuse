@@ -184,4 +184,46 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     await app.click(button("Back to Code"));
     await app.find(areas);
   });
+  test("M12: Settings search finds aliases, focuses controls and excludes private draft content", async () => {
+    await app.chord(",");
+    const search = byLabel("Search settings");
+    await step("settings-search-theme", async () => {
+      await app.type(search, "dark mode");
+      await app.find('//*[@role="option"][.//span[normalize-space()="Theme"]]');
+      await app.press("Enter");
+      await new Promise((done) => setTimeout(done, 300));
+      expect(
+        await app.run(`return Boolean(document.activeElement.closest('[aria-label="Theme"]'));`),
+      ).toBe(true);
+    });
+    await step("settings-search-hulk", async () => {
+      await app.type(search, "HULK");
+      const text = await app.text(byLabel("Settings results"));
+      expect(text).toContain("Run on HULK");
+      expect(text).toContain("Encrypted sync");
+    });
+    await app.clear(search);
+    await app.type(search, "About you");
+    await app.press("Enter");
+    await app.type(byLabel("About you"), "private-unique-sentinel-8472");
+    await app.type(search, "private-unique-sentinel-8472");
+    await app.find('//*[@role="status" and contains(.,"No settings found")]');
+    await app.press("Escape");
+    expect(await app.run(`return document.querySelector('[aria-label="About you"]').value;`)).toBe(
+      "private-unique-sentinel-8472",
+    );
+    await step("settings-search-mobile", async () => {
+      await app.resize(390, 844);
+      await app.type(search, "recovery");
+      const text = await app.text(byLabel("Settings results"));
+      expect(text).toContain("Database recovery key");
+      expect(text).toContain("Sync recovery");
+      expect(
+        await app.run("return document.documentElement.scrollWidth <= window.innerWidth;"),
+      ).toBe(true);
+    });
+    await app.press("Escape");
+    await app.resize(1280, 800);
+    await app.click(button("Back to Code"));
+  });
 });

@@ -104,6 +104,34 @@ export const SETTINGS_SECTIONS = [
         aliases: ["do not disturb", "schedule"],
         selector: '[aria-label="Quiet hours"]',
       },
+      {
+        id: "notification-sound",
+        label: "Notification sounds",
+        description: "Play a sound with notifications.",
+        aliases: ["chime", "mute", "sound"],
+        selector: '[data-settings-control="notification-sound"]',
+      },
+      {
+        id: "system-notifications",
+        label: "System notifications",
+        description: "Notifications for waiting runs, finished runs and budget alerts.",
+        aliases: ["desktop alerts"],
+        selector: '[data-settings-control="system-notifications"]',
+      },
+      {
+        id: "notification-banners",
+        label: "Banners in the app",
+        description: "Update, routing, model, price, handoff and budget banners.",
+        aliases: ["banner", "notices"],
+        selector: '[data-settings-control="notification-banners"]',
+      },
+      {
+        id: "quiet-days",
+        label: "Quiet days",
+        description: "Choose the days for quiet hours.",
+        aliases: ["weekday", "weekend"],
+        selector: '[aria-label="Quiet days"]',
+      },
     ],
   },
   {
@@ -160,6 +188,29 @@ export const SETTINGS_SECTIONS = [
     label: "Model defaults",
     description: "Output limits, reasoning effort and prompt prefix.",
     aliases: ["tokens", "reasoning", "effort"],
+    controls: [
+      {
+        id: "max-output-tokens",
+        label: "Max output tokens",
+        description: "Set the default maximum output length.",
+        aliases: ["response length", "token limit"],
+        selector: '[aria-label="Max output tokens"]',
+      },
+      {
+        id: "reasoning-effort",
+        label: "Reasoning effort",
+        description: "Choose the default reasoning effort.",
+        aliases: ["thinking", "low medium high"],
+        selector: '[aria-label="Reasoning effort"]',
+      },
+      {
+        id: "prompt-prefix",
+        label: "Prompt prefix",
+        description: "Set a prefix for model requests.",
+        aliases: ["model instructions"],
+        selector: '[aria-label="Prompt prefix"]',
+      },
+    ],
   },
   {
     id: "routing-policy",
@@ -167,6 +218,29 @@ export const SETTINGS_SECTIONS = [
     label: "Routing policy",
     description: "Model tiers, quality floor and provider preferences.",
     aliases: ["auto", "automatic", "rules", "quality"],
+    controls: [
+      {
+        id: "routing-quality-floor",
+        label: "Quality floor",
+        description: "Choose the minimum routing tier.",
+        aliases: ["routing quality", "balanced best"],
+        selector: '[aria-label="Quality floor"]',
+      },
+      {
+        id: "routing-provider-preference",
+        label: "Provider preference",
+        description: "Prefer a provider when routing.",
+        aliases: ["preferred provider", "routing provider"],
+        selector: '[aria-label="Provider preference"]',
+      },
+      {
+        id: "routing-tiers",
+        label: "Model tiers",
+        description: "Choose the models assigned to each tier.",
+        aliases: ["balanced", "best", "routing models"],
+        selector: '[aria-label="Tiers"]',
+      },
+    ],
   },
   {
     id: "local-model",
@@ -175,6 +249,16 @@ export const SETTINGS_SECTIONS = [
     description: "Install the optional on-device housekeeping helper.",
     aliases: ["offline", "download", "housekeeping"],
     availability: "desktop",
+    controls: [
+      {
+        id: "local-housekeeping",
+        label: "Local housekeeping",
+        description: "Use the installed local model for housekeeping.",
+        aliases: ["local helper", "local enabled"],
+        selector: '[data-settings-control="local-housekeeping"]',
+        availability: "desktop",
+      },
+    ],
   },
   {
     id: "instructions",
@@ -182,6 +266,22 @@ export const SETTINGS_SECTIONS = [
     label: "Custom instructions",
     description: "Instructions that apply across chats.",
     aliases: ["system prompt", "preferences", "global"],
+    controls: [
+      {
+        id: "about-you",
+        label: "About you",
+        description: "What every model should know about you.",
+        aliases: ["custom instructions", "personal context"],
+        selector: '[aria-label="About you"]',
+      },
+      {
+        id: "how-to-answer",
+        label: "How to answer",
+        description: "Set tone, length and format for replies.",
+        aliases: ["custom instructions", "writing style", "response style"],
+        selector: '[aria-label="How to answer"]',
+      },
+    ],
   },
   {
     id: "memory",
@@ -189,6 +289,22 @@ export const SETTINGS_SECTIONS = [
     label: "Memory",
     description: "Saved memories, suggestions and context limits.",
     aliases: ["remember", "forget", "facts", "context budget"],
+    controls: [
+      {
+        id: "memory-suggestions",
+        label: "Memory suggestions",
+        description: "Suggest memories when leaving a chat.",
+        aliases: ["remember automatically", "suggest memories"],
+        selector: '[data-settings-control="memory-suggestions"]',
+      },
+      {
+        id: "memory-budget",
+        label: "Memory budget per message",
+        description: "Limit tokens of memories included in each message.",
+        aliases: ["memory limit", "memory tokens", "context budget"],
+        selector: '[aria-label="Memory budget per message (tokens)"]',
+      },
+    ],
   },
   {
     id: "prompts",
@@ -203,6 +319,29 @@ export const SETTINGS_SECTIONS = [
     label: "Budgets",
     description: "Budget limits and spending alerts.",
     aliases: ["spending", "money", "monthly budget", "hard stop"],
+    controls: [
+      {
+        id: "budget-limit",
+        label: "Budget limit",
+        description: "Set a new budget limit in dollars.",
+        aliases: ["spending limit", "money"],
+        selector: '[aria-label="Budget limit in dollars"]',
+      },
+      {
+        id: "budget-period",
+        label: "Budget period",
+        description: "Choose a daily or monthly budget.",
+        aliases: ["daily budget", "monthly budget"],
+        selector: '[aria-label="Budget period"]',
+      },
+      {
+        id: "budget-hard-stop",
+        label: "Hard stop",
+        description: "Ask before sending after crossing the budget.",
+        aliases: ["hard budget limit", "stop spending"],
+        selector: '[data-settings-control="budget-hard-stop"]',
+      },
+    ],
   },
   {
     id: "key-caps",
@@ -210,6 +349,36 @@ export const SETTINGS_SECTIONS = [
     label: "Spend caps per key",
     description: "Daily and monthly caps for provider keys.",
     aliases: ["spending", "limit", "api budget"],
+    controls: [
+      {
+        id: "openai-daily-cap",
+        label: "OpenAI daily cap",
+        description: "Daily spending limit for the OpenAI key.",
+        aliases: ["openai spending", "gpt cap"],
+        selector: '[aria-label="OpenAI daily cap"]',
+      },
+      {
+        id: "openai-monthly-cap",
+        label: "OpenAI monthly cap",
+        description: "Monthly spending limit for the OpenAI key.",
+        aliases: ["openai spending", "gpt cap"],
+        selector: '[aria-label="OpenAI monthly cap"]',
+      },
+      {
+        id: "anthropic-daily-cap",
+        label: "Anthropic daily cap",
+        description: "Daily spending limit for the Anthropic key.",
+        aliases: ["claude spending", "claude cap"],
+        selector: '[aria-label="Anthropic daily cap"]',
+      },
+      {
+        id: "anthropic-monthly-cap",
+        label: "Anthropic monthly cap",
+        description: "Monthly spending limit for the Anthropic key.",
+        aliases: ["claude spending", "claude cap"],
+        selector: '[aria-label="Anthropic monthly cap"]',
+      },
+    ],
   },
   {
     id: "prices",

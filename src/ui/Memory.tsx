@@ -446,6 +446,7 @@ export function MemorySection({
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
+            data-settings-control="memory-suggestions"
             checked={suggest}
             onChange={(e) => {
               onSettings({ suggest: e.target.checked, budgetTokens });

@@ -153,6 +153,7 @@ export function BudgetsSection({
         <label className="flex h-8 items-center gap-1.5 text-[11px]">
           <input
             type="checkbox"
+            data-settings-control="budget-hard-stop"
             checked={hardStop}
             onChange={(e) => {
               setHardStop(e.target.checked);

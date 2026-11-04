@@ -188,6 +188,7 @@ export function LocalModelSection({
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
+                        data-settings-control="local-housekeeping"
                         checked={enabled}
                         onChange={(e) => {
                           onEnabled(e.target.checked);
