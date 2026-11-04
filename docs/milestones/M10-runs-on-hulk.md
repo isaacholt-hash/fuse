@@ -208,5 +208,14 @@ The release's [BANNER desktop check](https://github.com/isaacholt-hash/fuse/acti
 exposed a scripted-test isolation bug ([#278](https://github.com/isaacholt-hash/fuse/issues/278)):
 the Scheduled test inherited the host's existing HULK pairing. The closeout supplies an
 unpaired HULK fixture that rejects live operations, with a regression check proving it does
-not read or change the host's link. The release updater check passed; the handoff scenario
-also passed in that run. This repair affects the scripted test build only.
+not read or change the host's link. The handoff scenario also passed in that initial run.
+This repair affects the scripted test build only.
+
+The corrected [BANNER release check](https://github.com/isaacholt-hash/fuse/actions/runs/41834842196)
+passed all 15 desktop cases against the scripted build from
+`6879006d107d44c67ba1e637a18c2e0a8d793bd0`, the source of
+[v0.1.206](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.206).
+The updater smoke test was skipped because BANNER was locked, in both the initial and
+corrected checks; its successful workflow-step status means the skip safeguard worked,
+not that an installed-app update was exercised. The required closeout checks, fresh live
+handover and temporary-device cleanup are complete.
