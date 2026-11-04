@@ -87,6 +87,8 @@ Initial loading, reload and browser Back/Forward use the same registry. `#sync` 
 
 - Step 5: [PR #285](https://github.com/isaacholt-hash/fuse/pull/285), all CI green, 164 files / 969 tests passed. Eight Chromium click-through tests passed. Inspected native palette-to-routing screenshot: `docs/screenshots/m12/links-desktop.png`.
 
+- Step 6: [PR #286](https://github.com/isaacholt-hash/fuse/pull/286), final verification, native picker/focus/return-position fixes, screenshot matrix and release documentation. Local results and platform limits are recorded below; the PR carries the required five-job CI merge gate.
+
 ## Release verification
 
 The release step extends Windows desktop click-through coverage for draft preservation, search, direct links and unsaved instructions. Web coverage verifies aliases, keyboard focus, private-draft exclusion, invalid links, Back/Forward, and full document reloads (including legacy sync). Reload tests use an explicit browser reload and verify that the old document is gone.
