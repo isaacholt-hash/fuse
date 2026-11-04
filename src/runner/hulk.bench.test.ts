@@ -219,6 +219,7 @@ class Page {
   }
 
   readonly db: SqlDb = {
+    batch: (statements) => this.invoke("db_batch", { statements }),
     execute: (sql: string, params: SqlValue[] = []) =>
       this.invoke<{ rowsAffected: number }>("db_execute", { sql, params }),
     select: <Row>(sql: string, params: SqlValue[] = []) =>

@@ -261,6 +261,7 @@ async function loggedDb(): Promise<SqlDb> {
       }
       return r;
     },
+    batch: (statements) => slow("atomic batch", () => db.batch(statements)),
     select: async <Row>(sql: string, params?: SqlValue[]) => {
       const rows = await slow(sql, () => db.select<Row>(sql, params));
       // What a chat's reload saw: each message's role and status.

@@ -45,6 +45,7 @@ pub const WEB_COMMANDS: &[&str] = &[
     "db_recover",
     "db_recovery_key",
     "db_execute",
+    "db_batch",
     "db_select",
     "repo_check",
     "repo_list",
@@ -200,6 +201,10 @@ pub async fn dispatch(
         body.ok_or_else(|| Value::String(format!("{name}: expected raw bytes")))
     };
     match name {
+        "db_batch" => {
+            args!(name, args, statements: Vec<db::Statement>);
+            json(db::db_batch(ctx, statements).await)
+        }
         // Keys (keys.rs)
         "key_status" => {
             args!(name, args, provider: Provider);
@@ -590,10 +595,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 76 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 77 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            76
+            77
         );
     }
 

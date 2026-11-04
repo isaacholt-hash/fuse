@@ -18,7 +18,13 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What a handover may ask the server: open its database, read and write rows (the request and
 /// its chat), and see which keys it has.
-const ALLOWED: &[&str] = &["db_open", "db_select", "db_execute", "key_status"];
+const ALLOWED: &[&str] = &[
+    "db_open",
+    "db_select",
+    "db_execute",
+    "db_batch",
+    "key_status",
+];
 
 /// What a FUSE build is, for the desktop and HULK to compare (M10 F2). The schema is the count
 /// of migrations the build runs: two builds with the same count read the same tables.

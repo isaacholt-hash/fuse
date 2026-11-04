@@ -16,6 +16,7 @@ export class DbLockedError extends Error {
 }
 
 const tauriDb: SqlDb = {
+  batch: (statements) => invoke("db_batch", { statements }),
   async execute(sql, params: SqlValue[] = []) {
     return invoke<{ rowsAffected: number }>("db_execute", { sql, params });
   },

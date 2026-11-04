@@ -17,6 +17,7 @@ export function countingDb(db: SqlDb): { db: SqlDb; writes: Map<string, number> 
         return db.execute(sql, params);
       },
       select: (sql, params) => db.select(sql, params),
+      batch: (statements) => db.batch(statements),
     },
   };
 }

@@ -47,6 +47,7 @@ export const tauriHulkApi: HulkApi = {
 /** HULK's database, through the link. */
 export function hulkDb(hulk: HulkApi): SqlDb {
   return {
+    batch: (statements) => hulk.invoke("db_batch", { statements }),
     execute: (sql: string, params: SqlValue[] = []) =>
       hulk.invoke<{ rowsAffected: number }>("db_execute", { sql, params }),
     select: <Row>(sql: string, params: SqlValue[] = []) =>

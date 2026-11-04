@@ -7,7 +7,7 @@ import { createProject } from "@/storage/projects";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, listThreads } from "@/storage/threads";
 import { EXPORTED_TABLES } from "./exportAll";
-import { DELETE_ORDER, deleteAllData } from "./deleteAll";
+import { DELETE_ORDER, SYNC_KEPT_ON_DELETE, deleteAllData } from "./deleteAll";
 
 const t = DEFAULT_TENANT;
 
@@ -46,7 +46,7 @@ test("delete everything covers every table but the workspace, the user and the s
          AND name NOT LIKE '%_fts%'`,
     )
   ).map((r) => r.name);
-  const kept = ["workspaces", "users", "schema_meta"];
+  const kept: string[] = ["workspaces", "users", "schema_meta", ...SYNC_KEPT_ON_DELETE];
   expect(
     tables.filter((t) => !kept.includes(t) && !(DELETE_ORDER as readonly string[]).includes(t)),
   ).toEqual([]);
