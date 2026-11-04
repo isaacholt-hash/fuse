@@ -13,6 +13,7 @@ The usual tool, tauri-driver with Edge's msedgedriver, doesn't work: from WebVie
   - a fake saved key
   - an update that is always "ready" (9.9.9)
   - a folder picker that returns `VITE_E2E_FOLDER`
+  - an unpaired HULK fixture that refuses live access, including pairing and unpairing, so the host's existing link is never used or changed
 - Its window opens the DevTools port. A normal build never does.
 - It's a separate app, "FUSE E2E" (`com.isaacholt.fuse.e2e`), with its own data folder. It never touches FUSE's chats or settings.
 - CI checks that a release bundle never contains the test code (`fuse-e2e-scripted-build`). The tests check that the window they drive is the test build before they click anything.

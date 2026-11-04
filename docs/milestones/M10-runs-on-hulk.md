@@ -189,7 +189,7 @@ The existing 500,000 micro-dollar ($0.50) cap was retained.
 | Evidence | Value |
 | --- | --- |
 | Desktop-style workflow build | `2340a1b02dbdc4fbd176245837b19287af137e0b` |
-| Published desktop release | [v0.1.205](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.205) |
+| F4 desktop release | [v0.1.205](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.205) |
 | Activated HULK build / schema | `86ac0de` / `61` |
 | Handover request | `01a1a671-cc9a-7000-b1ba-8ec724d330df` |
 | Verified commit | [96dd4f84fc1c26bf2bd4b9cef8adf237984b2c09](https://github.com/isaacholt-hash/fuse/commit/96dd4f84fc1c26bf2bd4b9cef8adf237984b2c09) |
@@ -203,3 +203,10 @@ Isaac confirmed Done with a Pushed note and revocation of only the temporary dev
 `Live check (BANNER) 2026-11-04T12-03-56-282Z`, ID `00aca515d1816ad3`.
 This cleanup is owner-confirmed. Existing deployment, enrollment and permissions were used
 throughout; the closeout did not redeploy HULK or re-enroll existing devices.
+
+The release's [BANNER desktop check](https://github.com/isaacholt-hash/fuse/actions/runs/41825159146)
+exposed a scripted-test isolation bug ([#278](https://github.com/isaacholt-hash/fuse/issues/278)):
+the Scheduled test inherited the host's existing HULK pairing. The closeout supplies an
+unpaired HULK fixture that rejects live operations, with a regression check proving it does
+not read or change the host's link. The release updater check passed; the handoff scenario
+also passed in that run. This repair affects the scripted test build only.
