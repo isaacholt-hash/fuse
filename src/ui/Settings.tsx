@@ -14,12 +14,15 @@ import {
   Sun,
   Terminal,
   Trash2,
+  Search,
+  X,
 } from "lucide-react";
 import {
   Children,
   Fragment,
   isValidElement,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -39,6 +42,7 @@ import {
   type SettingsTargetId,
 } from "./settingsRegistry";
 import { PanelActivity, usePanelRequestGuard, usePanelLeave } from "./panelActivity";
+import { searchSettings, focusSettingsTarget } from "./settingsSearch";
 import { WEB_REASONS } from "./webReasons";
 
 function KeyResult({ state }: { state: KeyView }) {
@@ -362,9 +366,20 @@ export function SettingsView({
   const [visited, setVisited] = useState<ReadonlySet<SettingsCategoryId>>(
     () => new Set([category]),
   );
+  const [query, setQuery] = useState("");
+  const [activeResult, setActiveResult] = useState(0);
+  const [focusRequest, setFocusRequest] = useState<{ id: SettingsTargetId } | null>(() =>
+    target ? { id: target } : null,
+  );
+  const [highlight, setHighlight] = useState<{ id: SettingsTargetId } | null>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const searching = query.trim() !== "";
+  const results = useMemo(() => searchSettings(query), [query]);
   const [lastTarget, setLastTarget] = useState(target);
   if (target !== lastTarget) {
     setLastTarget(target);
+    setQuery("");
+    setFocusRequest(target ? { id: target } : null);
     const next = settingsTarget(target ?? "")?.category;
     if (next) {
       setCategory(next);
@@ -373,28 +388,54 @@ export function SettingsView({
   }
   const content = useRef<HTMLDivElement>(null);
   const navigate = (next: SettingsCategoryId) => {
+    setQuery("");
+    setActiveResult(0);
+    setFocusRequest(null);
+    setHighlight(null);
     setCategory(next);
     setVisited((current) => new Set([...current, next]));
     rememberSettingsCategory(next);
     if (content.current) content.current.scrollTop = 0;
   };
+  const openResult = (id: SettingsTargetId) => {
+    const result = settingsTarget(id);
+    if (!result) return;
+    navigate(result.category);
+    setFocusRequest({ id });
+  };
   useEffect(() => {
-    if (!target) return;
+    if (!focusRequest) return;
     const frame = requestAnimationFrame(() => {
-      const section = settingsTarget(target);
-      const el =
-        section &&
-        content.current?.querySelector<HTMLElement>(`[data-settings-section="${section.section}"]`);
-      if (el && typeof el.scrollIntoView === "function") el.scrollIntoView({ block: "start" });
+      const result = settingsTarget(focusRequest.id);
+      if (!result || !content.current) return;
+      const reduced =
+        motion === "reduce" || document.documentElement.classList.contains("reduce-motion");
+      if (focusSettingsTarget(content.current, result, reduced)) setHighlight({ id: result.id });
     });
     return () => {
       cancelAnimationFrame(frame);
     };
-  }, [target]);
+  }, [focusRequest, motion]);
+  useEffect(() => {
+    if (!highlight) return;
+    const timer = setTimeout(() => {
+      setHighlight(null);
+    }, 1800);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [highlight]);
+  useEffect(() => {
+    if (!searching) return;
+    const result = results[activeResult];
+    if (!result) return;
+    const option = content.current?.querySelector<HTMLElement>(`#settings-result-${result.id}`);
+    if (option && typeof option.scrollIntoView === "function")
+      option.scrollIntoView({ block: "nearest", behavior: "auto" });
+  }, [activeResult, results, searching]);
   const sections: Record<SettingsSectionId, ReactNode> = {
     appearance: (
       <>
-        {" "}
         <section aria-label="Appearance">
           <h2 className="text-sm font-medium">Appearance</h2>
           <div className="mt-3 grid grid-cols-3 gap-2" aria-label="Theme">
@@ -447,7 +488,6 @@ export function SettingsView({
     ),
     "api-keys": (
       <>
-        {" "}
         <div className="mt-8 mb-4 flex items-center gap-2">
           <KeyRound className="size-4 text-muted-foreground" />
           <h2 className="text-sm font-medium">API keys</h2>
@@ -505,7 +545,6 @@ export function SettingsView({
     version: version ? <VersionLine version={version} onCheck={onCheckUpdates} web={web} /> : null,
     "request-log": (
       <>
-        {" "}
         <button
           className="mt-7 flex w-full items-center gap-3 border-t pt-5 text-left"
           onClick={onShowLog}
@@ -539,6 +578,72 @@ export function SettingsView({
           Back to {area === "code" ? "Code" : "Chat"}
         </Button>
         <h1 className="text-lg font-medium">Settings</h1>
+        <div className="relative w-full min-[800px]:ml-auto min-[800px]:w-[320px]">
+          <Search
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+            aria-hidden
+          />
+          <Input
+            ref={search}
+            autoFocus
+            aria-label="Search settings"
+            placeholder="Search settings"
+            className="pr-10 pl-9"
+            value={query}
+            role="combobox"
+            aria-expanded={searching}
+            aria-controls={searching ? "settings-results" : undefined}
+            aria-autocomplete="list"
+            aria-activedescendant={
+              searching && results[activeResult]
+                ? `settings-result-${results[activeResult].id}`
+                : undefined
+            }
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveResult(0);
+              setFocusRequest(null);
+              setHighlight(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setQuery("");
+                setFocusRequest(null);
+                return;
+              }
+              if (!searching || results.length === 0) return;
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                event.preventDefault();
+                setActiveResult((index) =>
+                  event.key === "ArrowDown"
+                    ? Math.min(index + 1, results.length - 1)
+                    : Math.max(index - 1, 0),
+                );
+              } else if (event.key === "Enter") {
+                event.preventDefault();
+                const result = results[activeResult];
+                if (result) openResult(result.id);
+              }
+            }}
+          />
+          {query && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Clear settings search"
+              className="absolute top-1/2 right-1 -translate-y-1/2"
+              onClick={() => {
+                setQuery("");
+                setFocusRequest(null);
+                search.current?.focus();
+              }}
+            >
+              <X className="size-3.5" />
+            </Button>
+          )}
+        </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col min-[800px]:flex-row">
         <aside className="hidden w-[220px] shrink-0 overflow-y-auto border-r bg-paper p-3 min-[800px]:block">
@@ -547,8 +652,8 @@ export function SettingsView({
               <Button
                 key={item.id}
                 variant="ghost"
-                className={`h-auto w-full justify-start px-3 py-2 text-left text-sm whitespace-normal ${category === item.id ? "bg-accent font-medium" : "text-muted-foreground"}`}
-                aria-current={category === item.id ? "page" : undefined}
+                className={`h-auto w-full justify-start px-3 py-2 text-left text-sm whitespace-normal ${!searching && category === item.id ? "bg-accent font-medium" : "text-muted-foreground"}`}
+                aria-current={!searching && category === item.id ? "page" : undefined}
                 onClick={() => {
                   navigate(item.id);
                 }}
@@ -566,12 +671,17 @@ export function SettingsView({
             id="settings-category"
             aria-label="Settings category"
             className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-            value={category}
+            value={searching ? "" : category}
             onChange={(event) => {
               const next = SETTINGS_CATEGORIES.find((item) => item.id === event.target.value);
               if (next) navigate(next.id);
             }}
           >
+            {searching && (
+              <option value="" disabled>
+                Search results
+              </option>
+            )}
             {SETTINGS_CATEGORIES.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.label}
@@ -585,22 +695,107 @@ export function SettingsView({
         >
           <div className="mx-auto max-w-[760px]">
             <h2 className="text-xl font-medium" id="settings-category-title">
-              {selected.label}
+              {searching ? "Search results" : selected.label}
             </h2>
-            <p className="mt-1 mb-7 text-sm text-muted-foreground">{selected.description}</p>
-            {(category === "code-tools" ||
-              category === "providers-models" ||
-              category === "privacy-security") && (
-              <p className="mb-6 text-xs text-muted-foreground">
-                Project overrides stay in project settings. Run mode, cost caps, time limits and
-                tool permissions apply to the project where they are set.
-              </p>
+            <p className="mt-1 mb-7 text-sm text-muted-foreground">
+              {searching ? "Across all settings" : selected.description}
+            </p>
+            {!searching &&
+              (category === "code-tools" ||
+                category === "providers-models" ||
+                category === "privacy-security") && (
+                <p className="mb-6 text-xs text-muted-foreground">
+                  Project overrides stay in project settings. Run mode, cost caps, time limits and
+                  tool permissions apply to the project where they are set.
+                </p>
+              )}
+            {searching && (
+              <>
+                <p role="status" className="mb-3 text-xs text-muted-foreground">
+                  {results.length
+                    ? `${String(results.length)} ${results.length === 1 ? "setting" : "settings"} found`
+                    : "No settings found. Try another word."}
+                </p>
+                <div
+                  id="settings-results"
+                  role="listbox"
+                  aria-label="Settings results"
+                  className="space-y-1"
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setQuery("");
+                      setFocusRequest(null);
+                      search.current?.focus();
+                    }
+                    if (
+                      (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+                      results.length > 0
+                    ) {
+                      event.preventDefault();
+                      const next =
+                        event.key === "ArrowDown"
+                          ? Math.min(activeResult + 1, results.length - 1)
+                          : Math.max(activeResult - 1, 0);
+                      setActiveResult(next);
+                      const result = results[next];
+                      if (result)
+                        content.current
+                          ?.querySelector<HTMLElement>(`#settings-result-${result.id}`)
+                          ?.focus();
+                    }
+                  }}
+                >
+                  {results.map((result, index) => (
+                    <button
+                      key={result.id}
+                      id={`settings-result-${result.id}`}
+                      role="option"
+                      tabIndex={activeResult === index ? 0 : -1}
+                      aria-selected={activeResult === index}
+                      className={`flex w-full scroll-mt-4 flex-col gap-1 rounded-md px-3 py-3 text-left hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring ${activeResult === index ? "bg-accent" : ""}`}
+                      onMouseMove={() => {
+                        setActiveResult(index);
+                      }}
+                      onClick={() => {
+                        openResult(result.id);
+                      }}
+                    >
+                      <span className="text-sm font-medium">{result.label}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {SETTINGS_CATEGORIES.find((item) => item.id === result.category)?.label} →{" "}
+                        {result.id !== result.section && (
+                          <>
+                            {SETTINGS_SECTIONS.find((item) => item.id === result.section)?.label}{" "}
+                            →{" "}
+                          </>
+                        )}
+                        {result.label}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{result.description}</span>
+                      {web && result.availability === "desktop" && (
+                        <span className="text-xs text-muted-foreground">
+                          {result.id === "text-size"
+                            ? WEB_REASONS.textSize
+                            : "Managed in the desktop app. Open this setting for details."}
+                        </span>
+                      )}
+                      {!web && result.availability === "web" && (
+                        <span className="text-xs text-muted-foreground">
+                          Manage this in the web app on HULK.
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
             {SETTINGS_CATEGORIES.filter((item) => visited.has(item.id)).map((item) => (
-              <PanelActivity key={item.id} value={category === item.id}>
+              <PanelActivity key={item.id} value={!searching && category === item.id}>
                 <div
-                  hidden={category !== item.id}
-                  inert={category !== item.id}
+                  hidden={searching || category !== item.id}
+                  inert={searching || category !== item.id}
                   className="space-y-8"
                   aria-label={`${item.label} settings`}
                 >
@@ -609,7 +804,12 @@ export function SettingsView({
                       <div
                         key={section.id}
                         data-settings-section={section.id}
-                        className="scroll-mt-5 [&>section]:mt-0 [&>section]:border-t-0 [&>section]:pt-0"
+                        data-highlighted={
+                          highlight && settingsTarget(highlight.id)?.section === section.id
+                            ? "true"
+                            : undefined
+                        }
+                        className={`scroll-mt-5 rounded-md [&>section]:mt-0 [&>section]:border-t-0 [&>section]:pt-0 ${highlight && settingsTarget(highlight.id)?.section === section.id ? "bg-muted/50 ring-1 ring-border" : ""}`}
                       >
                         {hasSettingsContent(sections[section.id]) ? (
                           sections[section.id]

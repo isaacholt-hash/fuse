@@ -35,6 +35,7 @@ function InstructionBox({
         </span>
       </div>
       <textarea
+        aria-label={label}
         id={id}
         className={textareaClass}
         placeholder={placeholder}

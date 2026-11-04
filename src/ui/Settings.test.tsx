@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -201,4 +201,102 @@ test("a blocked write cannot restore an older category over the current in-memor
     set.mockRestore();
     await category(user, "General");
   }
+});
+
+test("search finds aliases, opens the control and keeps private drafts out of results", async () => {
+  const user = userEvent.setup();
+  render(<SettingsView {...props()} />);
+  const search = screen.getByRole("combobox", { name: "Search settings" });
+  await user.type(search, "dark mode");
+  expect(
+    within(screen.getByRole("listbox", { name: "Settings results" })).getAllByRole("option")[0],
+  ).toHaveTextContent("Theme");
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Light" })).toHaveFocus();
+  });
+  expect(search).toHaveValue("");
+  await category(user, "Personalization");
+  await user.type(screen.getByLabelText("About you"), "private-unique-sentinel-8472");
+  await user.type(search, "private-unique-sentinel-8472");
+  expect(screen.getByRole("status")).toHaveTextContent("No settings found");
+  await user.keyboard("{Escape}");
+  expect(search).toHaveFocus();
+  expect(screen.getByLabelText("About you")).toHaveValue("private-unique-sentinel-8472");
+  await user.type(search, "How to answer");
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(screen.getByLabelText("How to answer")).toHaveFocus();
+  });
+});
+
+test("keyboard arrows select results and Clear restores the panel", async () => {
+  const user = userEvent.setup();
+  render(<SettingsView {...props()} />);
+  const search = screen.getByRole("combobox", { name: "Search settings" });
+  await user.type(search, "HULK");
+  const list = within(screen.getByRole("listbox", { name: "Settings results" }));
+  const options = list.getAllByRole("option");
+  await user.keyboard("{ArrowDown}");
+  expect(options[1]).toHaveAttribute("aria-selected", "true");
+  expect(search).toHaveAttribute("aria-activedescendant", options[1]?.id);
+  for (let attempts = 0; attempts < 15 && document.activeElement !== options[1]; attempts++)
+    await user.tab();
+  expect(options[1]).toHaveFocus();
+  await user.keyboard("{ArrowDown}");
+  expect(options[2]).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "Clear settings search" }));
+  expect(search).toHaveValue("");
+  expect(screen.getByRole("region", { name: "Appearance" })).toBeVisible();
+  expect(search).toHaveFocus();
+});
+
+test("unavailable controls stay searchable, remain disabled and respect reduced motion", async () => {
+  const user = userEvent.setup();
+  const scroll = vi.fn();
+  const prior = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scroll,
+  });
+  try {
+    render(<SettingsView {...props()} web motion="reduce" />);
+    await user.type(screen.getByRole("combobox", { name: "Search settings" }), "font");
+    expect(
+      within(screen.getByRole("listbox", { name: "Settings results" })).getByText(
+        "Use your browser's zoom instead (Ctrl + and Ctrl −).",
+      ),
+    ).toBeVisible();
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(scroll).toHaveBeenCalledWith({ block: "start", behavior: "auto" });
+    });
+    const size = within(screen.getByRole("radiogroup", { name: "Text size" }));
+    for (const button of size.getAllByRole("radio")) expect(button).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Appearance" })).toHaveFocus();
+  } finally {
+    if (prior) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", prior);
+    else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+  }
+});
+
+test("beginning a search clears sensitive fields while retaining ordinary editors", async () => {
+  const user = userEvent.setup();
+  const key: KeyView = {
+    provider: "openai",
+    name: "OpenAI",
+    consoleUrl: "https://example.com",
+    saved: false,
+    masked: null,
+    busy: null,
+    result: null,
+  };
+  render(<SettingsView {...props()} keys={[key]} target="api-keys" />);
+  await user.type(screen.getByLabelText("API key"), "synthetic-test-value");
+  await user.type(
+    screen.getByRole("combobox", { name: "Search settings" }),
+    "unknown-setting-8472",
+  );
+  await user.keyboard("{Escape}");
+  expect(screen.getByLabelText("API key")).toHaveValue("");
 });
