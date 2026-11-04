@@ -300,3 +300,45 @@ test("beginning a search clears sensitive fields while retaining ordinary editor
   await user.keyboard("{Escape}");
   expect(screen.getByLabelText("API key")).toHaveValue("");
 });
+
+test("incoming routes clear search even for repeated targets and remember explicit categories", async () => {
+  const user = userEvent.setup();
+  const settingsProps = props();
+  const onNavigate = vi.fn();
+  const onPanelLeave = vi.fn();
+  const view = render(
+    <SettingsView
+      {...settingsProps}
+      target="about-you"
+      navigationKey={1}
+      onNavigate={onNavigate}
+      onPanelLeave={onPanelLeave}
+    />,
+  );
+  await waitFor(() => {
+    expect(screen.getByLabelText("About you")).toHaveFocus();
+  });
+  await user.type(screen.getByLabelText("About you"), "Keep my unsaved instructions");
+  await user.type(screen.getByRole("combobox", { name: "Search settings" }), "recovery");
+  expect(onPanelLeave).toHaveBeenCalled();
+  view.rerender(
+    <SettingsView
+      {...settingsProps}
+      target="about-you"
+      navigationKey={2}
+      onNavigate={onNavigate}
+      onPanelLeave={onPanelLeave}
+    />,
+  );
+  expect(screen.getByRole("combobox", { name: "Search settings" })).toHaveValue("");
+  await waitFor(() => {
+    expect(screen.getByLabelText("About you")).toHaveFocus();
+  });
+  expect(screen.getByLabelText("About you")).toHaveValue("Keep my unsaved instructions");
+  expect(localStorage.getItem("fuse.settings.category")).toBe("personalization");
+  await user.click(screen.getByRole("button", { name: "General" }));
+  expect(onNavigate).toHaveBeenLastCalledWith({ category: "general" });
+  await user.type(screen.getByRole("combobox", { name: "Search settings" }), "dark mode");
+  await user.keyboard("{Enter}");
+  expect(onNavigate).toHaveBeenLastCalledWith({ category: "general", target: "theme" });
+});

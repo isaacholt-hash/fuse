@@ -43,6 +43,11 @@ import {
 } from "./settingsRegistry";
 import { PanelActivity, usePanelRequestGuard, usePanelLeave } from "./panelActivity";
 import { searchSettings, focusSettingsTarget } from "./settingsSearch";
+import {
+  readSettingsCategory,
+  rememberSettingsCategory,
+  type SettingsLocation,
+} from "./settingsNavigation";
 import { WEB_REASONS } from "./webReasons";
 
 function KeyResult({ state }: { state: KeyView }) {
@@ -250,6 +255,11 @@ export function KeyCard({
 export function SettingsView({
   keys,
   target,
+  category: requestedCategory,
+  navigationKey,
+  onNavigate,
+  onPanelLeave,
+  notice,
   area = "chat",
   version,
   onCheckUpdates,
@@ -293,6 +303,11 @@ export function SettingsView({
 }: {
   /** Settings → HULK: pairing this desktop with FUSE on HULK (desktop only, M10 step 7). */
   target?: SettingsTargetId;
+  category?: SettingsCategoryId;
+  navigationKey?: number;
+  onNavigate?: (location: SettingsLocation) => void;
+  onPanelLeave?: () => void;
+  notice?: string;
   area?: "chat" | "code";
   sync?: ReactNode;
   hulk?: ReactNode;
@@ -361,7 +376,7 @@ export function SettingsView({
   onShowLog: () => void;
 }) {
   const [category, setCategory] = useState<SettingsCategoryId>(
-    () => settingsTarget(target ?? "")?.category ?? readSettingsCategory(),
+    () => settingsTarget(target ?? "")?.category ?? requestedCategory ?? readSettingsCategory(),
   );
   const [visited, setVisited] = useState<ReadonlySet<SettingsCategoryId>>(
     () => new Set([category]),
@@ -375,33 +390,44 @@ export function SettingsView({
   const search = useRef<HTMLInputElement>(null);
   const searching = query.trim() !== "";
   const results = useMemo(() => searchSettings(query), [query]);
-  const [lastTarget, setLastTarget] = useState(target);
-  if (target !== lastTarget) {
-    setLastTarget(target);
+  const [lastNavigation, setLastNavigation] = useState({
+    target,
+    requestedCategory,
+    navigationKey,
+  });
+  if (
+    target !== lastNavigation.target ||
+    requestedCategory !== lastNavigation.requestedCategory ||
+    navigationKey !== lastNavigation.navigationKey
+  ) {
+    setLastNavigation({ target, requestedCategory, navigationKey });
     setQuery("");
+    setHighlight(null);
     setFocusRequest(target ? { id: target } : null);
-    const next = settingsTarget(target ?? "")?.category;
+    const next = settingsTarget(target ?? "")?.category ?? requestedCategory;
     if (next) {
       setCategory(next);
       setVisited((current) => new Set([...current, next]));
     }
   }
+  useEffect(() => {
+    rememberSettingsCategory(category);
+  }, [category]);
   const content = useRef<HTMLDivElement>(null);
-  const navigate = (next: SettingsCategoryId) => {
+  const navigate = (next: SettingsCategoryId, id?: SettingsTargetId) => {
+    onPanelLeave?.();
     setQuery("");
     setActiveResult(0);
-    setFocusRequest(null);
+    setFocusRequest(id ? { id } : null);
     setHighlight(null);
     setCategory(next);
     setVisited((current) => new Set([...current, next]));
-    rememberSettingsCategory(next);
+    onNavigate?.(id ? { category: next, target: id } : { category: next });
     if (content.current) content.current.scrollTop = 0;
   };
   const openResult = (id: SettingsTargetId) => {
     const result = settingsTarget(id);
-    if (!result) return;
-    navigate(result.category);
-    setFocusRequest({ id });
+    if (result) navigate(result.category, id);
   };
   useEffect(() => {
     if (!focusRequest) return;
@@ -600,6 +626,7 @@ export function SettingsView({
                 : undefined
             }
             onChange={(event) => {
+              if (!searching && event.target.value.trim()) onPanelLeave?.();
               setQuery(event.target.value);
               setActiveResult(0);
               setFocusRequest(null);
@@ -694,6 +721,11 @@ export function SettingsView({
           className="min-h-0 min-w-0 flex-1 overflow-y-auto px-5 py-7 min-[800px]:px-8"
         >
           <div className="mx-auto max-w-[760px]">
+            {notice && (
+              <p role="status" className="mb-4 text-sm text-muted-foreground">
+                {notice}
+              </p>
+            )}
             <h2 className="text-xl font-medium" id="settings-category-title">
               {searching ? "Search results" : selected.label}
             </h2>
@@ -834,27 +866,6 @@ export function SettingsView({
   );
 }
 
-let lastSettingsCategory: SettingsCategoryId = "general";
-let categoryWriteFailed = false;
-function readSettingsCategory(): SettingsCategoryId {
-  if (categoryWriteFailed) return lastSettingsCategory;
-  try {
-    const stored = localStorage.getItem("fuse.settings.category");
-    const known = SETTINGS_CATEGORIES.find((item) => item.id === stored);
-    return known?.id ?? "general";
-  } catch {
-    return lastSettingsCategory;
-  }
-}
-function rememberSettingsCategory(category: SettingsCategoryId) {
-  lastSettingsCategory = category;
-  try {
-    localStorage.setItem("fuse.settings.category", category);
-    categoryWriteFailed = false;
-  } catch {
-    categoryWriteFailed = true;
-  }
-}
 function hasSettingsContent(node: ReactNode): boolean {
   return Children.toArray(node).some((child) =>
     isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment

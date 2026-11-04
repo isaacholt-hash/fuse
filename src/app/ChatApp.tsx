@@ -49,7 +49,15 @@ import {
   X,
 } from "lucide-react";
 import { Tooltip } from "radix-ui";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { WebFolderDialog } from "@/ui/WebFolder";
 import { WEB_REASONS } from "@/ui/webReasons";
 import { Button } from "@/components/ui/button";
@@ -328,8 +336,15 @@ import { EMPTY_USAGE } from "@/storage/usage";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
-import { PanelActivity } from "@/ui/panelActivity";
-import type { SettingsTargetId } from "@/ui/settingsRegistry";
+import { PanelActivity, usePanelRequestGuard } from "@/ui/panelActivity";
+import { SETTINGS_SECTIONS, SETTINGS_TARGETS, type SettingsTargetId } from "@/ui/settingsRegistry";
+import {
+  parseSettingsHash,
+  pushSettingsHistory,
+  settingsLocation,
+  type SettingsDestination,
+  type SettingsLocation,
+} from "@/ui/settingsNavigation";
 import { RequestLog, SettingsView } from "@/ui/Settings";
 import { GoldenSetSection } from "@/ui/GoldenSet";
 import { PolicyEditor } from "@/ui/PolicyEditor";
@@ -1189,34 +1204,85 @@ export function ChatApp({
   // F6: a mode just picked for a saved chat, used until the chat list has reloaded with it. Without
   // this, a message sent before the pin was saved and read back went out on the old mode.
   const [pickedMode, setPickedMode] = useState<{ threadId: string; mode: RouteMode } | null>(null);
+  const [settingsDestination, setSettingsDestination] = useState<SettingsDestination>(
+    () => parseSettingsHash(window.location.hash) ?? settingsLocation(),
+  );
+  const [settingsNavigationKey, setSettingsNavigationKey] = useState(0);
   const [view, setView] = useState<"chat" | "settings" | "usage" | "scheduled">(
-    window.location.hash === "#sync" || import.meta.env.VITE_FUSE_VIEW === "settings"
+    parseSettingsHash(window.location.hash) || import.meta.env.VITE_FUSE_VIEW === "settings"
       ? "settings"
       : import.meta.env.VITE_FUSE_VIEW === "usage"
         ? "usage"
         : "chat",
   );
   const settingsReturnFocus = useRef<HTMLElement | null>(null);
-  const [settingsTarget, setSettingsTarget] = useState<SettingsTargetId | undefined>(() =>
-    window.location.hash === "#sync" ? "sync" : undefined,
-  );
-  const openSettings = (target?: SettingsTargetId) => {
-    if (view !== "settings")
+  const settingsHistoryHash = useRef(window.location.hash);
+  const settingsPanelEpoch = useRef(0);
+  const settingsRequestGuard = usePanelRequestGuard(view === "settings");
+  const leaveSettingsPanel = () => {
+    settingsPanelEpoch.current += 1;
+    setLog(null);
+    setReviewOpen(false);
+  };
+  const navigateSettings = (destination: SettingsDestination, push = true) => {
+    if (view !== "settings") {
       settingsReturnFocus.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (view !== "settings") settingsReturnFocus.current?.blur();
-    setSettingsTarget(target);
+      settingsReturnFocus.current?.blur();
+    }
+    leaveSettingsPanel();
+    if (push) pushSettingsHistory(destination);
+    settingsHistoryHash.current = window.location.hash;
+    setSettingsDestination(destination);
+    setSettingsNavigationKey((key) => key + 1);
     setPicker(false);
     setInstructionsOpen(false);
     setView("settings");
   };
-  const closeSettings = () => {
+  const openSettings = (target?: SettingsTargetId) => {
+    navigateSettings(settingsLocation(target));
+  };
+  const returnFromSettings = () => {
+    leaveSettingsPanel();
     setView("chat");
     requestAnimationFrame(() => {
       const previous = settingsReturnFocus.current;
       if (previous?.isConnected) previous.focus();
       else document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
     });
+  };
+  const closeSettings = () => {
+    pushSettingsHistory(null);
+    settingsHistoryHash.current = window.location.hash;
+    returnFromSettings();
+  };
+  const onSettingsHistory = useEffectEvent(() => {
+    if (window.location.hash === settingsHistoryHash.current) return;
+    settingsHistoryHash.current = window.location.hash;
+    const destination = parseSettingsHash(window.location.hash);
+    if (destination) navigateSettings(destination, false);
+    else if (view === "settings") returnFromSettings();
+  });
+  useEffect(() => {
+    const onHistory = () => {
+      onSettingsHistory();
+    };
+    window.addEventListener("hashchange", onHistory);
+    window.addEventListener("popstate", onHistory);
+    return () => {
+      window.removeEventListener("hashchange", onHistory);
+      window.removeEventListener("popstate", onHistory);
+    };
+  }, []);
+  useEffect(() => {
+    // Area switches and other views also leave Settings, without leaving a stale URL behind.
+    if (view !== "settings" && parseSettingsHash(window.location.hash)) {
+      pushSettingsHistory(null);
+      settingsHistoryHash.current = window.location.hash;
+    }
+  }, [view]);
+  const navigateSettingsPanel = (location: SettingsLocation) => {
+    navigateSettings(location);
   };
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   const [picker, setPicker] = useState(false);
@@ -1226,6 +1292,14 @@ export function ChatApp({
   const [name, setName] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [log, setLog] = useState<RequestRow[] | null>(null);
+  const [previousView, setPreviousView] = useState(view);
+  if (previousView !== view) {
+    setPreviousView(view);
+    if (previousView === "settings") {
+      setLog(null);
+      setReviewOpen(false);
+    }
+  }
   const [theme, setTheme] = useTheme();
   const appearance = useAppearance(zoom);
   const controllers = useRef(new Map<string, AbortController>());
@@ -4701,13 +4775,24 @@ export function ChatApp({
     },
     {
       id: "settings",
-      group: "View",
+      group: "Settings",
       label: "Settings",
       shortcut: "Ctrl ,",
       run: () => {
         openSettings();
       },
     },
+    ...SETTINGS_SECTIONS.map((section) => ({
+      id: `settings-${section.id}`,
+      group: "Settings",
+      label: section.label,
+      keywords: SETTINGS_TARGETS.filter((target) => target.section === section.id).flatMap(
+        (target) => [target.label, target.description, ...target.aliases],
+      ),
+      run: () => {
+        openSettings(section.id);
+      },
+    })),
     { id: "usage", group: "View", label: "Usage and savings", run: openUsage },
     { id: "scheduled", group: "View", label: "Scheduled tasks", run: openScheduled },
     ...(["light", "dark", "system"] as const).map((t) => ({
@@ -5144,7 +5229,12 @@ export function ChatApp({
           {view === "settings" && (
             <SettingsView
               area={area}
-              {...(settingsTarget ? { target: settingsTarget } : {})}
+              category={settingsDestination.category}
+              {...(settingsDestination.target ? { target: settingsDestination.target } : {})}
+              {...(settingsDestination.notice ? { notice: settingsDestination.notice } : {})}
+              navigationKey={settingsNavigationKey}
+              onNavigate={navigateSettingsPanel}
+              onPanelLeave={leaveSettingsPanel}
               web={webApp}
               {...(server ? { server } : {})}
               {...(hulkLink
@@ -5264,11 +5354,18 @@ export function ChatApp({
                   <ImportPaste
                     current={globalInstructions ?? NO_INSTRUCTIONS}
                     onMemories={async (text) => {
+                      const current = settingsRequestGuard();
+                      const epoch = settingsPanelEpoch.current;
                       const known = [...memories, ...proposals].map((m) => m.text);
                       const out = memoriesFromText(text, known);
                       await addProposals(db, tenant, out.proposals);
                       await refreshMemory();
-                      if (out.proposals.length > 0) setReviewOpen(true);
+                      if (
+                        out.proposals.length > 0 &&
+                        current() &&
+                        epoch === settingsPanelEpoch.current
+                      )
+                        setReviewOpen(true);
                       const extra = [
                         out.duplicates > 0 ? `${String(out.duplicates)} already known` : "",
                         out.secrets > 0 ? `${String(out.secrets)} left out as secrets` : "",
@@ -5957,9 +6054,12 @@ export function ChatApp({
               onTestKey={keys.test}
               onDeleteKey={keys.remove}
               onShowLog={() => {
+                const current = settingsRequestGuard();
+                const epoch = settingsPanelEpoch.current;
                 listRecentRequests(db, tenant, 100).then((rows) => {
                   const now = Date.now();
-                  setLog(rows.map((r) => requestRow(r, catalog, now)));
+                  if (current() && epoch === settingsPanelEpoch.current)
+                    setLog(rows.map((r) => requestRow(r, catalog, now)));
                 }, report);
               }}
             />
@@ -6418,7 +6518,13 @@ export function ChatApp({
                         effortFor={effortForDraft}
                         onStop={stop}
                         onSettings={() => {
-                          openSettings("api-keys");
+                          openSettings(
+                            model.provider === "openai"
+                              ? "openai-key"
+                              : model.provider === "anthropic"
+                                ? "anthropic-key"
+                                : "api-keys",
+                          );
                         }}
                         attachments={pendingViews}
                         blocked={blocked}
@@ -7152,7 +7258,7 @@ export function ChatApp({
           </form>
         </Modal>
         <Modal
-          open={log !== null}
+          open={view === "settings" && log !== null}
           onOpenChange={(open) => {
             if (!open) setLog(null);
           }}

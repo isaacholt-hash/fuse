@@ -226,4 +226,50 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     await app.resize(1280, 800);
     await app.click(button("Back to Code"));
   });
+  test("M12: direct links, legacy sync, reload, history and palette open registered destinations", async () => {
+    await step("settings-direct-instructions", async () => {
+      await app.run('window.location.hash = "#settings/personalization/about-you";');
+      await app.find(byLabel("About you"));
+      await new Promise((done) => setTimeout(done, 250));
+      expect(await app.run('return document.activeElement.getAttribute("aria-label");')).toBe(
+        "About you",
+      );
+      await app.clear(byLabel("About you"));
+      await app.type(byLabel("About you"), "A direct-link draft");
+    });
+    await app.click(button("General"));
+    await app.run("window.history.back();");
+    await app.find(byLabel("About you"));
+    expect(await app.run(`return document.querySelector('[aria-label="About you"]').value;`)).toBe(
+      "A direct-link draft",
+    );
+    await app.run("window.history.forward();");
+    await app.find('//*[@aria-label="Appearance"]');
+    await step("settings-legacy-sync", async () => {
+      await app.run('window.location.hash = "#sync";');
+      await app.find('//h2[normalize-space()="Sync & devices"]');
+      await app.navigate(`${URL}#sync`);
+      await app.find('//h2[normalize-space()="Sync & devices"]');
+    });
+    await step("settings-invalid-link", async () => {
+      await app.run('window.location.hash = "#settings/unknown/private-sentinel";');
+      await app.find('//*[@role="status" and contains(.,"Showing General")]');
+      await app.find('//*[@aria-label="Appearance"]');
+    });
+    await app.click(button("Back to Code"));
+    await app.run(
+      'window.dispatchEvent(new KeyboardEvent("keydown", {key:"p", ctrlKey:true, shiftKey:true, bubbles:true}));',
+    );
+    await app.type(byLabel("Type a command or a chat"), "Routing policy");
+    await app.press("Enter");
+    await app.find('//*[@aria-label="Routing policy"]');
+    expect(await app.run("return window.location.hash;")).toBe(
+      "#settings/providers-models/routing-policy",
+    );
+    await app.run('window.location.hash = "#settings/privacy-security/database-recovery";');
+    await app.find('//h2[normalize-space()="Privacy & security"]');
+    await app.navigate(`${URL}#settings/privacy-security/database-recovery`);
+    await app.find('//h2[normalize-space()="Privacy & security"]');
+    await app.click(button("Back to Code"));
+  });
 });

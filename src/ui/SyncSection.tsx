@@ -1,5 +1,5 @@
 import { usePanelRequestGuard, usePanelLeave } from "./panelActivity";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,16 +24,6 @@ export function SyncSection({
   onRefresh: () => Promise<void>;
   onRevoke?: (authId: string) => Promise<void>;
 }) {
-  const section = useRef<HTMLElement>(null);
-  useEffect(() => {
-    if (window.location.hash !== "#sync") return;
-    const frame = requestAnimationFrame(() => {
-      section.current?.scrollIntoView({ block: "start" });
-    });
-    return () => {
-      cancelAnimationFrame(frame);
-    };
-  }, []);
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
   const [setup, setSetup] = useState(false);
@@ -74,7 +64,7 @@ export function SyncSection({
     </p>
   ) : null;
   return (
-    <section ref={section} className="mt-8 border-t pt-6" aria-label="Sync" id="sync">
+    <section className="mt-8 border-t pt-6" aria-label="Sync" id="sync">
       <h2 className="flex items-center gap-2 text-sm font-medium">
         <RefreshCw className="size-4 text-muted-foreground" />
         Sync

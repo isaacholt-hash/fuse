@@ -20,8 +20,9 @@ export function usePanelLeave(onLeave: () => void) {
 }
 
 /** A request cannot reveal material after leaving, even if its panel is reopened first. */
-export function usePanelRequestGuard() {
-  const active = usePanelActive();
+export function usePanelRequestGuard(activeOverride?: boolean) {
+  const panelActive = usePanelActive();
+  const active = activeOverride ?? panelActive;
   const lifecycle = useRef({ active, generation: 0 });
   useLayoutEffect(() => {
     lifecycle.current = { active, generation: lifecycle.current.generation + 1 };

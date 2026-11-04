@@ -11,6 +11,7 @@ export interface PaletteItem {
   group: string;
   /** Keyboard shortcut shown on the right, e.g. "Ctrl N". */
   shortcut?: string;
+  keywords?: readonly string[];
   run: () => void;
 }
 
@@ -29,7 +30,14 @@ export function CommandPalette({
   const shown = useMemo(
     () =>
       items
-        .map((item, i) => ({ item, i, score: fuzzyScore(query, `${item.group}: ${item.label}`) }))
+        .map((item, i) => ({
+          item,
+          i,
+          score: fuzzyScore(
+            query,
+            `${item.group}: ${item.label} ${item.keywords?.join(" ") ?? ""}`,
+          ),
+        }))
         .filter((x): x is { item: PaletteItem; i: number; score: number } => x.score !== null)
         .sort((a, b) => (query ? b.score - a.score : 0) || a.i - b.i)
         .slice(0, 50)
