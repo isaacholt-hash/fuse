@@ -164,8 +164,8 @@ test("2. a chat in the project offers Continue in Code for a change, and edits n
   await step("chat-change", async () => {
     await app.chord("1");
     await app.click(button(`New chat in ${PROJECT}`));
-    // Worded as a code change: the hint only follows messages routed as coding (or unsure).
-    await send("Fix the bug in greet.ts");
+    // A plain text filename must offer Code even when routing doesn't call it coding.
+    await send("Fix the typo in notes.txt");
     expect(await nextAnswer(0)).toContain(HELLO);
     await app.find(byLabel("Continue in Code"));
     // A chat reads files but never changes them: no change was asked for, and nothing moved.
@@ -190,7 +190,7 @@ test("2. a chat in the project offers Continue in Code for a change, and edits n
       `return document.querySelector('textarea[aria-label="Message"]').value;`,
     );
     expect(brief).toContain("Continuing from the chat");
-    expect(brief).toContain("Fix the bug in greet.ts");
+    expect(brief).toContain("Fix the typo in notes.txt");
   });
 });
 

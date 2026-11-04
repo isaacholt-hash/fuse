@@ -29,6 +29,12 @@ jobs:
     outputs:
       branch: ${{ steps.check.outputs.branch }}
       request: ${{ steps.check.outputs.request }}
+      file: ${{ steps.check.outputs.file }}
+      line: ${{ steps.check.outputs.line }}
+      server_build: ${{ steps.check.outputs.server_build }}
+      server_schema: ${{ steps.check.outputs.server_schema }}
+      device_name: ${{ steps.check.outputs.device_name }}
+      device_id: ${{ steps.check.outputs.device_id }}
     steps:
       - name: Hide the pairing code in the log
         shell: powershell
@@ -58,6 +64,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
       - name: Wait for the push
         env:
           BRANCH: ${{ needs.hand-over.outputs.branch }}
@@ -76,16 +83,19 @@ jobs:
       - name: Check what it pushed, then delete it
         env:
           BRANCH: ${{ needs.hand-over.outputs.branch }}
+          BASE: ${{ github.sha }}
+          EXPECTED_FILE: ${{ needs.hand-over.outputs.file }}
+          EXPECTED_LINE: ${{ needs.hand-over.outputs.line }}
+          HULK_BUILD: ${{ needs.hand-over.outputs.server_build }}
+          HULK_SCHEMA: ${{ needs.hand-over.outputs.server_schema }}
+          TEST_DEVICE_NAME: ${{ needs.hand-over.outputs.device_name }}
+          TEST_DEVICE_ID: ${{ needs.hand-over.outputs.device_id }}
+          REQUEST_ID: ${{ needs.hand-over.outputs.request }}
+          EVIDENCE_FILE: ${{ runner.temp }}/hulk-live-evidence.json
           GH_TOKEN: ${{ github.token }}
-        run: |
-          files=$(gh api "repos/${GITHUB_REPOSITORY}/compare/main...${BRANCH}" --jq '[.files[].filename] | join(" ")')
-          author=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${BRANCH}" --jq '.commit.author.name')
-          echo "Changed on $BRANCH: $files (committed by $author)"
-          gh api -X DELETE "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}"
-          echo "Deleted $BRANCH."
-          # The handover's git identity (the test's nodeGit), not HULK's: HULK has none.
-          [ "$author" = "FUSE Benchmark" ] || { echo "::error::Expected the handover's identity, got: $author"; exit 1; }
-          case "$files" in
-            live-check/*.md) echo "### Live check passed: \`$files\` pushed from HULK" >> "$GITHUB_STEP_SUMMARY" ;;
-            *) echo "::error::Expected one file under live-check/, got: $files"; exit 1 ;;
-          esac
+        run: bash scripts/check-hulk-live-branch.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: hulk-live-evidence
+          path: ${{ runner.temp }}/hulk-live-evidence.json
+          if-no-files-found: error

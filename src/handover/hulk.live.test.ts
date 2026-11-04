@@ -18,7 +18,7 @@ import { tierModels } from "@/routing/policy";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { grantFolder, linkProjectFolder } from "@/storage/folders";
 import { createProject } from "@/storage/projects";
-import { openTestDb } from "@/storage/testing/nodeDb";
+import { migrationFiles, openTestDb } from "@/storage/testing/nodeDb";
 
 const CODE = process.env.FUSE_HULK_PAIR_CODE;
 const ADDRESS = (process.env.FUSE_HULK_ADDRESS ?? "https://hulk.tailb7c872.ts.net:4100").replace(
@@ -96,7 +96,15 @@ describe.skipIf(!CODE)("M10 live check: hand a Code run over to HULK", () => {
     async () => {
       // 1. HULK is reachable from here, over the tailnet.
       const state = await fetch(`${ADDRESS}/api/auth/state`)
-        .then((r) => reply<{ setUp: boolean; version: string }>(r))
+        .then((r) =>
+          reply<{
+            setUp: boolean;
+            version: string;
+            schema: number;
+            builtFrom: string;
+            builtOn: string;
+          }>(r),
+        )
         .catch((e: unknown) => {
           throw new Error(
             `Can't reach ${ADDRESS} from this computer. Is it on the tailnet, and does the ` +
@@ -104,14 +112,35 @@ describe.skipIf(!CODE)("M10 live check: hand a Code run over to HULK", () => {
           );
         });
       expect(state.setUp).toBe(true);
+      expect(
+        state.schema,
+        "Update HULK and the runner to matching schemas before the live check",
+      ).toBe(migrationFiles().length);
       console.log(`HULK ${state.version} is reachable at ${ADDRESS}.`);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const deviceName = `Live check (${hostname()}) ${stamp}`;
+      const expectedFile = `live-check/${stamp}.md`;
+      const expectedLine = `Handed over from ${hostname()} at ${stamp}.`;
+      const summary = process.env.GITHUB_STEP_SUMMARY;
+      if (summary)
+        appendFileSync(
+          summary,
+          `### Tested HULK build\n\nCommit: \`${state.builtFrom}\`\n\nSchema: ${String(state.schema)}\n\nBuilt: ${state.builtOn}\n\nTemporary device: ${deviceName}\n\nRevoke only this device after the check.\n`,
+        );
+      output("file", expectedFile);
+      output("line", expectedLine);
+      output("server_build", state.builtFrom);
+      output("server_schema", String(state.schema));
+      output("device_name", deviceName);
 
       // 2. Pair with the one-time code.
-      const { token } = await post(
+      const { token, device } = await post(
         "/api/auth/pair",
         { "content-type": "application/json" },
-        JSON.stringify({ code: CODE, name: `Live check (${hostname()})` }),
-      ).then((r) => reply<{ token: string }>(r));
+        JSON.stringify({ code: CODE, name: deviceName }),
+      ).then((r) => reply<{ token: string; device: { id: string } }>(r));
+      if (summary) appendFileSync(summary, `\nTemporary device ID: \`${device.id}\`\n`);
+      output("device_id", device.id);
       const hulk = hulkWith(token);
       await hulk.invoke("db_open");
 
@@ -131,7 +160,6 @@ describe.skipIf(!CODE)("M10 live check: hand a Code run over to HULK", () => {
 
       // 4. Hand over a small Code run on this checkout, as the desktop's "Run on HULK" does.
       const desktop = openTestDb();
-      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const project = await createProject(desktop, t, `Live check ${stamp}`);
       const folder = await grantFolder(desktop, t, REPO);
       await linkProjectFolder(desktop, t, project.id, folder.id);
@@ -141,8 +169,8 @@ describe.skipIf(!CODE)("M10 live check: hand a Code run over to HULK", () => {
           projectId: project.id,
           folderId: folder.id,
           task:
-            `Create the file live-check/${stamp}.md containing exactly one line: ` +
-            `"Handed over from ${hostname()} at ${stamp}." Change nothing else, ` +
+            `Create the file ${expectedFile} containing exactly one line: ` +
+            `"${expectedLine}" followed by one LF newline. Change nothing else, ` +
             "and run nothing.",
           model: { provider: model.provider, id: model.id },
           mode: "auto_edit",
@@ -159,7 +187,16 @@ describe.skipIf(!CODE)("M10 live check: hand a Code run over to HULK", () => {
         if (s.status === "failed" || s.status === "error" || s.status === "stopped")
           throw new Error(`The run on HULK ${s.status}: ${s.note ?? "no note"}`);
         if (s.branch) {
+          if (s.status === "done")
+            throw new Error(
+              "The run completed before the caller disconnected. Answer the push approval only after the workflow's Windows job has finished.",
+            );
           console.log(`Going on HULK on ${s.branch} (${s.status}). Leaving now.`);
+          if (summary)
+            appendFileSync(
+              summary,
+              `\nRequest: \`${requestId}\`\n\nBranch: \`${s.branch}\`\n\nCaller disconnected at ${new Date().toISOString()} while run was ${s.status}${s.waiting ? " (waiting for approval)" : ""}.\n`,
+            );
           output("branch", s.branch);
           return;
         }

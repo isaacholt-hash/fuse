@@ -66,9 +66,9 @@ The Windows test runner's laptop (`fuse-windows`) can stand in for TCHALLA. It h
 
 4. The first job runs on the laptop. It pairs as "Live check (<laptop name>)", checks that HULK has a key, and hands over "create one file under `live-check/`" on this repo, with a $0.50 cap. It leaves once the run is going on its `fuse/…` branch.
 5. When the run asks to push, answer it in the web app: Code area, Waiting filter (any browser, your phone too). The run's card then says whether it pushed.
-6. The second job runs on GitHub's own runner. It waits up to 45 minutes for the branch to reach GitHub, checks that it holds only that one file, and deletes the branch.
+6. The second job runs on GitHub's own runner. It waits up to 45 minutes for the branch to reach GitHub, checks the exact expected file, committed contents and handover author against the workflow’s starting commit, and deletes the branch only after those checks pass. A failed verification retains its branch for diagnosis. The workflow summary records HULK’s build/schema and the temporary device’s unique name and ID.
 
-Afterwards, revoke the "Live check" device under Settings → Devices.
+Afterwards, revoke only the temporary "Live check" device whose name and ID appear in that workflow’s summary, under Settings → Devices. Leave existing enrolled devices in place.
 
 If the first job can't reach HULK, the laptop isn't on the tailnet, or the tailnet policy doesn't allow tcp 4100 to hulk.
 

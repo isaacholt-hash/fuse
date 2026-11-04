@@ -465,7 +465,7 @@ import { SessionStrip } from "@/ui/SessionStrip";
 import { FilesPanel } from "@/ui/FilesPanel";
 import { Home } from "@/ui/Home";
 import { EMPTY_HOME, homeView } from "./homeView";
-import { asksForAChange, chatBrief, codeBrief } from "./handoff";
+import { offersCodeHandoff, chatBrief, codeBrief } from "./handoff";
 import { AreaTabs } from "@/ui/AreaTabs";
 import { TagsDialog } from "@/ui/Tags";
 import { KeyCapsSection } from "@/ui/KeyCaps";
@@ -2455,12 +2455,7 @@ export function ChatApp({
     try {
       const threadId = await threadForSend(search, text);
       // M10 step 17: a chat asking for a change to a project's files is offered Code.
-      if (
-        area === "chat" &&
-        chatFolders.length > 0 &&
-        (routed.info.intent === null || routed.info.intent === "coding") &&
-        asksForAChange(text)
-      )
+      if (area === "chat" && chatFolders.length > 0 && offersCodeHandoff(text, routed.info.intent))
         setChangeHint(threadId);
       await stream(
         threadId,
