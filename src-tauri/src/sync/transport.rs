@@ -372,6 +372,7 @@ pub async fn probe(ctx: &Ctx, query: BlobQuery) -> Result<BlobQuery, String> {
         if let Ok(envelope) = get_blob(ctx, &id)
             && envelope.header.event_id == format!("blob:{id}")
             && envelope.header.seq == 0
+            && envelope.header.epoch == keys.epoch
             && decrypt(ctx, &keys, &envelope).await.is_ok()
         {
             db::execute(
@@ -722,7 +723,10 @@ pub async fn put_blob(ctx: &Ctx, keys: &KeySet, actor: &str, blob: Blob) -> Resu
             if *existing != *plaintext {
                 return Err("An encrypted blob ID was reused for different content.".into());
             }
-            return Ok(());
+            if original.header.epoch == keys.epoch {
+                return Ok(());
+            }
+            // Same immutable chunk, freshly encrypted under the current epoch after revocation.
         }
         let owner: Option<String> =
             sqlx::query_scalar("SELECT device_id FROM sync_blobs WHERE id=?")
@@ -735,7 +739,7 @@ pub async fn put_blob(ctx: &Ctx, keys: &KeySet, actor: &str, blob: Blob) -> Resu
         }
     }
     cache_blob(ctx, &blob.id, &blob.envelope)?;
-    db::execute(&ctx.db.pool()?,"INSERT INTO sync_blobs (id,workspace_id,user_id,device_id,epoch,bytes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",&[json!(blob.id),json!(WORKSPACE),json!(USER),json!(actor),json!(blob.envelope.header.epoch),json!(bytes.len()),json!(now()),json!(now())]).await?;
+    db::execute(&ctx.db.pool()?,"INSERT INTO sync_blobs (id,workspace_id,user_id,device_id,epoch,bytes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET epoch=excluded.epoch,bytes=excluded.bytes,updated_at=excluded.updated_at",&[json!(blob.id),json!(WORKSPACE),json!(USER),json!(actor),json!(blob.envelope.header.epoch),json!(bytes.len()),json!(now()),json!(now())]).await?;
     Ok(())
 }
 

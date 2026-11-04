@@ -54,8 +54,8 @@ export function ServerSection({
         </span>
       </div>
       <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
-        This is the web app, served by HULK. It has its own chats and keys, kept on HULK; the
-        desktop app&apos;s stay on their computers.
+        This web app uses HULK’s database. Settings → Sync can merge eligible history with
+        explicitly enrolled desktops. Credentials and machine permissions stay on each installation.
       </p>
       <div role="group" aria-label="Devices">
         <div className="mb-1 flex items-center gap-2">

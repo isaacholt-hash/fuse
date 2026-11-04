@@ -200,7 +200,9 @@ test("on the desktop the section is greyed: scheduled tasks run in the web app",
   await setup(false);
   expect(screen.getByRole("button", { name: "Add a task" })).toBeDisabled();
   expect(
-    screen.getByText("Scheduled tasks run in the web app on HULK (until sync)."),
+    screen.getByText(
+      "Scheduled tasks are managed in the web app on HULK. Syncing history keeps execution there.",
+    ),
   ).toBeInTheDocument();
   expect(screen.queryByRole("list", { name: "Scheduled tasks list" })).toBeNull();
 });

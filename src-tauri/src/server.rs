@@ -317,7 +317,10 @@ async fn revoke(
         return refused;
     }
     match server.auth.revoke(&body.id) {
-        Ok(removed) => axum::Json(json!({ "removed": removed })).into_response(),
+        Ok(removed) => match crate::sync::management::revoke_auth(&server.ctx, &body.id).await {
+            Ok(()) => axum::Json(json!({"removed":removed})).into_response(),
+            Err(reason) => error(StatusCode::INTERNAL_SERVER_ERROR, json!(reason)),
+        },
         Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, json!(e)),
     }
 }
@@ -379,7 +382,13 @@ async fn invoke(
     let Some(who) = server.who(&headers) else {
         return signed_out();
     };
-    if ["sync_setup", "sync_recovery_code", "sync_recover"].contains(&command.as_str())
+    if [
+        "sync_setup",
+        "sync_recovery_code",
+        "sync_recover",
+        "sync_finish_rotation",
+    ]
+    .contains(&command.as_str())
         && !matches!(who, Who::Session)
     {
         return error(
@@ -835,7 +844,12 @@ mod tests {
         .unwrap();
         assert!(!crate::sync::status(&native).await.unwrap().enabled);
         let (_, token) = crate::hulk::paired(&native).unwrap();
-        for command in ["sync_setup", "sync_recovery_code", "sync_recover"] {
+        for command in [
+            "sync_setup",
+            "sync_recovery_code",
+            "sync_recover",
+            "sync_finish_rotation",
+        ] {
             let (code, _) = send(
                 call(&base, &format!("/api/invoke/{command}"), "{}")
                     .header("authorization", format!("Bearer {token}")),
@@ -889,6 +903,44 @@ mod tests {
         let wire=json!({"hello":{"protocol":crate::sync::crypto::PROTOCOL,"schema":crate::db::schema_version(),"datasetId":keys.dataset_id,"epoch":keys.epoch,"deviceId":enrolled.device_id},"data":{"after":0}}).to_string();
         let (code, _) = send(call(&base, "/api/sync/pull", &wire).header("cookie", &cookie)).await;
         assert_eq!(code, 401);
+        crate::db::db_execute(
+            &native,
+            "UPDATE threads SET title='Pending while revoked' WHERE id='wire-fixture'".into(),
+            vec![],
+        )
+        .await
+        .unwrap();
+        let (_, roster) = post_as(&base, &cookie, "sync_status", "{}").await;
+        let auth_id = roster["devices"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|d| d["id"] == enrolled.device_id)
+            .unwrap()["authId"]
+            .as_str()
+            .unwrap();
+        let (code, _) = send(
+            call(
+                &base,
+                "/api/auth/revoke",
+                &json!({"id":auth_id}).to_string(),
+            )
+            .header("cookie", &cookie),
+        )
+        .await;
+        assert_eq!(code, 200);
+        let (_, after) = post_as(&base, &cookie, "sync_status", "{}").await;
+        assert_eq!(after["epoch"], 2);
+        let (code, _) = send(
+            call(&base, "/api/sync/pull", &wire).header("authorization", format!("Bearer {token}")),
+        )
+        .await;
+        assert_eq!(code, 401);
+        assert!(matches!(
+            crate::sync::worker::cycle(&native, "http-fixture").await,
+            Err(crate::sync::worker::Fault::Pause(_))
+        ));
+        assert_eq!(crate::sync::status(&native).await.unwrap().pending, 1);
         native.db.pool().unwrap().close().await;
         let _ = std::fs::remove_dir_all(home);
         let _ = std::fs::remove_dir_all(ui);

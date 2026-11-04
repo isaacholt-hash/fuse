@@ -192,7 +192,11 @@ export function ScheduledTasksSection({
       >
         Add a task
       </Button>
-      {!web && <Greyed>Scheduled tasks run in the web app on HULK (until sync).</Greyed>}
+      {!web && (
+        <Greyed>
+          Scheduled tasks are managed in the web app on HULK. Syncing history keeps execution there.
+        </Greyed>
+      )}
       {editing && (
         <TaskDialog
           key={editing.id ?? "new"}

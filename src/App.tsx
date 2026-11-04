@@ -1,3 +1,5 @@
+import { isDesktop } from "@/platform/core";
+import { nativeSyncApi, type SyncApi } from "@/sync/api";
 import { tauriLocalApi, type LocalApi } from "@/local/api";
 import { tauriPythonApi, type PythonApi } from "@/python/runtime";
 import { tauriMcpApi, type McpApi } from "@/mcp/api";
@@ -77,6 +79,7 @@ type Gate =
   | { kind: "error"; message: string };
 
 interface Props {
+  sync?: SyncApi;
   /**
    * M10 step 5: the web app on HULK, over HTTP to fuse-server (`!isDesktop()`, set in main.tsx).
    * It signs in first, and greys what only the desktop can do (PL-02).
@@ -133,6 +136,7 @@ interface Props {
 
 export default function App({
   webApp = false,
+  sync = webApp || isDesktop() ? nativeSyncApi : undefined,
   auth = httpAuthApi,
   openDb = openTauriDb,
   keysApi = tauriKeysApi,
@@ -310,6 +314,14 @@ export default function App({
   return (
     <ChatApp
       webApp={webApp}
+      syncApi={sync}
+      {...(webApp
+        ? {
+            onSyncRevoke: async (id: string) => {
+              await auth.revoke(id);
+            },
+          }
+        : {})}
       {...(webApp
         ? {
             server: (
