@@ -212,7 +212,7 @@ pub(crate) async fn hulk_unpair(ctx: &Ctx) -> Result<HulkStatus, String> {
     hulk_status(ctx).await
 }
 
-fn paired(ctx: &Ctx) -> Result<(String, String), String> {
+pub(crate) fn paired(ctx: &Ctx) -> Result<(String, String), String> {
     match (ctx.keys.store.get(ADDRESS)?, ctx.keys.store.get(TOKEN)?) {
         (Some(a), Some(t)) => Ok((a, t)),
         _ => Err("This computer isn't paired with HULK yet: Settings → HULK.".into()),

@@ -34,6 +34,7 @@ pub struct Ctx {
     pub mcp: McpServers,
     /// HULK's build from the desktop's last look at it (M10 F2).
     pub hulk: HulkCache,
+    pub sync: crate::sync::Sync,
 }
 
 impl Ctx {
@@ -51,6 +52,7 @@ impl Ctx {
             python: PyInstall::default(),
             mcp: McpServers::default(),
             hulk: HulkCache::default(),
+            sync: crate::sync::Sync::default(),
         }
     }
 }

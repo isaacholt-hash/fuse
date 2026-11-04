@@ -43,6 +43,12 @@ tauri-plugin-dialog = "=2.8.2"
 # Global quick-capture shortcut (CH-08, PL-07); pinned: released 2026-10-10.
 tauri-plugin-global-shortcut = "=2.4.1"
 sha2 = "0.11.1"
+# M11 sync payloads and device signatures, approved in M11's plan. Releases: 2026-06-28,
+# 2026-07-06. Keys stay in Rust and the existing SecretStore.
+chacha20poly1305 = { version = "=0.11.0", features = ["zeroize"] }
+ed25519-dalek = { version = "=3.0.0", features = ["zeroize"] }
+# Already in the lockfile through TLS; use its memory-clearing wrappers for sync key material.
+zeroize = "=1.9.1"
 # .gitignore rules for the coding agent's repository access (CA-01); pinned: released 2026-08-04.
 ignore = "=0.4.33"
 # Coding agent commands (CA-03): child processes with streamed output and time limits. Already
