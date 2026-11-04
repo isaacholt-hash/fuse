@@ -22,6 +22,7 @@ import type { CloudProviderId } from "@/catalog/catalog";
 import { openExternal } from "./openExternal";
 import { Greyed, Modal } from "./primitives";
 import type { KeyView, Motion, RequestRow, TextSize, Theme } from "./types";
+import type { SettingsTargetId } from "./settingsRegistry";
 import { WEB_REASONS } from "./webReasons";
 
 function KeyResult({ state }: { state: KeyView }) {
@@ -226,6 +227,7 @@ export function SettingsView({
   instructions,
   memory,
   routing,
+  routingDiagnostics,
   budgets,
   prices,
   models,
@@ -243,6 +245,7 @@ export function SettingsView({
   privacy,
   sync,
   agent,
+  sandbox,
   theme,
   onTheme,
   textSize,
@@ -259,6 +262,7 @@ export function SettingsView({
   hulk,
 }: {
   /** Settings → HULK: pairing this desktop with FUSE on HULK (desktop only, M10 step 7). */
+  target?: SettingsTargetId;
   sync?: ReactNode;
   hulk?: ReactNode;
   /** PL-02: the web app on HULK; desktop-only settings are greyed with their reason. */
@@ -278,6 +282,7 @@ export function SettingsView({
   memory?: ReactNode;
   /** Settings → Routing test set; rendered once loaded. */
   routing?: ReactNode;
+  routingDiagnostics?: ReactNode;
   /** Settings → Budgets (CO-03). */
   budgets?: ReactNode;
   /** Settings → Prices (MM-04). */
@@ -306,6 +311,7 @@ export function SettingsView({
   privacy?: ReactNode;
   /** Settings → Coding agent activity (AG-04). */
   agent?: ReactNode;
+  sandbox?: ReactNode;
   /** Settings → App lock (SE-03). */
   appLock?: ReactNode;
   /** Settings → Import (PL-08). */
@@ -388,6 +394,7 @@ export function SettingsView({
             {server}
             {hulk}
             {agent}
+            {sandbox}
             {python}
           </section>
         )}
@@ -399,6 +406,7 @@ export function SettingsView({
         {importer}
         {data}
         {routing}
+        {routingDiagnostics}
         <RecoveryKeySection load={onRecoveryKey} />
         <section className="mt-8 border-t pt-6">
           <h2 className="text-sm font-medium">Appearance</h2>

@@ -48,7 +48,7 @@ unresolved product decision, unavailable required access or checks that cannot s
 ## Steps
 
 - [x] **1. Roadmap and contract.** This file, current milestone and unattended authorization in CLAUDE.md, roadmap ordering, and UI review item 7 queued here. Preserve M10/M11 closeout evidence and activation status.
-- [ ] **2. Section boundaries and registry.** Typed stable category/section/control IDs, labels, descriptions, aliases and availability. Separate routing policy from routing diagnostics and coding activity from sandbox controls. Introduce `openSettings(target?)`; retain the current working page.
+- [x] **2. Section boundaries and registry.** Typed stable category/section/control IDs, labels, descriptions, aliases and availability. Separate routing policy from routing diagnostics and coding activity from sandbox controls. Introduce `openSettings(target?)`; retain the current working page.
 - [ ] **3. Category shell.** All existing controls in their categories, responsive navigation, last-category memory, explicit target handling, preserved ordinary form drafts and conversation state, cleared sensitive fields, closed dialogs and restored focus. Update existing tests to navigate categories.
 - [ ] **4. Search.** Static metadata only; exact label, prefix, label substring, description/alias, then existing fuzzy matching. Result paths, control focus/scroll, temporary neutral highlight, keyboard navigation, clear/Escape and announced empty state. Retain unavailable controls with reasons. Aliases include dark mode, font, spending, backup, HULK and recovery.
 - [ ] **5. Direct links and entry points.** `#settings/<category>/<target>` (target optional), initial load, reload, browser history and legacy `#sync`. Invalid settings destinations open General with an explanation. Contextual links for provider keys, pairing, instructions, routing, models and prices; registry-backed section commands in the existing palette. No form values or search queries in URLs.
@@ -70,3 +70,5 @@ unresolved product decision, unavailable required access or checks that cannot s
 
 Append completed-step PRs, verification results and screenshots here as they ship. Synthetic
 test data only; production activation is outside this milestone.
+
+- Step 1: [PR #279](https://github.com/isaacholt-hash/fuse/pull/279), all required checks passed; documentation only.
