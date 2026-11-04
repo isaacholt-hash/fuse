@@ -31,6 +31,7 @@ mod quick;
 mod repo;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod server;
+mod sync;
 mod transport;
 mod web;
 
@@ -98,6 +99,12 @@ pub fn run() {
             db::commands::db_recovery_key,
             db::commands::db_execute,
             db::commands::db_batch,
+            sync::commands::sync_status,
+            sync::commands::sync_preview,
+            sync::commands::sync_setup,
+            sync::commands::sync_enroll,
+            sync::commands::sync_recovery_code,
+            sync::commands::sync_recover,
             db::commands::db_select,
             repo::commands::repo_pick,
             repo::commands::repo_check,

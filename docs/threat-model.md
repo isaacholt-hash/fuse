@@ -41,11 +41,46 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 | Reading backups | Backups are copies of the encrypted database; a plaintext backup is refused (PL-11) | Backups sit beside the database, so they are not protection against losing the disk |
 | Tampered attachments | Settings → Your data → Check attached files re-hashes every file against the database | Detects, doesn't prevent |
 
-### 2. Sync compromise (P2, not built)
+### 2. Sync compromise (M11, being built)
 
 *Whoever controls the storage a future sync uses: a cloud bucket, a file-sync folder, a server.*
 
-Nothing syncs today. When PL-04 is built:
+M11 uses trusted HULK as both the host and a participant. HULK can decrypt synced content
+for the existing web app and runner; a compromised participating HULK is outside the
+ciphertext-store protection. Browsers use HULK's database and never become replicas.
+Enrollment is separate from pairing, requires explicit opt-in, and defaults to off.
+
+The native foundation uses XChaCha20-Poly1305 (random 192-bit nonces, 256-bit keys) and
+Ed25519 device signatures with strict verification. Protocol, schema, workspace, user,
+dataset, epoch, device, event ID, sequence and logical clock are authenticated associated
+data and signed with a format-specific domain prefix. The relay can see this routing
+metadata and encrypted sizes; entity bodies, filenames and plaintext file hashes are
+encrypted. Packet bodies are bounded before decryption. Tests change every envelope field
+and check wrong keys, invalid signatures and invalid encodings.
+
+Sync keys live only in the existing native secret stores, in separate entries per epoch.
+The enrollment response containing keys is available only at the bearer-authenticated native
+route: a browser session, including a signed-in browser, is refused; the runner cannot enroll.
+The response is marked `no-store`. The desktop uses HTTPS (loopback HTTP only for fixtures),
+refuses redirects, bounds the response body, verifies its identity and versions, and enables
+tracking only after storing keys and membership. Ordinary status/preview commands contain
+no secret keys. The recovery code is shown only by its explicit Settings command.
+Server setup and recovery commands require a signed-in browser session; paired-device and
+runner bearer tokens cannot call them. Sync responses are marked `no-store`.
+
+The encrypted recovery bundle is `data_dir/sync/recovery.json`, atomically replaced and owner-only
+on Unix. A separate random recovery code protects the epoch keys, host signing identity and
+device registry, including public pairing IDs. Recovery also requires HULK sign-in; the code
+alone does not enroll a device. Recovery pauses sync before changing stored keys and restores
+the registry/state in a transaction. A failed recovery leaves pending edits and sync paused.
+The sync recovery code does not unlock the separate SQLCipher database: its own recovery or
+backup flow remains necessary if that database's key is lost. Without surviving sync keys or
+the current recovery code and bundle, encrypted sync contents are unrecoverable. Recovery
+material should be kept separately from the computer, as with the database recovery key.
+
+The worker, merge engine, withdrawal propagation and user controls are the subsequent M11
+steps; no sync control is enabled in the UI by this foundation alone. The completed milestone
+must also:
 
 - **Encrypt end to end on the device.** The storage only ever sees ciphertext.
 - **Sync logical records**, with `revision` and `device_id` (already on memories since M5), never the database file.

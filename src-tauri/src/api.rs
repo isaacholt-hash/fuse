@@ -46,6 +46,11 @@ pub const WEB_COMMANDS: &[&str] = &[
     "db_recovery_key",
     "db_execute",
     "db_batch",
+    "sync_status",
+    "sync_preview",
+    "sync_setup",
+    "sync_recovery_code",
+    "sync_recover",
     "db_select",
     "repo_check",
     "repo_list",
@@ -201,6 +206,17 @@ pub async fn dispatch(
         body.ok_or_else(|| Value::String(format!("{name}: expected raw bytes")))
     };
     match name {
+        "sync_status" => json(crate::sync::status(ctx).await),
+        "sync_preview" => json(crate::sync::preview(ctx).await),
+        "sync_setup" => {
+            args!(name,args,confirmed:bool);
+            json(crate::sync::setup(ctx, confirmed).await)
+        }
+        "sync_recovery_code" => json(crate::sync::recovery_code(ctx)),
+        "sync_recover" => {
+            args!(name,args,code:String);
+            json(crate::sync::recover(ctx, code).await)
+        }
         "db_batch" => {
             args!(name, args, statements: Vec<db::Statement>);
             json(db::db_batch(ctx, statements).await)
@@ -473,6 +489,9 @@ mod tests {
 
     /// Commands the frontend calls with no arguments: `{}` is all they take, so they run.
     const NO_ARGS: &[&str] = &[
+        "sync_status",
+        "sync_preview",
+        "sync_recovery_code",
         "file_wipe",
         "backup_list",
         "backup_now",
@@ -489,6 +508,7 @@ mod tests {
 
     /// Every command the desktop has that the server doesn't.
     const DESKTOP_ONLY: &[&str] = &[
+        "sync_enroll",
         "save_as",
         "quick_capture_set",
         "hello_available",
@@ -595,10 +615,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 77 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 83 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            77
+            83
         );
     }
 

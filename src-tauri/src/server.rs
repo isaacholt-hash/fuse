@@ -61,7 +61,8 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(ctx: Ctx, auth: Auth) -> Arc<Self> {
+    pub fn new(mut ctx: Ctx, auth: Auth) -> Arc<Self> {
+        ctx.sync.host = true;
         Arc::new(Server {
             ctx: Arc::new(ctx),
             auth,
@@ -321,14 +322,49 @@ async fn revoke(
     }
 }
 
+/// Workspace keys are returned only to an explicitly enrolled native bearer device.
+/// A browser session (including a signed-in one) cannot call this endpoint.
+async fn sync_enroll(
+    State(server): State<Arc<Server>>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<crate::sync::Enrollment>,
+) -> Response {
+    let Some(Who::Device(id)) = server.who(&headers) else {
+        return error(
+            StatusCode::UNAUTHORIZED,
+            json!("Pair and explicitly enroll a native desktop."),
+        );
+    };
+    if !server.auth.devices().iter().any(|device| device.id == id) {
+        return error(
+            StatusCode::FORBIDDEN,
+            json!("The internal runner cannot enroll a sync device."),
+        );
+    }
+    match crate::sync::accept(&server.ctx, &id, body).await {
+        Ok(enrolled) => {
+            ([(header::CACHE_CONTROL, "no-store")], axum::Json(enrolled)).into_response()
+        }
+        Err(reason) => error(StatusCode::BAD_REQUEST, json!(reason)),
+    }
+}
+
 async fn invoke(
     State(server): State<Arc<Server>>,
     Path(command): Path<String>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
-    if server.who(&headers).is_none() {
+    let Some(who) = server.who(&headers) else {
         return signed_out();
+    };
+    if ["sync_setup", "sync_recovery_code", "sync_recover"].contains(&command.as_str())
+        && !matches!(who, Who::Session)
+    {
+        return error(
+            StatusCode::FORBIDDEN,
+            json!("Manage sync setup and recovery from HULK's signed-in Settings."),
+        );
     }
     let raw = header_str(&headers, "content-type") == "application/octet-stream";
     let (args, bytes) = if raw {
@@ -357,6 +393,9 @@ async fn invoke(
         client: header_str(&headers, "x-fuse-client").to_owned(),
     };
     match api::dispatch(&server.ctx, &command, args, bytes, &sinks).await {
+        Ok(Reply::Json(v)) if command.starts_with("sync_") => {
+            ([(header::CACHE_CONTROL, "no-store")], axum::Json(v)).into_response()
+        }
         Ok(Reply::Json(v)) => axum::Json(v).into_response(),
         Ok(Reply::Bytes(b)) => {
             ([(header::CONTENT_TYPE, "application/octet-stream")], b).into_response()
@@ -455,6 +494,7 @@ pub fn router(server: Arc<Server>, ui: &FsPath) -> Router {
         .route("/api/auth/pair", post(pair))
         .route("/api/auth/devices", get(devices))
         .route("/api/auth/revoke", post(revoke))
+        .route("/api/sync/enroll", post(sync_enroll))
         .layer(axum::middleware::from_fn(same_origin))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(server)
@@ -740,6 +780,72 @@ mod tests {
 
     async fn post_as(base: &str, cookie: &str, command: &str, body: &str) -> (u16, Value) {
         send(call(base, &format!("/api/invoke/{command}"), body).header("cookie", cookie)).await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn sync_enrollment_keeps_keys_native_and_requires_explicit_opt_in() {
+        let ui = ui("sync-enrollment");
+        let (base, home, cookie) = start(&ui).await;
+        let (code, reply) = post_as(&base, &cookie, "sync_status", "{}").await;
+        assert_eq!(code, 200);
+        assert_eq!(reply["enabled"], false);
+        let (code, _) = post_as(&base, &cookie, "sync_setup", r#"{"confirmed":false}"#).await;
+        assert_eq!(code, 400);
+        let (code, reply) = post_as(&base, &cookie, "sync_setup", r#"{"confirmed":true}"#).await;
+        assert_eq!(code, 200);
+        assert_eq!(reply["enabled"], true);
+        let (_, pair) =
+            send(call(&base, "/api/auth/pair-code", "").header("cookie", &cookie)).await;
+        let native = Ctx::new(
+            home.join("native/data"),
+            home.join("native/config"),
+            Keys::with_store(Box::new(MemoryStore::default())),
+        );
+        crate::hulk::hulk_pair(
+            &native,
+            base.clone(),
+            pair["code"].as_str().unwrap().into(),
+            "Fixture desktop".into(),
+        )
+        .await
+        .unwrap();
+        assert!(!crate::sync::status(&native).await.unwrap().enabled);
+        let (_, token) = crate::hulk::paired(&native).unwrap();
+        for command in ["sync_setup", "sync_recovery_code", "sync_recover"] {
+            let (code, _) = send(
+                call(&base, &format!("/api/invoke/{command}"), "{}")
+                    .header("authorization", format!("Bearer {token}")),
+            )
+            .await;
+            assert_eq!(code, 403, "native device reached owner-only {command}");
+        }
+        let request=json!({"protocol":crate::sync::crypto::PROTOCOL,"schema":crate::db::schema_version(),"deviceId":"fixture-browser","name":"Browser","publicKey":"00".repeat(32)}).to_string();
+        let (code, _) =
+            send(call(&base, "/api/sync/enroll", &request).header("cookie", &cookie)).await;
+        assert_eq!(code, 401);
+        let (code, _) = post_as(
+            &base,
+            &cookie,
+            "sync_enroll",
+            r#"{"name":"Browser","confirmed":true}"#,
+        )
+        .await;
+        assert_eq!(code, 400);
+        let enrolled = crate::sync::enroll(&native, "Fixture desktop".into(), true)
+            .await
+            .unwrap();
+        assert!(enrolled.enabled);
+        assert_eq!(enrolled.devices.len(), 2);
+        let keys = crate::sync::load_keys(native.keys.store.as_ref())
+            .unwrap()
+            .unwrap();
+        let public_status = serde_json::to_string(&enrolled).unwrap();
+        for secret in keys.epochs.values() {
+            assert!(!public_status.contains(secret));
+        }
+        native.db.pool().unwrap().close().await;
+        let _ = std::fs::remove_dir_all(home);
+        let _ = std::fs::remove_dir_all(ui);
     }
 
     #[tokio::test(flavor = "multi_thread")]
