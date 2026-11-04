@@ -21,7 +21,10 @@ pub enum Fault {
 }
 impl From<String> for Fault {
     fn from(error: String) -> Self {
-        if error.contains("database is locked") || error.contains("database is busy") {
+        if error.starts_with("Sync retry:")
+            || error.contains("database is locked")
+            || error.contains("database is busy")
+        {
             Self::Retry(error)
         } else {
             Self::Pause(error)
@@ -48,7 +51,7 @@ pub fn start(ctx: &Ctx) -> Result<(), String> {
     Ok(())
 }
 
-async fn active(ctx: &Ctx) -> Result<bool, Fault> {
+pub(crate) async fn active(ctx: &Ctx) -> Result<bool, Fault> {
     let enabled: i64 = sqlx::query_scalar(
         "SELECT enabled=1 AND paused=0 FROM sync_state WHERE workspace_id=? AND user_id=?",
     )
@@ -123,6 +126,7 @@ pub async fn request<T: Serialize, R: DeserializeOwned>(
             if status.is_server_error()
                 || reason.starts_with("Refresh sync keys")
                 || reason.starts_with("Sync host is paused")
+                || reason.starts_with("An encrypted file chunk isn't available yet")
             {
                 Fault::Retry(reason)
             } else {
@@ -258,7 +262,7 @@ pub async fn seed(ctx: &Ctx) -> Result<(), String> {
 pub async fn pending(ctx: &Ctx) -> Result<Vec<Change>, String> {
     let rows = db::select(
         &ctx.db.pool()?,
-        "SELECT * FROM sync_outbox WHERE workspace_id=? AND user_id=? ORDER BY seq LIMIT 32",
+        "SELECT * FROM sync_outbox WHERE workspace_id=? AND user_id=? ORDER BY CASE WHEN table_name='$workspace' THEN 0 ELSE 1 END,seq",
         &[json!(WORKSPACE), json!(USER)],
     )
     .await?;
@@ -311,6 +315,11 @@ pub async fn pending(ctx: &Ctx) -> Result<Vec<Change>, String> {
                 .map_err(|_| "Invalid resolution metadata.")?,
             retained: serde_json::from_value(parse("retained")?)
                 .map_err(|_| "Invalid deletion metadata.")?,
+            format: number("wire_format")? as u32,
+            manifests: Vec::new(),
+            unavailable: BTreeMap::new(),
+            barriers: serde_json::from_value(parse("barriers")?)
+                .map_err(|_| "Invalid lifecycle acknowledgements.")?,
         };
         event.validate()?;
         changes.push(event);
@@ -329,20 +338,25 @@ pub async fn receive(ctx: &Ctx, page: Page) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let mut cursor = 0;
     let empty = page.events.is_empty();
+    let compacted = page.compacted;
     let mut statements = Vec::new();
     for packet in page.events {
         if packet.cursor <= cursor {
             return Err("HULK returned a non-monotonic sync cursor.".into());
         }
-        let event = transport::decode_change(ctx, &keys, &packet.envelope).await?;
         cursor = packet.cursor;
         if cursor <= before {
+            transport::decrypt(ctx, &keys, &packet.envelope).await?;
             continue;
         }
+        let event = transport::decode_change(ctx, &keys, &packet.envelope).await?;
         let stamp = super::now();
         statements.push(db::Statement {sql:"INSERT INTO sync_inbox (id,workspace_id,user_id,envelope,event,cursor,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING".into(),params:vec![json!(event.id),json!(WORKSPACE),json!(USER),json!(serde_json::to_string(&packet.envelope).map_err(|_|"Couldn't save received sync packet.")?),json!(serde_json::to_string(&event).map_err(|_|"Couldn't save received sync record.")?),json!(cursor),json!(stamp),json!(stamp)]});
     }
-    if (!empty && cursor != page.cursor) || page.cursor < 0 || (empty && page.cursor > before) {
+    if (!empty && cursor > page.cursor)
+        || page.cursor < 0
+        || (!compacted && ((!empty && cursor != page.cursor) || (empty && page.cursor > before)))
+    {
         return Err("HULK's sync cursor doesn't match the received page.".into());
     }
     statements.push(db::Statement {sql:"UPDATE sync_state SET cursor=?,clock=MAX(clock,COALESCE((SELECT MAX(CAST(json_extract(event,'$.clock') AS INTEGER)) FROM sync_inbox WHERE workspace_id=?),0)) WHERE workspace_id=?".into(),params:vec![json!(page.cursor.max(before)),json!(WORKSPACE),json!(WORKSPACE)]});
@@ -380,6 +394,32 @@ fn renew_lease(pool: sqlx::SqlitePool, owner: String) -> Lease {
     }))
 }
 
+async fn pull_phase(ctx: &Ctx, own: &str) -> Result<bool, Fault> {
+    let pool = ctx.db.pool()?;
+    let cursor: i64 = sqlx::query_scalar("SELECT cursor FROM sync_state WHERE workspace_id=?")
+        .bind(WORKSPACE)
+        .fetch_one(&pool)
+        .await
+        .map_err(sql)?;
+    let page: Page = if ctx.sync.host {
+        transport::pull(&pool, cursor).await?
+    } else {
+        request(ctx, "pull", Pull { after: cursor }).await?
+    };
+    let more = page.more;
+    let received = page.cursor;
+    receive(ctx, page).await?;
+    super::merge::apply_deletions(ctx).await?;
+    super::attachments::receive_pending(ctx).await?;
+    super::merge::apply(ctx).await?;
+    if ctx.sync.host {
+        transport::acknowledge(&pool, own, received).await?;
+    } else {
+        let _: Value = request(ctx, "ack", Ack { cursor: received }).await?;
+    }
+    Ok(more)
+}
+
 pub async fn cycle(ctx: &Ctx, lease: &str) -> Result<bool, Fault> {
     let _lock = ctx.sync.administration.lock().await;
     if !active(ctx).await? {
@@ -398,36 +438,67 @@ pub async fn cycle(ctx: &Ctx, lease: &str) -> Result<bool, Fault> {
     if !active(ctx).await? {
         return Ok(false);
     }
+    super::merge::finalize(ctx).await?;
+    super::privacy::sweep(ctx).await?;
     seed(ctx).await?;
+    let own: String = sqlx::query_scalar("SELECT device_id FROM sync_state WHERE workspace_id=?")
+        .bind(WORKSPACE)
+        .fetch_one(&pool)
+        .await
+        .map_err(sql)?;
+    // Receive deletion/privacy barriers before publishing edits captured while offline.
+    let initial_more = pull_phase(ctx, &own).await?;
     let keys = super::load_keys(ctx.keys.store.as_ref())?.ok_or("Recover sync's missing keys.")?;
     let identity = super::signing(ctx.keys.store.as_ref())?;
     let mut packets = Vec::new();
     let mut size = 0;
     let mut sent = BTreeMap::new();
     for event in pending(ctx).await? {
-        let body = Zeroizing::new(
-            serde_json::to_vec(&event).map_err(|_| "Couldn't encode a pending sync record.")?,
-        );
-        if !packets.is_empty() && size + body.len() > 4 * 1024 * 1024 {
+        if packets.len() >= 32 {
             break;
         }
-        size += body.len();
+        if event.operation == Operation::Put {
+            let current = super::privacy::live(ctx, &event).await?;
+            if !current.eligible || !current.ready {
+                continue;
+            }
+        }
+        let prepared = super::attachments::prepare(ctx, event).await?;
+        let encoded_size = prepared.size()?;
+        if !packets.is_empty() && size + encoded_size > 4 * 1024 * 1024 {
+            break;
+        }
+        super::attachments::upload(ctx, &prepared).await?;
+        if prepared.event.operation == Operation::Put {
+            let current = super::privacy::live(ctx, &prepared.event).await?;
+            if !current.eligible || !current.ready {
+                return Err(Fault::Idle);
+            }
+        }
+        let body = prepared.body()?;
+        size += encoded_size;
         packets.push(crypto::seal(
-            event.header(&keys),
+            prepared.event.header(&keys),
             &body,
             keys.epochs
                 .get(&keys.epoch)
                 .ok_or("Missing current sync key.")?,
             &identity,
         )?);
-        sent.insert(event.id.clone(), event);
+        let control = prepared.event.table == "$workspace";
+        sent.insert(prepared.event.id.clone(), prepared.event);
+        if control {
+            break;
+        }
     }
+
     let own: String = sqlx::query_scalar("SELECT device_id FROM sync_state WHERE workspace_id=?")
         .bind(WORKSPACE)
         .fetch_one(&pool)
         .await
         .map_err(sql)?;
-    if !packets.is_empty() {
+    let pushed = !packets.is_empty();
+    if pushed {
         let reply: Pushed = if ctx.sync.host {
             transport::append(ctx, &keys, &own, packets).await?
         } else {
@@ -461,25 +532,12 @@ pub async fn cycle(ctx: &Ctx, lease: &str) -> Result<bool, Fault> {
     if !active(ctx).await? {
         return Ok(false);
     }
-    let cursor: i64 = sqlx::query_scalar("SELECT cursor FROM sync_state WHERE workspace_id=?")
-        .bind(WORKSPACE)
-        .fetch_one(&pool)
-        .await
-        .map_err(sql)?;
-    let page: Page = if ctx.sync.host {
-        transport::pull(&pool, cursor).await?
+    let more = if pushed {
+        pull_phase(ctx, &own).await?
     } else {
-        request(ctx, "pull", Pull { after: cursor }).await?
+        initial_more
     };
-    let more = page.more;
-    let received = page.cursor;
-    receive(ctx, page).await?;
-    super::merge::apply(ctx).await?;
-    if ctx.sync.host {
-        transport::acknowledge(&pool, &own, received).await?;
-    } else {
-        let _: Value = request(ctx, "ack", Ack { cursor: received }).await?;
-    }
+    super::retention::collect(ctx).await?;
     db::execute(
         &pool,
         "UPDATE sync_state SET last_success_at=?,error=NULL WHERE workspace_id=?",

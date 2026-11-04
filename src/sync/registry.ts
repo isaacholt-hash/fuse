@@ -10,6 +10,14 @@ export interface SyncTable {
   eligible: string;
   ready: string;
   dependencies: string[];
+  types: Record<string, string>;
+  references: {
+    column: string;
+    table: string;
+    target: string;
+    optional: boolean;
+    ownership: boolean;
+  }[];
 }
 
 export const syncRegistry: {

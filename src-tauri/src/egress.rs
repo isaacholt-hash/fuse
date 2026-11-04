@@ -60,12 +60,17 @@ pub async fn check(
         Scope::Global => None,
         Scope::Project(id) => Some(id),
         Scope::Thread(id) => {
-            let row = sqlx::query("SELECT project_id FROM threads WHERE id = ?")
+            let row = sqlx::query("SELECT project_id,local_only FROM threads WHERE id = ?")
                 .bind(&id)
                 .fetch_optional(pool)
                 .await
                 .map_err(fail)?
                 .ok_or("That chat doesn't exist, so nothing was sent.")?;
+            if row.try_get::<i64, _>("local_only").map_err(fail)? == 1 {
+                return Err(
+                    "This chat is kept on this device; nothing was sent to a cloud model.".into(),
+                );
+            }
             row.try_get("project_id").map_err(fail)?
         }
     };

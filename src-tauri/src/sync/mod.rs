@@ -1,6 +1,9 @@
 //! Opt-in native sync. HULK is a trusted participant, not a blind relay.
+pub mod attachments;
 pub mod crypto;
 pub mod merge;
+pub mod privacy;
+pub mod retention;
 pub mod transport;
 pub mod worker;
 

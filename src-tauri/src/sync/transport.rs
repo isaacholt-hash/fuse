@@ -35,12 +35,39 @@ pub struct Change {
     pub resolves: Vec<String>,
     #[serde(default)]
     pub retained: Option<BTreeMap<String, Value>>,
+    #[serde(default = "legacy_format", skip_serializing_if = "is_legacy")]
+    pub format: u32,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub manifests: Vec<super::attachments::Manifest>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub unavailable: BTreeMap<String, Unavailable>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub barriers: BTreeMap<String, BTreeMap<String, u64>>,
+}
+fn valid_actor(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 64 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+}
+fn legacy_format() -> u32 {
+    1
+}
+fn is_legacy(value: &u32) -> bool {
+    *value == 1
+}
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Unavailable {
+    pub table: String,
+    pub id: String,
+    pub reason: String,
 }
 
 impl Change {
     pub fn validate(&self) -> Result<(), String> {
         if self.workspace_id != WORKSPACE
             || self.user_id != USER
+            || !(1..=2).contains(&self.format)
+            || !valid_actor(&self.device_id)
+            || self.version.keys().any(|actor| !valid_actor(actor))
             || self.seq == 0
             || self.seq > i64::MAX as u64
             || self.clock > i64::MAX as u64
@@ -54,32 +81,133 @@ impl Change {
                 "Sync record identity or causality is invalid. Nothing was applied.".into(),
             );
         }
+        if self.barriers.len() > 4096
+            || self.barriers.iter().any(|(key, vector)| {
+                key.len() > 16448
+                    || vector.len() > 4096
+                    || vector.keys().any(|actor| !valid_actor(actor))
+                    || vector.values().any(|v| *v > i64::MAX as u64)
+            })
+        {
+            return Err("Invalid deletion lifecycle acknowledgements.".into());
+        }
+        if self.table == "$workspace" {
+            if self.operation != Operation::Delete
+                || self.key != WORKSPACE
+                || self.payload.is_some()
+                || self.retained.is_some()
+                || !self.manifests.is_empty()
+                || !self.unavailable.is_empty()
+            {
+                return Err("Invalid workspace deletion marker.".into());
+            }
+            return Ok(());
+        }
         let spec = registry()["tables"]
             .get(&self.table)
             .ok_or("Sync record type is not portable.")?;
-        if let Some(retained) = &self.retained
-            && (self.table != "threads"
-                || self.operation != Operation::Delete
-                || retained.keys().any(|k| k != "project_id" && k != "kind")
-                || !retained.get("kind").is_some_and(|k| {
-                    ["chat", "code", "work"]
-                        .iter()
-                        .any(|kind| k.as_str() == Some(kind))
+        for manifest in &self.manifests {
+            manifest.validate(crate::files::MAX_FILE_BYTES)?;
+        }
+        if self.manifests.len() > 128 || self.unavailable.len() > 128 {
+            return Err("Too many file/provenance references.".into());
+        }
+        for (column, source) in &self.unavailable {
+            if source.reason != "private_parent"
+                || source.id.len() > 128
+                || !spec["references"].as_array().is_some_and(|refs| {
+                    refs.iter().any(|r| {
+                        r["column"] == *column
+                            && r["table"] == source.table
+                            && r["optional"] == true
+                    })
                 })
-                || !retained
-                    .get("project_id")
-                    .is_some_and(|v| v.is_null() || v.as_str().is_some_and(|s| s.len() <= 128)))
-        {
-            return Err("A deletion marker contains nonportable data.".into());
+            {
+                return Err("Invalid unavailable-source provenance.".into());
+            }
+        }
+        if let Some(retained) = &self.retained {
+            if self.operation == Operation::Put
+                || retained.keys().any(|k| {
+                    !["ids", "parents", "project_id", "kind", "mode"].contains(&k.as_str())
+                })
+            {
+                return Err("A deletion marker contains nonportable data.".into());
+            }
+            if let Some(mode) = retained.get("mode")
+                && (self.table != "projects"
+                    || self.operation != Operation::Delete
+                    || mode != "archive")
+            {
+                return Err("Invalid deletion scope.".into());
+            }
+            if let Some(ids) = retained.get("ids")
+                && !ids.as_array().is_some_and(|ids| {
+                    ids.len() <= 4096
+                        && ids
+                            .iter()
+                            .all(|id| id.as_str().is_some_and(|s| !s.is_empty() && s.len() <= 128))
+                })
+            {
+                return Err("Invalid deletion identities.".into());
+            }
+            if let Some(parents) = retained.get("parents")
+                && !parents.as_array().is_some_and(|parents| {
+                    parents.len() <= 128
+                        && parents.iter().all(|p| {
+                            p.as_object().is_some_and(|p| {
+                                p.len() == 4
+                                    && p.get("id")
+                                        .and_then(Value::as_str)
+                                        .is_some_and(|s| s.len() <= 128)
+                                    && p.get("key").is_some_and(|k| {
+                                        k.is_null() || k.as_str().is_some_and(|s| s.len() <= 16384)
+                                    })
+                                    && spec["references"].as_array().is_some_and(|refs| {
+                                        refs.iter().any(|r| {
+                                            p.get("column") == Some(&r["column"])
+                                                && p.get("table") == Some(&r["table"])
+                                        })
+                                    })
+                            })
+                        })
+                })
+            {
+                return Err("Invalid deletion ancestry.".into());
+            }
+            if (retained.contains_key("kind") || retained.contains_key("project_id"))
+                && (self.table != "threads"
+                    || !retained
+                        .get("kind")
+                        .is_some_and(|k| matches!(k.as_str(), Some("chat" | "code" | "work")))
+                    || !retained
+                        .get("project_id")
+                        .is_some_and(|v| v.is_null() || v.as_str().is_some_and(|s| s.len() <= 128)))
+            {
+                return Err("Invalid content-free cost attribution.".into());
+            }
         }
         match (&self.operation, &self.payload) {
             (Operation::Put, Some(row)) => {
+                if row.get("incognito") == Some(&json!(1))
+                    || row.get("may_send") == Some(&json!(0))
+                    || row.get("privacy_mode") == Some(&json!("local_only"))
+                {
+                    return Err("A sync packet contains explicitly private content.".into());
+                }
+
                 let columns = spec["columns"]
                     .as_array()
                     .ok_or("Invalid replication registry.")?;
                 if row.iter().any(|(k, v)| {
                     !columns.iter().any(|c| c.as_str() == Some(k))
-                        || !(v.is_null() || v.is_string() || v.is_number())
+                        || (!v.is_null()
+                            && match spec["types"][k].as_str() {
+                                Some("TEXT") => !v.is_string(),
+                                Some("INTEGER") => v.as_i64().is_none(),
+                                Some("REAL") => !v.is_number(),
+                                _ => true,
+                            })
                 }) || row.get("workspace_id") != Some(&json!(WORKSPACE))
                     || row.get("user_id") != Some(&json!(USER))
                 {
@@ -112,6 +240,32 @@ impl Change {
             }
             (Operation::Delete | Operation::Withdraw, None) => {}
             _ => return Err("A deleted/withdrawn sync record cannot contain content.".into()),
+        }
+        Ok(())
+    }
+    pub fn validate_complete(&self) -> Result<(), String> {
+        self.validate()?;
+        if self.format >= 2 && self.operation == Operation::Put {
+            let expected = super::attachments::referenced(self)?;
+            let actual = self
+                .manifests
+                .iter()
+                .map(|m| m.sha256.clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            if expected != actual || actual.len() != self.manifests.len() {
+                return Err(
+                    "File manifests don't match the record's app-managed file references.".into(),
+                );
+            }
+            if let Some(payload) = &self.payload {
+                for column in self.unavailable.keys() {
+                    if payload.get(column) != Some(&Value::Null) {
+                        return Err(
+                            "An unavailable source cannot remain an active dependency.".into()
+                        );
+                    }
+                }
+            }
         }
         Ok(())
     }
@@ -173,6 +327,8 @@ pub struct Page {
     pub cursor: i64,
     pub events: Vec<Stamped>,
     pub more: bool,
+    #[serde(default)]
+    pub compacted: bool,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -199,6 +355,56 @@ pub struct Blob {
 #[serde(deny_unknown_fields)]
 pub struct BlobId {
     pub id: String,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BlobQuery {
+    pub ids: Vec<String>,
+}
+pub async fn probe(ctx: &Ctx, query: BlobQuery) -> Result<BlobQuery, String> {
+    if query.ids.len() > 128 {
+        return Err("Too many encrypted chunk identities.".into());
+    }
+    let keys = load_keys(ctx.keys.store.as_ref())?.ok_or("Sync keys are missing.")?;
+    let mut ids = Vec::new();
+    for id in query.ids {
+        blob_path(ctx, &id)?;
+        if let Ok(envelope) = get_blob(ctx, &id)
+            && envelope.header.event_id == format!("blob:{id}")
+            && envelope.header.seq == 0
+            && decrypt(ctx, &keys, &envelope).await.is_ok()
+        {
+            db::execute(
+                &ctx.db.pool()?,
+                "UPDATE sync_blobs SET updated_at=? WHERE id=?",
+                &[json!(now()), json!(id)],
+            )
+            .await?;
+            ids.push(id);
+        }
+    }
+    Ok(BlobQuery { ids })
+}
+
+pub async fn release(ctx: &Ctx, actor: &str, query: BlobQuery) -> Result<(), String> {
+    if query.ids.len() > 128 {
+        return Err("Too many encrypted chunk releases.".into());
+    }
+    let pool = ctx.db.pool()?;
+    for id in query.ids {
+        let path = blob_path(ctx, &id)?;
+        let allowed:i64=sqlx::query_scalar("SELECT COUNT(*) FROM sync_blobs b WHERE b.id=? AND b.device_id=? AND NOT EXISTS(SELECT 1 FROM sync_blob_refs r WHERE r.blob_id=b.id)").bind(&id).bind(actor).fetch_one(&pool).await.map_err(error)?;
+        if allowed == 0 {
+            continue;
+        }
+        match std::fs::remove_file(path) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err("Couldn't purge an unreferenced encrypted chunk.".into()),
+        }
+        db::execute(&pool, "DELETE FROM sync_blobs WHERE id=?", &[json!(id)]).await?;
+    }
+    Ok(())
 }
 
 fn error(e: sqlx::Error) -> String {
@@ -283,10 +489,16 @@ pub async fn decode_change(
     keys: &KeySet,
     envelope: &crypto::Envelope,
 ) -> Result<Change, String> {
+    if envelope.header.seq == 0
+        || envelope.header.seq > i64::MAX as u64
+        || envelope.header.event_id
+            != format!("{}:{}", envelope.header.device_id, envelope.header.seq)
+    {
+        return Err("Invalid sync event header identity.".into());
+    }
     let bytes = decrypt(ctx, keys, envelope).await?;
-    let event: Change = serde_json::from_slice(&bytes)
-        .map_err(|_| "Malformed sync record. Nothing was applied.")?;
-    event.validate()?;
+    let event = super::attachments::decode(ctx, &bytes).await?;
+    event.validate_complete()?;
     let h = &envelope.header;
     if event.id != h.event_id
         || event.device_id != h.device_id
@@ -314,27 +526,45 @@ pub async fn append(
             return Err("Refresh sync keys before sending pending changes.".into());
         }
         let event = decode_change(ctx, keys, &envelope).await?;
+        let legacy:Option<String>=sqlx::query_scalar("SELECT envelope FROM sync_relay WHERE id=? AND NOT EXISTS(SELECT 1 FROM sync_seen WHERE id=sync_relay.id)").bind(&event.id).fetch_optional(&pool).await.map_err(error)?;
+        if let Some(packet) = legacy {
+            let stored: crypto::Envelope =
+                serde_json::from_str(&packet).map_err(|_| "An accepted sync packet is damaged.")?;
+            if decode_change(ctx, keys, &stored).await? != event {
+                return Err("A sync event ID was reused for different content.".into());
+            }
+        }
         validated.push((event, envelope));
     }
     let mut tx = pool.begin().await.map_err(error)?;
     let mut accepted = Vec::new();
     for (event, envelope) in validated {
+        use sha2::{Digest, Sha256};
+        let digest = crypto::hex(&Sha256::digest(
+            serde_json::to_vec(&event).map_err(|_| "Invalid event body.")?,
+        ));
         let existing: Option<String> =
-            sqlx::query_scalar("SELECT envelope FROM sync_relay WHERE workspace_id=? AND id=?")
-                .bind(WORKSPACE)
+            sqlx::query_scalar("SELECT digest FROM sync_seen WHERE id=?")
                 .bind(&event.id)
                 .fetch_optional(&mut *tx)
                 .await
                 .map_err(error)?;
         if let Some(existing) = existing {
-            let stored: crypto::Envelope = serde_json::from_str(&existing)
-                .map_err(|_| "An accepted sync packet is damaged.")?;
-            // Use the pool for signature checking, without holding another write transaction.
-            let original = decode_change(ctx, keys, &stored).await?;
-            if original != event {
+            if existing != digest {
                 return Err("A sync event ID was reused for different content. Pending work was preserved; enroll this installation with a new identity.".into());
             }
         } else {
+            // Keep only a content-free digest after deletion, preserving replay protection.
+            sqlx::query("INSERT INTO sync_seen(id,workspace_id,user_id,digest,created_at,updated_at) VALUES (?,?,?,?,?,?)").bind(&event.id).bind(WORKSPACE).bind(USER).bind(digest).bind(now()).bind(now()).execute(&mut *tx).await.map_err(error)?;
+            let legacy: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_relay WHERE id=?")
+                .bind(&event.id)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(error)?;
+            if legacy > 0 {
+                accepted.push(event.id);
+                continue;
+            }
             sqlx::query("UPDATE sync_state SET relay_seq=relay_seq+1 WHERE workspace_id=?")
                 .bind(WORKSPACE)
                 .execute(&mut *tx)
@@ -349,7 +579,22 @@ pub async fn append(
             let stamp = now();
             let packet =
                 serde_json::to_string(&envelope).map_err(|_| "Couldn't encode sync packet.")?;
-            sqlx::query("INSERT INTO sync_relay (id,workspace_id,user_id,device_id,epoch,cursor,envelope,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)").bind(&event.id).bind(WORKSPACE).bind(USER).bind(actor).bind(envelope.header.epoch as i64).bind(cursor).bind(packet).bind(stamp).bind(stamp).execute(&mut *tx).await.map_err(error)?;
+            sqlx::query("INSERT INTO sync_relay (id,workspace_id,user_id,device_id,epoch,cursor,envelope,table_name,record_key,operation,version,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(&event.id).bind(WORKSPACE).bind(USER).bind(actor).bind(envelope.header.epoch as i64).bind(cursor).bind(packet).bind(&event.table).bind(&event.key).bind(match event.operation {Operation::Put=>"put",Operation::Delete=>"delete",Operation::Withdraw=>"withdraw"}).bind(serde_json::to_string(&event.version).map_err(|_|"Invalid event version.")?).bind(stamp).bind(stamp).execute(&mut *tx).await.map_err(error)?;
+            let body = decrypt(ctx, keys, &envelope).await?;
+            let mut manifests = event.manifests.clone();
+            if let Ok(value) = serde_json::from_slice::<Value>(&body)
+                && let Some(record) = value.get("recordChunks")
+            {
+                manifests.push(
+                    serde_json::from_value(record.clone())
+                        .map_err(|_| "Invalid record manifest.")?,
+                );
+            }
+            for manifest in manifests {
+                for chunk in manifest.chunks {
+                    sqlx::query("INSERT INTO sync_blob_refs(workspace_id,user_id,event_id,blob_id,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING").bind(WORKSPACE).bind(USER).bind(&event.id).bind(chunk.id).bind(stamp).bind(stamp).execute(&mut *tx).await.map_err(error)?;
+                }
+            }
         }
         accepted.push(event.id);
     }
@@ -383,10 +628,21 @@ pub async fn pull(pool: &SqlitePool, after: i64) -> Result<Page, String> {
         .fetch_one(pool)
         .await
         .map_err(error)?;
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sync_relay WHERE workspace_id=? AND cursor>?")
+            .bind(WORKSPACE)
+            .bind(cursor)
+            .fetch_one(pool)
+            .await
+            .map_err(error)?;
+    if remaining == 0 {
+        cursor = cursor.max(latest);
+    }
     Ok(Page {
         cursor,
         events,
-        more: cursor < latest,
+        more: remaining > 0,
+        compacted: true,
     })
 }
 
@@ -403,7 +659,7 @@ pub async fn acknowledge(pool: &SqlitePool, device: &str, cursor: i64) -> Result
     Ok(())
 }
 
-fn blob_path(ctx: &Ctx, id: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn blob_path(ctx: &Ctx, id: &str) -> Result<std::path::PathBuf, String> {
     if id.len() != 64
         || !id
             .bytes()
@@ -414,10 +670,39 @@ fn blob_path(ctx: &Ctx, id: &str) -> Result<std::path::PathBuf, String> {
     Ok(ctx.data_dir.join("sync/blobs").join(format!("{id}.json")))
 }
 
+/// Only encrypted cache bytes are written here; callers verify signatures and namespace first.
+pub fn cache_blob(ctx: &Ctx, id: &str, envelope: &crypto::Envelope) -> Result<(), String> {
+    use std::io::Write;
+    let path = blob_path(ctx, id)?;
+    let bytes = serde_json::to_vec(envelope).map_err(|_| "Couldn't encode encrypted chunk.")?;
+    if bytes.len() > 3 * 1024 * 1024 {
+        return Err("Encrypted chunk cache entry is too large.".into());
+    }
+    let directory = path.parent().ok_or("Invalid encrypted chunk directory.")?;
+    std::fs::create_dir_all(directory).map_err(|_| "Couldn't create encrypted chunk cache.")?;
+    let temp = path.with_extension(format!("{}.tmp", crypto::hex(&crypto::random::<8>()?)));
+    let mut file = std::fs::File::create(&temp).map_err(|_| "Couldn't create encrypted chunk.")?;
+    file.write_all(&bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(|_| "Couldn't save encrypted chunk.")?;
+    #[cfg(windows)]
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|_| "Couldn't replace an encrypted cache entry.")?;
+    }
+    std::fs::rename(&temp, &path).map_err(|_| "Couldn't install encrypted chunk.")?;
+    #[cfg(unix)]
+    std::fs::File::open(directory)
+        .and_then(|f| f.sync_all())
+        .map_err(|_| "Couldn't persist encrypted chunk directory.")?;
+    Ok(())
+}
+
 pub async fn put_blob(ctx: &Ctx, keys: &KeySet, actor: &str, blob: Blob) -> Result<(), String> {
     let path = blob_path(ctx, &blob.id)?;
-    if blob.envelope.header.epoch != keys.epoch
-        || blob.envelope.header.device_id != actor
+    if blob.envelope.header.epoch != keys.epoch {
+        return Err("Refresh sync keys before uploading pending chunks.".into());
+    }
+    if blob.envelope.header.device_id != actor
         || blob.envelope.header.event_id != format!("blob:{}", blob.id)
         || blob.envelope.header.seq != 0
     {
@@ -430,20 +715,26 @@ pub async fn put_blob(ctx: &Ctx, keys: &KeySet, actor: &str, blob: Blob) -> Resu
     let bytes = serde_json::to_vec(&blob.envelope)
         .map_err(|_| "Couldn't encode an encrypted file chunk.")?;
     if path.exists() {
-        let original: crypto::Envelope = serde_json::from_slice(
-            &std::fs::read(&path).map_err(|_| "Couldn't read encrypted chunk.")?,
-        )
-        .map_err(|_| "An encrypted chunk is damaged.")?;
-        if *decrypt(ctx, keys, &original).await? != *plaintext {
-            return Err("An encrypted blob ID was reused for different content.".into());
+        let original = get_blob(ctx, &blob.id);
+        if let Ok(original) = original
+            && let Ok(existing) = decrypt(ctx, keys, &original).await
+        {
+            if *existing != *plaintext {
+                return Err("An encrypted blob ID was reused for different content.".into());
+            }
+            return Ok(());
         }
-        return Ok(());
+        let owner: Option<String> =
+            sqlx::query_scalar("SELECT device_id FROM sync_blobs WHERE id=?")
+                .bind(&blob.id)
+                .fetch_optional(&ctx.db.pool()?)
+                .await
+                .map_err(error)?;
+        if owner.is_some_and(|owner| owner != actor) {
+            return Err("Only the original sender may repair a damaged encrypted chunk.".into());
+        }
     }
-    std::fs::create_dir_all(path.parent().ok_or("Invalid chunk location.")?)
-        .map_err(|_| "Couldn't create encrypted chunk storage.")?;
-    let temp = path.with_extension(format!("{}.tmp", crypto::hex(&crypto::random::<8>()?)));
-    std::fs::write(&temp, &bytes).map_err(|_| "Couldn't store encrypted file chunk.")?;
-    std::fs::rename(&temp, &path).map_err(|_| "Couldn't finish storing encrypted file chunk.")?;
+    cache_blob(ctx, &blob.id, &blob.envelope)?;
     db::execute(&ctx.db.pool()?,"INSERT INTO sync_blobs (id,workspace_id,user_id,device_id,epoch,bytes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING",&[json!(blob.id),json!(WORKSPACE),json!(USER),json!(actor),json!(blob.envelope.header.epoch),json!(bytes.len()),json!(now()),json!(now())]).await?;
     Ok(())
 }
@@ -498,6 +789,17 @@ pub async fn dispatch(
                 serde_json::from_value(wire.data).map_err(|_| "Invalid sync acknowledgement.")?;
             acknowledge(&ctx.db.pool()?, &wire.hello.device_id, request.cursor).await?;
             Ok(json!({"ok":true}))
+        }
+        "blob-release" => {
+            let query: BlobQuery = serde_json::from_value(wire.data)
+                .map_err(|_| "Invalid encrypted chunk release.")?;
+            release(ctx, &wire.hello.device_id, query).await?;
+            Ok(json!({"ok":true}))
+        }
+        "blob-probe" => {
+            let query: BlobQuery =
+                serde_json::from_value(wire.data).map_err(|_| "Invalid encrypted chunk probe.")?;
+            serde_json::to_value(probe(ctx, query).await?)
         }
         "blob-put" => {
             let request: Blob =
