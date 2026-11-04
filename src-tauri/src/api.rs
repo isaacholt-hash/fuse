@@ -53,6 +53,7 @@ pub const WEB_COMMANDS: &[&str] = &[
     "sync_recover",
     "sync_pause",
     "sync_now",
+    "sync_resolve",
     "db_select",
     "repo_check",
     "repo_list",
@@ -209,6 +210,10 @@ pub async fn dispatch(
     };
     match name {
         "sync_status" => json(crate::sync::status(ctx).await),
+        "sync_resolve" => {
+            args!(name,args,id:String,choice:String);
+            json(crate::sync::merge::resolve(ctx, id, choice).await)
+        }
         "sync_now" => json(crate::sync::worker::now(ctx).await),
         "sync_pause" => {
             args!(name,args,paused:bool);
@@ -623,10 +628,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 85 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 86 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            85
+            86
         );
     }
 

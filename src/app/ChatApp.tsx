@@ -825,10 +825,12 @@ export function ChatApp({
   const [openArtifact, setOpenArtifact] = useState<string | null>(null);
   // AR-02: the open artifact's versions, the one on screen (null = latest) and a diff base.
   const [versions, setVersions] = useState<ArtifactVersion[]>([]);
-  const [shownVersion, setShownVersion] = useState<number | null>(null);
-  const [compareWith, setCompareWith] = useState<number | null>(null);
+  const [shownVersionId, setShownVersion] = useState<string | null>(null);
+  const [compareWithId, setCompareWith] = useState<string | null>(null);
+  const shownVersion = versions.find((v) => v.id === shownVersionId)?.version ?? null;
+  const compareWith = versions.find((v) => v.id === compareWithId)?.version ?? null;
   // AR-03: after an AI edit lands, show it as a diff against the version it changed.
-  const editFrom = useRef<{ key: string; version: number } | null>(null);
+  const editFrom = useRef<{ key: string; versionId: string | null } | null>(null);
   // The last message the model gets as a summary rather than in full (PM-06), on this path.
   const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
@@ -2169,7 +2171,7 @@ export function ChatApp({
         );
         if (made && selectedRef.current === threadId) {
           showArtifact(made.key);
-          if (editFrom.current?.key === made.key) setCompareWith(editFrom.current.version);
+          if (editFrom.current?.key === made.key) setCompareWith(editFrom.current.versionId);
         }
         editFrom.current = null;
         nameThread(threadId, rows);
@@ -6445,10 +6447,12 @@ export function ChatApp({
                       compareWith,
                       diff: artifactDiff,
                       onShow: (v) => {
-                        setShownVersion(v);
+                        setShownVersion(versions.find((x) => x.version === v)?.id ?? null);
                         setCompareWith(null);
                       },
-                      onCompare: setCompareWith,
+                      onCompare: (v) => {
+                        setCompareWith(versions.find((x) => x.version === v)?.id ?? null);
+                      },
                       onRestore: (v) => {
                         const old = versions.find((x) => x.version === v);
                         if (old) newVersion(old.content, "restore");
@@ -6458,7 +6462,10 @@ export function ChatApp({
                       },
                       onAskEdit: (selection, instruction) => {
                         if (!openSaved || streaming) return;
-                        editFrom.current = { key: openSaved.key, version: openSaved.version };
+                        editFrom.current = {
+                          key: openSaved.key,
+                          versionId: versions.at(-1)?.id ?? null,
+                        };
                         void send(artifactEditRequest(openSaved, selection, instruction));
                       },
                     }}

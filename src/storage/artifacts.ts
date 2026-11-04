@@ -1,4 +1,5 @@
 /** Artifacts and their versions (AR-01, AR-02). */
+import { resolveArtifactId } from "@/sync/aliases";
 import type { ArtifactBlock, ArtifactType } from "@/artifacts/parse";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
@@ -47,11 +48,11 @@ export async function listArtifacts(
     updated_at: number;
     allow_cdn: number;
   }>(
-    `SELECT a.id, a.key, a.title, a.type, a.language, v.version, v.content, v.source, a.updated_at,
+    `SELECT a.id, a.key, a.title, a.type, a.language, (SELECT COUNT(*) FROM artifact_versions n WHERE n.artifact_id=a.id) AS version, v.content, v.source, a.updated_at,
             a.allow_cdn
      FROM artifacts a
      JOIN artifact_versions v ON v.artifact_id = a.id
-       AND v.version = (SELECT MAX(version) FROM artifact_versions WHERE artifact_id = a.id)
+       AND v.id = (SELECT id FROM artifact_versions WHERE artifact_id = a.id ORDER BY version DESC,id DESC LIMIT 1)
      WHERE a.workspace_id = ? AND a.thread_id = ? AND a.deleted_at IS NULL
      ORDER BY a.created_at`,
     [tenant.workspaceId, threadId],
@@ -77,6 +78,7 @@ export async function setArtifactCdn(
   id: string,
   allow: boolean,
 ): Promise<void> {
+  id = await resolveArtifactId(db, tenant, id);
   await db.execute(`UPDATE artifacts SET allow_cdn = ? WHERE workspace_id = ? AND id = ?`, [
     allow ? 1 : 0,
     tenant.workspaceId,
@@ -89,6 +91,7 @@ export async function listVersions(
   tenant: Tenant,
   artifactId: string,
 ): Promise<ArtifactVersion[]> {
+  artifactId = await resolveArtifactId(db, tenant, artifactId);
   const rows = await db.select<{
     id: string;
     version: number;
@@ -97,8 +100,8 @@ export async function listVersions(
     message_id: string | null;
     created_at: number;
   }>(
-    `SELECT id, version, content, source, message_id, created_at FROM artifact_versions
-     WHERE workspace_id = ? AND artifact_id = ? ORDER BY version`,
+    `SELECT id, ROW_NUMBER() OVER (ORDER BY version,id) AS version, content, source, message_id, created_at FROM artifact_versions
+     WHERE workspace_id = ? AND artifact_id = ? ORDER BY version,id`,
     [tenant.workspaceId, artifactId],
   );
   return rows.map((r) => ({
@@ -111,6 +114,14 @@ export async function listVersions(
   }));
 }
 
+async function versionCount(db: SqlDb, tenant: Tenant, artifactId: string): Promise<number> {
+  const rows = await db.select<{ n: number }>(
+    "SELECT COUNT(*) AS n FROM artifact_versions WHERE workspace_id=? AND artifact_id=?",
+    [tenant.workspaceId, artifactId],
+  );
+  return rows[0]?.n ?? 0;
+}
+
 /** Adds a version if the content changed; returns the version number now current. */
 export async function addVersion(
   db: SqlDb,
@@ -120,13 +131,14 @@ export async function addVersion(
   source: ArtifactVersion["source"],
   messageId: string | null = null,
 ): Promise<number> {
+  artifactId = await resolveArtifactId(db, tenant, artifactId);
   const latest = await db.select<{ version: number; content: string }>(
     `SELECT version, content FROM artifact_versions WHERE workspace_id = ? AND artifact_id = ?
-     ORDER BY version DESC LIMIT 1`,
+     ORDER BY version DESC,id DESC LIMIT 1`,
     [tenant.workspaceId, artifactId],
   );
   const top = latest[0];
-  if (top && top.content === content) return top.version;
+  if (top && top.content === content) return versionCount(db, tenant, artifactId);
   const now = Date.now();
   const version = (top?.version ?? 0) + 1;
   await db.execute(
@@ -151,7 +163,7 @@ export async function addVersion(
     tenant.workspaceId,
     artifactId,
   ]);
-  return version;
+  return versionCount(db, tenant, artifactId);
 }
 
 /** Saves an answer's finished artifacts: new ones, or a new version of one with the same key. */
@@ -217,7 +229,7 @@ const ARTIFACT_HIT = `
   FROM artifacts a
   JOIN threads t ON t.id = a.thread_id AND t.deleted_at IS NULL AND t.incognito = 0
   JOIN artifact_versions v ON v.artifact_id = a.id
-    AND v.version = (SELECT MAX(version) FROM artifact_versions WHERE artifact_id = a.id)
+    AND v.id = (SELECT id FROM artifact_versions WHERE artifact_id = a.id ORDER BY version DESC,id DESC LIMIT 1)
   WHERE a.workspace_id = ? AND a.deleted_at IS NULL`;
 
 interface ArtifactHitRow {

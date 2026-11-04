@@ -292,6 +292,7 @@ export function runView(
   return {
     id: run.id,
     title: run.kind === "work" ? "Work run" : "Coding run",
+    ...(run.readOnly ? { readOnly: true } : {}),
     status: run.status,
     costLabel: `${formatUsd(run.spentMicroUsd)} of ${formatUsd(run.capMicroUsd)}`,
     activeSince: run.status === "running" ? run.startedAt + run.waitedMs : null,

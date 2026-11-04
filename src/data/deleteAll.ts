@@ -74,6 +74,7 @@ export const SYNC_KEPT_ON_DELETE = [
   "sync_relay",
   "sync_receipts",
   "sync_blobs",
+  "sync_aliases",
 ] as const;
 
 export async function deleteAllData(

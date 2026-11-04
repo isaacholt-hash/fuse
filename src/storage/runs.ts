@@ -13,6 +13,8 @@ export type RunKind = "code" | "work";
 
 export interface Run {
   id: string;
+  /** A replicated snapshot executes only through its original owner's remote path. */
+  readOnly?: boolean;
   /** Null for a run in a chat outside a project (M8, WF-02). */
   projectId: string | null;
   kind: RunKind;
@@ -87,6 +89,7 @@ export interface StepImage {
 
 interface RunRow {
   id: string;
+  sync_read_only: number;
   project_id: string | null;
   kind: RunKind;
   thread_id: string | null;
@@ -131,6 +134,7 @@ interface StepRow {
 
 const toRun = (r: RunRow): Run => ({
   id: r.id,
+  ...(r.sync_read_only === 1 ? { readOnly: true } : {}),
   projectId: r.project_id,
   kind: r.kind,
   threadId: r.thread_id,
@@ -223,11 +227,19 @@ export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, kind, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
-       updated_at, started_at, waited_ms
+       updated_at, started_at, waited_ms,
+       (sync_owner IS NOT NULL AND sync_owner != (SELECT device_id FROM sync_state WHERE workspace_id=runs.workspace_id)) AS sync_read_only
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
   );
   return rows[0] ? toRun(rows[0]) : null;
+}
+
+/** Checked before selecting folders, commands, provider calls, or undoing bytes. */
+export async function assertRunWritable(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
+  const run = await getRun(db, tenant, id);
+  if (run?.readOnly)
+    throw new Error("This synced run is read-only. Use its original owner's remote controls.");
 }
 
 /** The run an answer shows, if it was a coding run. */

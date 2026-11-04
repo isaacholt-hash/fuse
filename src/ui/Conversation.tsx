@@ -2259,16 +2259,17 @@ function RunCard({
   onUndoChange?: (changeId: string) => void;
   onUndoRun?: (runId: string) => void;
 }) {
-  const live = run.status === "running";
+  const live = run.status === "running" && !run.readOnly;
+  const approval = run.readOnly ? undefined : run.approval;
   const [shown, setShown] = useState<string | null>(null);
   // M10 step 25: "See diff" opens every file's diff at once.
   const [allDiffs, setAllDiffs] = useState(false);
   const [openStep, setOpenStep] = useState<string | null>(null);
   const applied = run.changes.filter((c) => !c.undone);
   // M10 step 25: Y and N answer the approval when the focus is not in a field.
-  const pending = run.approval && run.approval.kind !== "organise" ? run.approval.kind : null;
+  const pending = approval && approval.kind !== "organise" ? approval.kind : null;
   useEffect(() => {
-    if (!pending || !onApprove) return;
+    if (!pending || !onApprove || run.readOnly) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const t = e.target;
@@ -2286,14 +2287,14 @@ function RunCard({
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [pending, onApprove, run.id]);
+  }, [pending, onApprove, run.id, run.readOnly]);
   return (
     <section aria-label={run.title} className="mb-4 rounded-md border px-3 py-2.5 text-[13px]">
       <div className="flex items-center gap-2 text-[12px]">
         <span
           aria-hidden
           className={`inline-block size-2 shrink-0 rounded-full border-[1.5px] ${
-            run.approval
+            approval
               ? "border-foreground bg-foreground"
               : live
                 ? "animate-pulse border-muted-foreground"
@@ -2303,6 +2304,7 @@ function RunCard({
           }`}
         />
         <span className="font-medium">{run.title}</span>
+        {run.readOnly && <span className="text-muted-foreground">Synced history · read-only</span>}
         <span className="text-muted-foreground">{run.modeLabel}</span>
         {run.branch && (
           <span className="truncate font-mono text-[10px] text-muted-foreground">
@@ -2395,7 +2397,7 @@ function RunCard({
           )}
         </ol>
       )}
-      {run.approval && onApprove && run.approvalFlags && run.approvalFlags.length > 0 && (
+      {approval && onApprove && run.approvalFlags && run.approvalFlags.length > 0 && (
         <div
           role="note"
           aria-label="A tool result may have asked for this"
@@ -2422,16 +2424,16 @@ function RunCard({
           </p>
         </div>
       )}
-      {run.approval?.kind === "organise" && onApprove && (
+      {approval?.kind === "organise" && onApprove && (
         <OrganisePlan
-          key={run.approval.moves.map((m) => m.from).join("|")}
-          plan={run.approval}
+          key={approval.moves.map((m) => m.from).join("|")}
+          plan={approval}
           onAnswer={(a) => {
             onApprove(run.id, a);
           }}
         />
       )}
-      {run.approval?.kind === "network" && onApprove && (
+      {approval?.kind === "network" && onApprove && (
         <div
           role="alertdialog"
           aria-label="Allow the network?"
@@ -2439,7 +2441,7 @@ function RunCard({
         >
           <p className="mb-1 font-medium">This command seems to need the network:</p>
           <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
-            {run.approval.command}
+            {approval.command}
           </pre>
           <p className="mb-2 text-muted-foreground">
             Commands run sandboxed with no network unless you allow it. Allowing runs it again.
@@ -2476,139 +2478,136 @@ function RunCard({
           </div>
         </div>
       )}
-      {run.approval &&
-        run.approval.kind !== "organise" &&
-        run.approval.kind !== "network" &&
-        onApprove && (
-          <div
-            role="alertdialog"
-            aria-label={
-              run.approval.kind === "command"
-                ? "Run this command?"
-                : run.approval.kind === "git"
-                  ? "Go ahead with git?"
-                  : run.approval.kind === "fetch"
-                    ? "Read this address?"
-                    : run.approval.kind === "python"
-                      ? "Run this Python script?"
-                      : run.approval.kind === "mcp"
-                        ? "Use this MCP tool?"
-                        : "Make this change?"
-            }
-            className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
-          >
-            {run.approval.kind === "command" ? (
-              <>
-                <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
-                <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
-                  {run.approval.command}
-                </pre>
-                {run.approval.destructive && (
-                  <p className="mb-2 text-destructive">
-                    This {run.approval.destructive}, so it asks every time.
-                  </p>
-                )}
-                {run.approval.unsandboxed && (
-                  <p className="mb-2 text-amber-700 dark:text-amber-400">
-                    No sandbox on this computer: it runs with your full rights, and can change files
-                    outside this chat&apos;s folders.
-                  </p>
-                )}
-              </>
-            ) : run.approval.kind === "mcp" ? (
-              <>
-                <p className="mb-1 font-medium">
-                  Use {run.approval.tool} on {run.approval.server}?
+      {approval && approval.kind !== "organise" && approval.kind !== "network" && onApprove && (
+        <div
+          role="alertdialog"
+          aria-label={
+            approval.kind === "command"
+              ? "Run this command?"
+              : approval.kind === "git"
+                ? "Go ahead with git?"
+                : approval.kind === "fetch"
+                  ? "Read this address?"
+                  : approval.kind === "python"
+                    ? "Run this Python script?"
+                    : approval.kind === "mcp"
+                      ? "Use this MCP tool?"
+                      : "Make this change?"
+          }
+          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+        >
+          {approval.kind === "command" ? (
+            <>
+              <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
+              <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+                {approval.command}
+              </pre>
+              {approval.destructive && (
+                <p className="mb-2 text-destructive">
+                  This {approval.destructive}, so it asks every time.
                 </p>
-                <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
-                  {run.approval.input}
-                </pre>
-                <p className="mb-2 text-muted-foreground">
-                  {run.approval.destructive
-                    ? "The server marks this tool destructive, so it asks every time."
-                    : "This tool can change things on that server's side."}
-                </p>
-              </>
-            ) : run.approval.kind === "python" ? (
-              <>
-                <p className="mb-1 font-medium">Run this Python script?</p>
-                <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre">
-                  {run.approval.script}
-                </pre>
-                <p className="mb-2 text-muted-foreground">
-                  It runs in the sandbox in this chat&apos;s folder: it can read the files but not
-                  change them, and{" "}
-                  {run.approval.network ? "it can use the network" : "it has no network"}.
-                  {run.approval.keep.length > 0 &&
-                    ` Then it saves ${run.approval.keep.join(", ")} into the folder, which you can undo.`}
-                </p>
-              </>
-            ) : run.approval.kind === "fetch" ? (
-              <>
-                <p className="mb-1 font-medium">Read this web address?</p>
-                <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
-                  {run.approval.url}
-                </pre>
+              )}
+              {approval.unsandboxed && (
                 <p className="mb-2 text-amber-700 dark:text-amber-400">
-                  Reading it sends the address to that site, and {run.approval.why}.
+                  No sandbox on this computer: it runs with your full rights, and can change files
+                  outside this chat&apos;s folders.
                 </p>
-              </>
-            ) : run.approval.kind === "git" ? (
-              <>
-                <p className="mb-1 font-medium">{run.approval.summary}?</p>
-                {run.approval.remote && (
-                  <p className="mb-2 text-amber-700 dark:text-amber-400">
-                    This goes to GitHub, outside this computer.
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <p className="mb-1 font-medium">{run.approval.change.label}?</p>
-                {run.approval.change.lines.length > 0 && (
-                  <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
-                    <DiffView lines={run.approval.change.lines} />
-                  </div>
-                )}
-              </>
-            )}
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                aria-label="Allow once"
-                onClick={() => {
-                  onApprove(run.id, "yes");
-                }}
-              >
-                Allow once<Hint>Y</Hint>
-              </Button>
-              {run.approval.kind === "command" &&
-                !run.approval.destructive &&
-                run.inProject &&
-                !run.approvalFlags?.length && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      onApprove(run.id, "always");
-                    }}
-                  >
-                    Always for this project
-                  </Button>
-                )}
-              <Button
-                variant="outline"
-                size="sm"
-                aria-label="Deny"
-                onClick={() => {
-                  onApprove(run.id, "no");
-                }}
-              >
-                Deny<Hint>N</Hint>
-              </Button>
-            </div>
+              )}
+            </>
+          ) : approval.kind === "mcp" ? (
+            <>
+              <p className="mb-1 font-medium">
+                Use {approval.tool} on {approval.server}?
+              </p>
+              <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
+                {approval.input}
+              </pre>
+              <p className="mb-2 text-muted-foreground">
+                {approval.destructive
+                  ? "The server marks this tool destructive, so it asks every time."
+                  : "This tool can change things on that server's side."}
+              </p>
+            </>
+          ) : approval.kind === "python" ? (
+            <>
+              <p className="mb-1 font-medium">Run this Python script?</p>
+              <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre">
+                {approval.script}
+              </pre>
+              <p className="mb-2 text-muted-foreground">
+                It runs in the sandbox in this chat&apos;s folder: it can read the files but not
+                change them, and {approval.network ? "it can use the network" : "it has no network"}
+                .
+                {approval.keep.length > 0 &&
+                  ` Then it saves ${approval.keep.join(", ")} into the folder, which you can undo.`}
+              </p>
+            </>
+          ) : approval.kind === "fetch" ? (
+            <>
+              <p className="mb-1 font-medium">Read this web address?</p>
+              <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
+                {approval.url}
+              </pre>
+              <p className="mb-2 text-amber-700 dark:text-amber-400">
+                Reading it sends the address to that site, and {approval.why}.
+              </p>
+            </>
+          ) : approval.kind === "git" ? (
+            <>
+              <p className="mb-1 font-medium">{approval.summary}?</p>
+              {approval.remote && (
+                <p className="mb-2 text-amber-700 dark:text-amber-400">
+                  This goes to GitHub, outside this computer.
+                </p>
+              )}
+            </>
+          ) : (
+            <>
+              <p className="mb-1 font-medium">{approval.change.label}?</p>
+              {approval.change.lines.length > 0 && (
+                <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
+                  <DiffView lines={approval.change.lines} />
+                </div>
+              )}
+            </>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              aria-label="Allow once"
+              onClick={() => {
+                onApprove(run.id, "yes");
+              }}
+            >
+              Allow once<Hint>Y</Hint>
+            </Button>
+            {approval.kind === "command" &&
+              !approval.destructive &&
+              run.inProject &&
+              !run.approvalFlags?.length && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    onApprove(run.id, "always");
+                  }}
+                >
+                  Always for this project
+                </Button>
+              )}
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label="Deny"
+              onClick={() => {
+                onApprove(run.id, "no");
+              }}
+            >
+              Deny<Hint>N</Hint>
+            </Button>
           </div>
-        )}
+        </div>
+      )}
       {live && !run.streaming && (
         <p
           role="status"
@@ -2633,7 +2632,7 @@ function RunCard({
                 −{number(applied.reduce((n, c) => n + c.removed, 0))}
               </span>
             </span>
-            {onUndoRun && applied.length > 1 && !live && (
+            {!run.readOnly && onUndoRun && applied.length > 1 && !live && (
               <Button
                 variant="ghost"
                 size="xs"
@@ -2696,6 +2695,7 @@ function RunCard({
                   {c.undone ? (
                     <span className="ml-auto text-[10px] text-muted-foreground">Undone</span>
                   ) : (
+                    !run.readOnly &&
                     onUndoChange &&
                     !live && (
                       <Button
@@ -2729,7 +2729,7 @@ function RunCard({
       {(run.status === "paused" || run.status === "stopped") && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
           {run.note && <span className="text-muted-foreground">{run.note}</span>}
-          {onContinue && (
+          {!run.readOnly && onContinue && (
             <Button
               variant="outline"
               size="xs"

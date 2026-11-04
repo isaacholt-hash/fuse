@@ -474,6 +474,7 @@ pub async fn cycle(ctx: &Ctx, lease: &str) -> Result<bool, Fault> {
     let more = page.more;
     let received = page.cursor;
     receive(ctx, page).await?;
+    super::merge::apply(ctx).await?;
     if ctx.sync.host {
         transport::acknowledge(&pool, &own, received).await?;
     } else {
