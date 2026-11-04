@@ -2,6 +2,7 @@
 // e2e/README.md) instead of the real providers, keychain, updater and folder picker. main.tsx
 // loads this only in that mode; CI checks a release bundle never contains E2E_MARK.
 import { anthropicTurn, type Turn } from "@/agent/testing/turns";
+import type { HulkApi } from "@/handover/api";
 import type { KeysApi } from "@/keys/api";
 import { createAnthropicAdapter } from "@/providers/anthropic/adapter";
 import type { FetchLike, ProviderAdapter } from "@/providers/types";
@@ -12,6 +13,18 @@ import type { SqlDb, SqlValue } from "@/storage/sql";
 import { openTauriDb } from "@/storage/tauriDb";
 
 export const E2E_MARK = "fuse-e2e-scripted-build";
+
+// The host may already be paired. Scripted tests must never use or change that live link.
+const noLiveHulk = () =>
+  Promise.reject(new Error("Live HULK access is disabled in the scripted test build."));
+const hulk: HulkApi = {
+  status: () =>
+    Promise.resolve({ address: null, paired: false, mine: null, server: null, mismatch: null }),
+  pair: noLiveHulk,
+  unpair: noLiveHulk,
+  invoke: noLiveHulk,
+  putFile: noLiveHulk,
+};
 
 /** The folder "Add a folder" links; the test makes it first. */
 const FOLDER = import.meta.env.VITE_E2E_FOLDER ?? "C:\\fuse-e2e";
@@ -281,6 +294,7 @@ export function e2eDeps() {
   document.documentElement.dataset.build = E2E_MARK;
   const anthropic = logged(createAnthropicAdapter({ fetch: scriptedFetch }));
   return {
+    hulk,
     keysApi,
     updates,
     openDb: loggedDb,
