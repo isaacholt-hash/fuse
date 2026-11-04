@@ -181,5 +181,24 @@ test("navigation still works and remembers its category when browser storage is 
   } finally {
     get.mockRestore();
     set.mockRestore();
+    await category(user, "General");
+  }
+});
+
+test("a blocked write cannot restore an older category over the current in-memory choice", async () => {
+  localStorage.setItem("fuse.settings.category", "general");
+  const user = userEvent.setup();
+  const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("read only");
+  });
+  try {
+    const first = render(<SettingsView {...props()} target="theme" />);
+    await category(user, "Personalization");
+    first.unmount();
+    render(<SettingsView {...props()} />);
+    expect(screen.getByRole("region", { name: "Custom instructions" })).toBeVisible();
+  } finally {
+    set.mockRestore();
+    await category(user, "General");
   }
 });

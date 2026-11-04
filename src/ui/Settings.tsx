@@ -635,7 +635,9 @@ export function SettingsView({
 }
 
 let lastSettingsCategory: SettingsCategoryId = "general";
+let categoryWriteFailed = false;
 function readSettingsCategory(): SettingsCategoryId {
+  if (categoryWriteFailed) return lastSettingsCategory;
   try {
     const stored = localStorage.getItem("fuse.settings.category");
     const known = SETTINGS_CATEGORIES.find((item) => item.id === stored);
@@ -648,8 +650,9 @@ function rememberSettingsCategory(category: SettingsCategoryId) {
   lastSettingsCategory = category;
   try {
     localStorage.setItem("fuse.settings.category", category);
+    categoryWriteFailed = false;
   } catch {
-    /* In-memory fallback for restricted browser storage. */
+    categoryWriteFailed = true;
   }
 }
 function hasSettingsContent(node: ReactNode): boolean {
