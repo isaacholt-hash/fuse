@@ -38,6 +38,18 @@ pub struct Ctx {
 }
 
 impl Ctx {
+    /// A worker shares the connection pool, secret store and sync runtime, without depending
+    /// on a webview or borrowing Tauri's managed state for the lifetime of its task.
+    pub(crate) fn sync_view(&self) -> Result<Self, String> {
+        let mut view = Self::new(
+            self.data_dir.clone(),
+            self.config_dir.clone(),
+            self.keys.clone(),
+        );
+        view.db = Database::from_pool(self.db.pool()?);
+        view.sync = self.sync.clone();
+        Ok(view)
+    }
     pub fn new(data_dir: PathBuf, config_dir: PathBuf, keys: Keys) -> Self {
         Ctx {
             data_dir,

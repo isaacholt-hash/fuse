@@ -1,5 +1,7 @@
 //! Opt-in native sync. HULK is a trusted participant, not a blind relay.
 pub mod crypto;
+pub mod transport;
+pub mod worker;
 
 use crate::{ctx::Ctx, db, keys::SecretStore};
 use serde::{Deserialize, Serialize};
@@ -16,16 +18,23 @@ const RECOVERY: &str = "sync:recovery";
 pub const WORKSPACE: &str = "00000000-0000-7000-8000-000000000001";
 pub const USER: &str = "00000000-0000-7000-8000-000000000002";
 
+#[derive(Clone)]
 pub struct Sync {
     pub host: bool,
-    pub administration: tokio::sync::Mutex<()>,
+    pub administration: std::sync::Arc<tokio::sync::Mutex<()>>,
     pub client: reqwest::Client,
+    pub started: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    pub wake: std::sync::Arc<tokio::sync::Notify>,
+    pub force: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl Default for Sync {
     fn default() -> Self {
         Self {
             host: false,
-            administration: tokio::sync::Mutex::new(()),
+            administration: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            started: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            wake: std::sync::Arc::new(tokio::sync::Notify::new()),
+            force: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             client: reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
                 .timeout(std::time::Duration::from_secs(30))
@@ -629,6 +638,14 @@ pub mod commands {
     use super::*;
     use tauri::State;
     #[tauri::command]
+    pub async fn sync_pause(ctx: State<'_, Ctx>, paused: bool) -> Result<Status, String> {
+        worker::pause(&ctx, paused).await
+    }
+    #[tauri::command]
+    pub async fn sync_now(ctx: State<'_, Ctx>) -> Result<Status, String> {
+        worker::now(&ctx).await
+    }
+    #[tauri::command]
     pub async fn sync_status(ctx: State<'_, Ctx>) -> Result<Status, String> {
         status(&ctx).await
     }
@@ -663,7 +680,7 @@ mod tests {
     use super::*;
     use crate::keys::{Keys, MemoryStore};
 
-    fn fixture(host: bool) -> Ctx {
+    pub(crate) fn fixture(host: bool) -> Ctx {
         let root = std::env::temp_dir().join(format!(
             "fuse-sync-fixture-{}-{}",
             std::process::id(),
@@ -677,7 +694,7 @@ mod tests {
         ctx.sync.host = host;
         ctx
     }
-    async fn cleanup(ctx: &Ctx) {
+    pub(crate) async fn cleanup(ctx: &Ctx) {
         ctx.db.pool().unwrap().close().await;
         std::fs::remove_dir_all(ctx.config_dir.parent().unwrap()).unwrap();
     }

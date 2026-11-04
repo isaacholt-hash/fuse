@@ -349,6 +349,27 @@ async fn sync_enroll(
     }
 }
 
+async fn sync_wire(
+    State(server): State<Arc<Server>>,
+    Path(action): Path<String>,
+    headers: HeaderMap,
+    axum::Json(body): axum::Json<crate::sync::transport::Wire<Value>>,
+) -> Response {
+    let Some(Who::Device(id)) = server.who(&headers) else {
+        return signed_out();
+    };
+    if !server.auth.devices().iter().any(|device| device.id == id) {
+        return error(
+            StatusCode::FORBIDDEN,
+            json!("The internal runner isn't a sync device."),
+        );
+    }
+    match crate::sync::transport::dispatch(&server.ctx, &id, &action, body).await {
+        Ok(reply) => ([(header::CACHE_CONTROL, "no-store")], axum::Json(reply)).into_response(),
+        Err(reason) => error(StatusCode::BAD_REQUEST, json!(reason)),
+    }
+}
+
 async fn invoke(
     State(server): State<Arc<Server>>,
     Path(command): Path<String>,
@@ -495,6 +516,7 @@ pub fn router(server: Arc<Server>, ui: &FsPath) -> Router {
         .route("/api/auth/devices", get(devices))
         .route("/api/auth/revoke", post(revoke))
         .route("/api/sync/enroll", post(sync_enroll))
+        .route("/api/sync/{action}", post(sync_wire))
         .layer(axum::middleware::from_fn(same_origin))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(server)
@@ -604,6 +626,8 @@ async fn serve(config: Config) -> Result<(), String> {
         context(&config.home, config.test_keys_in_memory)?,
         Auth::open(&config.home)?,
     );
+    // Start an already-enrolled server even when no browser or runner opens the database.
+    crate::db::db_open(&server.ctx).await?;
     let addr = SocketAddr::from(([127, 0, 0, 1], config.port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -843,6 +867,28 @@ mod tests {
         for secret in keys.epochs.values() {
             assert!(!public_status.contains(secret));
         }
+        // The independent native worker exchanges typed ciphertext, stages durably and
+        // advances acknowledgements without any open conversation or browser tab.
+        crate::db::db_execute(&native, "INSERT INTO threads (id,workspace_id,user_id,title,created_at,updated_at) VALUES (?,?,?,?,1,1)".into(), vec![json!("wire-fixture"),json!(crate::sync::WORKSPACE),json!(crate::sync::USER),json!("Synthetic wire history")]).await.unwrap();
+        crate::sync::worker::cycle(&native, "http-fixture")
+            .await
+            .unwrap();
+        crate::sync::worker::cycle(&native, "http-fixture")
+            .await
+            .unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_inbox")
+            .fetch_one(&native.db.pool().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
+        let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sync_outbox")
+            .fetch_one(&native.db.pool().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(pending, 0);
+        let wire=json!({"hello":{"protocol":crate::sync::crypto::PROTOCOL,"schema":crate::db::schema_version(),"datasetId":keys.dataset_id,"epoch":keys.epoch,"deviceId":enrolled.device_id},"data":{"after":0}}).to_string();
+        let (code, _) = send(call(&base, "/api/sync/pull", &wire).header("cookie", &cookie)).await;
+        assert_eq!(code, 401);
         native.db.pool().unwrap().close().await;
         let _ = std::fs::remove_dir_all(home);
         let _ = std::fs::remove_dir_all(ui);
