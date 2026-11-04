@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M10-runs-on-hulk.md`** — work only on what it lists (M0–M9 are built). All 11 steps are built and merged (2026-11-01). Next is Isaac's deploy (`docs/hulk-server.md`) and live check; after that, steps 11–25 (queued 2026-11-01 and 2026-11-02), one at a time, stopping after each merge. Every step ships on desktop and web
+- **Current milestone: `docs/milestones/M11-encrypted-sync.md`** — M0–M10 are built (M10 through step 26). Isaac approved M11 and an unattended build on 2026-11-04: build its steps in order, one branch and PR each, merge only after all checks pass, and continue until M11 is complete. Every step ships on desktop and web. Do not deploy HULK, touch production data or enable sync on existing installations.
 
 ## The 5 things that matter
 
@@ -27,7 +27,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Web search | Provider-native search tools; no separate search key in P1 |
 | Routing rule | Quality floor first (RT-17), cost second. Cheap tier never answers the user |
 | Budget | No app budget in month one; provider-console hard limits + anomaly alert (CO-07) |
-| Sync storage | Deferred to P2 (logical records, never the database file; PL-04) |
+| Sync storage | M11: trusted HULK hosts encrypted logical records and participates in sync for its web app and runner. Explicit opt-in; never sync the database file, credentials or machine permissions. |
 | Continuity (2026-10-29) | P1.5 part 1, Continuity core (M5); order since re-set by the Roadmap row below. Memory is provider-neutral typed records (decisions and tasks are types) with scope, provenance and authority; one context assembler; egress policy checked in the Rust transport; backup before every migration, migrations stay forward-only. Details: `docs/requirements.md` §3, §8, §15, §17 |
 | Roadmap (2026-10-30) | P1.5 is now three parts: Continuity core (M5, done), Coding agent (M6, §11b: Claude Code and Codex for the daily loop), Local and lean (M7). P2 follows. The coding agent's gate is Isaac's own edit, run, review and commit loop, not feature parity |
 | Local and lean (2026-10-30) | llama.cpp built in through Rust, in a worker process; Qwen3 1.7B or 4B picked by hardware, opt-in download; housekeeping only (RT-17 kept); on as soon as a model is installed, one switch to turn it off. Isaac skipped M6's two-week trial |
@@ -45,7 +45,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 - Before opening a PR: `pnpm lint`, `pnpm typecheck`, `pnpm test` pass, and the app starts with `pnpm tauri dev`.
 - **Ship every step with the `ship-step` skill** (`.claude/skills/ship-step/`): `pnpm check`, `scripts/screenshot.sh`, PR, merge.
 - **Merge it yourself once checks pass:** the checks above, a screenshot of the running app (HULK is headless: use Xvfb), the secret scan, and CI green once CI exists. Use `gh pr merge <n> --merge --delete-branch`. Don't merge if anything fails, or if the PR asks Isaac a question that's still open.
-- After merging, **stop**: send Isaac the PR link, the screenshot and what's next. Start the next step only when he says so. If he asks for changes after a merge, they go in a follow-up PR.
+- After merging, send Isaac the PR link, the screenshot and what's next. **M11 exception, explicitly approved by Isaac:** continue unattended to the next step. Otherwise stop and start the next step only when he says so. If he asks for changes after a merge, they go in a follow-up PR.
 - If something in the milestone looks wrong or a decision is missing, **ask Isaac** rather than guessing. Write questions as a short list with your recommendation for each.
 - Isaac reviews in short sprints: keep PRs small, explanations short, and lead with what he needs to do.
 - Tick the step's box in the milestone file in the same PR.

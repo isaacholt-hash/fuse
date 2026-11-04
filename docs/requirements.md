@@ -64,7 +64,7 @@ Each phase ships only when its gate passes. P1's gate is the one that matters: i
 2. **Coding agent** (added 2026-10-30, section 11b): what Claude Code and Codex do for your daily work. A project linked to a local repository; the agent reads, searches and edits files, runs commands with your approval, shows every change as a diff, works with git, reads CLAUDE.md and AGENTS.md, and does long runs with a plan and a cost cap, each step routed and priced like chat. It brings forward the parts of P2 agents it needs (AG-04, AG-05, AG-06). **Gate:** for two weeks you do your edit, run, review and commit loop in FUSE rather than in Claude Code or Codex, and no repo content reaches a blocked provider in tests.
 3. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
 
-**P2 order (set 2026-10-31):** Work in folders (M8), Tools and MCP (M9), then Runs on HULK (M10): the self-hosted web app with background runs, handover from the desktop and scheduled tasks. Sync (PL-04) comes after.
+**P2 order (updated 2026-11-04):** Work in folders (M8), Tools and MCP (M9), Runs on HULK (M10, built through step 26), then Encrypted sync (M11, PL-04). Isaac approved the full trusted-HULK sync milestone and unattended build; see `docs/milestones/M11-encrypted-sync.md`. Dictation and deep research follow M11.
 
 ## 4. Users and key use cases
 
@@ -439,7 +439,7 @@ Answers live in the Decisions table in `CLAUDE.md` (locked 2026-10-26).
 - [x] Where web v1 runs: desktop only in P1; self-hosted web on HULK in P2
 - [x] Web search: provider-native search tools in P1
 - [ ] Default tier mapping: open, set in M1 from current model lists and prices. Budget for month one: decided (no app budget; provider-console hard limits + CO-07 alert)
-- [ ] Storage location for P2 sync: deferred to P2
+- [x] Storage location for P2 sync: trusted HULK, hosting encrypted logical records and participating for the web app and runner (M11, approved 2026-11-04)
 
 **Decided 2026-10-29 for Continuity core (from `docs/specs/fuse-requirements-v0.1.md`)**
 
@@ -494,5 +494,6 @@ Decided 2026-10-30:
 
 - [ ] P2 part 3, Runs on HULK (M10): built unattended 2026-11-01 (`docs/milestones/M10-runs-on-hulk.md`); the recorded benchmark passes on HULK and in CI. Waiting on Isaac: the deploy (`docs/hulk-server.md`) and the live check. The self-hosted web app (PL-03, PL-02), background runs and handover (CA-15), following and approving from another device (CA-16 core), and scheduled tasks (AG-07)
 - [ ] M10 follow-ups (queued 2026-11-01, `docs/milestones/M10-runs-on-hulk.md` steps 11–22): the stall watchdog, two areas (CH-19) with status and place in the sidebar, a home screen and a Scheduled page, then the six fixes from public reviews. Source: `docs/ui-review-2026-11-01.md`
-- [ ] P2 sync, dictation, deep research (after M10)
+- [ ] P2 sync (M11): `docs/milestones/M11-encrypted-sync.md`, approved 2026-11-04; opt-in full sync with trusted HULK, built unattended one verified PR at a time
+- [ ] P2 dictation and deep research (after M11)
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on
