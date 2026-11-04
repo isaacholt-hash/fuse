@@ -9,6 +9,11 @@ import type { SqlDb, SqlStatement } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  "sync_prepared",
+  "sync_transfers",
+  "sync_unavailable",
+  "sync_pending_deletes",
+  "sync_policy_joins",
   "sync_revisions",
   "sync_conflicts",
   "sync_inbox",
@@ -75,6 +80,12 @@ export const SYNC_KEPT_ON_DELETE = [
   "sync_receipts",
   "sync_blobs",
   "sync_aliases",
+  "sync_entities",
+  "sync_lineage",
+  "sync_blob_refs",
+  "sync_seen",
+  "sync_reference_rules",
+  "sync_releases",
 ] as const;
 
 export async function deleteAllData(
@@ -90,10 +101,39 @@ export async function deleteAllData(
       params: [ws],
     },
   ];
+  statements.push({
+    sql: "INSERT INTO sync_releases(id,workspace_id,user_id,created_at,updated_at) SELECT DISTINCT blob_id,workspace_id,user_id,?,? FROM sync_blob_refs WHERE workspace_id=? ON CONFLICT DO NOTHING",
+    params: [Date.now(), Date.now(), ws],
+  });
+  statements.push({ sql: "DELETE FROM sync_blob_refs WHERE workspace_id=?", params: [ws] });
+  statements.push({
+    sql: "DELETE FROM sync_relay WHERE workspace_id=? AND (operation='put' OR operation IS NULL)",
+    params: [ws],
+  });
   for (const table of DELETE_ORDER) {
     statements.push({ sql: `DELETE FROM ${table} WHERE workspace_id = ?`, params: [ws] });
   }
+  // A workspace barrier also covers offline records this installation has never seen.
+  // Capture it atomically with the wipe, and only after explicit prior enrollment.
+  statements.push(
+    {
+      sql: "UPDATE sync_state SET seq=seq+1,clock=clock+1 WHERE workspace_id=? AND user_id=? AND epoch>0",
+      params: [ws, tenant.userId],
+    },
+    {
+      sql: `INSERT INTO sync_outbox(id,workspace_id,user_id,table_name,record_key,device_id,seq,clock,version,operation,payload,created_at,updated_at)
+      SELECT device_id||':'||seq,workspace_id,user_id,'$workspace',workspace_id,device_id,seq,clock,
+      json_set(wipe_version,'$."'||device_id||'"',seq),'delete',NULL,?,? FROM sync_state WHERE workspace_id=? AND user_id=? AND epoch>0`,
+      params: [Date.now(), Date.now(), ws, tenant.userId],
+    },
+    {
+      sql: "UPDATE sync_state SET wipe_version=(SELECT version FROM sync_outbox WHERE id=sync_state.device_id||':'||sync_state.seq) WHERE workspace_id=? AND user_id=? AND epoch>0",
+      params: [ws, tenant.userId],
+    },
+  );
   const results = await db.batch(statements);
-  const rows = results.slice(1).reduce((sum, row) => sum + row.rowsAffected, 0);
+  const rows = results
+    .slice(4, DELETE_ORDER.length + 4)
+    .reduce((sum, row) => sum + row.rowsAffected, 0);
   return { rows, files: files.wipe ? await files.wipe() : 0 };
 }

@@ -272,3 +272,40 @@ It also seeds the default workspace and user with fixed UUIDs. Before each migra
 **Tools switched off (M9 step 1, `0047_project_tools_off.sql`, AG-01).** `project_tools_off` has one row per tool a project switched off in Project settings → Tools. Every tool is on unless it has a row; runs outside a project have every tool, and the registry's core tools (`list_files`, `read_file`, `search_files`) are offered whatever the rows say. Read once per turn of a run.
 
 **Folder knowledge (M8 step 11, `0046_folder_files.sql`, FK-07).** `folder_files` has one row per document found in a folder: its path, the SHA-256 and size of its bytes on disk, its modified time, and the `files` record that holds its extracted text. That record is linked to every project with the folder through `project_files`, so it's chunked and embedded like any knowledge file. A changed document gets a new file record, and the old one is unlinked and loses its chunks and vectors. A removed document loses its row and record links. `listProjectFiles` reports each file's `folderId` (null for uploads).
+
+### M11 file transfer and deletion (migration 0060)
+
+Sync format 2 carries encrypted manifests for app-managed attachments, completed-run images
+and document snapshots. A manifest names a complete SHA-256, byte length and random opaque
+1 MiB chunk identities. Names, hashes and app paths are inside authenticated ciphertext.
+Records over the 4 MiB envelope limit use the same chunk mechanism (64 MiB record cap).
+File bytes are limited by the existing 50 MiB file-store cap. Verified bytes install atomically
+at a locally generated content-addressed path; imported history conveys no folder access.
+
+`sync_prepared` freezes each outgoing body before its first attempt, including chunk identities.
+`sync_transfers` persists resumable progress and a separate whole-file verification flag.
+`sync_blob_refs` protects shared encrypted chunks; abandoned uploads expire after one hour
+unless renewed by an active transfer. A final probe precedes publication. Deleted/withdrawn
+references queue authenticated releases; referenced chunks remain protected. Local plaintext
+bytes are removed only when no local file or run snapshot still references them.
+
+`sync_entities` and `sync_lineage` retain content-free identities and ownership ancestry.
+`sync_reference_rules` is a compact SQLite projection of the central registry, checked against
+it in tests. Per-record causal vectors order edits; separate `barriers` acknowledge workspace
+and ancestor deletion lifecycles without falsely ordering unrelated edits. Deletion markers,
+identity mappings and replay digests (`sync_seen`) remain throughout M11. Workspace deletion
+also covers records created offline that the deleting device never saw.
+
+SQLite stamps an eight-second undo deadline independently of browser clocks. Undo removes
+that deadline; final deletion removes content and retains content-free cost dimensions.
+The native worker finalizes expired shared deletions even with no browser/chat open. Pending
+owner executions stage remote deletion until their existing owner controls allow it; sync
+never stops, starts or resumes a run. Private local copies remain local during withdrawal.
+Removing a local-only project preserves its former chats' and prompts' privacy.
+
+Deleted/withdrawn bodies are purged from the relay, inbox/outbox, prepared transfers and
+revision history. Ordinary superseded revisions expire after thirty days; current revisions
+and unresolved review candidates remain until superseded/resolved. Relay compaction advances
+cursors across removed bodies; durable replay digests still reject an event ID reused for
+different content. Backups are independent copies with their existing retention policy;
+sync deletion does not rewrite backups or erase already-downloaded copies on revoked devices.

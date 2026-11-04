@@ -48,16 +48,34 @@ pub fn put(root: &Path, bytes: &[u8]) -> Result<StoredFile, String> {
     }
     let sha256 = hex(&Sha256::digest(bytes));
     let path = path_for(root, &sha256);
-    if !path.exists() {
+    let valid_existing = fs::read(&path)
+        .is_ok_and(|stored| stored.len() == bytes.len() && hex(&Sha256::digest(&stored)) == sha256);
+    if !valid_existing {
         let dir = root.join(DIR);
         fs::create_dir_all(&dir).map_err(|e| format!("can't create the files folder: {e}"))?;
         // Write to a temp name, then rename, so a crash never leaves a half-written file.
-        let tmp = dir.join(format!("{sha256}.tmp"));
+        let mut nonce = [0u8; 8];
+        getrandom::fill(&mut nonce)
+            .map_err(|_| "OS randomness wasn't available for atomic file installation.")?;
+        let tmp = dir.join(format!("{sha256}.{}.tmp", hex(&nonce)));
         let mut f = fs::File::create(&tmp).map_err(|e| format!("can't save the file: {e}"))?;
         f.write_all(bytes)
             .and_then(|()| f.sync_all())
             .map_err(|e| format!("can't save the file: {e}"))?;
-        fs::rename(&tmp, &path).map_err(|e| format!("can't save the file: {e}"))?;
+        if let Err(error) = fs::rename(&tmp, &path) {
+            // Another writer may already have installed these same content-addressed bytes.
+            let complete = fs::read(&path).is_ok_and(|stored| {
+                stored.len() == bytes.len() && hex(&Sha256::digest(&stored)) == sha256
+            });
+            let _ = fs::remove_file(&tmp);
+            if !complete {
+                return Err(format!("can't save the file: {error}"));
+            }
+        }
+        #[cfg(unix)]
+        fs::File::open(&dir)
+            .and_then(|directory| directory.sync_all())
+            .map_err(|e| format!("can't persist the files folder: {e}"))?;
     }
     Ok(StoredFile {
         sha256,

@@ -302,19 +302,29 @@ export async function updateProject(
 /** Soft-deletes the project. Its chats are kept and move out to "no project". */
 export async function deleteProject(db: SqlDb, tenant: Tenant, id: string): Promise<void> {
   const now = Date.now();
-  await db.execute(
-    `UPDATE threads SET project_id = NULL, updated_at = ? WHERE workspace_id = ? AND project_id = ?`,
-    [now, tenant.workspaceId, id],
-  );
-  // The project's saved prompts (CH-12) aren't lost: they move to every chat.
-  await db.execute(
-    `UPDATE prompts SET project_id = NULL, updated_at = ? WHERE workspace_id = ? AND project_id = ?`,
-    [now, tenant.workspaceId, id],
-  );
-  await db.execute(
-    `UPDATE projects SET deleted_at = ?, updated_at = ? WHERE workspace_id = ? AND id = ?`,
-    [now, now, tenant.workspaceId, id],
-  );
+  // Removing a private project must not publish its formerly private chats or templates.
+  await db.batch([
+    {
+      sql: `UPDATE threads SET local_only=1 WHERE workspace_id=? AND project_id=? AND EXISTS(SELECT 1 FROM projects WHERE id=? AND privacy_mode='local_only')`,
+      params: [tenant.workspaceId, id, id],
+    },
+    {
+      sql: `UPDATE prompts SET sync_local_only=1 WHERE workspace_id=? AND project_id=? AND EXISTS(SELECT 1 FROM projects WHERE id=? AND privacy_mode='local_only')`,
+      params: [tenant.workspaceId, id, id],
+    },
+    {
+      sql: `UPDATE threads SET project_id=NULL,updated_at=? WHERE workspace_id=? AND project_id=?`,
+      params: [now, tenant.workspaceId, id],
+    },
+    {
+      sql: `UPDATE prompts SET project_id=NULL,updated_at=? WHERE workspace_id=? AND project_id=?`,
+      params: [now, tenant.workspaceId, id],
+    },
+    {
+      sql: `UPDATE projects SET deleted_at=?,updated_at=? WHERE workspace_id=? AND id=?`,
+      params: [now, now, tenant.workspaceId, id],
+    },
+  ]);
 }
 
 function cleanName(name: string): string {

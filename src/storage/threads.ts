@@ -424,8 +424,8 @@ export async function purgeThread(
   );
   write(
     keep === "tombstone"
-      ? `UPDATE request_log SET message_id = NULL WHERE workspace_id = ? AND thread_id = ?`
-      : `UPDATE request_log SET thread_id = NULL, message_id = NULL WHERE workspace_id = ? AND thread_id = ?`,
+      ? `UPDATE request_log SET message_id = NULL, error_message = NULL WHERE workspace_id = ? AND thread_id = ?`
+      : `UPDATE request_log SET thread_id = NULL, message_id = NULL, error_message = NULL WHERE workspace_id = ? AND thread_id = ?`,
     [ws, id],
   );
   write(

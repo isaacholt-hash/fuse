@@ -25,7 +25,27 @@
       "key": ["id"],
       "eligible": "{a}.privacy_mode!='local_only'",
       "ready": "1",
-      "dependencies": []
+      "dependencies": [],
+      "references": [],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "name": "TEXT",
+        "instructions": "TEXT",
+        "default_provider": "TEXT",
+        "default_model": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER",
+        "default_tier": "TEXT",
+        "privacy_mode": "TEXT",
+        "allow_embeddings": "INTEGER",
+        "answer_without_model": "INTEGER",
+        "run_cap_micro_usd": "INTEGER",
+        "run_wall_minutes": "INTEGER",
+        "run_idle_minutes": "INTEGER"
+      }
     },
     "threads": {
       "columns": [
@@ -57,11 +77,56 @@
         "purged_at",
         "schedule_id"
       ],
-      "localColumns": ["seen_at", "run_mode", "run_branch", "run_where"],
+      "localColumns": ["seen_at", "run_mode", "run_branch", "run_where", "local_only"],
       "key": ["id"],
-      "eligible": "{a}.incognito=0 AND (({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only')))",
+      "eligible": "{a}.incognito=0 AND {a}.local_only=0 AND (({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only')))",
       "ready": "({a}.deleted_at IS NULL OR {a}.purged_at IS NOT NULL)",
-      "dependencies": ["messages", "projects"]
+      "dependencies": ["messages", "projects"],
+      "references": [
+        {
+          "column": "active_leaf_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "title": "TEXT",
+        "title_source": "TEXT",
+        "last_message_at": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER",
+        "web_search": "INTEGER",
+        "instructions": "TEXT",
+        "project_id": "TEXT",
+        "memory_injection": "TEXT",
+        "memory_checked_at": "INTEGER",
+        "pinned_tier": "TEXT",
+        "pinned_provider": "TEXT",
+        "pinned_model": "TEXT",
+        "active_leaf_id": "TEXT",
+        "incognito": "INTEGER",
+        "pinned_at": "INTEGER",
+        "archived_at": "INTEGER",
+        "stay_provider": "TEXT",
+        "kind": "TEXT",
+        "schedule_id": "TEXT",
+        "handoff_from_id": "TEXT",
+        "run_cap_micro_usd": "INTEGER",
+        "purged_at": "INTEGER"
+      }
     },
     "messages": {
       "columns": [
@@ -104,9 +169,77 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "{a}.status!='streaming' AND {a}.deleted_at IS NULL",
-      "dependencies": ["messages", "request_log", "threads"]
+      "dependencies": ["messages", "request_log", "threads"],
+      "references": [
+        {
+          "column": "escalated_from_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "parent_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "request_id",
+          "table": "request_log",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "thread_id": "TEXT",
+        "parent_id": "TEXT",
+        "role": "TEXT",
+        "content": "TEXT",
+        "status": "TEXT",
+        "error_code": "TEXT",
+        "error_message": "TEXT",
+        "provider": "TEXT",
+        "model": "TEXT",
+        "input_tokens": "INTEGER",
+        "output_tokens": "INTEGER",
+        "cached_input_tokens": "INTEGER",
+        "cache_write_tokens": "INTEGER",
+        "reasoning_tokens": "INTEGER",
+        "cost_micro_usd": "INTEGER",
+        "price_version": "TEXT",
+        "latency_ms": "INTEGER",
+        "ttft_ms": "INTEGER",
+        "request_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER",
+        "web_search_calls": "INTEGER",
+        "pinned_mode": "TEXT",
+        "tier": "TEXT",
+        "route_rule_id": "TEXT",
+        "route_reason": "TEXT",
+        "route_intent": "TEXT",
+        "route_complexity": "TEXT",
+        "best_cost_micro_usd": "INTEGER",
+        "escalated_from_id": "TEXT",
+        "feedback": "TEXT",
+        "reasoning_summary": "TEXT"
+      }
     },
     "message_citations": {
       "columns": [
@@ -123,9 +256,30 @@
       ],
       "localColumns": ["chunk_id"],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
+      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
       "ready": "1",
-      "dependencies": ["messages"]
+      "dependencies": ["messages"],
+      "references": [
+        {
+          "column": "message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "message_id": "TEXT",
+        "ordinal": "INTEGER",
+        "kind": "TEXT",
+        "url": "TEXT",
+        "title": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "message_files": {
       "columns": [
@@ -141,9 +295,36 @@
       ],
       "localColumns": [],
       "key": ["message_id", "file_id", "ordinal"],
-      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) AND EXISTS (SELECT 1 FROM files f WHERE f.id={a}.file_id AND f.may_send=1) AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.file_id) AND NOT EXISTS (SELECT 1 FROM files f JOIN projects p ON p.id=f.project_id WHERE f.id={a}.file_id AND p.privacy_mode='local_only')",
+      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) AND EXISTS (SELECT 1 FROM files f WHERE f.id={a}.file_id AND f.may_send=1) AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.file_id) AND NOT EXISTS (SELECT 1 FROM files f JOIN projects p ON p.id=f.project_id WHERE f.id={a}.file_id AND p.privacy_mode='local_only')",
       "ready": "1",
-      "dependencies": ["files", "messages"]
+      "dependencies": ["files", "messages"],
+      "references": [
+        {
+          "column": "file_id",
+          "table": "files",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "message_id": "TEXT",
+        "file_id": "TEXT",
+        "ordinal": "INTEGER",
+        "mode": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "files": {
       "columns": [
@@ -168,9 +349,38 @@
       ],
       "localColumns": ["storage_path"],
       "key": ["id"],
-      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))) AND {a}.may_send=1 AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.id) AND ({a}.thread_id IS NOT NULL OR EXISTS (SELECT 1 FROM message_files mf JOIN messages m ON m.id=mf.message_id JOIN threads t ON t.id=m.thread_id WHERE mf.file_id={a}.id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) OR EXISTS (SELECT 1 FROM project_files pf JOIN projects p ON p.id=pf.project_id WHERE pf.file_id={a}.id AND pf.deleted_at IS NULL AND p.privacy_mode!='local_only'))",
+      "eligible": "{a}.may_send=1 AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.id) AND (({a}.thread_id IS NOT NULL AND EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))) OR EXISTS (SELECT 1 FROM message_files mf JOIN messages m ON m.id=mf.message_id JOIN threads t ON t.id=m.thread_id WHERE mf.file_id={a}.id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) OR EXISTS (SELECT 1 FROM project_files pf JOIN projects p ON p.id=pf.project_id WHERE pf.file_id={a}.id AND pf.deleted_at IS NULL AND p.privacy_mode!='local_only'))",
       "ready": "1",
-      "dependencies": ["threads"]
+      "dependencies": ["threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "name": "TEXT",
+        "mime": "TEXT",
+        "size_bytes": "INTEGER",
+        "sha256": "TEXT",
+        "width": "INTEGER",
+        "height": "INTEGER",
+        "token_estimate": "INTEGER",
+        "parse_status": "TEXT",
+        "parse_error": "TEXT",
+        "project_id": "TEXT",
+        "thread_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER",
+        "may_send": "INTEGER"
+      }
     },
     "thread_summaries": {
       "columns": [
@@ -185,9 +395,35 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "1",
-      "dependencies": ["messages", "threads"]
+      "dependencies": ["messages", "threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "upto_message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "thread_id": "TEXT",
+        "upto_message_id": "TEXT",
+        "summary": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "memories": {
       "columns": [
@@ -224,9 +460,85 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))) AND {a}.may_send=1",
+      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))) AND {a}.may_send=1",
       "ready": "1",
-      "dependencies": ["artifacts", "memories", "messages", "projects", "threads"]
+      "dependencies": ["artifacts", "memories", "messages", "projects", "threads"],
+      "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "source_artifact_id",
+          "table": "artifacts",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "source_message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "source_thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "superseded_by_id",
+          "table": "memories",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "text": "TEXT",
+        "kind": "TEXT",
+        "scope": "TEXT",
+        "project_id": "TEXT",
+        "thread_id": "TEXT",
+        "authority": "TEXT",
+        "source_thread_id": "TEXT",
+        "source_message_id": "TEXT",
+        "source_artifact_id": "TEXT",
+        "extraction_method": "TEXT",
+        "extraction_model": "TEXT",
+        "confidence": "INTEGER",
+        "last_verified_at": "INTEGER",
+        "expires_at": "INTEGER",
+        "status": "TEXT",
+        "sensitivity": "TEXT",
+        "may_send": "INTEGER",
+        "superseded_by_id": "TEXT",
+        "rationale": "TEXT",
+        "alternatives": "TEXT",
+        "task_status": "TEXT",
+        "depends_on": "TEXT",
+        "revision": "INTEGER",
+        "device_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER"
+      }
     },
     "message_memories": {
       "columns": [
@@ -240,9 +552,34 @@
       ],
       "localColumns": [],
       "key": ["message_id", "memory_id"],
-      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) AND EXISTS (SELECT 1 FROM memories m WHERE m.id={a}.memory_id AND m.may_send=1) AND NOT EXISTS (SELECT 1 FROM memories m JOIN projects p ON p.id=m.project_id WHERE m.id={a}.memory_id AND p.privacy_mode='local_only')",
+      "eligible": "EXISTS (SELECT 1 FROM messages m JOIN threads t ON t.id=m.thread_id WHERE m.id={a}.message_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))) AND EXISTS (SELECT 1 FROM memories m WHERE m.id={a}.memory_id AND m.may_send=1) AND NOT EXISTS (SELECT 1 FROM memories m JOIN projects p ON p.id=m.project_id WHERE m.id={a}.memory_id AND p.privacy_mode='local_only')",
       "ready": "1",
-      "dependencies": ["memories", "messages"]
+      "dependencies": ["memories", "messages"],
+      "references": [
+        {
+          "column": "memory_id",
+          "table": "memories",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "message_id": "TEXT",
+        "memory_id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "created_at": "INTEGER",
+        "reason": "TEXT",
+        "score": "REAL"
+      }
     },
     "artifacts": {
       "columns": [
@@ -260,9 +597,31 @@
       ],
       "localColumns": ["allow_cdn"],
       "key": ["thread_id", "key"],
-      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "1",
-      "dependencies": ["threads"]
+      "dependencies": ["threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "thread_id": "TEXT",
+        "key": "TEXT",
+        "title": "TEXT",
+        "type": "TEXT",
+        "language": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER"
+      }
     },
     "artifact_versions": {
       "columns": [
@@ -279,9 +638,37 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM artifacts a JOIN threads t ON t.id=a.thread_id WHERE a.id={a}.artifact_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
+      "eligible": "EXISTS (SELECT 1 FROM artifacts a JOIN threads t ON t.id=a.thread_id WHERE a.id={a}.artifact_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
       "ready": "1",
-      "dependencies": ["artifacts", "messages"]
+      "dependencies": ["artifacts", "messages"],
+      "references": [
+        {
+          "column": "artifact_id",
+          "table": "artifacts",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "artifact_id": "TEXT",
+        "version": "INTEGER",
+        "content": "TEXT",
+        "source": "TEXT",
+        "message_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "user_instructions": {
       "columns": [
@@ -297,7 +684,17 @@
       "key": ["workspace_id", "user_id"],
       "eligible": "1",
       "ready": "1",
-      "dependencies": []
+      "dependencies": [],
+      "references": [],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "about_you": "TEXT",
+        "how_to_answer": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "budgets": {
       "columns": [
@@ -316,7 +713,28 @@
       "key": ["scope", "project_id", "period"],
       "eligible": "({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))",
       "ready": "1",
-      "dependencies": ["projects"]
+      "dependencies": ["projects"],
+      "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "scope": "TEXT",
+        "project_id": "TEXT",
+        "period": "TEXT",
+        "limit_micro_usd": "INTEGER",
+        "hard_stop": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "golden_prompts": {
       "columns": [
@@ -337,7 +755,22 @@
       "key": ["id"],
       "eligible": "1",
       "ready": "1",
-      "dependencies": []
+      "dependencies": [],
+      "references": [],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "prompt": "TEXT",
+        "expected_tier": "TEXT",
+        "intent": "TEXT",
+        "complexity": "TEXT",
+        "needs_context": "INTEGER",
+        "notes": "TEXT",
+        "position": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "web_pages": {
       "columns": [
@@ -353,9 +786,29 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM files f WHERE f.id={a}.file_id AND f.may_send=1 AND (f.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=f.project_id AND p.privacy_mode!='local_only')) AND (f.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=f.thread_id AND t.incognito=0))) AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.file_id)",
+      "eligible": "EXISTS (SELECT 1 FROM files f WHERE f.id={a}.file_id AND f.may_send=1 AND (f.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=f.project_id AND p.privacy_mode!='local_only')) AND (f.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=f.thread_id AND t.incognito=0 AND t.local_only=0))) AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.file_id)",
       "ready": "1",
-      "dependencies": ["files"]
+      "dependencies": ["files"],
+      "references": [
+        {
+          "column": "file_id",
+          "table": "files",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "url": "TEXT",
+        "file_id": "TEXT",
+        "title": "TEXT",
+        "fetched_at": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "imports": {
       "columns": [
@@ -370,17 +823,54 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "1",
-      "dependencies": ["threads"]
+      "dependencies": ["threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "source": "TEXT",
+        "external_id": "TEXT",
+        "thread_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "thread_tags": {
       "columns": ["id", "workspace_id", "user_id", "thread_id", "tag", "created_at", "updated_at"],
       "localColumns": [],
       "key": ["thread_id", "tag"],
-      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(1) AND (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "1",
-      "dependencies": ["threads"]
+      "dependencies": ["threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "thread_id": "TEXT",
+        "tag": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "prompts": {
       "columns": [
@@ -393,11 +883,30 @@
         "created_at",
         "updated_at"
       ],
-      "localColumns": [],
+      "localColumns": ["sync_local_only"],
       "key": ["id"],
-      "eligible": "({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))",
+      "eligible": "{a}.sync_local_only=0 AND (({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only')))",
       "ready": "1",
-      "dependencies": ["projects"]
+      "dependencies": ["projects"],
+      "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "project_id": "TEXT",
+        "name": "TEXT",
+        "body": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "egress_rules": {
       "columns": [
@@ -414,7 +923,26 @@
       "key": ["project_id", "provider"],
       "eligible": "({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))",
       "ready": "1",
-      "dependencies": ["projects"]
+      "dependencies": ["projects"],
+      "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "project_id": "TEXT",
+        "provider": "TEXT",
+        "allow": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "request_log": {
       "columns": [
@@ -449,9 +977,48 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(1) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))))",
+      "eligible": "(1) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))))",
       "ready": "1",
-      "dependencies": ["threads"]
+      "dependencies": ["threads"],
+      "references": [
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "thread_id": "TEXT",
+        "message_id": "TEXT",
+        "purpose": "TEXT",
+        "provider": "TEXT",
+        "model": "TEXT",
+        "attempt": "INTEGER",
+        "input_tokens": "INTEGER",
+        "output_tokens": "INTEGER",
+        "cached_input_tokens": "INTEGER",
+        "cache_write_tokens": "INTEGER",
+        "reasoning_tokens": "INTEGER",
+        "cost_micro_usd": "INTEGER",
+        "price_version": "TEXT",
+        "latency_ms": "INTEGER",
+        "ttft_ms": "INTEGER",
+        "http_status": "INTEGER",
+        "error_code": "TEXT",
+        "error_message": "TEXT",
+        "provider_request_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "web_search_calls": "INTEGER",
+        "tier": "TEXT",
+        "route_rule_id": "TEXT",
+        "surface": "TEXT"
+      }
     },
     "settings": {
       "columns": ["id", "workspace_id", "user_id", "key", "value", "created_at", "updated_at"],
@@ -459,7 +1026,17 @@
       "key": ["key"],
       "eligible": "{a}.key IN ('memory.suggest','memory.budget_tokens','models.defaults','routing.policy','routing.project_rules','routing.overrides','catalog.price_edits','catalog.custom_models','notifications')",
       "ready": "1",
-      "dependencies": []
+      "dependencies": [],
+      "references": [],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "key": "TEXT",
+        "value": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     },
     "runs": {
       "columns": [
@@ -490,9 +1067,58 @@
       ],
       "localColumns": ["sync_owner"],
       "key": ["id"],
-      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
+      "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "{a}.status IN ('done','stopped','error')",
-      "dependencies": ["messages", "projects", "threads"]
+      "dependencies": ["messages", "projects", "threads"],
+      "references": [
+        {
+          "column": "message_id",
+          "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "thread_id",
+          "table": "threads",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "project_id": "TEXT",
+        "thread_id": "TEXT",
+        "message_id": "TEXT",
+        "task": "TEXT",
+        "kind": "TEXT",
+        "mode": "TEXT",
+        "provider": "TEXT",
+        "model": "TEXT",
+        "status": "TEXT",
+        "cap_micro_usd": "INTEGER",
+        "spent_micro_usd": "INTEGER",
+        "note": "TEXT",
+        "summary": "TEXT",
+        "summary_upto": "INTEGER",
+        "branch": "TEXT",
+        "plan": "TEXT",
+        "planner": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "started_at": "INTEGER",
+        "waited_ms": "INTEGER"
+      }
     },
     "run_steps": {
       "columns": [
@@ -519,9 +1145,47 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
+      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
       "ready": "1",
-      "dependencies": ["request_log", "runs"]
+      "dependencies": ["request_log", "runs"],
+      "references": [
+        {
+          "column": "request_id",
+          "table": "request_log",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
+        {
+          "column": "run_id",
+          "table": "runs",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "run_id": "TEXT",
+        "seq": "INTEGER",
+        "kind": "TEXT",
+        "text": "TEXT",
+        "native": "TEXT",
+        "request_id": "TEXT",
+        "tool_name": "TEXT",
+        "tool_call_id": "TEXT",
+        "input": "TEXT",
+        "output": "TEXT",
+        "is_error": "INTEGER",
+        "cost_micro_usd": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "approval": "TEXT",
+        "images": "TEXT",
+        "flags": "TEXT"
+      }
     },
     "run_changes": {
       "columns": [
@@ -543,9 +1207,42 @@
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
+      "eligible": "EXISTS (SELECT 1 FROM runs r WHERE r.id={a}.run_id AND r.workspace_id={a}.workspace_id AND r.status IN ('done','stopped','error') AND (((r.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.privacy_mode!='local_only'))) AND (r.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))))",
       "ready": "1",
-      "dependencies": ["run_steps", "runs"]
+      "dependencies": ["run_steps", "runs"],
+      "references": [
+        {
+          "column": "run_id",
+          "table": "runs",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "step_id",
+          "table": "run_steps",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "run_id": "TEXT",
+        "step_id": "TEXT",
+        "path": "TEXT",
+        "from_path": "TEXT",
+        "before": "TEXT",
+        "after": "TEXT",
+        "status": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "before_sha": "TEXT",
+        "after_sha": "TEXT",
+        "batch_id": "TEXT"
+      }
     },
     "project_files": {
       "columns": [
@@ -562,7 +1259,33 @@
       "key": ["project_id", "file_id"],
       "eligible": "({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only')) AND EXISTS (SELECT 1 FROM files f WHERE f.id={a}.file_id AND f.may_send=1) AND NOT EXISTS (SELECT 1 FROM folder_files ff WHERE ff.file_id={a}.file_id)",
       "ready": "1",
-      "dependencies": ["files", "projects"]
+      "dependencies": ["files", "projects"],
+      "references": [
+        {
+          "column": "file_id",
+          "table": "files",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "project_id": "TEXT",
+        "file_id": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER",
+        "deleted_at": "INTEGER"
+      }
     }
   },
   "localTables": {
@@ -602,6 +1325,20 @@
     "sync_relay",
     "sync_receipts",
     "sync_blobs",
-    "sync_aliases"
-  ]
+    "sync_aliases",
+    "sync_entities",
+    "sync_lineage",
+    "sync_prepared",
+    "sync_transfers",
+    "sync_blob_refs",
+    "sync_seen",
+    "sync_unavailable",
+    "sync_releases",
+    "sync_pending_deletes",
+    "sync_policy_joins",
+    "sync_reference_rules"
+  ],
+  "controls": {
+    "$workspace": "Authenticated content-free delete-everywhere barrier; explicit user action only."
+  }
 }

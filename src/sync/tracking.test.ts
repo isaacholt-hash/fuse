@@ -3,7 +3,7 @@ import { DEFAULT_TENANT as tenant } from "@/storage/defaults";
 import { createThread, deleteThread, purgeThread, restoreThread } from "@/storage/threads";
 import { addMessage, finishMessage, updateMessageContent } from "@/storage/messages";
 import { addMemory, editMemory } from "@/storage/memories";
-import { createProject, setProjectPrivacy } from "@/storage/projects";
+import { createProject, deleteProject, setProjectPrivacy } from "@/storage/projects";
 import { setSetting } from "@/storage/settings";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { EMPTY_USAGE } from "@/storage/usage";
@@ -163,4 +163,99 @@ test("memory metadata agrees with captured revisions without recursive trigger l
   const payload = JSON.parse((await outbox(db)).at(-1)?.payload ?? "{}") as Record<string, unknown>;
   expect(payload).toMatchObject(records[0] ?? {});
   expect(await outbox(db)).toHaveLength(2);
+});
+
+test("portable types and foreign-key publication rules match the real schema", () => {
+  const db = openTestDb();
+  for (const [table, spec] of Object.entries(syncRegistry.tables)) {
+    const columns = db.raw.prepare(`PRAGMA table_info(${table})`).all() as {
+      name: string;
+      type: string;
+      notnull: number;
+    }[];
+    expect(Object.keys(spec.types).sort(), table).toEqual([...spec.columns].sort());
+    for (const column of columns.filter((c) => spec.columns.includes(c.name)))
+      expect(spec.types[column.name], `${table}.${column.name}`).toBe(column.type.toUpperCase());
+    const refs = db.raw.prepare(`PRAGMA foreign_key_list(${table})`).all() as {
+      from: string;
+      table: string;
+      to: string;
+    }[];
+    expect(
+      spec.references.map((ref) => ({
+        column: ref.column,
+        table: ref.table,
+        target: ref.target,
+        optional: ref.optional,
+      })),
+      table,
+    ).toEqual(
+      refs
+        .filter((r) => spec.columns.includes(r.from) && Boolean(syncRegistry.tables[r.table]))
+        .map((r) => ({
+          column: r.from,
+          table: r.table,
+          target: r.to,
+          optional: columns.find((c) => c.name === r.from)?.notnull === 0,
+        }))
+        .sort((a, b) => a.column.localeCompare(b.column)),
+    );
+  }
+});
+
+test("disable retains changes after enrollment while a never-enrolled install captures nothing", async () => {
+  const db = openTestDb();
+  await createThread(db, tenant, "Before any enrollment");
+  expect(await outbox(db)).toEqual([]);
+  await db.execute("UPDATE sync_state SET epoch=1,enabled=0");
+  const thread = await createThread(db, tenant, "Queued while transfers are disabled");
+  expect(await outbox(db)).toHaveLength(1);
+  const identity = await db.select<{ original_id: string }>(
+    "SELECT original_id FROM sync_entities WHERE table_name='threads'",
+  );
+  expect(identity).toEqual([{ original_id: thread.id }]);
+});
+
+test("deleting a local-only project preserves its former chats' and prompts' privacy atomically", async () => {
+  const db = openTestDb();
+  const p = await createProject(db, tenant, "Private");
+  await setProjectPrivacy(db, tenant, p.id, { mode: "local_only", allowEmbeddings: false });
+  const t = await createThread(db, tenant, "Private history", p.id);
+  await db.execute(
+    "INSERT INTO prompts(id,workspace_id,user_id,name,body,project_id,created_at,updated_at) VALUES ('private-prompt',?,?, 'Private','Private template',?,1,1)",
+    [tenant.workspaceId, tenant.userId, p.id],
+  );
+  await enable(db);
+  await deleteProject(db, tenant, p.id);
+  expect(await db.select("SELECT project_id,local_only FROM threads WHERE id=?", [t.id])).toEqual([
+    { project_id: null, local_only: 1 },
+  ]);
+  expect(
+    await db.select("SELECT project_id,sync_local_only FROM prompts WHERE id='private-prompt'"),
+  ).toEqual([{ project_id: null, sync_local_only: 1 }]);
+  expect(
+    (await outbox(db)).filter((e) => e.table_name === "threads" || e.table_name === "prompts"),
+  ).toEqual([]);
+});
+
+test("SQLite's compact reference rules exactly match the central portable registry", async () => {
+  const db = openTestDb();
+  const actual = await db.select(
+    "SELECT table_name,column_name,parent_table,target,parent_has_id FROM sync_reference_rules ORDER BY table_name,column_name",
+  );
+  const expected = Object.entries(syncRegistry.tables)
+    .flatMap(([table, spec]) =>
+      spec.references.map((r) => ({
+        table_name: table,
+        column_name: r.column,
+        parent_table: r.table,
+        target: r.target,
+        parent_has_id: Number(JSON.stringify(syncRegistry.tables[r.table]?.key) === '["id"]'),
+      })),
+    )
+    .sort(
+      (a, b) =>
+        a.table_name.localeCompare(b.table_name) || a.column_name.localeCompare(b.column_name),
+    );
+  expect(actual).toEqual(expected);
 });

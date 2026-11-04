@@ -7,6 +7,10 @@ use crate::db;
 use serde_json::{Value, json};
 use sqlx::{Row, SqliteConnection};
 use std::collections::{BTreeMap, BTreeSet};
+mod deletion;
+pub async fn finalize(ctx: &Ctx) -> Result<(), String> {
+    deletion::finalize(ctx).await
+}
 
 type Vector = BTreeMap<String, u64>;
 type Record = BTreeMap<String, Value>;
@@ -73,7 +77,7 @@ async fn select(
         })
         .collect()
 }
-fn keys(table: &str) -> Result<Vec<String>, String> {
+pub(crate) fn keys(table: &str) -> Result<Vec<String>, String> {
     registry()["tables"][table]["key"]
         .as_array()
         .ok_or("Unknown replicated table.")?
@@ -85,14 +89,14 @@ fn keys(table: &str) -> Result<Vec<String>, String> {
         })
         .collect()
 }
-fn predicate(table: &str) -> Result<String, String> {
+pub(crate) fn predicate(table: &str) -> Result<String, String> {
     Ok(keys(table)?
         .iter()
         .map(|k| format!("{k} IS ?"))
         .collect::<Vec<_>>()
         .join(" AND "))
 }
-fn key_values(event: &Change) -> Result<Vec<Value>, String> {
+pub(crate) fn key_values(event: &Change) -> Result<Vec<Value>, String> {
     let cols = keys(&event.table)?;
     if cols.len() == 1 && cols[0] == "id" {
         Ok(vec![json!(event.key)])
@@ -188,6 +192,16 @@ async fn archive(conn: &mut SqliteConnection, event: &Change) -> Result<(), Stri
 }
 
 async fn revision(conn: &mut SqliteConnection, id: &str) -> Result<Option<Change>, String> {
+    let prepared: Option<String> = sqlx::query_scalar("SELECT event FROM sync_prepared WHERE id=?")
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await
+        .map_err(fail)?;
+    if let Some(body) = prepared {
+        return serde_json::from_str(&body)
+            .map(Some)
+            .map_err(|_| "A prepared sync revision is damaged.".into());
+    }
     let archived: Option<String> =
         sqlx::query_scalar("SELECT event FROM sync_revisions WHERE id=?")
             .bind(id)
@@ -196,7 +210,7 @@ async fn revision(conn: &mut SqliteConnection, id: &str) -> Result<Option<Change
             .map_err(fail)?;
     let body=match archived {
         Some(body)=>Some(body),
-        None=>sqlx::query_scalar("SELECT json_object('id',id,'workspaceId',workspace_id,'userId',user_id,'table',table_name,'key',record_key,'deviceId',device_id,'seq',seq,'clock',clock,'version',json(version),'operation',operation,'payload',json(payload),'createdAt',created_at,'resolves',json(resolves),'retained',json(retained)) FROM sync_outbox WHERE id=?").bind(id).fetch_optional(&mut *conn).await.map_err(fail)?,
+        None=>sqlx::query_scalar("SELECT json_object('id',id,'workspaceId',workspace_id,'userId',user_id,'table',table_name,'key',record_key,'deviceId',device_id,'seq',seq,'clock',clock,'version',json(version),'operation',operation,'payload',json(payload),'createdAt',created_at,'resolves',json(resolves),'retained',json(retained),'format',wire_format,'barriers',json(barriers)) FROM sync_outbox WHERE id=?").bind(id).fetch_optional(&mut *conn).await.map_err(fail)?,
     };
     body.map(|body| {
         serde_json::from_str(&body).map_err(|_| "A current sync revision is damaged.".into())
@@ -367,6 +381,39 @@ async fn record_meta(
         .and_then(Value::as_i64)
         .unwrap_or(1);
     execute(conn,"INSERT INTO sync_records(workspace_id,user_id,table_name,record_key,event_id,device_id,clock,version,revision,operation,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,table_name,record_key) DO UPDATE SET event_id=excluded.event_id,device_id=excluded.device_id,clock=excluded.clock,version=excluded.version,revision=excluded.revision,operation=excluded.operation,updated_at=excluded.updated_at",&[json!(WORKSPACE),json!(USER),json!(event.table),json!(event.key),json!(event.id),json!(event.device_id),json!(event.clock),json!(serde_json::to_string(version).map_err(|_|"Couldn't save causal metadata.")?),json!(revision),json!(operation),json!(now()),json!(now())]).await?;
+    execute(conn,"UPDATE sync_records SET wire_format=?,barriers=? WHERE workspace_id=? AND table_name=? AND record_key=?",&[json!(event.format),json!(serde_json::to_string(&event.barriers).map_err(|_|"Couldn't preserve lifecycle acknowledgements.")?),json!(WORKSPACE),json!(event.table),json!(event.key)]).await?;
+    if let Some(payload) = &event.payload {
+        deletion::entity(conn, event, payload).await?;
+        execute(
+            conn,
+            "DELETE FROM sync_lineage WHERE workspace_id=? AND table_name=? AND record_key=?",
+            &[json!(WORKSPACE), json!(event.table), json!(event.key)],
+        )
+        .await?;
+        for reference in registry()["tables"][&event.table]["references"]
+            .as_array()
+            .ok_or("Invalid sync provenance registry.")?
+        {
+            let column = reference["column"]
+                .as_str()
+                .ok_or("Invalid provenance column.")?;
+            let table = reference["table"]
+                .as_str()
+                .ok_or("Invalid provenance table.")?;
+            if let Some(id) = payload.get(column).and_then(Value::as_str) {
+                execute(conn,"INSERT INTO sync_lineage(workspace_id,user_id,table_name,record_key,column_name,parent_table,parent_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(workspace_id,table_name,record_key,column_name) DO UPDATE SET parent_table=excluded.parent_table,parent_id=excluded.parent_id,updated_at=excluded.updated_at",&[json!(WORKSPACE),json!(USER),json!(event.table),json!(event.key),json!(column),json!(table),json!(id),json!(now()),json!(now())]).await?;
+            }
+        }
+        execute(
+            conn,
+            "DELETE FROM sync_unavailable WHERE workspace_id=? AND table_name=? AND record_key=?",
+            &[json!(WORKSPACE), json!(event.table), json!(event.key)],
+        )
+        .await?;
+        for (column, source) in &event.unavailable {
+            execute(conn,"INSERT INTO sync_unavailable(workspace_id,user_id,table_name,record_key,column_name,parent_table,parent_id,reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",&[json!(WORKSPACE),json!(USER),json!(event.table),json!(event.key),json!(column),json!(source.table),json!(source.id),json!(source.reason),json!(now()),json!(now())]).await?;
+        }
+    }
     Ok(())
 }
 
@@ -430,6 +477,52 @@ async fn resolve_review(conn: &mut SqliteConnection, event: &Change) -> Result<(
     Ok(())
 }
 
+/// Apply markers before fetching file bytes so an old, reordered file cannot be installed
+/// while its deletion is already staged. No network I/O occurs in this transaction.
+pub async fn apply_deletions(ctx: &Ctx) -> Result<usize, String> {
+    let pool = ctx.db.pool()?;
+    let mut tx = pool.begin().await.map_err(fail)?;
+    if execute(
+        &mut tx,
+        "UPDATE sync_state SET applying=1 WHERE workspace_id=? AND enabled=1 AND paused=0",
+        &[json!(WORKSPACE)],
+    )
+    .await?
+        == 0
+    {
+        return Ok(0);
+    }
+    execute(&mut tx, "PRAGMA defer_foreign_keys=ON", &[]).await?;
+    let bodies:Vec<String>=sqlx::query_scalar("SELECT event FROM sync_inbox WHERE workspace_id=? AND applied=0 AND json_extract(event,'$.operation')!='put' ORDER BY CASE WHEN json_extract(event,'$.table')='$workspace' THEN 0 ELSE 1 END,cursor,id").bind(WORKSPACE).fetch_all(&mut *tx).await.map_err(fail)?;
+    let mut count = 0;
+    for body in bodies {
+        let event: Change =
+            serde_json::from_str(&body).map_err(|_| "A staged deletion marker is damaged.")?;
+        event.validate()?;
+        if deletion::apply(&mut tx, &event).await? {
+            count += 1;
+        }
+    }
+    execute(
+        &mut tx,
+        "UPDATE sync_state SET applying=0 WHERE workspace_id=?",
+        &[json!(WORKSPACE)],
+    )
+    .await?;
+    tx.commit().await.map_err(fail)?;
+    Ok(count)
+}
+
+pub async fn ready_for_files(ctx: &Ctx, event: &Change) -> Result<bool, String> {
+    let mut conn = ctx.db.pool()?.acquire().await.map_err(fail)?;
+    Ok(deletion::incoming_guard(&mut conn, event).await?.is_none())
+}
+
+pub async fn stale(ctx: &Ctx, event: &Change) -> Result<bool, String> {
+    let mut conn = ctx.db.pool()?.acquire().await.map_err(fail)?;
+    deletion::stale(&mut conn, event).await
+}
+
 /// Stage missing parents; a complete cyclic component can commit with deferred foreign keys.
 /// Files wait for the verified file store (step 6), and final deletion uses that step's purge.
 pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
@@ -458,10 +551,37 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
             serde_json::from_str(&body).map_err(|_| "A staged sync record is damaged.")?;
         event.validate()?;
         if event.operation != Operation::Put {
-            block(&mut tx, &event, "Waiting for final deletion processing.").await?;
+            deletion::apply(&mut tx, &event).await?;
             continue;
         }
-        if event.table == "files" {
+        if let Some(reason) = deletion::incoming_guard(&mut tx, &event).await? {
+            match reason {
+                "deleted" => {
+                    complete(&mut tx, &event).await?;
+                }
+                "private" => {
+                    complete(&mut tx, &event).await?;
+                }
+                "undo" => {
+                    block(
+                        &mut tx,
+                        &event,
+                        "Waiting for the local deletion undo window.",
+                    )
+                    .await?;
+                }
+                _ => {
+                    block(&mut tx, &event, "Waiting for the execution owner.").await?;
+                }
+            }
+            continue;
+        }
+        let mut files_ready = true;
+        for sha in super::attachments::referenced(&event)? {
+            let verified:Option<i64>=sqlx::query_scalar("SELECT 1 FROM sync_transfers WHERE event_id=? AND sha256=? AND direction='download' AND bytes_done=total_bytes AND verified=1").bind(&event.id).bind(&sha).fetch_optional(&mut *tx).await.map_err(fail)?;
+            files_ready &= verified.is_some();
+        }
+        if !files_ready {
             block(
                 &mut tx,
                 &event,
@@ -484,7 +604,14 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
             .payload
             .clone()
             .ok_or("A staged put is missing its data.")?;
-        let payload = canonicalize(&mut tx, &event, payload, existing.as_ref()).await?;
+        let mut payload = canonicalize(&mut tx, &event, payload, existing.as_ref()).await?;
+        if event.table == "files" {
+            let sha = payload
+                .get("sha256")
+                .and_then(Value::as_str)
+                .ok_or("Missing verified file hash.")?;
+            payload.insert("storage_path".into(), json!(format!("files/{sha}")));
+        }
         candidates.push((event, payload));
     }
     let mut ready: BTreeSet<usize> = (0..candidates.len()).collect();
@@ -535,7 +662,7 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
     for index in ready {
         let (event, payload) = &candidates[index];
         let current_meta = meta(&mut tx, event).await?;
-        let mut vector = event.version.clone();
+        let mut vector = deletion::effective(&mut tx, event).await?;
         let mut selected = event.clone();
         let mut chosen = payload.clone();
         let existing = row(&mut tx, event).await?;
@@ -547,7 +674,26 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
                     .ok_or("Missing causal vector.")?,
             )
             .map_err(|_| "Damaged causal vector.")?;
-            let causality = relation(&event.version, &current_vector);
+            let reset = deletion::replaces_lifecycle(&mut tx, event, &current_meta).await?;
+            let causality = if reset {
+                Relation::After
+            } else {
+                relation(&vector, &current_vector)
+            };
+            if causality == Relation::Concurrent
+                && current_meta["operation"] != "put"
+                && event.table == "egress_rules"
+                && payload.get("allow") == Some(&json!(0))
+            {
+                vector = union(&vector, &current_vector);
+                install(&mut tx, event, payload, existing.is_some()).await?;
+                archive(&mut tx, event).await?;
+                record_meta(&mut tx, event, &vector).await?;
+                execute(&mut tx,"INSERT INTO sync_policy_joins(workspace_id,user_id,record_key,created_at,updated_at) VALUES (?,?,?,?,?) ON CONFLICT DO NOTHING",&[json!(WORKSPACE),json!(USER),json!(event.key),json!(now()),json!(now())]).await?;
+                complete(&mut tx, event).await?;
+                processed += 1;
+                continue;
+            }
             if matches!(causality, Relation::Before | Relation::Equal)
                 || (causality == Relation::Concurrent && current_meta["operation"] != "put")
             {
@@ -565,7 +711,9 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
             .await?
             .ok_or("A current sync revision is missing; pending history was preserved.")?;
             archive(&mut tx, &current).await?;
-            vector = union(&current_vector, &event.version);
+            if !reset {
+                vector = union(&current_vector, &vector);
+            }
             if causality == Relation::Concurrent {
                 if needs_review(&current, event) {
                     let (a, b) = if current.id < event.id {
@@ -612,6 +760,27 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
     )
     .await?;
     // A restrictive join is a new causal revision, rather than an altered accepted packet.
+    let joins = select(
+        &mut tx,
+        "SELECT record_key FROM sync_policy_joins WHERE workspace_id=?",
+        &[json!(WORKSPACE)],
+    )
+    .await?;
+    for joined in joins {
+        let values: Vec<Value> = serde_json::from_str(
+            joined["record_key"]
+                .as_str()
+                .ok_or("Invalid restrictive policy identity.")?,
+        )
+        .map_err(|_| "Invalid restrictive policy identity.")?;
+        execute(&mut tx,"UPDATE egress_rules SET allow=0 WHERE project_id IS ? AND provider IS ? AND workspace_id=?",&[values.first().cloned().ok_or("Missing policy scope.")?,values.get(1).cloned().ok_or("Missing policy provider.")?,json!(WORKSPACE)]).await?;
+    }
+    execute(
+        &mut tx,
+        "DELETE FROM sync_policy_joins WHERE workspace_id=?",
+        &[json!(WORKSPACE)],
+    )
+    .await?;
     for index in derived {
         let event = &candidates[index].0;
         let first = &keys(&event.table)?[0];
@@ -685,6 +854,19 @@ pub async fn resolve(ctx: &Ctx, id: String, choice: String) -> Result<(), String
     .remove(0);
     if state["enabled"] != json!(1) {
         return Err("Enable sync before resolving a replicated conflict.".into());
+    }
+    // Choosing a conflicting text must not restore an older, less restrictive scope/policy.
+    for field in [
+        "may_send",
+        "scope",
+        "project_id",
+        "thread_id",
+        "status",
+        "expires_at",
+    ] {
+        if let Some(value) = existing.get(field) {
+            payload.insert(field.into(), value.clone());
+        }
     }
     payload.insert(
         "revision".into(),
@@ -1096,5 +1278,201 @@ mod tests {
         assert_eq!(scalar(&target, "SELECT COUNT(*) FROM schedules").await, 0);
         cleanup(&source).await;
         cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn workspace_wipe_covers_unseen_offline_records_and_preserves_private_content() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        thread(&source, "source", "Origin").await;
+        let mut wipe = worker::pending(&source).await.unwrap().remove(0);
+        wipe.seq += 1;
+        wipe.id = format!("{}:{}", wipe.device_id, wipe.seq);
+        wipe.version.insert(wipe.device_id.clone(), wipe.seq);
+        wipe.clock += 1;
+        wipe.table = "$workspace".into();
+        wipe.key = WORKSPACE.into();
+        wipe.operation = Operation::Delete;
+        wipe.payload = None;
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        thread(&target, "unseen", "Offline and never uploaded").await;
+        put(&target,"INSERT INTO memories(id,workspace_id,user_id,text,kind,authority,may_send,created_at,updated_at) VALUES ('private',?,?,'Keep this copy','fact','you',0,1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        stage(&target, &wipe).await;
+        apply_deletions(&target).await.unwrap();
+        assert_eq!(
+            scalar(
+                &target,
+                "SELECT COUNT(*) FROM threads WHERE deleted_at IS NULL"
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            scalar(&target, "SELECT COUNT(*) FROM memories WHERE id='private'").await,
+            1
+        );
+        thread(&target, "after", "Created after acknowledging the wipe").await;
+        let event = worker::pending(&target)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.key == "after")
+            .unwrap();
+        assert!(
+            event
+                .barriers
+                .get("$workspace")
+                .is_some_and(|v| relation(v, &wipe.version) == Relation::Equal)
+        );
+        assert!(!stale(&target, &event).await.unwrap());
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn thread_marker_removes_content_but_retains_content_free_cost_attribution() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        thread(&source, "t", "Deleted words").await;
+        put(&source,"INSERT INTO messages(id,workspace_id,user_id,thread_id,role,content,status,created_at,updated_at) VALUES ('m',?,?,'t','user','Erase these words','complete',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(&source,"INSERT INTO request_log(id,workspace_id,user_id,thread_id,purpose,provider,model,cost_micro_usd,surface,error_message,created_at,updated_at) VALUES ('cost',?,?,'t','chat','fixture','fixture',123,'runner','Erase provider details',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        for event in worker::pending(&source).await.unwrap() {
+            stage(&target, &event).await;
+        }
+        apply_deletions(&target).await.unwrap();
+        apply(&target).await.unwrap();
+        put(
+            &source,
+            "UPDATE threads SET deleted_at=10,purged_at=10 WHERE id='t'",
+            &[],
+        )
+        .await;
+        let marker = worker::pending(&source)
+            .await
+            .unwrap()
+            .into_iter()
+            .rfind(|e| e.table == "threads" && e.operation == Operation::Delete)
+            .unwrap();
+        stage(&target, &marker).await;
+        apply_deletions(&target).await.unwrap();
+        assert_eq!(scalar(&target, "SELECT COUNT(*) FROM messages").await, 0);
+        assert_eq!(
+            scalar(&target, "SELECT SUM(cost_micro_usd) FROM request_log").await,
+            123
+        );
+        assert_eq!(scalar(&target,"SELECT COUNT(*) FROM request_log WHERE surface='runner' AND error_message IS NULL AND message_id IS NULL").await,1);
+        assert_eq!(
+            scalar(
+                &target,
+                "SELECT COUNT(*) FROM threads WHERE title='' AND purged_at IS NOT NULL"
+            )
+            .await,
+            1
+        );
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn native_undo_finalizer_and_payload_retention_do_not_resurrect_a_deleted_chat() {
+        let ctx = fixture(true);
+        setup(&ctx, true).await.unwrap();
+        thread(&ctx, "undo", "Retained until deadline").await;
+        worker::cycle(&ctx, "test-lease").await.unwrap();
+        put(&ctx, "UPDATE threads SET deleted_at=1 WHERE id='undo'", &[]).await;
+        finalize(&ctx).await.unwrap();
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM threads WHERE id='undo' AND purged_at IS NULL"
+            )
+            .await,
+            1
+        );
+        put(
+            &ctx,
+            "UPDATE threads SET deleted_at=NULL WHERE id='undo'",
+            &[],
+        )
+        .await;
+        assert_eq!(
+            scalar(&ctx, "SELECT COUNT(*) FROM sync_pending_deletes").await,
+            0
+        );
+        put(&ctx, "UPDATE threads SET deleted_at=2 WHERE id='undo'", &[]).await;
+        put(&ctx, "UPDATE sync_pending_deletes SET deadline=0", &[]).await;
+        finalize(&ctx).await.unwrap();
+        assert_eq!(scalar(&ctx,"SELECT COUNT(*) FROM threads WHERE id='undo' AND title='' AND purged_at IS NOT NULL").await,1);
+        worker::cycle(&ctx, "test-lease").await.unwrap();
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM sync_revisions WHERE json_extract(event,'$.operation')='put'"
+            )
+            .await,
+            0
+        );
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM sync_relay WHERE operation='put'"
+            )
+            .await,
+            0
+        );
+        assert!(scalar(&ctx, "SELECT COUNT(*) FROM sync_seen").await >= 2);
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM sync_tombstones WHERE table_name='threads'"
+            )
+            .await,
+            1
+        );
+        cleanup(&ctx).await;
+    }
+    #[tokio::test]
+    async fn parent_privacy_sweep_withdraws_children_without_sending_their_content() {
+        let ctx = fixture(true);
+        setup(&ctx, true).await.unwrap();
+        put(&ctx,"INSERT INTO projects(id,workspace_id,user_id,name,created_at,updated_at) VALUES ('private',?,?,'Before',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        thread(&ctx, "child", "Private after policy change").await;
+        put(
+            &ctx,
+            "UPDATE threads SET project_id='private' WHERE id='child'",
+            &[],
+        )
+        .await;
+        worker::cycle(&ctx, "test-lease").await.unwrap();
+        put(
+            &ctx,
+            "UPDATE projects SET privacy_mode='local_only' WHERE id='private'",
+            &[],
+        )
+        .await;
+        super::super::privacy::sweep(&ctx).await.unwrap();
+        let pending = worker::pending(&ctx).await.unwrap();
+        assert!(pending.iter().any(|e| e.table == "threads"
+            && e.operation == Operation::Withdraw
+            && e.payload.is_none()));
+        assert!(pending.iter().all(|e| e.operation != Operation::Put));
+        worker::cycle(&ctx, "test-lease").await.unwrap();
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM threads WHERE title='Private after policy change'"
+            )
+            .await,
+            1
+        );
+        assert_eq!(
+            scalar(
+                &ctx,
+                "SELECT COUNT(*) FROM sync_relay WHERE operation='put'"
+            )
+            .await,
+            0
+        );
+        cleanup(&ctx).await;
     }
 }
