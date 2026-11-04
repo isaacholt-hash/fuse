@@ -42,6 +42,7 @@ import { fuzzyScore } from "./fuzzy";
 import { DOCUMENT_ACCEPT } from "@/files/documents";
 import { Markdown } from "./Markdown";
 import { ArtifactCard, DiffView } from "./Artifacts";
+import { usePanelActive, usePanelLeave } from "./panelActivity";
 import { openExternal } from "./openExternal";
 import { Hint, Mark, Money, Tier, Tip } from "./primitives";
 import { EffortOptions, type EffortView } from "./EffortDial";
@@ -1270,6 +1271,7 @@ export function Composer({
   /** The empty field's words; by default Chat's, or a session's reply when a run is on. */
   placeholder?: string;
 }) {
+  const active = usePanelActive();
   const [text, setText] = useState("");
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
@@ -1287,8 +1289,8 @@ export function Composer({
     if (!insert || insert.key === inserted.current) return;
     inserted.current = insert.key;
     setText((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${insert.text}` : insert.text));
-    field.current?.focus();
-  }, [insert]);
+    if (active) field.current?.focus();
+  }, [insert, active]);
   useEffect(() => {
     if (field.current) {
       field.current.style.height = "auto";
@@ -1298,6 +1300,10 @@ export function Composer({
   const [effortChoice, setEffortChoice] = useState<EffortLevel | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
+  usePanelLeave(() => {
+    setAddOpen(false);
+    setOptionsOpen(false);
+  });
   // CH-12: "/" at the start of an empty message lists saved prompts, filtered by what follows.
   const slash = /^\/(\S*)$/.exec(text);
   const slashMatches =
@@ -1354,7 +1360,7 @@ export function Composer({
     </span>
   );
   const optionsMenu = hasOptions && (
-    <Popover.Root open={optionsOpen} onOpenChange={setOptionsOpen}>
+    <Popover.Root open={optionsOpen && active} onOpenChange={setOptionsOpen}>
       <Popover.Trigger asChild>
         <Button
           variant="ghost"
@@ -1742,7 +1748,7 @@ export function Composer({
                 />
               )}
               {canAdd && (
-                <Popover.Root open={addOpen} onOpenChange={setAddOpen}>
+                <Popover.Root open={addOpen && active} onOpenChange={setAddOpen}>
                   <Tip label="Attach files or add a folder">
                     <Popover.Trigger asChild>
                       <Button variant="ghost" size="icon-sm" className="shrink-0" aria-label="Add">
@@ -1788,7 +1794,7 @@ export function Composer({
                 </Popover.Root>
               )}
               <Popover.Root
-                open={pickerOpen}
+                open={pickerOpen && active}
                 onOpenChange={(open) => {
                   onPickerOpen(open);
                   if (!open) setSearch("");

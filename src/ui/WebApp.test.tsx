@@ -134,7 +134,8 @@ describe("greyed with a reason in the web app (PL-02)", () => {
     expect(screen.getByText(WEB_REASONS.restore)).toBeInTheDocument();
   });
 
-  test("Settings: the server's version, updated with the server, and no zoom", () => {
+  test("Settings: the server's version, updated with the server, and no zoom", async () => {
+    const user = userEvent.setup();
     render(
       <SettingsView
         web
@@ -157,9 +158,12 @@ describe("greyed with a reason in the web app (PL-02)", () => {
         onShowLog={noop}
       />,
     );
+    await user.click(screen.getByRole("button", { name: "About & diagnostics" }));
     expect(screen.getByText("FUSE on HULK 0.1.0 · Updated with the server")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Check for updates" })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Sync & devices" }));
     expect(screen.getByText("server section")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "General" }));
     const size = screen.getByRole("radiogroup", { name: "Text size" });
     for (const option of within(size).getAllByRole("radio")) expect(option).toBeDisabled();
     expect(screen.getByText(WEB_REASONS.textSize)).toBeInTheDocument();

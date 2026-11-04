@@ -123,6 +123,7 @@ test("open Settings", async () => {
   await step("settings", async () => {
     await app.chord(",");
     await app.find('//h1[normalize-space()="Settings"] | //h2[normalize-space()="Settings"]');
+    await app.click(button("Code & tools"));
     await app.find('//*[normalize-space()="Run commands in the sandbox"]');
     await app.chord(",");
     await app.find(composer);
@@ -219,6 +220,7 @@ test.skipIf(!PYTHON)(
     writeFileSync(join(FOLDER, "data.csv"), "region,total\nnorth,12\nsouth,30\n");
     await step("python-install", async () => {
       await app.chord(",");
+      await app.click(button("Code & tools"));
       await app.find('//section[@aria-label="Python for data work"]');
       await app.run(
         'document.querySelector(\'[aria-label="Python for data work"]\').scrollIntoView({ block: "center" }); return true;',

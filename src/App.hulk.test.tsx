@@ -188,6 +188,7 @@ test("Settings → HULK pairs with a code (the server's error shows), then unpai
   const { user } = start(hulk.api);
   await screen.findByRole("complementary", { name: "Chat sidebar" });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Code & tools" }));
   const section = within(await screen.findByRole("region", { name: "HULK" }));
   await user.type(section.getByLabelText("HULK's address"), "https://hulk.test:4100");
   await user.type(section.getByLabelText("Pairing code"), "WRONG-CODE");
@@ -227,6 +228,7 @@ test("M10 F2: HULK behind this app is named in Settings, Scheduled and Where, an
 
   // Settings → HULK: both builds, and the reason.
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Code & tools" }));
   const section = within(await screen.findByRole("region", { name: "HULK" }));
   expect(await section.findByRole("status")).toHaveTextContent(why);
   expect(
@@ -260,6 +262,7 @@ test("quiet hours: a HULK run waiting for you shows in the app but sends no noti
   fireEvent.change(section.getByLabelText("From"), { target: { value: "00:00" } });
   fireEvent.change(section.getByLabelText("to"), { target: { value: "00:00" } });
   expect(section.getByRole("status")).toHaveTextContent("Quiet all day every day");
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
   await codeInProject(user);
   await sendToHulk(user, "Add a footer note");

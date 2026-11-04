@@ -482,6 +482,7 @@ test("the request log lists every provider call with tokens, cost and errors", a
   await screen.findByRole("alert");
 
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "About & diagnostics" }));
   await user.click(await screen.findByRole("button", { name: /Request log/ }));
   const table = await screen.findByRole("table");
   const rows = within(table).getAllByRole("row").slice(1); // newest first
@@ -844,12 +845,13 @@ test("budgets: alerts as spend crosses them, and over the limit a message asks f
   });
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Costs & limits" }));
   const budgets = within(await screen.findByRole("region", { name: "Budgets" }));
   await user.selectOptions(budgets.getByLabelText("Budget period"), "day");
   await user.type(budgets.getByLabelText("Budget limit in dollars"), "0.005");
   await user.click(budgets.getByRole("button", { name: "Add budget" }));
   expect(await budgets.findByText(/\$0\.005 a day/)).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /Back to conversation/ }));
+  await user.click(screen.getByRole("button", { name: /Back to Chat/ }));
 
   // $0.0064 answer + $0.0028 title = $0.0092: past the $0.005 budget.
   await user.type(await composer(), "What is FUSE?{Enter}");
@@ -989,11 +991,12 @@ test("spend caps: past a key's daily cap FUSE stops calling it, until raised for
   });
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Costs & limits" }));
   const caps = within(await screen.findByRole("region", { name: "Spend caps" }));
   const anthropic = within(caps.getByLabelText("Anthropic cap"));
   await user.type(anthropic.getByLabelText("Anthropic daily cap"), "0.001");
   await user.click(anthropic.getByRole("button", { name: "Save" }));
-  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
   // $0.0064 goes past the $0.001 cap.
   await user.type(await composer(), "Hello{Enter}");
@@ -1016,6 +1019,7 @@ test("model defaults: a tier's max output, effort and prompt prefix go with its 
   const { options, user } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Providers & models" }));
   const section = within(await screen.findByRole("region", { name: "Model defaults" }));
   expect(section.getByLabelText("Defaults for")).toHaveValue("tier:balanced");
   await user.type(section.getByLabelText("Max output tokens"), "512");
@@ -1023,7 +1027,7 @@ test("model defaults: a tier's max output, effort and prompt prefix go with its 
   await user.type(section.getByLabelText("Prompt prefix"), "Use British spelling.");
   await user.click(section.getByRole("button", { name: "Save" }));
   expect(await section.findByText("Set for: Balanced tier")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
   await user.type(await composer(), "Hello{Enter}");
   await screen.findByText("Hello there.");
   expect(options.at(-1)).toMatchObject({ maxOutputTokens: 512, effort: "low" });
@@ -1299,6 +1303,7 @@ test("command palette: Ctrl+Shift+P, type, Enter runs it; recent chats are there
   await user.type(await screen.findByLabelText("Type a command or a chat"), "settings");
   expect(screen.getAllByRole("option")[0]).toHaveTextContent("Settings");
   await user.keyboard("{Enter}");
+  await user.click(await screen.findByRole("button", { name: "Costs & limits" }));
   expect(await screen.findByRole("region", { name: "Budgets" })).toBeInTheDocument();
 });
 
@@ -1315,6 +1320,7 @@ test("quick capture: the default shortcut is registered, pressing it opens a new
   expect(await screen.findByText("What are you working on?")).toBeInTheDocument();
 
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   const section = within(await screen.findByRole("region", { name: "Quick capture" }));
   expect(section.getByRole("status")).toHaveTextContent("On: Ctrl+Alt+Space");
   await user.clear(section.getByLabelText("Quick capture shortcut"));
@@ -1337,6 +1343,7 @@ test("Settings → Your data exports everything as one zip", async () => {
   await user.type(await composer(), "Hello{Enter}");
   expect(await screen.findByText("Ok.")).toBeInTheDocument();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const data = within(await screen.findByRole("region", { name: "Your data" }));
   await user.click(data.getByRole("button", { name: /Export everything/ }));
   expect(await data.findByRole("status")).toHaveTextContent(
@@ -1355,6 +1362,7 @@ test("Settings → Your data backs up now, checks files and restores a backup af
   });
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const group = within(await screen.findByRole("group", { name: "Backups" }));
   expect(await group.findByText(/512 KB · before an update/)).toBeInTheDocument();
 
@@ -1380,6 +1388,7 @@ test("restore from an export: preview what's new, then bring it back (PL-12)", a
   await user.type(await composer(), "Remember the boat{Enter}");
   expect(await screen.findByText("Ok.")).toBeInTheDocument();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const data = within(await screen.findByRole("region", { name: "Your data" }));
   await user.click(data.getByRole("button", { name: /Export everything/ }));
   await data.findByText(/Saved fuse-export/);
@@ -1400,7 +1409,7 @@ test("restore from an export: preview what's new, then bring it back (PL-12)", a
   expect(await group.findByRole("status")).toHaveTextContent(
     /^Restored \d+ records and 0 files\.$/,
   );
-  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
   expect(await sidebar().findByRole("button", { name: /^Remember the boat/ })).toBeInTheDocument();
 });
 
@@ -1409,6 +1418,7 @@ test("delete everything: typed confirmation, all data gone, keys only when ticke
   await user.type(await composer(), "Hello{Enter}");
   expect(await screen.findByText("Ok.")).toBeInTheDocument();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const data = within(await screen.findByRole("region", { name: "Your data" }));
   await user.click(data.getByRole("button", { name: /Delete everything/ }));
   const dialog = within(await screen.findByRole("dialog"));
@@ -1430,6 +1440,7 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   const { db, user } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Privacy & security" }));
   const section = within(await screen.findByRole("region", { name: "App lock" }));
   await user.type(section.getByLabelText("New passcode"), "4321");
   await user.type(section.getByLabelText("New passcode again"), "4321");
@@ -1463,6 +1474,7 @@ test("app lock with Windows Hello: turned on in Settings, asked as soon as the l
   const { db, user, hello } = setup({}, undefined, {}, { helloAvailable: true });
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Privacy & security" }));
   const section = within(await screen.findByRole("region", { name: "App lock" }));
   expect(section.queryByRole("checkbox", { name: /Windows Hello/ })).not.toBeInTheDocument();
   await user.type(section.getByLabelText("New passcode"), "4321");
@@ -1490,6 +1502,7 @@ test("text size zooms the window and reduced motion stops animations; both are r
   await composer();
   expect(zooms).toEqual([1]);
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   await user.click(
     within(await screen.findByRole("radiogroup", { name: "Text size" })).getByRole("radio", {
       name: "Large",
@@ -1540,6 +1553,7 @@ test("memory conflicts: a suggestion that contradicts a saved fact asks which st
   const user = userEvent.setup();
   await screen.findByRole("button", { name: "Choose model (Ctrl+K)" });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Personalization" }));
   const section = within(await screen.findByRole("region", { name: "Memory" }));
   await user.click(await section.findByRole("button", { name: /Review/ }));
   const dialog = within(await screen.findByRole("dialog"));
@@ -1615,6 +1629,7 @@ test("prompt library: saved in Settings, picked with / or the palette, variables
   const { user } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Personalization" }));
   const section = within(await screen.findByRole("region", { name: "Prompt library" }));
   await user.type(section.getByLabelText("Prompt name"), "Summarize for someone");
   await user.click(section.getByLabelText("Prompt text"));
@@ -1625,7 +1640,7 @@ test("prompt library: saved in Settings, picked with / or the palette, variables
       "Summarize for someone",
     ),
   ).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
   await user.type(await composer(), "/summ");
   expect(
@@ -1778,6 +1793,7 @@ test("routing policy: a new rule is tested, saved, and Auto follows it", async (
   const { user, db } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Providers & models" }));
   const section = within(await screen.findByRole("region", { name: "Routing policy" }));
   await user.click(section.getByRole("button", { name: "Add rule" }));
   const rule = within(section.getByRole("listitem", { name: "New rule" }));
@@ -1791,7 +1807,7 @@ test("routing policy: a new rule is tested, saved, and Auto follows it", async (
   expect(await section.findByText("Saved.")).toBeInTheDocument();
   expect(await getSetting(db, DEFAULT_TENANT, "routing.policy")).toContain('"New rule"');
 
-  await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
   await user.type(await composer(), "Write an email to my landlord about the boiler{Enter}");
   expect(
     await screen.findByRole("button", { name: "Cost breakdown for Test Best" }),
@@ -1823,6 +1839,7 @@ test("models: a tier model the provider stopped listing is flagged; a new one ca
   expect(
     within(section.getByRole("list", { name: "Models you added" })).getByText("Test Claude 2"),
   ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Costs & limits" }));
   const prices = within(screen.getByRole("region", { name: "Prices" }));
   expect(prices.getByText("Test Claude 2").closest("tr")).toHaveTextContent("Test Claude 2$3$15");
 });
@@ -1831,6 +1848,7 @@ test("prices: edit one model's price, then check the repo for a newer list and u
   const { user, web } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Costs & limits" }));
   const section = within(await screen.findByRole("region", { name: "Prices" }));
   await user.click(section.getByRole("button", { name: "Edit Test Claude price" }));
   const input = section.getByLabelText("Test Claude input price");
@@ -1950,6 +1968,7 @@ test("import from ChatGPT: preview first, then the chats appear in the sidebar",
     ),
   });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const section = within(await screen.findByRole("region", { name: "Import" }));
   await user.click(section.getByRole("button", { name: "From ChatGPT…" }));
   await user.upload(section.getByLabelText("Export file"), new File([zip], "export.zip"));
@@ -1957,7 +1976,7 @@ test("import from ChatGPT: preview first, then the chats appear in the sidebar",
   expect(preview.getByText(/1 chats \(2 messages\) from ChatGPT\./)).toBeInTheDocument();
   await user.click(preview.getByRole("button", { name: "Import 1 chats" }));
   expect(await section.findByText("Imported 1 chats.")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /Back to conversation/ }));
+  await user.click(screen.getByRole("button", { name: /Back to Chat/ }));
   await user.click(await sidebar().findByText("Old garden chat"));
   expect(await screen.findByText("Tomatoes?")).toBeInTheDocument();
   expect(screen.getByText("Yes.")).toBeInTheDocument();
@@ -1967,6 +1986,7 @@ test("pasted memories become suggestions to review; pasted instructions fill a g
   const { user } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const section = within(await screen.findByRole("region", { name: "Import" }));
   await user.type(
     section.getByLabelText("Pasted text"),
@@ -1988,6 +2008,7 @@ test("pasted memories become suggestions to review; pasted instructions fill a g
   expect(section.getByRole("alert")).toHaveTextContent('This fills "How to answer"');
   await user.click(section.getByRole("button", { name: "Add to How to answer" }));
   expect(await section.findByText(/Added to "How to answer"/)).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Personalization" }));
   const instructions = within(screen.getByRole("region", { name: "Custom instructions" }));
   expect(instructions.getByLabelText("How to answer")).toHaveValue("Be brief.");
 });
@@ -2032,6 +2053,7 @@ test("import from Claude: chats land in their project, which gets its instructio
     ),
   });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const section = within(await screen.findByRole("region", { name: "Import" }));
   await user.click(section.getByRole("button", { name: "From Claude…" }));
   await user.upload(section.getByLabelText("Export file"), new File([zip], "claude.zip"));
@@ -2086,6 +2108,7 @@ test("an error shows a plain message and Retry gets a new answer", async () => {
 test("no key for the selected provider: composer points to Settings, where the key is saved", async () => {
   const { keys, user } = setup({}, []);
   await user.click(await screen.findByRole("button", { name: /Add an Anthropic key in Settings/ }));
+  await user.click(await screen.findByRole("button", { name: "Providers & models" }));
 
   const card = within(screen.getByRole("region", { name: "Anthropic key" }));
   await user.type(await card.findByLabelText("API key"), "fake-value-for-tests-9z9z");
@@ -2094,7 +2117,7 @@ test("no key for the selected provider: composer points to Settings, where the k
   expect(card.getByRole("status")).toHaveTextContent("Working");
   expect(keys.keys.get("anthropic")).toBe("fake-value-for-tests-9z9z");
 
-  await user.click(screen.getByRole("button", { name: /Back to conversation/ }));
+  await user.click(screen.getByRole("button", { name: /Back to Chat/ }));
   expect(await composer()).toBeEnabled();
 });
 
@@ -2106,6 +2129,7 @@ test("an invalid key is not saved and the input is cleared", async () => {
   );
   const user = userEvent.setup();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Providers & models" }));
 
   const card = within(await screen.findByRole("region", { name: "OpenAI key" }));
   const input = await card.findByLabelText("API key");
@@ -2124,6 +2148,7 @@ test("an invalid key is not saved and the input is cleared", async () => {
 test("deleting a key asks first", async () => {
   const { keys, user } = setup();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Providers & models" }));
   const card = within(await screen.findByRole("region", { name: "OpenAI key" }));
   await user.click(await card.findByRole("button", { name: "Delete OpenAI key" }));
   expect(keys.keys.has("openai")).toBe(true);
@@ -2261,6 +2286,7 @@ test("Storage lists each part with its size and offers a clean-up where there's 
   await user.type(await composer(), "Make a row{Enter}");
   await screen.findByText("Hello there.");
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Data & storage" }));
   const storage = within(await screen.findByRole("group", { name: "Storage" }));
   const row = (label: string) => within(storage.getByText(label).closest("tr") as HTMLElement);
   expect(row("Database").getByText("3.0 MB")).toBeInTheDocument();
@@ -2281,6 +2307,7 @@ test("Notifications: the sound is off until turned on, switches persist, and a b
   const { db, user } = setup();
   await screen.findByRole("complementary", { name: "Chat sidebar" });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   const section = within(await screen.findByRole("region", { name: "Notifications" }));
   const sound = section.getByRole("checkbox", { name: "Play a sound with notifications" });
   expect(sound).not.toBeChecked();
@@ -2373,6 +2400,7 @@ test("shortcuts: Ctrl+N new chat, Ctrl+B sidebar, Ctrl+, settings", async () => 
 test("theme choice applies straight away and is remembered", async () => {
   const { user } = setup();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   await user.click(await screen.findByRole("button", { name: "Dark" }));
   expect(document.documentElement).toHaveClass("dark");
   expect(localStorage.getItem("fuse.theme")).toBe("dark");
@@ -2606,6 +2634,7 @@ describe("auto-update", () => {
     });
     expect(screen.queryByRole("status", { name: "App update" })).not.toBeInTheDocument();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "About & diagnostics" }));
     expect(await screen.findByText(/FUSE 0\.1\.7/)).toBeInTheDocument();
     warn.mockRestore();
   });
@@ -2616,12 +2645,13 @@ describe("custom instructions", () => {
     const { options, user } = setup();
     await composer();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const section = within(await screen.findByRole("region", { name: "Custom instructions" }));
     await user.type(section.getByLabelText("About you"), "I live in Leeds.");
     await user.type(section.getByLabelText("How to answer"), "Be brief.");
     await user.click(section.getByRole("button", { name: "Save" }));
     expect(await section.findByText("Saved")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+    await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
     // A new chat: this chat's box is kept as a draft until the first message saves the thread.
     await user.click(await screen.findByRole("button", { name: "Instructions (2 active)" }));
@@ -2654,6 +2684,7 @@ describe("custom instructions", () => {
     const dialog = within(await screen.findByRole("dialog"));
     expect(dialog.getByText("None set.")).toBeInTheDocument();
     await user.click(dialog.getByRole("button", { name: "Edit in Settings" }));
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     expect(await screen.findByRole("region", { name: "Custom instructions" })).toBeInTheDocument();
   });
 });
@@ -2716,6 +2747,7 @@ describe("memory", () => {
     const { user } = setup();
     await composer();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const section = within(await screen.findByRole("region", { name: "Memory" }));
     expect(section.getByText("No memories yet.")).toBeInTheDocument();
 
@@ -2746,6 +2778,7 @@ describe("memory", () => {
     const { db, options, user } = setup();
     await composer();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const section = within(await screen.findByRole("region", { name: "Memory" }));
     for (const text of ["Lives in Leeds.", "Prefers short answers."]) {
       await user.type(section.getByLabelText("New memory"), text);
@@ -2760,7 +2793,7 @@ describe("memory", () => {
     });
     await user.selectOptions(section.getByLabelText("Show status"), "not_in_use");
     expect(await section.findByText(/added by you · .* · excluded/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+    await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
     await user.type(await composer(), "Hi{Enter}");
     expect(await screen.findByRole("button", { name: "1 memory used" })).toBeInTheDocument();
@@ -2772,6 +2805,7 @@ describe("memory", () => {
 
     // Still there, and back in use when included again.
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const again = within(await screen.findByRole("region", { name: "Memory" }));
     await user.selectOptions(again.getByLabelText("Show status"), "not_in_use");
     await user.click(
@@ -2786,6 +2820,7 @@ describe("memory", () => {
     await user.type(await composer(), "Plan the garden{Enter}");
     expect(await screen.findByText("Hello there.")).toBeInTheDocument();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const section = within(await screen.findByRole("region", { name: "Memory" }));
     await user.type(section.getByLabelText("New memory"), "Shed code is under the pot.");
     await user.selectOptions(
@@ -2809,7 +2844,7 @@ describe("memory", () => {
       expect(section.getByLabelText("New memory")).toHaveValue("");
     });
     expect(section.queryByText("Lives in Leeds.")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+    await user.click(screen.getByRole("button", { name: "Back to Chat" }));
     await user.type(await composer(), "Where is the shed code?{Enter}");
     await waitFor(() => {
       expect(options).toHaveLength(2);
@@ -2819,6 +2854,7 @@ describe("memory", () => {
     expect(system).not.toContain("Leeds");
 
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Personalization" }));
     const again = within(await screen.findByRole("region", { name: "Memory" }));
     await user.selectOptions(again.getByLabelText("Show status"), "not_in_use");
     expect(await again.findByText("Lives in Leeds.")).toBeInTheDocument();
@@ -2990,6 +3026,7 @@ describe("projects", () => {
     const { user } = setup();
     await composer();
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Privacy & security" }));
     const privacy = within(await screen.findByRole("region", { name: "Privacy" }));
     expect(privacy.getByText(/Stored locally doesn.t mean answered locally/)).toBeInTheDocument();
     expect(privacy.getByText(/What a cloud answer sends/)).toBeInTheDocument();
@@ -2997,7 +3034,7 @@ describe("projects", () => {
     await waitFor(() => {
       expect(privacy.getByLabelText("OpenAI everywhere")).toHaveValue("block");
     });
-    await user.click(screen.getByRole("button", { name: "Back to conversation" }));
+    await user.click(screen.getByRole("button", { name: "Back to Chat" }));
 
     await user.click(screen.getByRole("button", { name: "New project" }));
     const create = within(await screen.findByRole("dialog"));
@@ -3146,6 +3183,7 @@ describe("encrypted database", () => {
     const user = userEvent.setup();
     await screen.findByRole("complementary", { name: "Chat sidebar" });
     await user.keyboard("{Control>},{/Control}");
+    await user.click(await screen.findByRole("button", { name: "Privacy & security" }));
     const section = within(await screen.findByRole("region", { name: "Recovery key" }));
     expect(recoveryKey).not.toHaveBeenCalled();
     await user.click(section.getByRole("button", { name: "Show recovery key" }));
@@ -3161,6 +3199,7 @@ test("Settings imports the routing test set; a bad file changes nothing", async 
   const { user, db } = setup();
   await composer();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "About & diagnostics" }));
   const section = within(await screen.findByRole("region", { name: "Routing test set" }));
   expect(section.getByRole("status")).toHaveTextContent("No prompts yet.");
 
@@ -3590,6 +3629,7 @@ test("M8: the Windows sandbox is on unless it was switched off", async () => {
     expect(set).toHaveBeenCalledWith(true);
   });
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "Code & tools" }));
   const box = await screen.findByRole("checkbox", { name: "Run commands in the sandbox" });
   expect(box).toBeChecked();
   await user.click(box);
@@ -3782,12 +3822,14 @@ test("M10 F4: the file hint respects its notification switch and dismissal", asy
   await screen.findByText("Hello there.");
   await screen.findByLabelText("Continue in Code");
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   const notifications = within(await screen.findByRole("region", { name: "Notifications" }));
   await user.click(notifications.getByRole("checkbox", { name: "Continue in Code" }));
   await user.keyboard("{Control>},{/Control}");
   await screen.findByText("Hello there.");
   expect(screen.queryByLabelText("Continue in Code")).toBeNull();
   await user.keyboard("{Control>},{/Control}");
+  await user.click(await screen.findByRole("button", { name: "General" }));
   await user.click(
     within(await screen.findByRole("region", { name: "Notifications" })).getByRole("checkbox", {
       name: "Continue in Code",
@@ -3798,4 +3840,59 @@ test("M10 F4: the file hint respects its notification switch and dismissal", asy
   await user.click(await screen.findByRole("button", { name: "Dismiss Continue in Code" }));
   expect(screen.queryByLabelText("Continue in Code")).toBeNull();
   expect(await db.select("SELECT id FROM runs")).toEqual([]);
+});
+
+for (const area of ["Chat", "Code"] as const) {
+  test(`M12: ${area} draft, attachments and composer survive a Settings round trip`, async () => {
+    const { user } = setup({}, undefined, {}, { repo: pickingRepo });
+    await composer();
+    if (area === "Code") await user.keyboard("{Control>}2{/Control}");
+    const field = await composer();
+    await user.type(field, `An unsent ${area} draft`);
+    await user.upload(
+      screen.getByLabelText("Attach files"),
+      new File(["Draft notes."], "draft-notes.txt", { type: "text/plain" }),
+    );
+    await screen.findByText("draft-notes.txt");
+    await user.keyboard("{Control>},{/Control}");
+    expect(screen.queryByRole("textbox", { name: "Message" })).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Chat sidebar" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: `Back to ${area}` }));
+    expect(await composer()).toBe(field);
+    expect(field).toHaveValue(`An unsent ${area} draft`);
+    expect(screen.getByText("draft-notes.txt")).toBeVisible();
+  });
+}
+
+test("M12: unsaved routing edits survive switching settings categories", async () => {
+  const { user } = setup();
+  await composer();
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "Providers & models" }));
+  const section = within(screen.getByRole("region", { name: "Routing policy" }));
+  await user.click(section.getByRole("button", { name: "Add rule" }));
+  await user.click(screen.getByRole("button", { name: "General" }));
+  await user.click(screen.getByRole("button", { name: "Providers & models" }));
+  expect(section.getByRole("listitem", { name: "New rule" })).toBeVisible();
+  expect(section.getByRole("button", { name: "Test on the routing test set" })).toBeEnabled();
+});
+
+test("M12: returning from Settings preserves the selected conversation, scroll and focus", async () => {
+  const { user } = setup();
+  await user.type(await composer(), "Saved conversation{Enter}");
+  await screen.findByText("Hello there.");
+  const field = await composer();
+  await user.type(field, "An unfinished reply");
+  const selected = localStorage.getItem("fuse.lastThread.chat");
+  const scroll = document.querySelector<HTMLDivElement>(".scroll-smooth");
+  if (!scroll) throw new Error("Conversation scroll container missing");
+  scroll.scrollTop = 73;
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
+  expect(await composer()).toBe(field);
+  expect(localStorage.getItem("fuse.lastThread.chat")).toBe(selected);
+  expect(scroll.scrollTop).toBe(73);
+  await waitFor(() => {
+    expect(field).toHaveFocus();
+  });
 });
