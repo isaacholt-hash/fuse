@@ -562,6 +562,14 @@ pub async fn apply(ctx: &Ctx) -> Result<usize, String> {
                 "private" => {
                     complete(&mut tx, &event).await?;
                 }
+                "public_parent" => {
+                    block(
+                        &mut tx,
+                        &event,
+                        "Waiting for the shared file's public parent.",
+                    )
+                    .await?;
+                }
                 "undo" => {
                     block(
                         &mut tx,
@@ -1474,5 +1482,191 @@ mod tests {
             0
         );
         cleanup(&ctx).await;
+    }
+    #[tokio::test]
+    async fn privacy_withdrawal_blocks_unseen_offline_costs_in_that_scope() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        put(&source,"INSERT INTO projects(id,workspace_id,user_id,name,created_at,updated_at) VALUES ('private-scope',?,?,'Scope',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        thread(&source, "scope-thread", "Scope history").await;
+        put(
+            &source,
+            "UPDATE threads SET project_id='private-scope' WHERE id='scope-thread'",
+            &[],
+        )
+        .await;
+        put(&source,"INSERT INTO request_log(id,workspace_id,user_id,thread_id,purpose,provider,model,cost_micro_usd,created_at,updated_at) VALUES ('known-cost',?,?,'scope-thread','chat','fixture','fixture',17,1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        let initial = worker::pending(&source).await.unwrap();
+        let mut unseen = initial
+            .iter()
+            .find(|e| e.table == "request_log")
+            .unwrap()
+            .clone();
+        unseen.id = "offline:1".into();
+        unseen.device_id = "offline".into();
+        unseen.seq = 1;
+        unseen.version.insert("offline".into(), 1);
+        unseen.key = "unseen-cost".into();
+        unseen
+            .payload
+            .as_mut()
+            .unwrap()
+            .insert("id".into(), json!("unseen-cost"));
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        for event in initial {
+            stage(&target, &event).await;
+        }
+        apply(&target).await.unwrap();
+        put(
+            &source,
+            "UPDATE projects SET privacy_mode='local_only' WHERE id='private-scope'",
+            &[],
+        )
+        .await;
+        let marker = worker::pending(&source)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.table == "projects" && e.operation == Operation::Withdraw)
+            .unwrap();
+        stage(&target, &marker).await;
+        apply_deletions(&target).await.unwrap();
+        stage(&target, &unseen).await;
+        apply(&target).await.unwrap();
+        assert_eq!(
+            scalar(
+                &target,
+                "SELECT COUNT(*) FROM request_log WHERE id='unseen-cost'"
+            )
+            .await,
+            0
+        );
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn late_file_after_scope_deletion_needs_a_surviving_public_share() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        thread(&source, "file-owner", "Owner").await;
+        let stored = crate::files::put(&source.data_dir, b"Synthetic shared file").unwrap();
+        put(&source,"INSERT INTO files(id,workspace_id,user_id,name,mime,size_bytes,sha256,storage_path,thread_id,created_at,updated_at) VALUES ('late-file',?,?,'Fixture','text/plain',?,?,?,'file-owner',1,1)",&[json!(WORKSPACE),json!(USER),json!(stored.size),json!(stored.sha256),json!(format!("files/{}",stored.sha256))]).await;
+        let initial = worker::pending(&source).await.unwrap();
+        let file = initial.iter().find(|e| e.table == "files").unwrap().clone();
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        for event in initial.into_iter().filter(|e| e.table != "files") {
+            stage(&target, &event).await;
+        }
+        apply(&target).await.unwrap();
+        put(
+            &source,
+            "UPDATE threads SET deleted_at=1,purged_at=1 WHERE id='file-owner'",
+            &[],
+        )
+        .await;
+        let marker = worker::pending(&source)
+            .await
+            .unwrap()
+            .into_iter()
+            .rfind(|e| e.table == "threads" && e.operation == Operation::Delete)
+            .unwrap();
+        stage(&target, &marker).await;
+        apply_deletions(&target).await.unwrap();
+        assert!(stale(&target, &file).await.unwrap());
+        // A separate explicit public project share keeps the same file usable. Its parent can
+        // arrive after the file: stage, apply that parent, then receive the bytes and link.
+        put(&source,"INSERT INTO projects(id,workspace_id,user_id,name,created_at,updated_at) VALUES ('public-share',?,?,'Public',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(&source,"INSERT INTO project_files(id,workspace_id,user_id,project_id,file_id,created_at,updated_at) VALUES ('share-link',?,?,'public-share','late-file',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        let newer = worker::pending(&source).await.unwrap();
+        let link = newer.iter().find(|e| e.table == "project_files").unwrap();
+        stage(&target, link).await;
+        assert!(!stale(&target, &file).await.unwrap());
+        assert!(!ready_for_files(&target, &file).await.unwrap());
+        let project = newer.iter().find(|e| e.table == "projects").unwrap();
+        stage(&target, project).await;
+        apply(&target).await.unwrap();
+        assert!(ready_for_files(&target, &file).await.unwrap());
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn concurrent_markers_keep_the_restrictive_scope_and_both_causal_barriers() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        put(&source,"INSERT INTO settings(workspace_id,user_id,key,value,created_at,updated_at) VALUES (?,?,'memory.suggest','on',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        let base = worker::pending(&source).await.unwrap().remove(0);
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        stage(&target, &base).await;
+        apply(&target).await.unwrap();
+        for (actor, operation) in [
+            ("delete-actor", Operation::Delete),
+            ("private-actor", Operation::Withdraw),
+        ] {
+            let mut marker = base.clone();
+            marker.id = format!("{actor}:1");
+            marker.device_id = actor.into();
+            marker.seq = 1;
+            marker.version.insert(actor.into(), 1);
+            marker.operation = operation;
+            marker.payload = None;
+            stage(&target, &marker).await;
+            apply_deletions(&target).await.unwrap();
+        }
+        assert_eq!(scalar(&target,"SELECT COUNT(*) FROM sync_tombstones WHERE table_name='settings' AND operation='withdraw'").await,1);
+        put(&target,"INSERT INTO settings(workspace_id,user_id,key,value,created_at,updated_at) VALUES (?,?,'memory.suggest','off',2,2)",&[json!(WORKSPACE),json!(USER)]).await;
+        let fresh = worker::pending(&target).await.unwrap().remove(0);
+        assert_eq!(fresh.version.get("delete-actor"), Some(&1));
+        assert_eq!(fresh.version.get("private-actor"), Some(&1));
+        assert!(!stale(&target, &fresh).await.unwrap());
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn concurrent_rule_removal_never_relaxes_a_denial_in_either_delivery_order() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        put(&source,"INSERT INTO egress_rules(id,workspace_id,user_id,project_id,provider,allow,created_at,updated_at) VALUES ('rule',?,?,NULL,'openai',1,1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        let base = worker::pending(&source).await.unwrap().remove(0);
+        let deny = edit(&base, "deny-actor", 1, "allow", json!(0));
+        let mut remove = edit(&base, "remove-actor", 100, "allow", json!(1));
+        remove.operation = Operation::Delete;
+        remove.payload = None;
+        for reverse in [false, true] {
+            let target = fixture(true);
+            setup(&target, true).await.unwrap();
+            stage(&target, &base).await;
+            apply(&target).await.unwrap();
+            let ordered = if reverse {
+                vec![&remove, &deny]
+            } else {
+                vec![&deny, &remove]
+            };
+            for event in ordered {
+                stage(&target, event).await;
+                apply_deletions(&target).await.unwrap();
+                apply(&target).await.unwrap();
+            }
+            assert_eq!(
+                scalar(
+                    &target,
+                    "SELECT COUNT(*) FROM egress_rules WHERE provider='openai' AND allow=0"
+                )
+                .await,
+                1
+            );
+            let joined = worker::pending(&target)
+                .await
+                .unwrap()
+                .into_iter()
+                .rfind(|e| e.table == "egress_rules")
+                .unwrap();
+            assert_eq!(joined.version.get("deny-actor"), Some(&1));
+            assert_eq!(joined.version.get("remove-actor"), Some(&1));
+            cleanup(&target).await;
+        }
+        cleanup(&source).await;
     }
 }

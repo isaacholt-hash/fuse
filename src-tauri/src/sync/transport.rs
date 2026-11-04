@@ -245,6 +245,16 @@ impl Change {
     }
     pub fn validate_complete(&self) -> Result<(), String> {
         self.validate()?;
+        if let Some(row) = &self.payload
+            && ((self.table == "runs"
+                && !matches!(
+                    row.get("status").and_then(Value::as_str),
+                    Some("done" | "stopped" | "error")
+                ))
+                || (self.table == "messages" && row.get("status") == Some(&json!("streaming"))))
+        {
+            return Err("Active execution and streaming state cannot be replicated.".into());
+        }
         if self.format >= 2 && self.operation == Operation::Put {
             let expected = super::attachments::referenced(self)?;
             let actual = self
@@ -934,6 +944,35 @@ mod tests {
         .await
         .unwrap();
         assert!(authorize(&ctx, "paired-native", &hello).await.is_err());
+        cleanup(&ctx).await;
+    }
+    #[tokio::test]
+    async fn even_valid_signatures_cannot_publish_active_run_snapshots() {
+        let ctx = fixture(true);
+        setup(&ctx, true).await.unwrap();
+        db::execute(&ctx.db.pool().unwrap(),"INSERT INTO runs(id,workspace_id,user_id,task,mode,provider,model,status,cap_micro_usd,created_at,updated_at) VALUES ('run',?,?,'Synthetic','plan','fixture','fixture','done',100,1,1)",&[json!(WORKSPACE),json!(USER)]).await.unwrap();
+        let mut event = crate::sync::worker::pending(&ctx)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|e| e.table == "runs")
+            .unwrap();
+        event
+            .payload
+            .as_mut()
+            .unwrap()
+            .insert("status".into(), json!("running"));
+        let keys = load_keys(ctx.keys.store.as_ref()).unwrap().unwrap();
+        let identity = super::super::signing(ctx.keys.store.as_ref()).unwrap();
+        let envelope = crypto::seal(
+            event.header(&keys),
+            &serde_json::to_vec(&event).unwrap(),
+            &keys.epochs[&keys.epoch],
+            &identity,
+        )
+        .unwrap();
+        assert!(decode_change(&ctx, &keys, &envelope).await.is_err());
+        assert_eq!(crate::sync::worker::pending(&ctx).await.unwrap().len(), 1);
         cleanup(&ctx).await;
     }
 }

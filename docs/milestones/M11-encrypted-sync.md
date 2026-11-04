@@ -23,7 +23,7 @@ One `codex/m11-*` branch and PR per step below. Use `.claude/skills/ship-step/SK
 - [x] **5. Merge and history.** Causal revisions distinguish later/concurrent edits. Ordinary concurrency uses logical clock, device ID and event ID with losing revisions retained. Concurrent facts/decisions require review and are excluded from context until resolved; resolution replicates. Concurrent policies choose the restrictive result. Reconcile natural-key collisions; artifact version UUIDs identify versions, display numbers derive from deterministic order. Stage missing dependencies, apply batches atomically, never silently discard or clear required links. Deduplicate request costs by ID, preserving integer micro-dollars and surface attribution; no provider calls.
 - [x] **6. Files and deletion.** Resumable authenticated encrypted chunks, names/hashes/paths only in encrypted manifests, complete-hash checks and atomic installation using local paths. Publish completed/interrupted answers and run snapshots, never streamed chunks or run coordination. Preserve the eight-second undo window; final deletion publishes content-free markers that dominate stale edits. Remove deleted payloads, revisions and unreferenced blobs; keep markers throughout M11. Retain ordinary old revisions thirty days and unresolved conflicts until resolved. Privacy withdrawal removes already-synced remote copies. Backup retention stays separate.
 - [x] **7. Shared controls.** Settings → Sync: preview/enrollment, last success, pending/file progress, errors, conflicts, devices, Pause/Sync now, recovery and revocation. Both themes, keyboard navigation, desktop/web. Revocation blocks the device token and sync immediately, rotates encryption/recovery material, and distributes keys only to active devices; active offline devices re-encrypt pending work on return. Revocation cannot erase downloaded copies. Disable preserves local data; delete everywhere explicitly propagates workspace deletion.
-- [ ] **8. Benchmark and release kit.** Two independent desktop-style replicas plus a throwaway HULK with synthetic data and in-memory secrets. CI including Windows compatibility, existing HULK benchmark retained. Setup, recovery, revocation, deletion, backup and update instructions; threat model updated for trusted HULK and exposed metadata.
+- [x] **8. Benchmark and release kit.** Two independent desktop-style replicas plus a throwaway HULK with synthetic data and in-memory secrets. CI including Windows compatibility, existing HULK benchmark retained. Setup, recovery, revocation, deletion, backup and update instructions; threat model updated for trusted HULK and exposed metadata.
 
 ## Acceptance
 
@@ -40,3 +40,11 @@ One `codex/m11-*` branch and PR per step below. Use `.claude/skills/ship-step/SK
 - PL-04 and SE-14 in `docs/requirements.md`.
 - [RustCrypto chacha20poly1305 0.11.0](https://docs.rs/crate/chacha20poly1305/0.11.0), released 2026-06-28.
 - [ed25519-dalek 3.0.0](https://docs.rs/crate/ed25519-dalek/3.0.0), released 2026-07-06.
+
+## Build evidence
+
+The eight sequential PRs implement the approved scope. The release runbook is
+[encrypted sync](../sync.md), including explicit deployment/enrollment and backup boundaries.
+The [recorded benchmark](../benchmarks/M11-sync.md) uses two independent native replicas and
+a real throwaway HULK with in-memory secrets; CI also retains the existing HULK benchmark
+and runs Windows sync/file compatibility checks. No production activation was performed.

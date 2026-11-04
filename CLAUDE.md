@@ -5,7 +5,7 @@
 One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and Codex apps, runs on **Isaac's own API keys**, and **routes each request to the tier the task needs, then the cheapest model in that tier**. Built for one user first; data model ready for a product later.
 
 - Full requirements: `docs/requirements.md` (requirement IDs like RT-04 refer to it)
-- **Current milestone: `docs/milestones/M11-encrypted-sync.md`** — M0–M10 are built (M10 through step 26). Isaac approved M11 and an unattended build on 2026-11-04: build its steps in order, one branch and PR each, merge only after all checks pass, and continue until M11 is complete. Every step ships on desktop and web. Do not deploy HULK, touch production data or enable sync on existing installations.
+- **Current milestone: `docs/milestones/M11-encrypted-sync.md`** — M0–M11 are built (M10 through step 26; M11 through step 8). M11 deployment/enrollment remain explicit owner actions in `docs/sync.md`. Isaac approved M11 and an unattended build on 2026-11-04: build its steps in order, one branch and PR each, merge only after all checks pass, and continue until M11 is complete. Every step ships on desktop and web. Do not deploy HULK, touch production data or enable sync on existing installations.
 
 ## The 5 things that matter
 

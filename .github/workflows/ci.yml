@@ -100,6 +100,13 @@ jobs:
       # tauri::generate_context! needs the frontend dist folder to exist at compile time.
       - run: mkdir -p dist
       - run: cargo build --manifest-path src-tauri/Cargo.toml --features server --bin fuse-server
+      - name: Encrypted sync benchmark (two native replicas and HULK)
+        run: pnpm sync:bench
+      - uses: actions/upload-artifact@v7
+        with:
+          name: encrypted-sync-benchmark
+          path: src-tauri/target/sync-benchmark.json
+          if-no-files-found: error
       - name: Benchmark
         env:
           FUSE_SERVER_BIN: src-tauri/target/debug/fuse-server
@@ -159,6 +166,12 @@ jobs:
         run: mkdir dist
       - if: ${{ !cancelled() }}
         run: cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
+      - name: Windows sync compatibility
+        if: ${{ !cancelled() }}
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --lib sync:: -- --test-threads=1"
+      - name: Windows atomic file installation
+        if: ${{ !cancelled() }}
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --lib files:: -- --test-threads=1"
 
   # M8 step 14: the app driven like a person would use it, on Windows, with scripted models
   # (src/e2e/deps.ts) and no keys. e2e/README.md says how it works.

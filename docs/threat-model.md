@@ -1,6 +1,6 @@
 # FUSE threat model (SE-14)
 
-What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the coding agent added in M6 (2026-10-30, section 5), local models and the response cache in M7 (2026-10-30, section 6). **Review it when sync (PL-04) or tools and agents (P2) land.** Each of those adds a boundary.
+What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the coding agent added in M6 (2026-10-30, section 5), local models and the response cache in M7 (2026-10-30, section 6). Updated for M11 encrypted sync on 2026-11-04. Each new transport or execution capability adds a boundary.
 
 ## What's worth protecting
 
@@ -14,17 +14,20 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 | Linked repositories (M6) | Folders on this computer the coding agent may read, change and run commands in |
 | This computer itself (M6) | Commands a coding run runs execute as you, with your rights |
 | Local model files (M7) | GGUF files in the app's `models/` folder, run by FUSE's worker |
+| Sync encryption/signing keys (M11) | Native OS secret store; on HULK, host/user-sealed systemd-creds entries, separate per epoch |
+| Encrypted sync store (M11) | SQLCipher relay/bookkeeping plus authenticated encrypted opaque chunks and recovery bundle |
 | The response cache (M7) | Earlier answers kept for reuse, in the encrypted database |
 
 ## Trust boundaries
 
-1. **The webview vs. Rust.** The React app never sees a key. Requests leave only through `provider_fetch`. It allows one host per provider and a fixed list of paths and headers, adds the key itself, and checks the egress policy (SE-13).
+1. **The webview vs. Rust.** Ordinary React calls never receive stored provider, sync encryption or signing keys. Recovery material is displayed only by explicit recovery actions. Requests leave only through `provider_fetch`. It allows one host per provider and a fixed list of paths and headers, adds the key itself, and checks the egress policy (SE-13).
 2. **This computer vs. providers.** Whatever a request carries reaches OpenAI or Anthropic. They are trusted to answer, not to keep secrets.
 3. **FUSE vs. what it reads.** Imported chats, pasted memories, files, web pages and model answers are data, never instructions to FUSE.
 4. **The coding agent vs. this computer (M6).** File access goes through Rust (`repo.rs`), which takes only a project id and a relative path and reads the folder from the database. Commands (`exec.rs`) and git (`git.rs`) run in that folder only, after the app asks you. The model can ask; only you can allow.
 5. **Artifact previews.** HTML and React previews run in a separate `preview://` origin with a no-network content security policy. A per-artifact switch allows only listed CDNs (AR-05).
 6. **The app vs. its local model worker (M7).** llama.cpp runs in a separate process, FUSE's own executable with `--local-worker`. It's started with an empty environment and spoken to only in JSON lines. It reads one model file that FUSE checked against its pinned SHA-256, and its replies are data that only does housekeeping.
-7. **The browser vs. fuse-server (M10).** The web app runs on HULK. Pages, paired desktops and the runner reach its commands only after signing in, and only the commands the web may use.
+7. **Enrolled devices vs. trusted HULK (M11).** HULK can decrypt synced history for its database, web app and runner. Browsers use that database. Sync authorization does not convey repository contents, local paths, folder/command/network grants, credentials, approvals or execution ownership.
+8. **The browser vs. fuse-server (M10).** The web app runs on HULK. Pages, paired desktops and the runner reach its commands only after signing in, and only the commands the web may use.
 
 ## Threats and mitigations
 
@@ -41,53 +44,59 @@ What FUSE protects, from whom, and how. Written in M5 (2026-10-29) for P1.5; the
 | Reading backups | Backups are copies of the encrypted database; a plaintext backup is refused (PL-11) | Backups sit beside the database, so they are not protection against losing the disk |
 | Tampered attachments | Settings → Your data → Check attached files re-hashes every file against the database | Detects, doesn't prevent |
 
-### 2. Sync compromise (M11, being built)
+### 2. Sync compromise (M11)
 
-*Whoever controls the storage a future sync uses: a cloud bucket, a file-sync folder, a server.*
+*A stolen encrypted sync store, an altered/replayed packet, a revoked device, or a compromised
+participant.*
 
-M11 uses trusted HULK as both the host and a participant. HULK can decrypt synced content
-for the existing web app and runner; a compromised participating HULK is outside the
-ciphertext-store protection. Browsers use HULK's database and never become replicas.
-Enrollment is separate from pairing, requires explicit opt-in, and defaults to off.
+HULK is a trusted host **and a participant that can read synced content**. Encryption of its
+sync store does not protect plaintext from a compromised participating HULK or an unlocked
+enrolled device. Browsers use HULK's database. Pairing alone never enrolls a desktop, and all
+installations default to sync off. Setup previews eligible content before an explicit trust
+choice and enrollment.
 
-The native foundation uses XChaCha20-Poly1305 (random 192-bit nonces, 256-bit keys) and
-Ed25519 device signatures with strict verification. Protocol, schema, workspace, user,
-dataset, epoch, device, event ID, sequence and logical clock are authenticated associated
-data and signed with a format-specific domain prefix. The relay can see this routing
-metadata and encrypted sizes; entity bodies, filenames and plaintext file hashes are
-encrypted. Packet bodies are bounded before decryption. Tests change every envelope field
-and check wrong keys, invalid signatures and invalid encodings.
+XChaCha20-Poly1305 uses fresh random 192-bit nonces and 256-bit epoch keys. Ed25519 signatures
+use strict verification and a format-specific domain prefix. The authenticated/signed envelope
+exposes protocol/schema, workspace/user/dataset, device/event IDs, sequence, logical clock and
+epoch. Encrypted sizes, opaque chunk IDs, traffic timing and access patterns are also visible.
+Entity bodies, names, paths and plaintext file hashes stay in encrypted payloads/manifests.
+The trusted participant can decrypt these fields; the service is not a blind untrusted relay.
 
-Sync keys live only in the existing native secret stores, in separate entries per epoch.
-The enrollment response containing keys is available only at the bearer-authenticated native
-route: a browser session, including a signed-in browser, is refused; the runner cannot enroll.
-The response is marked `no-store`. The desktop uses HTTPS (loopback HTTP only for fixtures),
-refuses redirects, bounds the response body, verifies its identity and versions, and enables
-tracking only after storing keys and membership. Ordinary status/preview commands contain
-no secret keys. The recovery code is shown only by its explicit Settings command.
-Server setup and recovery commands require a signed-in browser session; paired-device and
-runner bearer tokens cannot call them. Sync responses are marked `no-store`.
+Native key transfer requires authenticated enrollment over verified HTTPS, refuses redirects
+and bounds responses. Browser cookies and internal runner tokens cannot obtain workspace keys.
+Ordinary UI commands expose state, counts and public identities. HULK setup, recovery, rotation
+retry and device management require its signed-in browser. Responses are `no-store`. Native
+secret stores keep each epoch key separately, including within Windows credential-size limits.
 
-The encrypted recovery bundle is `data_dir/sync/recovery.json`, atomically replaced and owner-only
-on Unix. A separate random recovery code protects the epoch keys, host signing identity and
-device registry, including public pairing IDs. Recovery also requires HULK sign-in; the code
-alone does not enroll a device. Recovery pauses sync before changing stored keys and restores
-the registry/state in a transaction. A failed recovery leaves pending edits and sync paused.
-The sync recovery code does not unlock the separate SQLCipher database: its own recovery or
-backup flow remains necessary if that database's key is lost. Without surviving sync keys or
-the current recovery code and bundle, encrypted sync contents are unrecoverable. Recovery
-material should be kept separately from the computer, as with the database recovery key.
+Typed registry validation rejects unknown tables/columns, explicitly private records, active
+run snapshots and streaming state. It accepts no remote SQL. Causal vectors and immutable event
+IDs preserve history; content-free replay digests reject changed bodies under a reused ID.
+Inbox/cursor commits precede acknowledgements. Missing dependencies remain staged, including
+circular batches. Facts/decisions in conflict stay out of context until an explicit replicated
+resolution. Concurrent privacy changes take the more restrictive result.
 
-The worker, merge engine, withdrawal propagation and user controls are the subsequent M11
-steps; no sync control is enabled in the UI by this foundation alone. The completed milestone
-must also:
+App-managed files use encrypted authenticated chunks and full-hash verification before atomic
+installation at a locally generated path. Public relationships protect shared files; private
+ownership, stale deletion scopes and unavailable parents cannot silently turn into public
+content. Unknown-parent shares stage until their public parent arrives. Repository access and
+machine permissions remain local, and imported completed runs are read-only. No received event
+starts/resumes work or creates an execution queue.
 
-- **Encrypt end to end on the device.** The storage only ever sees ciphertext.
-- **Sync logical records**, with `revision` and `device_id` (already on memories since M5), never the database file.
-- **Authenticate every record**, so tampering is detected rather than merged.
-- **Send competing edits to decisions or facts to review.**
-- **Define device revocation and lost-key behaviour.**
-- **Keep sync separate from backup.** A deletion that syncs must not destroy the only copy.
+Final deletion follows the existing eight-second undo window. Permanent M11 markers and
+lifecycle acknowledgements prevent stale records and unseen offline descendants from returning.
+Deleted/withdrawn bodies and unreferenced sync blobs are purged. Ordinary losing revisions remain
+thirty days, unresolved reviews until resolved; independent backups/exports may retain copies.
+Revocation cannot erase copies previously downloaded by a device.
+
+Revocation blocks the bearer token and membership before rotating encryption/recovery material.
+Only active devices can refresh keys; pending work is re-encrypted after reconnect. Persisted
+rotation state keeps transfers blocked after a crash/storage failure until retry succeeds.
+The encrypted `data_dir/sync/recovery.json` bundle is atomically replaced (owner-only on Unix).
+Its separate random code also requires HULK authentication, cannot enroll a device by itself,
+and does not replace the SQLCipher database recovery key. Recovery cannot downgrade a completed
+epoch or undo a recorded revocation. Missing keys without surviving key material or the current
+code/bundle cannot be recovered. Key recovery is not database rollback or disaster recovery;
+see [backup boundaries](sync.md#backup-and-restore-boundaries).
 
 ### 3. Malicious imports
 

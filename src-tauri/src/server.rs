@@ -1188,3 +1188,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&home);
     }
 }
+
+#[cfg(test)]
+mod sync_benchmark;

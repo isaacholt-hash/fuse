@@ -237,4 +237,32 @@ mod tests {
         assert!(get(&root, &"A".repeat(64)).is_err());
         assert!(get(&root, &"0".repeat(64)).is_err()); // valid id, no such file
     }
+    #[test]
+    fn simultaneous_installation_is_atomic_and_corrupted_existing_bytes_are_repaired() {
+        let root = temp_root().join("Unicode-共有");
+        let bytes = std::sync::Arc::new(vec![37u8; 1024 * 1024]);
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let writers = (0..4)
+            .map(|_| {
+                let root = root.clone();
+                let bytes = bytes.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    put(&root, &bytes).unwrap()
+                })
+            })
+            .collect::<Vec<_>>();
+        let stored = writers
+            .into_iter()
+            .map(|w| w.join().unwrap())
+            .collect::<Vec<_>>();
+        assert!(stored.iter().all(|s| s == &stored[0]));
+        assert_eq!(get(&root, &stored[0].sha256).unwrap(), *bytes);
+        assert_eq!(fs::read_dir(root.join(DIR)).unwrap().count(), 1);
+        fs::write(path_for(&root, &stored[0].sha256), b"corrupt").unwrap();
+        assert_eq!(put(&root, &bytes).unwrap(), stored[0]);
+        assert_eq!(get(&root, &stored[0].sha256).unwrap(), *bytes);
+        fs::remove_dir_all(root.parent().unwrap()).unwrap();
+    }
 }

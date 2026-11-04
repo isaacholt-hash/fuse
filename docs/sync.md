@@ -2,7 +2,7 @@
 
 Sync is optional and separate from pairing. HULK is a trusted participant: it can decrypt
 synced content for its web app and runner. Browsers use HULK's database; they are not replicas.
-No provider request or run starts because of syncing.
+No provider request or run starts because of syncing. Bucket storage and file-sync folders are deferred beyond M11.
 
 ## Enable
 
@@ -106,3 +106,73 @@ hash verification before atomic installation at a locally generated path. Existi
 50 MiB per file and 64 MiB per structured sync record. Shared references protect bytes;
 abandoned incomplete uploads expire after one hour unless renewed. Names and hashes occur only
 inside encrypted manifests. Repository and indexed-folder contents are not uploaded by sync.
+
+## Update and activate desktop + HULK
+
+M11's build does not deploy or enroll anything. To activate the verified build:
+
+1. In the current apps, save a backup/export you want to retain and finish or stop active
+   runs through their existing owner controls. Keep the database recovery key and the sync
+   recovery code separate; neither is a provider credential.
+2. Install the latest published FUSE desktop release on each device (Settings → Check for
+   updates → Restart, or its signed installer from GitHub Releases).
+3. On HULK, explicitly deploy from the verified `main`:
+
+   ```bash
+   cd /home/daywalker/fuse
+   git switch main
+   git pull --ff-only
+   bash scripts/deploy-server.sh
+   ```
+
+   This command installs/restarts the production service; it is deliberately left for you.
+   The existing deployment guide is [HULK server](hulk-server.md). The service remains bound
+   to loopback behind its existing verified HTTPS tailnet route.
+4. Reload HULK's web app. Desktop **Settings → HULK** shows the schema/build on both sides;
+   use matching builds. Sign in at
+   [HULK Settings → Sync](https://hulk.tailb7c872.ts.net:4100/#sync).
+5. Enable HULK through its preview and trust choice, store the separately displayed recovery
+   code safely, then pair and explicitly enroll each desktop through its own preview.
+6. Wait for pending changes/files to finish and check last success, conflicts and devices.
+   Resolve fact/decision reviews before expecting those records in model context. Verify a
+   harmless test chat follows both ways; keep any private test in a local-only project.
+
+Future updates follow the same desktop/HULK build matching rule. A version mismatch pauses
+transfers and retains local work. Migrations are forward-only: changing the server symlink
+back to an older binary does not undo a schema upgrade. Do not point an old build at a newer
+database. Sync never deploys HULK or updates its service for you.
+
+## Backup and restore boundaries
+
+Automatic database backups keep the newest **ten** encrypted snapshots; Settings → Your data
+can explicitly prune them. This policy is separate from thirty-day superseded sync revisions
+and permanent M11 deletion markers. Sync deletion does not rewrite backup snapshots or your
+exports. Export archives and the app-managed file store can contain plaintext file bytes;
+protect them separately. A database snapshot alone is not an attachment backup.
+
+The sync recovery bundle protects keys and device identities, not missing application data.
+Recovery needs the current encrypted bundle/code, HULK authentication and access to the separate
+SQLCipher database. It does not restore provider credentials or machine grants. Preserve the
+current encrypted sync store and app-managed files when backing up the host.
+
+An enrolled database includes device counters, acknowledgements and deletion barriers. Do not
+clone it to create another replica or treat a historical snapshot as a rollback of the whole
+sync workspace. Reusing an event ID for changed content pauses rather than overwriting accepted
+history. Restore historical application content by explicit export/import into a healthy current
+installation when possible; ordinary stale replicas remain subject to permanent deletion
+markers. Recovering lost keys is separate from recovering a lost or rolled-back database.
+
+## Reproduce the benchmark
+
+```bash
+pnpm sync:bench
+```
+
+This starts two independent desktop-style databases/workers and a throwaway real HTTP HULK,
+using only synthetic content and in-memory test secrets. It records
+`src-tauri/target/sync-benchmark.json`, then removes the participants' temporary stores. It
+checks initial union, files, natural keys, costs, conflicts, offline edits, undo/deletion,
+shared private bytes and revocation/rotation. The [recorded result](benchmarks/M11-sync.json)
+and [coverage and limits](benchmarks/M11-sync.md) describe the evidence. CI uploads a fresh
+result and runs native Windows sync/file compatibility checks alongside the existing HULK
+benchmark and click-through workflows.

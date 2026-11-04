@@ -718,7 +718,7 @@ pub mod commands {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::keys::{Keys, MemoryStore};
 
@@ -738,7 +738,26 @@ mod tests {
     }
     pub(crate) async fn cleanup(ctx: &Ctx) {
         ctx.db.pool().unwrap().close().await;
-        std::fs::remove_dir_all(ctx.config_dir.parent().unwrap()).unwrap();
+        let root = ctx.config_dir.parent().unwrap();
+        for attempt in 0..40 {
+            match std::fs::remove_dir_all(root) {
+                Ok(()) => return,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+                // Windows can briefly retain a sharing lock while a SQLx connection worker
+                // finishes closing. Still require cleanup; retry only those transient locks.
+                Err(error)
+                    if cfg!(windows)
+                        && matches!(error.raw_os_error(), Some(32 | 33))
+                        && attempt < 39 =>
+                {
+                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                }
+                Err(error) => panic!(
+                    "Couldn't remove synthetic fixture {}: {error}",
+                    root.display()
+                ),
+            }
+        }
     }
     #[tokio::test]
     async fn explicit_opt_in_is_required_and_ui_status_never_exposes_keys() {
