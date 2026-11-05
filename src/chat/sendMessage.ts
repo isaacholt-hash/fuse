@@ -1,3 +1,5 @@
+import { contextTool } from "@/context/tools";
+import { CONTEXT_TOOL_NAMES } from "@/context/toolSpecs";
 import { cacheGet, cacheKey, cachePut, chatCacheable } from "@/cache/responseCache";
 import { chatCeiling } from "@/context/ceilings";
 import {
@@ -397,12 +399,19 @@ async function streamAnswer(
   await setActiveLeaf(db, tenant, input.threadId, assistantMessageId);
 
   // PM-18: one assembler builds every request.
-  const { system, history, picked, fileSources } = await assemble(
+  const { system, history, picked, fileSources, parts } = await assemble(
     deps,
     input.threadId,
     context,
     input.embedding,
     chatCeiling(model),
+    undefined,
+    {
+      provider: model.provider,
+      model: model.id,
+      messageId: assistantMessageId,
+      signal: input.signal,
+    },
   );
   await recordInjected(
     db,
@@ -419,8 +428,19 @@ async function streamAnswer(
   const thread = await getThread(db, tenant, input.threadId);
   const scope = thread?.projectId ?? "none";
   const question = history.findLast((m) => m.role === "user")?.content ?? "";
+  const contextCharges = async () =>
+    (
+      await db.select<{ amount: number; attempts: number }>(
+        `SELECT COALESCE(SUM(cost_micro_usd),0) AS amount,COUNT(*) AS attempts FROM request_log
+    WHERE workspace_id=? AND user_id=? AND message_id=? AND purpose='embed'`,
+        [tenant.workspaceId, tenant.userId, assistantMessageId],
+      )
+    )[0] ?? { amount: 0, attempts: 0 };
+  const beforeCache = await contextCharges();
   const cacheKeyFor =
     firstQuestion &&
+    beforeCache.attempts === 0 &&
+    !parts.some((p) => p.kind === "artifacts") &&
     deps.cache !== false &&
     fileSources.length === 0 &&
     chatCacheable({
@@ -433,6 +453,7 @@ async function streamAnswer(
     })
       ? await cacheKey([
           "chat",
+          "scoped-context-tools-v1",
           `${model.provider}/${model.id}`,
           input.route?.effort ?? "",
           system ?? "",
@@ -503,12 +524,19 @@ async function streamAnswer(
           ...toolsIn("chat", { off: toolsOff }).filter(
             (t) =>
               (t.name !== FETCH_URL_TOOL.name || Boolean(deps.web)) &&
+              (!CONTEXT_TOOL_NAMES.has(t.name) ||
+                Boolean(
+                  thread &&
+                  !thread.incognito &&
+                  (thread.memoryOn || (t.name !== "read_memory" && t.name !== "propose_memory")),
+                )) &&
               (t.name !== READ_SKILL_TOOL.name || skillCommands(question).length > 0),
           ),
           ...chatMcp.specs.filter((x) => !toolsOff.has(x.name)),
         ]
       : [];
 
+  const toolActivity = { used: false };
   /** One answer from a model, streamed in: a provider call, or a few when it reads pages. */
   const attempt = async (m: CatalogModel) => {
     const started = now();
@@ -629,8 +657,32 @@ async function streamAnswer(
           tier: input.route?.tier ?? null,
           routeRuleId: input.route?.ruleId ?? null,
         });
+        toolActivity.used = true;
         const results: ToolResult[] = [];
         for (const call of calls) {
+          if (CONTEXT_TOOL_NAMES.has(call.name)) {
+            const r = await contextTool(
+              deps,
+              {
+                threadId: input.threadId,
+                projectId: thread?.projectId ?? null,
+                runId: null,
+                messageId: assistantMessageId,
+                provider: m.provider,
+                model: m.id,
+                callKey: `${assistantMessageId}:${String(round)}:${call.id}`,
+              },
+              call,
+              input.embedding,
+              input.signal,
+            );
+            results.push({
+              callId: call.id,
+              content: asData(call.name, r.output),
+              isError: r.isError,
+            });
+            continue;
+          }
           if (call.name === READ_SKILL_TOOL.name) {
             const current = await getThread(db, tenant, input.threadId);
             const refused = egressRefusal(
@@ -844,6 +896,8 @@ async function streamAnswer(
   });
   // M9 step 2: the answer costs its tool rounds too (each logged above as its own request).
   const answerUsage = addUsage(usage, toolRounds);
+  // Aggregate context-operation costs on the answer, never into a second actual receipt.
+  answerUsage.costMicroUsd += (await contextCharges()).amount;
   await finishMessage(db, tenant, assistantMessageId, {
     bestCostMicroUsd,
     content: answer,
@@ -858,6 +912,7 @@ async function streamAnswer(
   // LL-06: a clean, complete answer to a cacheable question is kept for next time.
   if (
     cacheKeyFor &&
+    !toolActivity.used &&
     status === "complete" &&
     !truncated &&
     !paused &&

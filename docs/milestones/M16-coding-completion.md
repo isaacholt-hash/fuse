@@ -563,3 +563,18 @@ benchmarks and Windows click-through. Windows runs all 15 child worktree tests s
 but its separate all-target sandbox-helper Clippy check rejects the new file-link helper's
 placement after the test module. The helper is moved before tests without changing its body.
 Its earlier failure remains recorded; all five gates must pass again on the corrected head.
+
+Final step-5 CI is green on `ccba8487c65de5be61e7e56ce66920bfed23bbd7` in
+[run 42112436574](https://github.com/isaacholt-hash/fuse/actions/runs/42112436574), including
+all five gates, JSON CI verification and the previously failing Windows Clippy check.
+[PR #312](https://github.com/isaacholt-hash/fuse/pull/312) merged as
+`1dc1e09348f9c19730f477ac0b84d46f3f3ee34c`. Normal
+[Release 42114928350](https://github.com/isaacholt-hash/fuse/actions/runs/42114928350) published
+[v0.1.228](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.228) at
+2026-11-05 21:51:19 UTC. All 11 assets and seven updater signatures were verified. Current CI
+passes 1,229 shared tests (21 explicit skips), 252 server Rust tests, the 5/5 HULK benchmark,
+16-scenario schema-72 sync benchmark and Windows native/click-through compatibility. The final
+recorded parallel benchmark takes 83,689 ms with 15 native, 49 shared and three browser cases;
+its 16 requests total 2,880 micro-dollars, matching root totals exactly. All 24 final parallel
+browser captures and current Windows theme captures were reviewed. This closes the automated
+M16 build; no production deployment or live provider acceptance is implied.

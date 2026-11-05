@@ -37,13 +37,13 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | RT-14, AG-06 staged routing | M6 has Best planning, Balanced execution and Cheap summaries; finish Best synthesis and bounded stages in M14.1 |
 | CH-14 visible tools/steps | M6/M9/M10; preserve and extend to new runs |
 | CH-19 Chat/Code areas and handoff | M10, including F4 and fresh live handover; complete |
-| PM-04 P2 decisions/artifact meaning retrieval | Typed decisions/memory in M5; artifact extension and scoped context tools in M17.1 |
+| PM-04 P2 decisions/artifact meaning retrieval | Typed decisions/memory in M5; [M17.1 build](milestones/M17-writing-artifacts.md) adds scoped tools, reviewed memory proposals, pinned artifact versions and meaning retrieval |
 | FK-07 knowledge folder updates | M8.11; complete under desktop/watch and web replacement boundary |
 | FK-08 spreadsheet/CSV analysis | M9.6–7 and recorded/live/PC evidence; complete, preserve |
 | FK-12 deep research | [M14 build](milestones/M14-deep-research.md), released owner acceptance in M19 |
 | AR-07 writing canvas | M17.2 |
 | AR-08 sandboxed code artifacts | M17.3, Python only under approved AG-03 boundary |
-| AG-01 tool framework | M6/M9 registry; finish memory/artifact operations in M17.1 |
+| AG-01 tool framework | M6/M9 registry; [M17.1 build](milestones/M17-writing-artifacts.md) completes scoped memory/artifact operations |
 | AG-02 MCP | M9 generic client preserved; M15.1 native first-party transport, readers/setup in M15.2–4 |
 | AG-03 execution sandbox | M8/M9, Python-only approved scope; artifact integration in M17.3 |
 | AG-04 approvals/audit | M6/M8/M9/M10; preserve, shared reservations/audit M13.1 and audit completeness M18.4 |

@@ -396,7 +396,7 @@ import {
 import { MemoryBar, MemoryReviewDialog, MemorySection } from "@/ui/Memory";
 import { KIND_LABELS } from "@/ui/memoryLabels";
 import { ProjectDialog, type KnowledgeFileView } from "@/ui/Projects";
-import { ArtifactPanel, type ArtifactView } from "@/ui/Artifacts";
+import { ArtifactCard, ArtifactPanel, type ArtifactView } from "@/ui/Artifacts";
 import {
   addVersion,
   listArtifacts,
@@ -2393,9 +2393,21 @@ export function ChatApp({
         const made = artifactsIn(rows.findLast((m) => m.role === "assistant")?.content ?? "").at(
           -1,
         );
-        if (made && selectedRef.current === threadId) {
-          showArtifact(made.key);
-          if (editFrom.current?.key === made.key) setCompareWith(editFrom.current.versionId);
+        const [toolMade] = await db.select<{ key: string }>(
+          `SELECT a.key FROM context_tool_audit c JOIN artifacts a ON a.id=c.record_id
+          WHERE c.workspace_id=? AND c.user_id=? AND c.thread_id=? AND c.message_id=? AND c.outcome IN ('created','updated')
+            AND a.deleted_at IS NULL ORDER BY c.created_at DESC,c.id DESC LIMIT 1`,
+          [
+            tenant.workspaceId,
+            tenant.userId,
+            threadId,
+            rows.findLast((m) => m.role === "assistant")?.id ?? "",
+          ],
+        );
+        const madeKey = made?.key ?? toolMade?.key;
+        if (madeKey && selectedRef.current === threadId) {
+          showArtifact(madeKey);
+          if (editFrom.current?.key === madeKey) setCompareWith(editFrom.current.versionId);
         }
         editFrom.current = null;
         nameThread(threadId, rows);
@@ -2403,7 +2415,7 @@ export function ChatApp({
       }
       checkAlerts().catch(report);
       setLive((all) => Object.fromEntries(Object.entries(all).filter(([id]) => id !== threadId)));
-      await refreshThreads().catch(report);
+      await Promise.all([refreshThreads(), refreshMemory()]).catch(report);
     }
   };
 
@@ -3058,6 +3070,9 @@ export function ChatApp({
       kind: p.kind,
       projectName: projectName(p.projectId),
       source: p.sourceThreadTitle,
+      targetRevision: p.targetRevision,
+      extractionModel: p.extractionModel,
+      conversationOnly: Boolean(p.threadId),
       confidence: p.confidence,
       ...(conflict ? { conflict: { id: conflict.id, text: conflict.text } } : {}),
     };
@@ -4013,6 +4028,12 @@ export function ChatApp({
     ? threads.find((t) => t.id === thread.handoffFromId)
     : undefined;
   const handedTo = thread ? threads.filter((t) => t.handoffFromId === thread.id) : [];
+  const toolArtifacts = threadArtifacts.filter(
+    (a) =>
+      !messages.some(
+        (m) => m.role === "assistant" && artifactsIn(m.content).some((b) => b.key === a.key),
+      ),
+  );
   const openSaved = threadArtifacts.find((a) => a.key === openArtifact);
   useEffect(() => {
     if (!openSaved) return;
@@ -6601,6 +6622,26 @@ export function ChatApp({
                           putInComposer(quoteOf(text));
                         }}
                       />
+                      {toolArtifacts.length > 0 && (
+                        <div
+                          className="mx-auto w-full max-w-[716px] px-9"
+                          aria-label="Saved context artifacts"
+                        >
+                          {toolArtifacts.map((a) => (
+                            <ArtifactCard
+                              key={a.id}
+                              title={a.title}
+                              type={a.type}
+                              language={a.language}
+                              writing={false}
+                              open={openArtifact === a.key}
+                              onOpen={() => {
+                                showArtifact(a.key);
+                              }}
+                            />
+                          ))}
+                        </div>
+                      )}
                       {incognito && (
                         <p
                           role="note"

@@ -1,6 +1,7 @@
 // Every tool FUSE can offer a model, in one list (M9 step 1, AG-01). Each has a kind, which is
 // what approvals, read-only runs and the activity log go by, and the places it can run. The order
 // is the order a run's tools are sent in, fixed so the prompt cache holds.
+import { CONTEXT_READ_TOOLS, CONTEXT_WRITE_TOOLS } from "@/context/toolSpecs";
 import type { ToolSpec } from "@/providers/types";
 import { RUN_SKILL_TOOL } from "@/skills/scripts";
 import { DELEGATE_CODE_TOOL } from "@/parallel/tool";
@@ -19,13 +20,13 @@ import {
 } from "./tools";
 
 /**
- * What a tool does, from least to most care: reading runs freely; writing changes files (or a
+ * What a tool does, from least to most care: reading runs freely; writing changes files, versioned app artifacts or proposes reviewed memory (or a
  * local git repository); a command runs a program; sending reaches someone else (a push, a pull
  * request); spending costs money beyond the model call.
  */
 export type ToolKind = "read" | "write" | "command" | "send" | "spend";
 
-/** Where a tool can be offered: a Code or Work run, or a plain chat (read-only tools, step 2). */
+/** Where a tool can be offered: a Code or Work run, or a plain chat (reads and app-managed context writes). */
 export type ToolPlace = "code" | "work" | "chat";
 
 export interface ToolEntry {
@@ -51,6 +52,8 @@ export const TOOLS: readonly ToolEntry[] = [
   entry(READ_DOCUMENT_TOOL, "read", ["work"]),
   entry(FETCH_URL_TOOL, "read", ["code", "work", "chat"]),
   entry(READ_SKILL_TOOL, "read", ["code", "work", "chat"]),
+  ...CONTEXT_READ_TOOLS.map((t) => entry(t, "read", ["code", "work", "chat"])),
+  ...CONTEXT_WRITE_TOOLS.map((t) => entry(t, "write", ["code", "work", "chat"])),
   ...EDIT_TOOLS.map((t) => entry(t, "write", BOTH)),
   entry(WRITE_DOCUMENT_TOOL, "write", ["work"]),
   entry(ORGANISE_TOOL, "write", ["work"]),

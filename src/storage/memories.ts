@@ -493,10 +493,16 @@ export interface NewProposal {
 
 export interface Proposal extends NewProposal {
   id: string;
+  targetRevision?: number | null;
+  threadId?: string | null;
+  sourceMessageId?: string | null;
+  sourceRunId?: string | null;
+
   /** Current text of the fact being updated or deleted. */
   currentText: string | null;
   sourceThreadTitle: string | null;
   createdAt: number;
+  origin: "chat" | "import";
 }
 
 export async function addProposals(
@@ -539,7 +545,12 @@ interface ProposalRow {
   kind: MemoryKind;
   project_id: string | null;
   confidence: number;
-  source_thread_id: string;
+  source_thread_id: string | null;
+  origin: "chat" | "import";
+  target_revision: number | null;
+  thread_id: string | null;
+  source_message_id: string | null;
+  source_run_id: string | null;
   extraction_model: string | null;
   current_text: string | null;
   thread_title: string | null;
@@ -550,14 +561,14 @@ interface ProposalRow {
 export async function listPendingProposals(db: SqlDb, tenant: Tenant): Promise<Proposal[]> {
   const rows = await db.select<ProposalRow>(
     `SELECT p.id, p.op, p.memory_id, p.text, p.kind, p.project_id, p.confidence,
-            p.source_thread_id, p.extraction_model, p.created_at, m.text AS current_text,
+            p.source_thread_id, p.origin, p.target_revision, p.thread_id, p.source_message_id, p.source_run_id, p.extraction_model, p.created_at, m.text AS current_text,
             t.title AS thread_title
      FROM memory_proposals p
      LEFT JOIN memories m ON m.id = p.memory_id
      LEFT JOIN threads t ON t.id = p.source_thread_id AND t.deleted_at IS NULL
-     WHERE p.workspace_id = ? AND p.status = 'pending'
+     WHERE p.workspace_id = ? AND p.user_id = ? AND p.status = 'pending'
      ORDER BY p.created_at, p.id`,
-    [tenant.workspaceId],
+    [tenant.workspaceId, tenant.userId],
   );
   return rows.map((r) => ({
     id: r.id,
@@ -568,6 +579,11 @@ export async function listPendingProposals(db: SqlDb, tenant: Tenant): Promise<P
     projectId: r.project_id,
     confidence: r.confidence,
     sourceThreadId: r.source_thread_id,
+    origin: r.origin,
+    targetRevision: r.target_revision,
+    threadId: r.thread_id,
+    sourceMessageId: r.source_message_id,
+    sourceRunId: r.source_run_id,
     extractionModel: r.extraction_model,
     currentText: r.current_text,
     sourceThreadTitle: r.thread_title,
@@ -636,47 +652,99 @@ export async function approveProposal(
 ): Promise<void> {
   const found = (await listPendingProposals(db, tenant)).find((x) => x.id === id);
   if (!found) return;
-  const p: Proposal =
-    replaceId && found.op === "add" ? { ...found, op: "update", memoryId: replaceId } : found;
-  const text = editedText?.trim() ? editedText : p.text;
+  const p =
+    replaceId && found.op === "add"
+      ? { ...found, op: "update" as const, memoryId: replaceId }
+      : found;
   const target = p.memoryId
     ? (await listMemories(db, tenant)).find((m) => m.id === p.memoryId)
-    : undefined;
-  // Provenance (PM-14): pasted from another app, or found in one of your chats.
-  const origin = {
-    authority: p.sourceThreadId ? "extracted" : "imported",
-    extractionMethod: p.sourceThreadId ? "chat" : "import",
-    extractionModel: p.extractionModel ?? null,
-  } as const;
-  if (p.op === "add") {
-    await addMemory(db, tenant, {
-      text,
-      kind: p.kind,
-      projectId: p.projectId,
-      sourceThreadId: p.sourceThreadId,
-      confidence: p.confidence,
-      ...origin,
-    });
-  } else if (p.op === "update" && target) {
-    const newId = await addMemory(db, tenant, {
-      text,
-      kind: p.kind,
-      projectId: target.projectId,
-      threadId: target.threadId,
-      sourceThreadId: p.sourceThreadId,
-      confidence: p.confidence,
-      ...origin,
-    });
-    await db.execute(
-      `UPDATE memories SET superseded_by_id = ?, status = 'superseded', revision = revision + 1,
-         updated_at = ?
-       WHERE workspace_id = ? AND id = ?`,
-      [newId, Date.now(), tenant.workspaceId, target.id],
+    : null;
+  if (p.op !== "add" && (!target || target.kind === "decision"))
+    throw new Error(
+      "This memory changed or is a decision. Review it in Memory before trying again.",
     );
-  } else if (p.op === "delete" && target) {
-    await deleteMemory(db, tenant, target.id);
-  }
-  await setProposalStatus(db, tenant, id, "approved");
+  if (target && p.targetRevision != null && p.targetRevision !== target.revision)
+    throw new Error("This memory changed since the suggestion. Review the current version first.");
+  const now = Date.now(),
+    newId = uuidv7(now),
+    device = await deviceId(db, tenant);
+  const revision = target?.revision ?? null;
+  const guard = `EXISTS(SELECT 1 FROM memory_proposals p WHERE p.workspace_id=? AND p.user_id=? AND p.id=? AND p.status='pending'
+    AND (p.target_revision IS NULL OR p.target_revision IS ?)
+    AND ((p.thread_id IS NULL AND p.target_revision IS NULL) OR EXISTS(SELECT 1 FROM threads t LEFT JOIN projects sp ON sp.id=t.project_id
+      WHERE t.id=p.source_thread_id AND t.workspace_id=p.workspace_id AND t.user_id=p.user_id
+        AND (p.memory_id IS NOT NULL OR t.project_id IS p.project_id) AND t.deleted_at IS NULL AND t.incognito=0 AND t.local_only=0
+        AND (t.project_id IS NULL OR (sp.deleted_at IS NULL AND sp.privacy_mode!='local_only')))))
+    ${target ? `AND EXISTS(SELECT 1 FROM memories m WHERE m.workspace_id=? AND m.user_id=? AND m.id=? AND m.revision=? AND ${ACTIVE} AND m.kind!='decision')` : ""}`;
+  const gp: SqlValue[] = [
+    tenant.workspaceId,
+    tenant.userId,
+    id,
+    revision,
+    ...(target ? [tenant.workspaceId, tenant.userId, target.id, target.revision] : []),
+  ];
+  const text = cleanText(
+    p.op === "delete" ? (target?.text ?? p.text) : editedText?.trim() ? editedText : p.text,
+  );
+  const statements =
+    p.op === "delete" && target
+      ? [
+          {
+            sql: `UPDATE memories SET status='deleted',deleted_at=?,updated_at=?,revision=revision+1 WHERE workspace_id=? AND user_id=? AND id=? AND ${guard}`,
+            params: [now, now, tenant.workspaceId, tenant.userId, target.id, ...gp],
+          },
+        ]
+      : [
+          {
+            sql: `INSERT INTO memories(id,workspace_id,user_id,text,kind,scope,project_id,thread_id,authority,source_thread_id,
+      source_message_id,extraction_method,extraction_model,confidence,task_status,sensitivity,may_send,expires_at,
+      rationale,alternatives,depends_on,device_id,created_at,updated_at)
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE ${guard}`,
+            params: [
+              newId,
+              tenant.workspaceId,
+              tenant.userId,
+              text,
+              target?.kind ?? p.kind,
+              target?.scope ?? scopeOf(p.projectId, p.threadId ?? null),
+              target ? target.projectId : p.projectId,
+              target ? target.threadId : (p.threadId ?? null),
+              target?.authority ?? (p.origin === "chat" ? "extracted" : "imported"),
+              p.sourceThreadId,
+              p.sourceMessageId ?? null,
+              p.origin,
+              p.extractionModel ?? null,
+              p.confidence,
+              target?.taskStatus ?? (p.kind === "task" ? "open" : null),
+              target?.sensitivity ?? "normal",
+              target?.maySend === false ? 0 : 1,
+              target?.expiresAt ?? null,
+              target?.rationale ?? null,
+              JSON.stringify(target?.alternatives ?? []),
+              JSON.stringify(target?.dependsOn ?? []),
+              device,
+              now,
+              now,
+              ...gp,
+            ],
+          },
+        ];
+  if (target && p.op === "update")
+    statements.push({
+      sql: `UPDATE memories SET superseded_by_id=?,status='superseded',revision=revision+1,updated_at=?
+      WHERE workspace_id=? AND user_id=? AND id=? AND EXISTS(SELECT 1 FROM memories WHERE id=?)`,
+      params: [newId, now, tenant.workspaceId, tenant.userId, target.id, newId],
+    });
+  statements.push({
+    sql: `UPDATE memory_proposals SET status='approved',updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND status='pending'
+      AND ${p.op === "delete" ? "changes()=1" : "EXISTS(SELECT 1 FROM memories WHERE id=?)"}`,
+    params: [now, tenant.workspaceId, tenant.userId, id, ...(p.op === "delete" ? [] : [newId])],
+  });
+  const applied = await db.batch(statements);
+  if (!applied[0]?.rowsAffected)
+    throw new Error(
+      "This suggestion or its memory changed. Refresh and review the current version.",
+    );
 }
 
 export interface ReplacedMemory {

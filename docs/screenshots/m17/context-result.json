@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "liveProviderCalls": 0,
+  "actualNativeDatabase": true,
+  "memoryOwnerReviewed": true,
+  "artifactVersions": 2,
+  "counts": {
+    "folders": 0,
+    "requests": 5,
+    "runs": 0,
+    "unknown": 0
+  },
+  "audit": [
+    {
+      "outcome": "proposed",
+      "tool_name": "propose_memory"
+    },
+    {
+      "outcome": "created",
+      "tool_name": "create_artifact"
+    },
+    {
+      "outcome": "read",
+      "tool_name": "search_artifacts"
+    }
+  ],
+  "themes": ["light", "dark"]
+}

@@ -698,6 +698,9 @@ function ProposalRow({
   const [text, setText] = useState(proposal.text);
   const meta = [
     KIND_LABELS[proposal.kind],
+    proposal.conversationOnly ? "only in its conversation" : null,
+    proposal.targetRevision ? `based on revision ${String(proposal.targetRevision)}` : null,
+    proposal.extractionModel ? `suggested by ${proposal.extractionModel}` : null,
     proposal.projectName ? `only in ${proposal.projectName}` : null,
     proposal.source ? `from “${proposal.source}”` : null,
     `${String(proposal.confidence)}% sure`,
@@ -708,7 +711,7 @@ function ProposalRow({
         <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground">
           {OP_LABELS[proposal.op]}
         </span>
-        <span className="truncate">{meta.join(" · ")}</span>
+        <span className="min-w-0 break-words">{meta.join(" · ")}</span>
       </div>
       {proposal.currentText && (
         <p

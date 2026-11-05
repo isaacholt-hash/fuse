@@ -1412,7 +1412,7 @@
     "run_live": "Transient streamed output",
     "run_approvals": "Owner-only approvals",
     "schedules": "HULK-owned scheduler",
-    "memory_proposals": "Unreviewed suggestions and potentially private provenance",
+    "memory_proposals": "Unreviewed owner-local suggestions, pinned target revisions and potentially private source provenance. Never synced; existing owner-initiated structured export and inert encrypted backup retain review data, without activation or permission grants.",
     "request_reservations": "Owner-only pre-dispatch holds and unresolved charges; never replay on another replica",
     "security_audit": "Sanitized local credential-use and policy events; exported explicitly, not replicated",
     "research_state": "Execution-owner checkpoint, selected-context IDs and transient collected evidence; never starts from sync.",
@@ -1422,7 +1422,9 @@
     "review_state": "Pinned repository bytes, review checkpoint and lease; execution-owner only; excluded from portable sync/export; encrypted full-database backups retain it without replay.",
     "review_operations": "Owner-local paid-attempt journal and transient source analysis; never synced/exported or automatically replayed after restore.",
     "code_child_reviews": "Owner-local immutable review tokens, repository snapshots and integration claims. Excluded from sync/portable export; cascade on run deletion/global deletion; encrypted backups retain inert evidence without replay or grants.",
-    "code_children": "Owner-local child worktrees and dispatch claims; no portable export or sync. Delete with runs/global deletion. Encrypted backups retain inert records, never execution or folder authority."
+    "code_children": "Owner-local child worktrees and dispatch claims; no portable export or sync. Delete with runs/global deletion. Encrypted backups retain inert records, never execution or folder authority.",
+    "artifact_vectors": "Derived artifact meaning index, bound to exact versions and content hashes. Never synced or portably exported; deleted with source versions/global deletion and cleared with embeddings. Encrypted backups may contain inert derived data; reads revalidate current source and policy.",
+    "context_tool_audit": "Content-free installation-local context-tool receipts and idempotence keys. Never synced or portably exported; explicit security/activity export only. Cascade with source conversation/global deletion; encrypted backups are inert and never replay an operation."
   },
   "internalTables": [
     "sync_state",

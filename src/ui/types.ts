@@ -412,6 +412,9 @@ export interface MemoryForm {
 
 /** A change the Cheap model suggested, waiting for review (PM-03). */
 export interface ProposalView {
+  targetRevision?: number | null;
+  extractionModel?: string | null;
+  conversationOnly?: boolean;
   id: string;
   op: "add" | "update" | "delete";
   /** The new text (add, update). */

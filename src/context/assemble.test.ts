@@ -219,3 +219,57 @@ test("CA-06: a linked repository's CLAUDE.md and AGENTS.md go in, between projec
   const plain = await assemble(deps, thread.id, ctx, null);
   expect(plain.system).not.toContain("repository_file");
 });
+
+test("automatic artifact recall uses the shared assembler and records sources; memory-off disables it", async () => {
+  const { db, deps, thread, project } = await richChat();
+  const source = await createThread(db, t, "Earlier document", project.id);
+  const now = Date.now();
+  await db.execute(
+    "INSERT INTO artifacts(id,workspace_id,user_id,thread_id,key,title,type,language,created_at,updated_at) VALUES(?,?,?,?,?,?,'markdown','',?,?)",
+    ["context-artifact", t.workspaceId, t.userId, source.id, "oak", "Oak cabinets", now, now],
+  );
+  await db.execute(
+    "INSERT INTO artifact_versions(id,workspace_id,user_id,artifact_id,version,content,source,created_at,updated_at) VALUES(?,?,?,?,1,?,'user',?,?)",
+    [
+      "context-version",
+      t.workspaceId,
+      t.userId,
+      "context-artifact",
+      "Oak cabinets should have recessed hinges.",
+      now,
+      now,
+    ],
+  );
+  const context = {
+    history: [{ role: "user" as const, content: "Which oak cabinets did we choose?" }],
+    earlier: null,
+    fileSources: [],
+  };
+  const current = { provider: "anthropic" as const, model: claude.id, messageId: "" };
+  // No message FK when testing the assembler directly; its caller normally persists it first.
+  const message = await db.select<{ id: string }>(
+    "SELECT id FROM messages WHERE thread_id=? LIMIT 1",
+    [thread.id],
+  );
+  current.messageId = message[0]?.id ?? "";
+  const recalled = await assemble(deps, thread.id, context, null, undefined, undefined, current);
+  expect(recalled.system).toContain("Oak cabinets should have recessed hinges");
+  expect(recalled.parts.filter((p) => p.kind === "artifacts").flatMap((p) => p.sources)).toContain(
+    "context-artifact",
+  );
+  await db.execute("UPDATE threads SET memory_injection='off' WHERE id=?", [thread.id]);
+  const without = await assemble(deps, thread.id, context, null, undefined, undefined, current);
+  expect(without.system).not.toContain("recessed hinges");
+  await db.execute("UPDATE threads SET memory_injection='on' WHERE id=?", [thread.id]);
+  await db.execute("UPDATE threads SET local_only=1 WHERE id=?", [source.id]);
+  const privateSource = await assemble(
+    deps,
+    thread.id,
+    context,
+    null,
+    undefined,
+    undefined,
+    current,
+  );
+  expect(privateSource.system).not.toContain("recessed hinges");
+});

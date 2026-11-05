@@ -265,7 +265,7 @@ export function createOpenAIAdapter(deps: {
       return (json.data ?? []).map((m): RemoteModel => ({ id: m.id, displayName: null }));
     },
 
-    async embed(texts, model, signal, scope) {
+    async embed(texts, model, signal, scope, options) {
       const body = JSON.stringify({ model, input: texts, encoding_format: "float" });
       const { value: res, attempts } = await withRetry(
         () =>
@@ -275,22 +275,55 @@ export function createOpenAIAdapter(deps: {
             ...(signal ? { signal } : {}),
             ...(scope ? { scope } : {}),
           }),
-        { ...deps.retry, ...(signal ? { signal } : {}) },
+        {
+          ...deps.retry,
+          ...(options?.noRetry ? { maxRetries: 0 } : {}),
+          ...(signal ? { signal } : {}),
+        },
       );
-      const json = (await res.json()) as {
-        data?: { index: number; embedding: number[] }[];
-        usage?: { prompt_tokens?: number };
-      };
-      const data = [...(json.data ?? [])].sort((a, b) => a.index - b.index);
-      if (data.length !== texts.length) {
-        throw new ProviderError(
-          "stream",
-          `Expected ${String(texts.length)} embeddings, got ${String(data.length)}`,
-        );
+      const raw: unknown = await res.json();
+      const json =
+        raw && typeof raw === "object" ? (raw as { data?: unknown; usage?: unknown }) : {};
+      const usage =
+        json.usage && typeof json.usage === "object"
+          ? (json.usage as { prompt_tokens?: unknown })
+          : {};
+      const reported =
+        typeof usage.prompt_tokens === "number" &&
+        Number.isSafeInteger(usage.prompt_tokens) &&
+        usage.prompt_tokens >= 0;
+      const data = Array.isArray(json.data) ? (json.data as unknown[]) : [];
+      const rows: { index: number; embedding: number[] }[] = [];
+      for (const item of data) {
+        if (!item || typeof item !== "object") continue;
+        const d = item as { index?: unknown; embedding?: unknown };
+        if (
+          typeof d.index !== "number" ||
+          !Number.isSafeInteger(d.index) ||
+          !Array.isArray(d.embedding) ||
+          !d.embedding.length ||
+          d.embedding.length > 8192 ||
+          !d.embedding.every((x: unknown) => typeof x === "number" && Number.isFinite(x))
+        )
+          continue;
+        rows.push({ index: d.index, embedding: d.embedding as number[] });
       }
+      rows.sort((a, b) => a.index - b.index);
+      const valid =
+        Array.isArray(json.data) &&
+        rows.length === data.length &&
+        rows.length === texts.length &&
+        rows.every((r, i) => r.index === i);
+      if (!valid && !options?.noRetry)
+        throw new ProviderError("stream", "The embedding response was malformed.", {
+          providerRequestId: res.headers.get("x-request-id"),
+        });
+      // The single-attempt accounting boundary must retain a usable receipt even when vectors
+      // are malformed. An empty result is rejected there only after the charge is recorded.
       return {
-        vectors: data.map((d) => Float32Array.from(d.embedding)),
-        tokens: json.usage?.prompt_tokens ?? 0,
+        vectors: valid ? rows.map((d) => Float32Array.from(d.embedding)) : [],
+        tokens: reported ? (usage.prompt_tokens as number) : 0,
+        usageReported: reported,
         providerRequestId: res.headers.get("x-request-id"),
         attempts,
       };

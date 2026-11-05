@@ -53,6 +53,7 @@ test("every FUSE tool's schema is one the check understands", () => {
     "maxItems",
     "minLength",
     "maxLength",
+    "minimum",
   ]);
   const walk = (s: Record<string, unknown>, at: string) => {
     for (const k of Object.keys(s)) expect(known.has(k), `${at}: ${k}`).toBe(true);
@@ -81,4 +82,11 @@ test("bounded task arrays reject oversized or empty loose calls, counting Unicod
   expect(checkInput(tasks, ["abc"])).toBe("input[0] exceeds 2 characters.");
   expect(checkInput(tasks, ["😀語", "ab", "c"])).toBeNull();
   expect(checkInput(tasks, ["😀語x"])).toBe("input[0] exceeds 2 characters.");
+});
+
+test("context revisions and offsets respect numeric minimums before a loose call runs", () => {
+  expect(checkInput({ type: "integer", minimum: 1 }, 0)).toBe("input must be at least 1.");
+  expect(checkInput({ type: "integer", minimum: 0 }, -1)).toBe("input must be at least 0.");
+  expect(checkInput({ type: "integer", minimum: 1 }, 1)).toBeNull();
+  expect(checkInput({ type: "integer", minimum: 0 }, 0)).toBeNull();
 });

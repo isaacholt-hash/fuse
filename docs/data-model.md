@@ -507,3 +507,25 @@ operations append redacted, no-cost owner-approved entries to existing portable 
 Their hashes/branches describe retained history without granting filesystem authority or
 creating provider tool-result messages on Continue. Integration branches/worktrees combine
 approved child commits without touching the linked original folder or index.
+
+## M17 scoped context tools (schema 73)
+
+`memory_proposals` remains entirely owner-local. Optional `target_revision` pins proposed
+updates/deletions; `thread_id` scopes new suggestions to a conversation. Source message/run
+foreign keys retain tool provenance. Owner approval uses one guarded batch: insert a new
+memory, supersede the exact target and acknowledge the pending proposal together. Privacy,
+authority and typed task fields survive replacement; decisions require owner editing.
+
+`artifact_vectors` is a derived local index keyed by workspace/user, version UUID and embedding
+model. It contains a digest of the bounded input sample, dimensions and vector data. It is
+excluded from sync/structured export and counted/cleared in Storage. Source deletion cascades;
+withdrawal, moves and policy changes invalidate its entries. Encrypted full-database backups
+may retain inert derived data, subject to their existing retention policy.
+
+`context_tool_audit` stores only trusted call identities, fixed tool names, record/result IDs
+and outcomes/timestamps. It contains no tool arguments, outputs or credentials. Its unique
+workspace/user/call key prevents duplicate mutations or repeated semantic dispatch. It stays
+local, cascades with the conversation/run and participates in global deletion. It is excluded
+from portable content export; explicit redacted activity export is completed in M18. Backups
+retain inert evidence without replay. Existing portable artifact/version and memory tables
+continue to use their M11 registry classifications and logical replication triggers.
