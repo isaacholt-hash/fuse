@@ -213,13 +213,29 @@ describe("HTTP errors", () => {
   test.each([
     [429, "slow_down", "rate_limit_error"],
     [429, null, "rate_limit_error"],
-    [503, "server_is_overloaded", "service_unavailable_error"],
-    [500, null, "server_error"],
   ])("HTTP %i %s is retried", async (status, code, type) => {
     const { a, sent } = adapter([err(status, code, type), sse(STREAM)]);
     const { events } = await collect(a.streamChat(HI, "m", {}));
     expect(sent).toHaveLength(2);
     expect(done(events).attempts).toBe(2);
+  });
+  test.each([
+    [503, "server_is_overloaded"],
+    [500, null],
+  ])("HTTP %i paid POST is not replayed", async (status, code) => {
+    const { a, sent } = adapter([err(status, code, "server_error"), sse(STREAM)]);
+    await expect(collect(a.streamChat(HI, "m", {}))).rejects.toMatchObject({
+      billingUncertain: true,
+    });
+    expect(sent).toHaveLength(1);
+  });
+  test("a lost paid POST response is not retried", async () => {
+    const { a, sent } = adapter([new TypeError("connection reset"), sse(STREAM)]);
+    await expect(collect(a.streamChat(HI, "m", {}))).rejects.toMatchObject({
+      billingUncertain: true,
+      retryable: false,
+    });
+    expect(sent).toHaveLength(1);
   });
 });
 

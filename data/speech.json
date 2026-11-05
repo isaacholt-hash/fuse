@@ -1,0 +1,10 @@
+{
+  "price_version": "2026-11-05",
+  "provider": "openai",
+  "model": "gpt-transcribe",
+  "micro_usd_per_minute": 4500,
+  "verified_on": "2026-11-05",
+  "source_url": "https://developers.openai.com/api/docs/models/gpt-transcribe",
+  "max_duration_ms": 120000,
+  "max_bytes": 20971520
+}

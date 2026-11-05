@@ -309,3 +309,25 @@ and unresolved review candidates remain until superseded/resolved. Relay compact
 cursors across removed bodies; durable replay digests still reject an event ID reused for
 different content. Backups are independent copies with their existing retention policy;
 sync deletion does not rewrite backups or erase already-downloaded copies on revoked devices.
+
+## M13 request accounting (0062)
+
+`request_log` adds nullable `project_id` (project-only charges before a message exists),
+`audio_duration_ms`, `billing_state` (legacy/reported/estimated/unknown/not_billed) and unique
+per-workspace `attempt_id`. Existing records and integer costs are preserved; old rows are
+labelled legacy. These fields are portable cost history, subject to thread and direct-project
+privacy. A privacy change withdraws already-published project-only charges atomically.
+
+`request_reservations` is owner-local execution state, with stable attempt ID, tenant, run,
+provider/model/purpose, optional source IDs, conservative bound, state and committed receipt.
+Held/dispatched/unknown exposure counts against a run cap until known settlement. No age-based
+expiry assumes a lost request was free. Encrypted backups contain this state; startup releases
+only unsent holds and records interrupted dispatch as unknown, without execution. It is not
+replicated or included in portable export/restore.
+
+`security_audit` records fixed credential-use/policy event metadata (tenant, provider where
+applicable, scope kind/ID, action and time). It has no headers, body, key, filename, arbitrary
+message or policy text. Credential-use records are native; policy events commit with writes
+through triggers. It stays local and in encrypted backups; M18 adds the complete explicit
+activity export. Delete-all covers both tables, clearing audit events after policy rows so
+deleting rules cannot leave new audit records behind.

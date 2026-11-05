@@ -210,7 +210,7 @@ export function onlyProject(parsed: ParsedExport, projectId: string): ParsedExpo
     thread_tags: (t) => threads.has(str(t.thread_id)),
     prompts: inProject,
     egress_rules: inProject,
-    request_log: (l) => threads.has(str(l.thread_id)),
+    request_log: (l) => threads.has(str(l.thread_id)) || (l.thread_id == null && inProject(l)),
     user_instructions: () => false,
     golden_prompts: () => false,
   };

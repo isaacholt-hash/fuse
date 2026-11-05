@@ -108,6 +108,8 @@ export const threadScope = (threadId: string | null): SendScope =>
   threadId ? { kind: "thread", id: threadId } : { kind: "global" };
 
 export interface ChatOptions {
+  /** An accounted dispatch is one HTTP attempt; a lost response may already be billed. */
+  noRetry?: boolean;
   /** Where the content comes from, for the egress check (SE-13). */
   scope?: SendScope;
   /** System prompt / instructions. */
@@ -130,6 +132,8 @@ export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 export type TokenUsage = Omit<Usage, "costMicroUsd" | "priceVersion" | "latencyMs" | "ttftMs">;
 
 export interface StreamDone {
+  /** An already committed receipt from the shared dispatch boundary. */
+  requestLogId?: string;
   type: "done";
   usage: TokenUsage;
   /** False when the provider sent no usage at all (cost will show as unknown). */

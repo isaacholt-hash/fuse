@@ -487,14 +487,28 @@ export function requestRow(r: RequestLogRecord, catalog: Catalog, now: number): 
     output: u.outputTokens,
     cached: u.cachedInputTokens,
     reasoning: u.reasoningTokens,
-    cost: u.priceVersion === null ? (r.purpose === "key_test" ? 0 : null) : u.costMicroUsd,
+    cost:
+      r.billingState === "unknown"
+        ? null
+        : r.billingState === "not_billed"
+          ? 0
+          : u.priceVersion === null
+            ? r.purpose === "key_test"
+              ? 0
+              : null
+            : u.costMicroUsd,
     latency: u.latencyMs === null ? "—" : `${(u.latencyMs / 1000).toFixed(1)} s`,
     tone: stopped ? "stopped" : failed ? "error" : "ok",
-    status: stopped
-      ? "Stopped"
-      : failed
-        ? `${r.httpStatus === null ? "" : `${String(r.httpStatus)} · `}${r.errorMessage ?? r.errorCode ?? "Error"}`
-        : `OK${r.attempt > 1 ? ` after ${String(r.attempt)} tries` : ""}`,
+    status:
+      r.billingState === "unknown"
+        ? "Billing unresolved · review provider usage before retrying"
+        : r.billingState === "estimated"
+          ? "Estimated charge"
+          : stopped
+            ? "Stopped"
+            : failed
+              ? `${r.httpStatus === null ? "" : `${String(r.httpStatus)} · `}${r.errorMessage ?? r.errorCode ?? "Error"}`
+              : `OK${r.attempt > 1 ? ` after ${String(r.attempt)} tries` : ""}`,
     requestId: r.providerRequestId,
   };
 }

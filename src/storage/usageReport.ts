@@ -34,7 +34,7 @@ export async function listUsage(db: SqlDb, tenant: Tenant, since: number): Promi
     schedule_id: string | null;
     cost_micro_usd: number;
   }>(
-    `SELECT r.created_at, r.provider, r.model, r.tier, r.purpose, t.project_id, m.route_intent,
+    `SELECT r.created_at, r.provider, r.model, r.tier, r.purpose, CASE WHEN t.id IS NOT NULL THEN t.project_id ELSE r.project_id END AS project_id, m.route_intent,
             t.kind, r.surface, t.schedule_id, r.cost_micro_usd
      FROM request_log r
      LEFT JOIN threads t ON t.id = r.thread_id

@@ -117,8 +117,8 @@ export async function spentSince(
       ? `SELECT SUM(cost_micro_usd) AS total FROM request_log
          WHERE workspace_id = ? AND created_at >= ?`
       : `SELECT SUM(r.cost_micro_usd) AS total FROM request_log r
-         JOIN threads t ON t.id = r.thread_id
-         WHERE r.workspace_id = ? AND r.created_at >= ? AND t.project_id = ?`,
+         LEFT JOIN threads t ON t.id = r.thread_id
+         WHERE r.workspace_id = ? AND r.created_at >= ? AND CASE WHEN t.id IS NOT NULL THEN t.project_id ELSE r.project_id END = ?`,
     projectId === null ? [tenant.workspaceId, since] : [tenant.workspaceId, since, projectId],
   );
   return rows[0]?.total ?? 0;

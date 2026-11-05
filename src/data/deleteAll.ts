@@ -9,6 +9,7 @@ import type { SqlDb, SqlStatement } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  "request_reservations",
   "sync_prepared",
   "sync_transfers",
   "sync_unavailable",
@@ -67,6 +68,7 @@ export const DELETE_ORDER = [
   "files",
   "threads",
   "projects",
+  "security_audit",
 ] as const;
 
 /** Content-free sync identity/causality must survive a wipe so deletion can propagate. */

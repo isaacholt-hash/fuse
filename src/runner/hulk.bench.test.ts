@@ -637,7 +637,15 @@ describe.skipIf(!BIN)("runs on HULK (M10 step 10)", () => {
     await before.idle();
     const stopped = await getRun(page.db, t, runId);
     expect(stopped?.status).toBe("stopped");
-    expect(stopped?.note).toBe("Stopped.");
+    expect(stopped?.note).toBe(
+      "Stopped. Billing is unresolved; review provider usage before retrying.",
+    );
+    expect(
+      await page.db.select(
+        "SELECT id FROM request_reservations WHERE workspace_id=? AND run_id=? AND state='unknown'",
+        [t.workspaceId, runId],
+      ),
+    ).toHaveLength(1);
 
     // A new runner, as after a restart; Continue from the page picks the run up.
     const after = newRunner();
