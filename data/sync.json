@@ -1303,6 +1303,80 @@
         "updated_at": "INTEGER",
         "deleted_at": "INTEGER"
       }
+    },
+    "skills": {
+      "columns": [
+        "id",
+        "workspace_id",
+        "user_id",
+        "project_id",
+        "name",
+        "created_at",
+        "updated_at"
+      ],
+      "localColumns": ["sync_local_only"],
+      "key": ["id"],
+      "eligible": "{a}.sync_local_only=0 AND ({a}.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))",
+      "ready": "1",
+      "dependencies": ["projects"],
+      "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "project_id": "TEXT",
+        "name": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
+    },
+    "skill_versions": {
+      "columns": [
+        "id",
+        "workspace_id",
+        "user_id",
+        "skill_id",
+        "instructions",
+        "assets",
+        "sha256",
+        "source",
+        "created_at",
+        "updated_at"
+      ],
+      "localColumns": [],
+      "key": ["id"],
+      "eligible": "EXISTS(SELECT 1 FROM skills s WHERE s.id={a}.skill_id AND s.workspace_id={a}.workspace_id AND s.sync_local_only=0 AND (s.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=s.project_id AND p.workspace_id=s.workspace_id AND p.privacy_mode!='local_only')))",
+      "ready": "1",
+      "dependencies": ["skills"],
+      "references": [
+        {
+          "column": "skill_id",
+          "table": "skills",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "skill_id": "TEXT",
+        "instructions": "TEXT",
+        "assets": "TEXT",
+        "sha256": "TEXT",
+        "source": "TEXT",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      }
     }
   },
   "localTables": {

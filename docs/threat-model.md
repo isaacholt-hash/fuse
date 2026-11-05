@@ -347,3 +347,12 @@ judgments remain model output. Preliminary source/analysis/journals are excluded
 and portable export, with separate encrypted backup retention. A replicated review profile
 cannot invoke generic Code execution when its local checkpoint is missing. Setup does not
 sign in, grant a folder, enable an account or authorize execution by itself.
+
+M16 skill packages are untrusted imports. No archive path is extracted into a machine folder;
+portable paths, link/reparse metadata, bounds, ZIP checksums and manifest hashes are checked.
+Only explicit leading commands invoke an immutable, tenant/project-scoped version. A package
+cannot confer permissions or execute on import, sync, restore or history load. Instructions
+remain below app/privacy rules, custom instructions and current user directions. Support reads
+are bounded, hash-checked and wrapped as data; missing, deleted or altered versions stop use.
+App-managed package records may sync/export; source machine paths and execution grants do not.
+Script execution is the separate M16.3 sandbox/approval step, never implied by these imports.

@@ -8,6 +8,7 @@ import { getRun, listSteps, type Run, type RunKind, type RunMode } from "@/stora
 import { setActiveLeaf } from "@/storage/threads";
 import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import { continueRun, runAnswer, startRun, type RunDeps, type RunProgress } from "./run";
+import { pinSkillText } from "@/skills/invoke";
 
 export interface ChatRunInput {
   review?: import("@/review/types").ReviewSource;
@@ -79,6 +80,11 @@ async function finishFromRun(deps: RunDeps, run: Run): Promise<void> {
 export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<Run> {
   if (input.kind === "research")
     throw new Error("Research requires its restricted execution engine.");
+  if (!input.review)
+    input = {
+      ...input,
+      task: await pinSkillText(deps.db, deps.tenant, input.projectId, input.task),
+    };
   const { db, tenant } = deps;
   const { path } = await listPath(db, tenant, input.threadId);
   const questionId = await addMessage(db, tenant, {

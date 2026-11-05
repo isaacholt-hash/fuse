@@ -12,6 +12,7 @@ const KEYS: Partial<Record<string, { key: string; code: string; vk: number; text
   Enter: { key: "Enter", code: "Enter", vk: 13, text: "\r" },
   Escape: { key: "Escape", code: "Escape", vk: 27 },
   k: { key: "k", code: "KeyK", vk: 75 },
+  a: { key: "a", code: "KeyA", vk: 65 },
   n: { key: "n", code: "KeyN", vk: 78 },
   ",": { key: ",", code: "Comma", vk: 188 },
   // M10 step 16: Ctrl+1 and Ctrl+2 switch between the Chat and Code areas.
@@ -221,8 +222,9 @@ export class Session {
   }
 
   /** Clicks the field, then types into it. */
-  async type(xpath: string, text: string): Promise<void> {
+  async type(xpath: string, text: string, replace = false): Promise<void> {
     await this.click(xpath);
+    if (replace) await this.press("a", true);
     await this.send("Input.insertText", { text });
   }
 

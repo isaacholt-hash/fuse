@@ -1,3 +1,5 @@
+import { importSkill } from "@/skills/storage";
+import { readSkillPackage } from "@/skills/package";
 import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
 import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
 import { createProject, setProjectRepo } from "@/storage/projects";
@@ -372,7 +374,26 @@ const openReviewSeed = () =>
     await createThread(db, DEFAULT_TENANT, "Recorded review workspace", project.id, false, "code");
     return db;
   })());
+let skillsSeed: Promise<SqlDb> | undefined;
+const openSkillsSeed = () =>
+  (skillsSeed ??= (async () => {
+    const db = await loggedDb();
+    await importSkill(db, DEFAULT_TENANT, {
+      name: "release-notes",
+      projectId: null,
+      localOnly: false,
+      package: await readSkillPackage(
+        "SKILL.md",
+        new TextEncoder().encode(
+          "# Release notes\n\nWrite concise notes with evidence and limitations. Supporting scripts never grant permission.",
+        ),
+      ),
+    });
+    return db;
+  })());
 export function e2eDeps() {
+  if (import.meta.env.VITE_E2E_SKILLS_SEED === "1")
+    window.location.hash = "#settings/personalization/skills";
   if (import.meta.env.VITE_E2E_RESEARCH === "1") localStorage.setItem("fuse.e2e.research", "yes");
   if (import.meta.env.VITE_E2E_DICTATION === "1") localStorage.setItem("fuse.e2e.dictation", "yes");
   // The test checks this before it clicks anything, so it never drives a real build.
@@ -423,11 +444,13 @@ export function e2eDeps() {
     keysApi,
     updates,
     openDb:
-      import.meta.env.VITE_E2E_REVIEW_SEED === "1"
-        ? openReviewSeed
-        : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
-          ? openConnectorSeed
-          : loggedDb,
+      import.meta.env.VITE_E2E_SKILLS_SEED === "1"
+        ? openSkillsSeed
+        : import.meta.env.VITE_E2E_REVIEW_SEED === "1"
+          ? openReviewSeed
+          : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
+            ? openConnectorSeed
+            : loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       const base = p === "anthropic" ? anthropic : openai;

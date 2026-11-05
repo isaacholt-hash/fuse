@@ -953,6 +953,100 @@ mod tests {
             .unwrap()
     }
     #[tokio::test]
+    async fn skill_packages_stage_dependencies_preserve_versions_and_propagate_deletion() {
+        let source = fixture(true);
+        let target = fixture(true);
+        setup(&source, true).await.unwrap();
+        setup(&target, true).await.unwrap();
+        put(&source,"INSERT INTO skills(id,workspace_id,user_id,name,created_at,updated_at) VALUES('skill',?,?,'recorded',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        for id in ["version-a", "version-b"] {
+            put(&source,"INSERT INTO skill_versions(id,workspace_id,user_id,skill_id,instructions,assets,sha256,source,created_at,updated_at) VALUES(?,?,?,'skill','Recorded instructions','[]',?,'fixture.zip',1,1)",&[json!(id),json!(WORKSPACE),json!(USER),json!("a".repeat(64))]).await;
+        }
+        let events = worker::pending(&source).await.unwrap();
+        for event in events.iter().filter(|e| e.table == "skill_versions") {
+            stage(&target, event).await;
+        }
+        apply(&target).await.unwrap();
+        assert_eq!(
+            scalar(&target, "SELECT COUNT(*) FROM skill_versions").await,
+            0
+        );
+        for event in events.iter().filter(|e| e.table == "skills") {
+            stage(&target, event).await;
+        }
+        apply(&target).await.unwrap();
+        assert_eq!(
+            scalar(&target, "SELECT COUNT(*) FROM skill_versions").await,
+            2
+        );
+        assert_eq!(scalar(&target, "SELECT COUNT(*) FROM runs").await, 0);
+        put(&source, "DELETE FROM skills WHERE id='skill'", &[]).await;
+        let markers = worker::pending(&source).await.unwrap();
+        for event in markers.iter().filter(|e| e.operation == Operation::Delete) {
+            assert!(event.payload.is_none());
+            stage(&target, event).await;
+        }
+        apply_deletions(&target).await.unwrap();
+        apply(&target).await.unwrap();
+        assert_eq!(scalar(&target, "SELECT COUNT(*) FROM skills").await, 0);
+        assert_eq!(
+            scalar(&target, "SELECT COUNT(*) FROM skill_versions").await,
+            0
+        );
+        // A stale, previously received immutable version cannot resurrect its deleted package.
+        for event in &events {
+            let field = if event.table == "skills" {
+                "name"
+            } else {
+                "instructions"
+            };
+            let stale = edit(
+                event,
+                &format!("offline-{}", event.key),
+                event.clock + 1,
+                field,
+                event.payload.as_ref().unwrap()[field].clone(),
+            );
+            stage(&target, &stale).await;
+        }
+        apply_deletions(&target).await.unwrap();
+        apply(&target).await.unwrap();
+        assert_eq!(
+            scalar(&target, "SELECT COUNT(*) FROM skill_versions").await,
+            0
+        );
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
+    async fn skill_privacy_withdraws_all_versions_and_keeps_owner_bytes() {
+        let ctx = fixture(true);
+        setup(&ctx, true).await.unwrap();
+        put(&ctx,"INSERT INTO skills(id,workspace_id,user_id,name,created_at,updated_at) VALUES('private-skill',?,?,'recorded',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(&ctx,"INSERT INTO skill_versions(id,workspace_id,user_id,skill_id,instructions,assets,sha256,source,created_at,updated_at) VALUES('private-version',?,?,'private-skill','Keep owner content','[]',?,'fixture.zip',1,1)",&[json!(WORKSPACE),json!(USER),json!("a".repeat(64))]).await;
+        put(
+            &ctx,
+            "UPDATE skills SET sync_local_only=1 WHERE id='private-skill'",
+            &[],
+        )
+        .await;
+        let immediate = worker::pending(&ctx).await.unwrap();
+        assert!(immediate.iter().any(|e| e.table == "skills"
+            && e.operation == Operation::Withdraw
+            && e.payload.is_none()));
+        crate::sync::privacy::sweep(&ctx).await.unwrap();
+        let events = worker::pending(&ctx).await.unwrap();
+        assert_eq!(events.len(), 2);
+        assert!(
+            events
+                .iter()
+                .all(|e| e.operation == Operation::Withdraw && e.payload.is_none())
+        );
+        assert_eq!(scalar(&ctx, "SELECT COUNT(*) FROM skill_versions").await, 1);
+        assert_eq!(scalar(&ctx, "SELECT COUNT(*) FROM runs").await, 0);
+        cleanup(&ctx).await;
+    }
+    #[tokio::test]
     async fn causality_beats_clock_skew_and_concurrent_loser_is_retained() {
         let ctx = fixture(true);
         setup(&ctx, true).await.unwrap();

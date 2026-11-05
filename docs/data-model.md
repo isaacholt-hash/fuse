@@ -443,3 +443,15 @@ portable-export exclusion. Full encrypted database backups retain these local re
 restoration never executes them. Completed reports and redacted snapshot metadata use
 existing run/message history. The forward-only migration refreshes run capture triggers to
 include the profile and preserves all existing rows and pending events.
+
+## M16 named skill packages (schema 69)
+
+`skills` holds workspace/user scope, project, name and installation-local sync exclusion.
+`skill_versions` holds immutable UUIDs, instructions, bounded asset JSON (relative names,
+byte counts, SHA-256 and base64), source label and content hash. Versions are never overwritten;
+new imports add rows. Both tables have atomic trigger capture and explicit ownership references.
+The existing encrypted large-record transport carries asset manifests without machine paths.
+Privacy changes withdraw every owned version; deletion markers prevent stale resurrection.
+Export/restore and delete-all include the tables in dependency order. Full encrypted backups
+retain them. Exact version pins live in explicit user command/task text, so regeneration and
+continuation cannot silently select newer instructions. See [skills.md](skills.md).

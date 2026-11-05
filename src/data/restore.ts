@@ -209,6 +209,8 @@ export function onlyProject(parsed: ParsedExport, projectId: string): ParsedExpo
     imports: (i) => threads.has(str(i.thread_id)),
     thread_tags: (t) => threads.has(str(t.thread_id)),
     prompts: inProject,
+    skills: inProject,
+    skill_versions: (v) => (r.skills ?? []).some((s) => s.id === v.skill_id && inProject(s)),
     egress_rules: inProject,
     request_log: (l) => threads.has(str(l.thread_id)) || (l.thread_id == null && inProject(l)),
     user_instructions: () => false,

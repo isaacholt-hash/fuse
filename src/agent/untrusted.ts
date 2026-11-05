@@ -8,6 +8,7 @@ const SOURCE: Record<string, string> = {
   fetch_url: "a web page",
   list_files: "the user's folders",
   read_file: "a file in the user's folders",
+  read_skill_file: "an explicitly invoked skill package",
   search_files: "files in the user's folders",
   read_document: "a document in the user's folders",
   run_command: "a command's output",

@@ -17,6 +17,7 @@ import {
   Watchdog,
   type WatchdogLimits,
 } from "./watchdog";
+import { getThread } from "@/storage/threads";
 import type { Folder } from "@/storage/folders";
 import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
 import { effectiveInstructions, systemPrompt } from "@/chat/instructions";
@@ -86,6 +87,13 @@ import {
 } from "./tools";
 import { checkInput } from "./checkInput";
 import { kindOf, toolEntry, toolsIn } from "./registry";
+import {
+  pinSkillText,
+  skillContext,
+  skillCommands,
+  readSkillFile,
+  READ_SKILL_TOOL,
+} from "@/skills/invoke";
 import { asData, DATA_RULE, sourceOf } from "./untrusted";
 import { mcpToolsFor, type McpOffered } from "./mcpTools";
 import type { SendScope, ToolSpec } from "@/providers/types";
@@ -384,6 +392,14 @@ function foldersOf(steps: RunStep[]): string[] {
 async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<string | undefined> {
   const { db, tenant } = deps;
   const project = run.projectId ? await getProject(db, tenant, run.projectId) : null;
+  if (skillCommands(run.task).length && run.threadId) {
+    const thread = await getThread(db, tenant, run.threadId);
+    if (!thread || thread.projectId !== run.projectId)
+      throw new Error(
+        "The skill invocation's conversation scope changed. Start a new request in its current project.",
+      );
+  }
+  const skills = await skillContext(db, tenant, run.projectId, run.task);
   const labels = (await listRunFolders(db, tenant, run.id)).map((f) => f.label);
   const roots = labels.length > 1 ? labels : [""];
   const files = await loadRepoInstructions(deps.repo, HERE, [...roots, ...foldersOf(steps)]);
@@ -419,6 +435,7 @@ async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<str
       .filter((m) => m.kind === "decision" || m.kind === "constraint")
       .map(memoryLine),
     tasks: memories.filter(open).map(memoryLine),
+    tail: skills.text ? [skills.text] : [],
   });
 }
 
@@ -595,6 +612,7 @@ async function workTurns(
     // A Local only project sends nothing out, not even an address to read.
     const offered = new Set(off);
     if (!deps.web || policy.mode === "local_only") offered.add(FETCH_URL_TOOL.name);
+    if (!skillCommands(run.task).length) offered.add(READ_SKILL_TOOL.name);
     if (!(await pythonUsable(deps, run))) offered.add(RUN_PYTHON_TOOL.name);
 
     const started = (deps.now ?? Date.now)();
@@ -1140,6 +1158,20 @@ async function handleCall(
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
   if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call, input);
+  if (call.name === READ_SKILL_TOOL.name) {
+    const current = await getRun(deps.db, deps.tenant, run.id);
+    if (
+      !current ||
+      current.status !== "running" ||
+      current.readOnly ||
+      current.projectId !== run.projectId
+    )
+      return { output: "This run no longer owns the skill invocation.", isError: true };
+    const thread = run.threadId ? await getThread(deps.db, deps.tenant, run.threadId) : null;
+    if (run.threadId && (!thread || thread.projectId !== run.projectId))
+      return { output: "The skill invocation's conversation scope changed.", isError: true };
+    return readSkillFile(deps.db, deps.tenant, run.projectId, run.task, call.input);
+  }
   if (call.name === RUN_PYTHON_TOOL.name) return runPython(deps, run, call, input);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);
@@ -1514,6 +1546,7 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
     throw new Error("Research requires its restricted execution engine.");
   if (input.model.provider === "local" || input.planner?.provider === "local")
     throw new Error("Local models are restricted to housekeeping.");
+  input = { ...input, task: await pinSkillText(base.db, base.tenant, input.projectId, input.task) };
   const folders = input.folders ?? (await foldersFor(base, input));
   if (folders.length === 0) throw new Error("Pick a folder for this chat first.");
   // M10 step 11: the cap asked for, else the project's, else FUSE's default.

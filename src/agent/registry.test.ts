@@ -4,7 +4,7 @@ import { kindOf, placesLabel, toolEntry, toolsIn, TOOLS } from "./registry";
 const names = (place: "code" | "work", opts?: Parameters<typeof toolsIn>[1]) =>
   toolsIn(place, opts).map((t) => t.name);
 
-test("runs are offered the same tools, in the same order, as before the registry (plus fetch_url)", () => {
+test("runs are offered the same tools, in the same order, in fixed order, including read-only skill files", () => {
   expect(names("code")).toEqual([
     "list_files",
     "read_file",
@@ -13,6 +13,7 @@ test("runs are offered the same tools, in the same order, as before the registry
     "git_diff",
     "git_log",
     "fetch_url",
+    "read_skill_file",
     "edit_file",
     "write_file",
     "delete_file",
@@ -31,6 +32,7 @@ test("runs are offered the same tools, in the same order, as before the registry
     "git_diff",
     "git_log",
     "fetch_url",
+    "read_skill_file",
   ]);
   expect(names("work")).toEqual([
     "list_files",
@@ -38,6 +40,7 @@ test("runs are offered the same tools, in the same order, as before the registry
     "search_files",
     "read_document",
     "fetch_url",
+    "read_skill_file",
     "edit_file",
     "write_file",
     "delete_file",
@@ -53,6 +56,7 @@ test("runs are offered the same tools, in the same order, as before the registry
     "search_files",
     "read_document",
     "fetch_url",
+    "read_skill_file",
   ]);
 });
 

@@ -2,6 +2,7 @@
 // what approvals, read-only runs and the activity log go by, and the places it can run. The order
 // is the order a run's tools are sent in, fixed so the prompt cache holds.
 import type { ToolSpec } from "@/providers/types";
+import { READ_SKILL_TOOL } from "@/skills/invoke";
 import {
   COMMAND_TOOL,
   EDIT_TOOLS,
@@ -47,6 +48,7 @@ export const TOOLS: readonly ToolEntry[] = [
   ...GIT_READ_TOOLS.map((t) => entry(t, "read", ["code"])),
   entry(READ_DOCUMENT_TOOL, "read", ["work"]),
   entry(FETCH_URL_TOOL, "read", ["code", "work", "chat"]),
+  entry(READ_SKILL_TOOL, "read", ["code", "work", "chat"]),
   ...EDIT_TOOLS.map((t) => entry(t, "write", BOTH)),
   entry(WRITE_DOCUMENT_TOOL, "write", ["work"]),
   entry(ORGANISE_TOOL, "write", ["work"]),

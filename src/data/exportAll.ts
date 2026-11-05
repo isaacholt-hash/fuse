@@ -36,6 +36,8 @@ export const EXPORTED_TABLES = [
   "imports",
   "thread_tags",
   "prompts",
+  "skills",
+  "skill_versions",
   "egress_rules",
   "request_log",
 ] as const;
@@ -159,6 +161,11 @@ function projectFilters(
     imports: inThreads("thread_id"),
     thread_tags: inThreads("thread_id"),
     prompts: { sql: "AND project_id = ?", params: [projectId] },
+    skills: { sql: "AND project_id = ?", params: [projectId] },
+    skill_versions: {
+      sql: "AND skill_id IN (SELECT id FROM skills WHERE workspace_id=? AND project_id=?)",
+      params: [ws, projectId],
+    },
     egress_rules: { sql: "AND project_id = ?", params: [projectId] },
     request_log: {
       sql: `AND (thread_id IN (${threads.sql}) OR (thread_id IS NULL AND project_id = ?))`,
