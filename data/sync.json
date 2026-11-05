@@ -1380,6 +1380,7 @@
     }
   },
   "localTables": {
+    "skill_script_claims": "Content-free, owner-local script dispatch identity; never replayed by sync, export or backup restore.",
     "workspaces": "Local tenant identity",
     "users": "Local tenant identity",
     "schema_meta": "Installation and backup state",

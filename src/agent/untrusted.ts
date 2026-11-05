@@ -13,6 +13,7 @@ const SOURCE: Record<string, string> = {
   read_document: "a document in the user's folders",
   run_command: "a command's output",
   run_python: "a Python script's output",
+  run_skill_script: "an explicitly approved skill script's output",
   git_status: "git",
   git_diff: "git",
   git_log: "git",

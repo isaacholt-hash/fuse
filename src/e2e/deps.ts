@@ -1,3 +1,8 @@
+import { isDesktop } from "@/platform/core";
+import { zipSync, strToU8 } from "fflate";
+import { recordedSkillAdapter } from "@/skills/testing/scripted";
+import { tauriExec } from "@/repo/exec";
+import { tauriPythonApi } from "@/python/runtime";
 import { importSkill } from "@/skills/storage";
 import { readSkillPackage } from "@/skills/package";
 import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
@@ -374,6 +379,42 @@ const openReviewSeed = () =>
     await createThread(db, DEFAULT_TENANT, "Recorded review workspace", project.id, false, "code");
     return db;
   })());
+let scriptSeed: Promise<SqlDb> | undefined;
+const openScriptSeed = () =>
+  (scriptSeed ??= (async () => {
+    const db = await loggedDb();
+    const project = await createProject(db, DEFAULT_TENANT, "Skill script fixture");
+    await setProjectRepo(db, DEFAULT_TENANT, project.id, { root: FOLDER, readSecrets: false });
+    const skill = await importSkill(db, DEFAULT_TENANT, {
+      name: "calculate",
+      projectId: project.id,
+      localOnly: true,
+      package: await readSkillPackage(
+        "calculate.zip",
+        zipSync({
+          "SKILL.md": strToU8("Run calculate.py only when explicitly asked."),
+          "data.txt": strToU8("21"),
+          "scripts/calculate.py": strToU8(
+            "import os,sys\nprint('Literal argument:',sys.argv[1])\nprint('Result:',int(open(os.path.join(os.path.dirname(__file__),'..','data.txt')).read())*2)\nopen(os.path.join(os.environ['FUSE_OUT'],'result.txt'),'w').write('42')\n",
+          ),
+        }),
+      ),
+    });
+    localStorage.setItem("fuse.e2e.skillPin", `/skill calculate@${skill.versionId}`);
+    if (isDesktop()) {
+      const thread = await createThread(
+        db,
+        DEFAULT_TENANT,
+        "Approved script fixture",
+        project.id,
+        false,
+        "code",
+      );
+      localStorage.setItem("fuse.lastThread.code", thread.id);
+      localStorage.setItem("fuse.area", "code");
+    }
+    return db;
+  })());
 let skillsSeed: Promise<SqlDb> | undefined;
 const openSkillsSeed = () =>
   (skillsSeed ??= (async () => {
@@ -437,6 +478,36 @@ export function e2eDeps() {
         : Promise.reject(new Error("OpenAI model calls are disabled in the dictation fixture.")),
   });
   return {
+    ...(import.meta.env.VITE_E2E_SKILL_SCRIPT === "1" && isDesktop()
+      ? {
+          exec: {
+            ...tauriExec,
+            sandboxKind: () => Promise.resolve("bubblewrap" as const),
+            skillPython: () =>
+              Promise.resolve({
+                output: "Result: 42\n",
+                exitCode: 0,
+                timedOut: false,
+                stopped: false,
+                truncated: false,
+                elapsedMs: 1,
+                files: [],
+                skipped: [],
+              }),
+          },
+          python: {
+            ...tauriPythonApi,
+            status: () =>
+              Promise.resolve({
+                python: "fixture",
+                release: "fixture",
+                packages: [],
+                sizeBytes: 0,
+                installedMs: 0,
+              }),
+          },
+        }
+      : {}),
     connectors,
     dictation,
     web: scriptedResearchWeb(tauriWebApi),
@@ -444,16 +515,19 @@ export function e2eDeps() {
     keysApi,
     updates,
     openDb:
-      import.meta.env.VITE_E2E_SKILLS_SEED === "1"
-        ? openSkillsSeed
-        : import.meta.env.VITE_E2E_REVIEW_SEED === "1"
-          ? openReviewSeed
-          : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
-            ? openConnectorSeed
-            : loggedDb,
+      import.meta.env.VITE_E2E_SKILL_SCRIPT === "1"
+        ? openScriptSeed
+        : import.meta.env.VITE_E2E_SKILLS_SEED === "1"
+          ? openSkillsSeed
+          : import.meta.env.VITE_E2E_REVIEW_SEED === "1"
+            ? openReviewSeed
+            : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
+              ? openConnectorSeed
+              : loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       const base = p === "anthropic" ? anthropic : openai;
+      if (import.meta.env.VITE_E2E_SKILL_SCRIPT === "1") return recordedSkillAdapter(p, base);
       if (import.meta.env.VITE_E2E_REVIEW_SEED === "1") return recordedReviewAdapter(p, base);
       return localStorage.getItem("fuse.e2e.research") === "yes"
         ? scriptedResearchAdapter(p, { base, delayMs: 700 })

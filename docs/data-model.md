@@ -455,3 +455,19 @@ Privacy changes withdraw every owned version; deletion markers prevent stale res
 Export/restore and delete-all include the tables in dependency order. Full encrypted backups
 retain them. Exact version pins live in explicit user command/task text, so regeneration and
 continuation cannot silently select newer instructions. See [skills.md](skills.md).
+
+## M16 approved skill execution (schema 70)
+
+`skill_script_claims` is a content-free, owner-local dispatch ledger. The primary key hashes
+(run ID, originating model-step ID, tool-call ID); rows retain version UUID, script SHA-256,
+state, exit code and timestamps. A foreign key deletes claims with their run. Dispatch claims
+are inserted atomically only for the current permitted execution owner and exact package.
+Duplicates never execute again, including after an acknowledgement is lost. An interrupted
+claim is not a retry request. Sync and portable exports exclude this table; delete-all
+includes it. Encrypted database backups retain inert claims, independently of backup retention.
+
+Package copies and raw execution output live only in private invocation scratch, outside the
+app-managed attachment store and backup/export/sync inputs. Scratch is removed after execution,
+Stop or cancellation; expired crash remnants are cleaned on startup or the next request.
+Only the existing bounded result/file processing may publish output into run history. Script
+execution never installs an ambient folder, command, network or MCP grant.

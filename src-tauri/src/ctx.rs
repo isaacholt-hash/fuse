@@ -55,6 +55,7 @@ impl Ctx {
         Ok(view)
     }
     pub fn new(data_dir: PathBuf, config_dir: PathBuf, keys: Keys) -> Self {
+        crate::skill_scripts::cleanup(&data_dir);
         Ctx {
             data_dir,
             config_dir,

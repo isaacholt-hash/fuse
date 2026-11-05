@@ -158,6 +158,7 @@ export function scopedRepo(base: RepoApi, folders: readonly RunFolder[]): RepoAp
  */
 export function scopedExec(base: ExecApi, folders: readonly RunFolder[]): ExecApi {
   return {
+    ...(base.skillPython ? { skillPython: base.skillPython.bind(base) } : {}),
     ...(base.sandboxKind
       ? { sandboxKind: () => base.sandboxKind?.() ?? Promise.resolve("none" as const) }
       : {}),

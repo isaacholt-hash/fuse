@@ -35,6 +35,7 @@ mod quick;
 mod repo;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod server;
+mod skill_scripts;
 mod sync;
 mod transcription;
 mod transport;
@@ -159,6 +160,7 @@ pub fn run() {
             repo::commands::repo_move,
             exec::commands::repo_exec,
             exec::commands::python_run,
+            skill_scripts::commands::skill_python_run,
             exec::commands::repo_exec_stop,
             exec::commands::sandbox_status,
             exec::commands::sandbox_windows_available,

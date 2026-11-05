@@ -19,6 +19,7 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "delete_file",
     "move_file",
     "run_command",
+    "run_skill_script",
     "git_branch",
     "git_commit",
     "git_push",
@@ -48,6 +49,7 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "write_document",
     "organise",
     "run_command",
+    "run_skill_script",
     "run_python",
   ]);
   expect(names("work", { readOnly: true })).toEqual([

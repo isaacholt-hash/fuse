@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -411,7 +411,7 @@ pub async fn run(
 /// Supervises a command or script started in an AppContainer: its output to `on`, the time
 /// limit and Stop end its job (everything it started), then one `Done`.
 #[cfg(windows)]
-async fn run_contained(
+pub(crate) async fn run_contained(
     mut child: fuse_sandbox_win::Child,
     started: Instant,
     timeout: Duration,
@@ -449,7 +449,7 @@ async fn run_contained(
 
 /// Starts `cmd` in `root` and supervises it: output to `on`, the time limit and Stop end the
 /// whole process tree, then one `Done` (or `Error`). No input, and no provider keys.
-async fn run_process(
+pub(crate) async fn run_process(
     root: &Path,
     mut cmd: tokio::process::Command,
     started: Instant,
@@ -674,8 +674,8 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
 /// Running commands, so Stop can end one.
 #[derive(Default)]
 pub struct Execs {
-    next_id: AtomicU32,
-    running: Mutex<HashMap<u32, oneshot::Sender<()>>>,
+    pub(crate) next_id: AtomicU32,
+    pub(crate) running: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
 }
 
 // The commands' bodies (M10 step 2), without Tauri.

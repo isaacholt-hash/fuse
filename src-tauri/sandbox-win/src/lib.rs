@@ -48,7 +48,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
+    JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
     JOB_OBJECT_LIMIT_PROCESS_MEMORY, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JobObjectExtendedLimitInformation, SetInformationJobObject, TerminateJobObject,
 };
@@ -69,14 +70,17 @@ pub enum Container {
     Commands,
     Python,
     Mcp,
+    /// An isolated identity for one approved package script; never inherits other grants.
+    Skill(u128),
 }
 
 impl Container {
-    fn profile(self) -> &'static str {
+    fn profile(self) -> std::borrow::Cow<'static, str> {
         match self {
-            Container::Commands => "FUSE.Sandbox",
-            Container::Python => "FUSE.Python",
-            Container::Mcp => "FUSE.MCP",
+            Container::Commands => "FUSE.Sandbox".into(),
+            Container::Python => "FUSE.Python".into(),
+            Container::Mcp => "FUSE.MCP".into(),
+            Container::Skill(id) => format!("FUSE.Skill.{id:032x}").into(),
         }
     }
 
@@ -85,6 +89,7 @@ impl Container {
             Container::Commands => ("FUSE sandbox", "Commands FUSE runs for you"),
             Container::Python => ("FUSE Python sandbox", "Python scripts FUSE runs for you"),
             Container::Mcp => ("FUSE MCP sandbox", "MCP servers FUSE runs for you"),
+            Container::Skill(_) => ("FUSE skill script", "One approved Python package execution"),
         }
     }
 }
@@ -176,7 +181,7 @@ impl Drop for Sid {
 
 /// The container, made the first time.
 fn container(c: Container) -> io::Result<Sid> {
-    let name = wide(c.profile());
+    let name = wide(c.profile().as_ref() as &str);
     let (label, about) = c.describe();
     let mut sid: PSID = null_mut();
     // SAFETY: valid strings, no capabilities, and an out pointer for the SID.
@@ -375,7 +380,7 @@ pub fn remove_profile() -> io::Result<()> {
 /// Deletes container `c` and its own folder.
 pub fn remove_profile_of(c: Container) -> io::Result<()> {
     // SAFETY: a valid string.
-    hr(unsafe { DeleteAppContainerProfile(wide(c.profile()).as_ptr()) })
+    hr(unsafe { DeleteAppContainerProfile(wide(c.profile().as_ref() as &str).as_ptr()) })
 }
 
 /// Ends a sandboxed command and everything it started.
@@ -501,8 +506,40 @@ fn inheritable() -> SECURITY_ATTRIBUTES {
 
 /// Starts `cmd.exe /D /S /C <command>` in the container, inside a new job object.
 pub fn spawn(s: &Spawn) -> io::Result<Child> {
-    let sid = container(s.container)?;
-    let temp = container_folder(&sid)?;
+    spawn_inner(s, None)
+}
+
+/// Starts one selected executable directly. Package arguments never pass through cmd.exe.
+pub fn spawn_direct(s: &Spawn, program: &Path, args: &[String]) -> io::Result<Child> {
+    spawn_inner(s, Some((program, args)))
+}
+
+fn quote_argument(value: &str) -> String {
+    let mut out = String::from("\"");
+    let mut slashes = 0;
+    for c in value.chars() {
+        if c == '\\' {
+            slashes += 1;
+            continue;
+        }
+        if c == '"' {
+            out.extend(std::iter::repeat_n('\\', slashes * 2 + 1));
+        } else {
+            out.extend(std::iter::repeat_n('\\', slashes));
+        }
+        slashes = 0;
+        out.push(c);
+    }
+    out.extend(std::iter::repeat_n('\\', slashes * 2));
+    out.push('"');
+    out
+}
+
+fn spawn_inner(s: &Spawn, direct: Option<(&Path, &[String])>) -> io::Result<Child> {
+    let stage =
+        |name: &str, error: io::Error| io::Error::new(error.kind(), format!("{name}: {error}"));
+    let sid = container(s.container).map_err(|e| stage("AppContainer identity", e))?;
+    let temp = container_folder(&sid).map_err(|e| stage("AppContainer temporary directory", e))?;
 
     // The network capabilities, only when allowed. Without them the container has no network.
     let kinds = [
@@ -632,6 +669,13 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
         limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
         limits.ProcessMemoryLimit = bytes;
     }
+    if matches!(s.container, Container::Skill(_)) {
+        limits.BasicLimitInformation.LimitFlags |=
+            JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        limits.BasicLimitInformation.ActiveProcessLimit = 1;
+        limits.JobMemoryLimit = s.memory_bytes.unwrap_or(512 * 1024 * 1024);
+    }
+
     // SAFETY: the job from above and a struct of the size given.
     check(unsafe {
         SetInformationJobObject(
@@ -644,9 +688,19 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
 
     let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
     let cmd = Path::new(&system).join("System32").join("cmd.exe");
-    let app = wide(&cmd);
-    // /S: what follows /C is run as written, between the outer quotes.
-    let mut line = wide(format!("\"{}\" /D /S /C \"{}\"", cmd.display(), s.command));
+    let (app, mut line) = if let Some((program, args)) = direct {
+        let program =
+            plain(&std::fs::canonicalize(program).map_err(|e| stage("Selected executable", e))?);
+        let mut parts = vec![quote_argument(&program.to_string_lossy())];
+        parts.extend(args.iter().map(|a| quote_argument(a)));
+        (wide(&program), wide(parts.join(" ")))
+    } else {
+        // /S: what follows /C is run as written, between the outer quotes.
+        (
+            wide(&cmd),
+            wide(format!("\"{}\" /D /S /C \"{}\"", cmd.display(), s.command)),
+        )
+    };
     let env = environment(s.env_remove, s.env_only, s.env_set, &temp);
     let cwd = wide(plain(s.cwd));
     // SAFETY: zeroed, then filled by CreateProcessW.
@@ -669,14 +723,15 @@ pub fn spawn(s: &Spawn) -> io::Result<Child> {
             (&si as *const STARTUPINFOEXW).cast::<STARTUPINFOW>(),
             &mut pi,
         )
-    })?;
+    })
+    .map_err(|e| stage("CreateProcessW", e))?;
     let process = Handle(pi.hProcess);
     let thread = Handle(pi.hThread);
     // SAFETY: the job and the new, still suspended, process.
     if let Err(e) = check(unsafe { AssignProcessToJobObject(job.0, process.0) }) {
         // SAFETY: the process this just started; it never ran.
         unsafe { TerminateProcess(process.0, 1) };
-        return Err(e);
+        return Err(stage("AppContainer job assignment", e));
     }
     // SAFETY: the new process's main thread.
     if unsafe { ResumeThread(thread.0) } == u32::MAX {
@@ -757,6 +812,103 @@ mod tests {
         (out, code)
     }
 
+    #[test]
+    fn direct_skill_arguments_are_not_shell_code_and_identities_share_no_grants() {
+        let a = fresh_dir("skill-a");
+        let b = fresh_dir("skill-b");
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let first = Container::Skill(stamp);
+        let second = Container::Skill(stamp + 1);
+        let literal = "literal & echo injected > escaped.txt";
+        std::fs::write(a.join("input.txt"), format!("{literal}\r\n")).unwrap();
+        std::fs::write(b.join("private.txt"), "OTHER_PROFILE_ONLY\r\n").unwrap();
+        grant_to(first, &a, READ).unwrap();
+        grant_to(second, &b, READ).unwrap();
+        // A fixed Rust helper exercises native argv and ACLs directly, without a system
+        // utility's additional command-line or environment assumptions.
+        let source = a.join("probe.rs");
+        std::fs::write(&source, r#"
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    assert_eq!(std::fs::read_to_string("input.txt").unwrap().trim(), args[1]);
+    assert!(std::fs::read_to_string(&args[2]).is_err(), "read another invocation's grant");
+    assert!(std::fs::write("forbidden.txt", b"escape").is_err(), "wrote a read-only input");
+    let system=std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap());
+    let child=std::process::Command::new(system.join("System32").join("cmd.exe"))
+        .args(["/d","/c","echo CHILD_RAN"]).status();
+    assert!(child.is_err() || !child.unwrap().success(), "created an extra process");
+    let allowed=["systemroot","userprofile","appdata","localappdata","temp","tmp"];
+    for (name,_) in std::env::vars_os() {
+        assert!(allowed.contains(&name.to_string_lossy().to_lowercase().as_str()),"inherited an unapproved environment name");
+    }
+    println!("ARG={:?}",args[1]);
+    println!("ISOLATION_OK");
+}
+"#).unwrap();
+        let program = a.join("probe.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2024")
+            .arg(&source)
+            .arg("-o")
+            .arg(&program)
+            .output()
+            .unwrap();
+        assert!(
+            compile.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let literal = "literal & echo injected > escaped.txt \"quote\" C:\\end\\ 日本語";
+        std::fs::write(a.join("input.txt"), format!("{literal}\r\n")).unwrap();
+        let mut child = spawn_direct(
+            &Spawn {
+                cwd: &a,
+                command: "",
+                network: false,
+                env_remove: &[],
+                container: first,
+                env_set: &[],
+                memory_bytes: Some(512 * 1024 * 1024),
+                piped: false,
+                env_only: Some(&["SystemRoot", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]),
+            },
+            &program,
+            &[
+                literal.into(),
+                b.join("private.txt").to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+        let mut text = String::new();
+        child
+            .take_output()
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let code = child.wait().unwrap();
+        drop(child);
+        assert_eq!(code, 0, "{text}");
+        assert!(text.contains(&format!("ARG={literal:?}")), "{text}");
+        assert!(text.contains("ISOLATION_OK"), "{text}");
+        assert!(!text.contains("CHILD_RAN"), "{text}");
+        assert!(!a.join("escaped.txt").exists());
+        revoke_from(first, &a).unwrap();
+        revoke_from(second, &b).unwrap();
+        remove_profile_of(first).unwrap();
+        remove_profile_of(second).unwrap();
+        std::fs::remove_dir_all(a).unwrap();
+        std::fs::remove_dir_all(b).unwrap();
+    }
+    #[test]
+    fn direct_argv_quotes_empty_quotes_and_trailing_slashes() {
+        assert_eq!(quote_argument(""), "\"\"");
+        assert_eq!(quote_argument("a b"), "\"a b\"");
+        assert_eq!(quote_argument("a\"b"), "\"a\\\"b\"");
+        assert_eq!(quote_argument("C:\\end\\"), "\"C:\\end\\\\\"");
+    }
     #[test]
     fn piped_keeps_input_output_and_errors_apart() {
         use std::io::Write;
