@@ -14,6 +14,7 @@ export interface AccountStatus {
   state: "signed_out" | "pending" | "connected" | "sign_in_required" | "expired" | "denied";
   identity: string | null;
   label: string | null;
+  accountHint: string | null;
   /** Unix seconds, for either the sign-in challenge or connected token. */
   expiresAt: number | null;
   flowId: string | null;
@@ -27,6 +28,13 @@ export interface ConnectorsApi {
   begin(id: string): Promise<AccountStatus>;
   poll(id: string, flowId: string): Promise<AccountStatus>;
   disconnect(id: string): Promise<AccountStatus>;
+  prepareDelete(tenant: Tenant, removeCredentials: boolean): Promise<number>;
+  projectAccess(
+    registration: ConnectorRegistration,
+    projectId: string,
+    identity: string | null,
+    enabled: boolean,
+  ): Promise<void>;
 }
 export const nativeConnectorsApi: ConnectorsApi = {
   configure: (registration) => invoke("connector_configure", { registration }),
@@ -34,4 +42,8 @@ export const nativeConnectorsApi: ConnectorsApi = {
   begin: (id) => invoke("connector_begin", { id }),
   poll: (id, flowId) => invoke("connector_poll", { id, flowId }),
   disconnect: (id) => invoke("connector_disconnect", { id }),
+  prepareDelete: (tenant, removeCredentials) =>
+    invoke("connector_prepare_delete", { ...tenant, removeCredentials }),
+  projectAccess: (registration, projectId, identity, enabled) =>
+    invoke("connector_project_access", { registration, projectId, identity, enabled }),
 };

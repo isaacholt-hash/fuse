@@ -319,3 +319,20 @@ selection prevents branch movement and symlink dereference from silently changin
 evidence. Partial patches and API ceilings remain visible; a diff alone does not establish
 review completeness. Account data remains untrusted MCP data under existing injection and
 approval rules. Temporary pagination state has no portable storage or access-grant effect.
+
+
+### M15 account setup and credential lifecycle
+
+Account registration and device authorization are separate owner actions, followed by
+explicit project enablement on the execution owner. Consent binds the current principal and
+complete registration under a native lock; stale UI responses cannot widen replacement
+account/services access. UI polling pauses when hidden or after transport failure. Definitive
+refresh/token rejection removes local credentials and project links, without a secret-based
+fallback. Shared UI status contains no credential or private device-flow value.
+
+Long grants use bounded secret-store parts and two fixed slots with an atomic manifest;
+length/hash checks detect mixed or damaged records. The native owner index precedes grant
+writes, so erasure can cover partial writes and credentials deliberately retained across
+data-only deletion. All parts/index metadata remain outside JavaScript, database, sync and
+portable backup/export. FUSE database backups do not recover native authorization. Provider
+revocation remains a separate owner operation; disconnect does not erase retrieved history.

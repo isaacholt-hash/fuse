@@ -181,6 +181,8 @@ pub fn run() {
             connectors::commands::connector_begin,
             connectors::commands::connector_poll,
             connectors::commands::connector_disconnect,
+            connectors::commands::connector_prepare_delete,
+            connectors::commands::connector_project_access,
             mcp::commands::mcp_check,
             mcp::commands::mcp_stop,
             mcp::commands::mcp_tools,

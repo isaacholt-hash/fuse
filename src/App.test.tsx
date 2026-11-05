@@ -16,6 +16,7 @@ import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/p
 import { getSetting, setSetting } from "@/storage/settings";
 import { addMemory, addProposals } from "@/storage/memories";
 import { DEFAULT_TENANT } from "@/storage/defaults";
+import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
 import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
@@ -313,6 +314,7 @@ function setup(
   render(
     <App
       openDb={() => Promise.resolve(appDb)}
+      connectors={scriptedConnectorsApi(() => Promise.resolve(appDb), DEFAULT_TENANT)}
       keysApi={keys.api}
       adapterFor={adapterFor}
       catalog={catalog}
