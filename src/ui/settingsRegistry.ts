@@ -327,6 +327,14 @@ export const SETTINGS_SECTIONS = [
     ],
   },
   {
+    id: "skills",
+    category: "personalization",
+    label: "Skills",
+    description:
+      "Import instruction packages and supporting files; invoke a pinned version by name.",
+    aliases: ["skill packages", "SKILL.md", "named skills", "scripts"],
+  },
+  {
     id: "prompts",
     category: "personalization",
     label: "Prompt library",

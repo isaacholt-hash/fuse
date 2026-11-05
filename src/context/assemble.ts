@@ -25,6 +25,7 @@ import { listMemories } from "@/storage/memories";
 import { getProject } from "@/storage/projects";
 import { getMemorySettings } from "@/storage/settings";
 import { getThread } from "@/storage/threads";
+import { skillContext } from "@/skills/invoke";
 import { allowedEmbedding, threadPolicy } from "./egress";
 import type { Context } from "./gather";
 
@@ -110,6 +111,14 @@ export async function assemble(
   const embedding = allowedEmbedding(await threadPolicy(db, tenant, threadId), wanted);
   const thread = await getThread(db, tenant, threadId);
   const project = thread?.projectId ? await getProject(db, tenant, thread.projectId) : null;
+  const skills = !selection
+    ? await skillContext(
+        db,
+        tenant,
+        thread?.projectId ?? null,
+        history.findLast((m) => m.role === "user")?.content ?? "",
+      )
+    : { text: null, ids: [] };
   // CA-06, WF-02: CLAUDE.md and AGENTS.md at the root of the chat's folders (nested ones come
   // with runs).
   const repoFiles =
@@ -169,7 +178,7 @@ export async function assemble(
     memories: lines(memories),
     earlier,
     guides: [ARTIFACT_GUIDE],
-    tail: artifacts.text ? [artifacts.text] : [],
+    tail: [artifacts.text, skills.text].filter((t): t is string => t !== null),
   });
   // LL-05: past the ceiling, the oldest messages are left out, and the request says so.
   let trimmed: { dropped: number; droppedTokens: number } | null = null;
@@ -216,6 +225,15 @@ export async function assemble(
             kind: "artifacts" as const,
             sources: artifacts.sources,
             tokens: textTokens(artifacts.text),
+          },
+        ]
+      : []),
+    ...(skills.text
+      ? [
+          {
+            kind: "instructions" as const,
+            sources: skills.ids.map((id) => `skill:${id}`),
+            tokens: textTokens(skills.text),
           },
         ]
       : []),

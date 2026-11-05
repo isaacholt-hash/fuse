@@ -22,7 +22,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 ## Steps
 
 - [x] **1. Structured review.** Review pinned local changes, branches and GitHub PRs using the M15 reader. Findings carry severity, verified path/line and evidence. Reviewing edits no files and posts no comments.
-- [ ] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
+- [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
 - [ ] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
 - [ ] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
 - [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
@@ -126,3 +126,66 @@ Current browser captures:
 All twelve current native/browser images are committed; the browser fixture includes both
 themes for every state. Live provider-backed review accuracy and additional browser engines
 remain separate M19 acceptance, never inferred from synthetic fixture results.
+
+Step 1 shipped in [PR #305](https://github.com/isaacholt-hash/fuse/pull/305), merged
+2026-11-05T14:09:21Z as `0a7bf5e95149482703143a9a915ceff19224c3ec`. All five gates passed on
+`3d7a729ad97dd1bc2f28382cbdcb803bb8945fbd` in
+[CI 42038945190](https://github.com/isaacholt-hash/fuse/actions/runs/42038945190), followed by
+`bash scripts/ci-green.sh 305`, CLEAN merge status and no unresolved review/comments. Windows
+native review passed 4/4 (2.39 s), connectors 41/41 (287.30 s), sync compatibility 29/29 and
+atomic files 9/9. Windows click-through passed 16 tests; 18 environment/fixture cases were
+explicitly skipped, including the existing Windows Server NUL sandbox limitation. Windows
+Settings and research completion images were reviewed in both themes.
+
+Preserved CI benchmarks: dictation 31/31; encrypted sync 16/16 at schema 68 (38,417 ms);
+research eight Linux/HULK scenarios (22,231 ms) and six Windows scenarios (15,591 ms), with
+two Linux server cases explicitly skipped on Windows. The new CI browser fixture retained
+three synthetic requests / 1,100 micro-dollars, no live provider calls, no changes and one
+existing folder. Its setup, report and mobile images were reviewed.
+
+[v0.1.224](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.224) was published
+2026-11-05T14:27:34Z by [release 42042262585](https://github.com/isaacholt-hash/fuse/actions/runs/42042262585),
+attempt 2. Attempt 1 encountered a Linux bundler HTTP 504 and cleaned up its draft; the full
+normal workflow succeeded on retry. All eleven assets were present and all seven updater
+entries matched their published signature files. No HULK deployment or live acceptance occurred.
+
+Step 2 implementation adds the separate Skills library, explicit named/version-pinned
+invocation, immutable imported instructions/support files and scoped read-only support tools.
+[skills.md](../skills.md) documents the format, bounds, authority, privacy, deletion and backup
+behavior. Schema 69 classifies both tables and all columns; no dependencies are added. Early
+verification passed 33 new package/storage/invocation/UI cases, plus the surrounding Chat,
+context and Code suites (59 focused cases total). Native sync dependency/deletion and privacy
+withdrawal tests passed 2/2 (6.18 s). Shared browser import/cancel/palette/draft/deletion-review
+verification passed 2/2 (16.23 s), with one package/version and zero requests, runs or folders.
+Final source captures and complete checks follow before the step's PR.
+
+Complete local Rust suites passed 217/217 default (241.56 s) and 231/231 server (271.40 s),
+with formatting and both all-target clippy configurations clean. The final privacy-flag
+comparison now captures the package withdrawal atomically with the flag write. Its strengthened
+native staging/deletion/privacy tests passed again in both configurations: 2/2 default (4.83 s)
+and 2/2 server (4.67 s), followed by both all-target clippy checks.
+
+The complete application check passed 1,179 tests in 202 files, with 21 existing live/manual
+or opt-in cases in ten files explicitly skipped (252.38 s). Lint, formatting, type checking
+and the secret scan passed. The first full run caught a palette regression: the added Settings
+destination pushed saved prompts past the default 50-item list. Libraries now precede individual
+Settings destinations. The existing prompt regression passed unchanged, followed by this complete
+passing rerun; the failed run and its evidence were retained. Invalid skill validation also
+restores the editable draft before any classifier/provider dispatch.
+
+
+Final production web and standalone runner builds passed. The preserved HULK benchmark passed
+5/5 (12.74 s). Current-source shared browser verification passed 2/2 (33.81 s), including an
+unavailable skill restoring the exact editable draft before any classifier/provider dispatch.
+Its native database held one package and one version, with zero requests, runs or folders.
+Fresh native startup/captures passed in both themes; all fourteen current images were reviewed:
+[native light](../screenshots/m16/skills-native-light.png),
+[native dark](../screenshots/m16/skills-native-dark.png),
+[import preview](../screenshots/m16/skills-web-import-preview-light.png),
+[library dark](../screenshots/m16/skills-web-library-dark.png),
+[editable invocation](../screenshots/m16/skills-web-editable-invocation-light.png),
+[mobile](../screenshots/m16/skills-web-mobile-invocation-dark.png),
+[unavailable draft](../screenshots/m16/skills-web-unavailable-draft-dark.png), and
+[deletion review](../screenshots/m16/skills-web-delete-review-light.png).
+Every browser state has committed light/dark captures. Windows and current-head CI evidence
+will be recorded with the PR; no live provider-backed or owner acceptance is inferred.

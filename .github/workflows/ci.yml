@@ -163,6 +163,16 @@ jobs:
         env:
           FUSE_WEB_BROWSER: google-chrome
         run: bash scripts/review-web.sh
+      - name: Named skills shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/skills-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: skills-web-screenshots
+          path: e2e/screenshots/skills/
+          if-no-files-found: ignore
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -267,6 +277,8 @@ jobs:
           key: e2e
       - name: Windows research compatibility benchmark
         run: pnpm research:bench
+      - name: Windows skill packages and invocation
+        run: pnpm exec vitest run src/skills
       - uses: actions/upload-artifact@v7
         with:
           name: research-benchmark-windows

@@ -9,6 +9,8 @@ import type { SqlDb, SqlStatement } from "@/storage/sql";
 
 /** Children before parents. */
 export const DELETE_ORDER = [
+  "skill_versions",
+  "skills",
   "review_operations",
   "review_state",
   "research_transfers",

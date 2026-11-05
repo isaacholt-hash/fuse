@@ -525,6 +525,9 @@ import {
 } from "@/routing/modelDefaults";
 import { chatMarkdown } from "@/data/exportAll";
 import { threadJson, type ThreadExportFormat } from "@/data/exportThread";
+import { SkillsSection } from "@/ui/Skills";
+import { listSkills, importSkill, deleteSkill, type SkillView } from "@/skills/storage";
+import { pinSkillText } from "@/skills/invoke";
 import { FillPromptDialog, PromptsSection } from "@/ui/Prompts";
 import {
   deletePrompt,
@@ -922,6 +925,7 @@ export function ChatApp({
   const [modelDefaults, setModelDefaults] = useState<DefaultsMap>({});
   // CH-12: the prompt library, and a prompt waiting for its {{variables}}.
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
+  const [skills, setSkills] = useState<SkillView[]>([]);
   const [filling, setFilling] = useState<SavedPrompt | null>(null);
   // RT-12: models the next message goes to in compare mode; CH-17: answers shown side by side.
   const [compareKeys, setCompareKeys] = useState<string[]>([]);
@@ -1218,9 +1222,12 @@ export function ChatApp({
   // Text put into the composer (a quoted answer, a prompt, a handoff brief); `key` changes on
   // every one. It belongs to one chat (`for`, null for a draft) and goes once that chat sends:
   // the composer remounts when a draft is saved or the chat changes, and would add it again.
-  const [quote, setQuote] = useState<{ text: string; key: number; for: string | null } | null>(
-    null,
-  );
+  const [quote, setQuote] = useState<{
+    text: string;
+    key: number;
+    for: string | null;
+    prepend?: boolean;
+  } | null>(null);
   const putInComposer = (text: string, forId: string | null = selectedId) => {
     setQuote((q) => ({ text, key: (q?.key ?? 0) + 1, for: forId }));
   };
@@ -1532,6 +1539,7 @@ export function ChatApp({
     }, report);
     getMemorySettings(db, tenant).then(setMemorySettingsState, report);
     listPrompts(db, tenant).then(setPrompts, report);
+    listSkills(db, tenant).then(setSkills, report);
     Promise.all([
       getSetting(db, tenant, CAPS_SETTING),
       getSetting(db, tenant, RAISED_SETTING),
@@ -1636,6 +1644,7 @@ export function ChatApp({
       getNotificationSettings(db, tenant).then(setNotif),
       listBudgets(db, tenant).then(setBudgets),
       listPrompts(db, tenant).then(setPrompts),
+      listSkills(db, tenant).then(setSkills),
       getGlobalInstructions(db, tenant).then(setGlobal),
       getSetting(db, tenant, DEFAULTS_SETTING).then((raw) => {
         setModelDefaults(parseDefaults(raw));
@@ -2472,6 +2481,13 @@ export function ChatApp({
     confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
   ) => {
     // What was put in the composer is in this message now: don't add it again on a remount.
+    try {
+      text = await pinSkillText(db, tenant, activeProjectId ?? null, text);
+    } catch (e) {
+      putInComposer(text);
+      report(e);
+      return;
+    }
     setQuote(null);
     // M10 step 16: a desktop session set to run on HULK hands the message over as its task.
     if (runKind && !webApp && runsWhere === "hulk") {
@@ -4288,6 +4304,20 @@ export function ChatApp({
   const usablePrompts = prompts.filter(
     (p) => p.projectId === null || p.projectId === activeProjectId,
   );
+  const usableSkills = skills.filter(
+    (s) => s.projectId === null || s.projectId === activeProjectId,
+  );
+  const applySkill = (versionId: string) => {
+    const s = usableSkills.find((s) => s.versionId === versionId);
+    if (!s) return;
+    setView("chat");
+    setQuote((q) => ({
+      text: `/skill ${s.name}@${s.versionId}`,
+      key: (q?.key ?? 0) + 1,
+      for: selectedId,
+      prepend: true,
+    }));
+  };
   /** Puts a saved prompt into the message box, asking for its {{variables}} first. */
   const applyPrompt = (id: string) => {
     const prompt = prompts.find((p) => p.id === id);
@@ -4902,6 +4932,22 @@ export function ChatApp({
         openSettings();
       },
     },
+    ...usableSkills.map((s) => ({
+      id: `skill-${s.versionId}`,
+      group: "Skills",
+      label: `/skill ${s.name} · ${s.projectId ? (projects.find((p) => p.id === s.projectId)?.name ?? "Project") : "Every chat"} · ${s.versionId.slice(-8)}`,
+      run: () => {
+        applySkill(s.versionId);
+      },
+    })),
+    ...usablePrompts.map((p) => ({
+      id: `prompt-${p.id}`,
+      group: "Prompts",
+      label: p.name,
+      run: () => {
+        applyPrompt(p.id);
+      },
+    })),
     ...SETTINGS_SECTIONS.map((section) => ({
       id: `settings-${section.id}`,
       group: "Settings",
@@ -4936,14 +4982,6 @@ export function ChatApp({
           { id: "rename", group: "Actions", label: "Rename this chat", run: showRename },
         ]
       : []),
-    ...usablePrompts.map((p) => ({
-      id: `prompt-${p.id}`,
-      group: "Prompts",
-      label: p.name,
-      run: () => {
-        applyPrompt(p.id);
-      },
-    })),
     ...threads
       .filter((t) => !t.incognito && t.id !== selectedId)
       .slice(0, 30)
@@ -5928,6 +5966,20 @@ export function ChatApp({
                   }}
                 />
               }
+              skills={
+                <SkillsSection
+                  skills={skills}
+                  projects={projects}
+                  onImport={async (input) => {
+                    await importSkill(db, tenant, input);
+                    setSkills(await listSkills(db, tenant));
+                  }}
+                  onDelete={async (id) => {
+                    await deleteSkill(db, tenant, id);
+                    setSkills(await listSkills(db, tenant));
+                  }}
+                />
+              }
               prompts={
                 <PromptsSection
                   prompts={prompts}
@@ -6636,6 +6688,8 @@ export function ChatApp({
                             ? Math.max(0, sessionCap - thread.costMicroUsd)
                             : null
                         }
+                        skills={usableSkills.map((s) => ({ name: s.name, versionId: s.versionId }))}
+                        onPickSkill={applySkill}
                         prompts={usablePrompts}
                         onPickPrompt={applyPrompt}
                         compare={{

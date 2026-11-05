@@ -273,6 +273,7 @@ export function SettingsView({
   prices,
   models,
   prompts,
+  skills,
   modelDefaults,
   keyCaps,
   local,
@@ -340,6 +341,7 @@ export function SettingsView({
   models?: ReactNode;
   /** Settings → Prompt library (CH-12). */
   prompts?: ReactNode;
+  skills?: ReactNode;
   /** Settings → Model defaults (MM-07). */
   modelDefaults?: ReactNode;
   /** Settings → Spend caps per key (MM-09). */
@@ -560,6 +562,7 @@ export function SettingsView({
     instructions,
     memory,
     prompts,
+    skills,
     budgets,
     "key-caps": keyCaps,
     prices,

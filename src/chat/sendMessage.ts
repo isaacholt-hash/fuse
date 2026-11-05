@@ -50,6 +50,7 @@ import type { DeterministicAnswer } from "@/deterministic/handlers";
 import { assemble } from "@/context/assemble";
 import { gatherContext, type Context } from "@/context/gather";
 import { egressRefusal, threadPolicy } from "@/context/egress";
+import { pinSkillText, readSkillFile, READ_SKILL_TOOL, skillCommands } from "@/skills/invoke";
 
 /** The history sent to a model (PM-18 gathers it in `src/context/gather.ts`). */
 export { historyFor, runNote } from "@/context/gather";
@@ -254,6 +255,8 @@ async function addQuestion(
   parentId: string | null,
   text: string,
 ): Promise<string> {
+  const thread = await getThread(deps.db, deps.tenant, threadId);
+  text = await pinSkillText(deps.db, deps.tenant, thread?.projectId ?? null, text);
   const id = await addMessage(deps.db, deps.tenant, {
     threadId,
     parentId,
@@ -497,7 +500,11 @@ async function streamAnswer(
   const chatTools = (m: CatalogModel) =>
     policy.mode !== "local_only" && m.capabilities.includes("tools")
       ? [
-          ...(deps.web ? toolsIn("chat", { off: toolsOff }) : []),
+          ...toolsIn("chat", { off: toolsOff }).filter(
+            (t) =>
+              (t.name !== FETCH_URL_TOOL.name || Boolean(deps.web)) &&
+              (t.name !== READ_SKILL_TOOL.name || skillCommands(question).length > 0),
+          ),
           ...chatMcp.specs.filter((x) => !toolsOff.has(x.name)),
         ]
       : [];
@@ -624,6 +631,27 @@ async function streamAnswer(
         });
         const results: ToolResult[] = [];
         for (const call of calls) {
+          if (call.name === READ_SKILL_TOOL.name) {
+            const current = await getThread(db, tenant, input.threadId);
+            const refused = egressRefusal(
+              await threadPolicy(db, tenant, input.threadId),
+              m.provider,
+              "chat",
+            );
+            const r =
+              !current || refused || toolsOff.has(call.name)
+                ? {
+                    output: refused ?? "This skill tool is no longer available in this chat.",
+                    isError: true,
+                  }
+                : await readSkillFile(db, tenant, current.projectId, question, call.input);
+            results.push({
+              callId: call.id,
+              content: asData(call.name, r.output),
+              isError: r.isError,
+            });
+            continue;
+          }
           const fromMcp = chatMcp.byName.get(call.name);
           if (fromMcp && deps.mcp) {
             try {

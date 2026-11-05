@@ -1193,6 +1193,8 @@ export function Composer({
   capLeft = null,
   prompts = [],
   onPickPrompt,
+  skills = [],
+  onPickSkill,
   top,
   guide = null,
   footnote,
@@ -1260,7 +1262,7 @@ export function Composer({
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
   routing?: RoutingView;
   /** Text to add to the draft (a quoted answer); a new `key` adds it again. */
-  insert?: { text: string; key: number } | null;
+  insert?: { text: string; key: number; prepend?: boolean } | null;
   /** A provider problem to mention under the composer (MM-06). */
   status?: string | null;
   /** How full the context is: tokens the next turn sends, the model's window, and where
@@ -1275,6 +1277,8 @@ export function Composer({
   /** CH-12: saved prompts, offered when the message starts with "/". */
   prompts?: { id: string; name: string }[];
   onPickPrompt?: (id: string) => void;
+  skills?: { name: string; versionId: string }[];
+  onPickSkill?: (versionId: string) => void;
   /** M10 step 26: what sits above the composer, at its width (a new session's row). */
   top?: ReactNode;
   /** What to do before sending is possible, said quietly under the composer; it holds Send. */
@@ -1304,7 +1308,15 @@ export function Composer({
   useEffect(() => {
     if (!insert || insert.key === inserted.current) return;
     inserted.current = insert.key;
-    setText((draft) => (draft.trim() ? `${draft.trimEnd()}\n\n${insert.text}` : insert.text));
+    setText((draft) =>
+      insert.prepend
+        ? draft.split("\n").includes(insert.text)
+          ? draft
+          : `${insert.text}\n${draft.trim() ? draft : "\n"}`
+        : draft.trim()
+          ? `${draft.trimEnd()}\n\n${insert.text}`
+          : insert.text,
+    );
     if (active) field.current?.focus();
   }, [insert, active]);
   useEffect(() => {
@@ -1322,8 +1334,13 @@ export function Composer({
   });
   // CH-12: "/" at the start of an empty message lists saved prompts, filtered by what follows.
   const slash = /^\/(\S*)$/.exec(text);
+  const skillSlash = /^\/skill(?: ([a-z0-9-]*))?$/.exec(text);
+  const skillMatches =
+    skillSlash && onPickSkill
+      ? skills.filter((s) => s.name.includes(skillSlash[1] ?? "")).slice(0, 8)
+      : [];
   const slashMatches =
-    slash && onPickPrompt
+    slash && !skillSlash && onPickPrompt
       ? prompts
           .map((p) => ({ p, score: fuzzyScore(slash[1] ?? "", p.name) }))
           .filter((x) => x.score !== null)
@@ -1740,12 +1757,42 @@ export function Composer({
                 if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   const first = slashMatches[0];
-                  if (first) pickPrompt(first.id);
+                  const skill = skillMatches[0];
+                  if (skill) {
+                    setText("");
+                    onPickSkill?.(skill.versionId);
+                  } else if (first) pickPrompt(first.id);
                   else send();
                 }
               }}
               className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/75"
             />
+          )}
+          {skillMatches.length > 0 && (
+            <ul
+              role="listbox"
+              aria-label="Named skills"
+              className="mb-1 max-h-48 overflow-y-auto rounded-lg border bg-popover p-1 text-xs"
+            >
+              {skillMatches.map((s, i) => (
+                <li
+                  key={s.versionId}
+                  role="option"
+                  aria-selected={i === 0}
+                  className="cursor-pointer rounded px-2 py-1.5 hover:bg-accent"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setText("");
+                    onPickSkill?.(s.versionId);
+                  }}
+                >
+                  /skill {s.name}
+                  <span className="ml-2 text-[10px] text-muted-foreground">
+                    {s.versionId.slice(-8)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           )}
           {slashMatches.length > 0 && (
             <ul
