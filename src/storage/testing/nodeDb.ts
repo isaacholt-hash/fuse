@@ -15,6 +15,7 @@ export function migrationFiles(): string[] {
 export function openTestDb(): SqlDb & { raw: DatabaseSync } {
   const raw = new DatabaseSync(":memory:");
   // As in db.rs `migrate`: migrations run with foreign keys off, then every key is checked.
+  raw.exec("PRAGMA foreign_keys = OFF");
   for (const file of migrationFiles()) {
     raw.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }

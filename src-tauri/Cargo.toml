@@ -36,7 +36,9 @@ sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runti
 libsqlite3-sys = { version = "0.30", features = ["bundled-sqlcipher-vendored-openssl"] }
 getrandom = "0.3"
 keyring = "4.2"
-reqwest = "0.13"
+reqwest = { version = "0.13", features = ["multipart"] }
+# M13: native microphone capture; the only new direct dependency approved for P2.
+cpal = "=0.18.2"
 tauri-plugin-opener = "2.7.2"
 # Native "Save as" for artifact exports (AR-04); pinned: released 2026-10-10.
 tauri-plugin-dialog = "=2.8.2"

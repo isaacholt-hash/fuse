@@ -11,14 +11,14 @@ if have apt-get; then
   sudo apt-get update
   sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file \
     libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev \
-    libsecret-1-dev pkg-config git
+    libsecret-1-dev libasound2-dev pkg-config git
 elif have dnf; then
   sudo dnf install -y webkit2gtk4.1-devel openssl-devel curl wget file \
-    libappindicator-gtk3-devel librsvg2-devel libxdo-devel libsecret-devel git
+    libappindicator-gtk3-devel librsvg2-devel libxdo-devel libsecret-devel alsa-lib-devel git
   sudo dnf group install -y "c-development" || sudo dnf groupinstall -y "Development Tools"
 elif have pacman; then
   sudo pacman -S --needed --noconfirm webkit2gtk-4.1 base-devel curl wget file openssl \
-    appmenu-gtk-module libappindicator-gtk3 librsvg xdotool libsecret git
+    appmenu-gtk-module libappindicator-gtk3 librsvg xdotool libsecret alsa-lib git
 else
   echo "Unknown package manager. Install the Tauri 2 Linux prerequisites by hand:"
   echo "https://v2.tauri.app/start/prerequisites/#linux"

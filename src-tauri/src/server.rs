@@ -423,7 +423,9 @@ async fn invoke(
         client: header_str(&headers, "x-fuse-client").to_owned(),
     };
     match api::dispatch(&server.ctx, &command, args, bytes, &sinks).await {
-        Ok(Reply::Json(v)) if command.starts_with("sync_") => {
+        Ok(Reply::Json(v))
+            if command.starts_with("sync_") || command.starts_with("transcribe_") =>
+        {
             ([(header::CACHE_CONTROL, "no-store")], axum::Json(v)).into_response()
         }
         Ok(Reply::Json(v)) => axum::Json(v).into_response(),
@@ -513,6 +515,10 @@ async fn preview(
 
 pub fn router(server: Arc<Server>, ui: &FsPath) -> Router {
     Router::new()
+        .route(
+            "/api/invoke/transcribe_audio",
+            post(audio_invoke).layer(DefaultBodyLimit::max(crate::audio::MAX_BYTES)),
+        )
         .route("/api/invoke/{command}", post(invoke))
         .route("/api/events", get(events))
         .route("/api/asset/preview/{id}", get(preview))
@@ -530,6 +536,22 @@ pub fn router(server: Arc<Server>, ui: &FsPath) -> Router {
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .with_state(server)
         .fallback_service(ServeDir::new(ui).fallback(ServeFile::new(ui.join("index.html"))))
+}
+
+/// A static route takes precedence over generic commands and rejects oversized audio before
+/// buffering it, using the same authentication and command implementation as other uploads.
+async fn audio_invoke(
+    State(server): State<Arc<Server>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    invoke(
+        State(server),
+        Path("transcribe_audio".into()),
+        headers,
+        body,
+    )
+    .await
 }
 
 /// Builds the server's `Ctx` in `home`, with its keys in systemd-creds, or in memory for the
@@ -813,6 +835,86 @@ mod tests {
 
     async fn post_as(base: &str, cookie: &str, command: &str, body: &str) -> (u16, Value) {
         send(call(base, &format!("/api/invoke/{command}"), body).header("cookie", cookie)).await
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn transcription_upload_is_authenticated_bounded_and_never_exposes_native_capture() {
+        let ui = ui("transcription");
+        let (base, home, cookie) = start(&ui).await;
+        assert_eq!(post_as(&base, &cookie, "db_open", "{}").await.0, 200);
+        let client = reqwest::Client::new();
+        let url = format!("{base}/api/invoke/transcribe_audio");
+        assert_eq!(
+            client
+                .post(&url)
+                .header("content-type", "application/octet-stream")
+                .body(vec![1u8, 2])
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16(),
+            401
+        );
+        assert_eq!(
+            client
+                .post(&url)
+                .header("cookie", &cookie)
+                .header("content-type", "application/octet-stream")
+                .body(vec![0u8; crate::audio::MAX_BYTES + 1])
+                .send()
+                .await
+                .unwrap()
+                .status()
+                .as_u16(),
+            413
+        );
+        assert_eq!(
+            post_as(&base, &cookie, "audio_start", r#"{"consent":true}"#)
+                .await
+                .0,
+            400
+        );
+        let refused = post_as(
+            &base,
+            &cookie,
+            "transcribe_prepare",
+            r#"{"scope":"global","durationMs":1000,"consent":false}"#,
+        )
+        .await;
+        assert_eq!(refused.0, 400);
+        let ticket = call(
+            &base,
+            "/api/invoke/transcribe_prepare",
+            r#"{"scope":"global","durationMs":1000,"consent":true}"#,
+        )
+        .header("cookie", &cookie)
+        .send()
+        .await
+        .unwrap();
+        assert_eq!(ticket.status().as_u16(), 200);
+        assert_eq!(ticket.headers()["cache-control"], "no-store");
+        let ticket: Value = ticket.json().await.unwrap();
+        let response = client
+            .post(&url)
+            .header("cookie", &cookie)
+            .header("content-type", "application/octet-stream")
+            .header("x-recording-id", ticket["id"].as_str().unwrap())
+            .body(vec![1u8, 2])
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status().as_u16(), 400);
+        let (_, rows) = post_as(
+            &base,
+            &cookie,
+            "db_select",
+            r#"{"sql":"SELECT state FROM request_reservations","params":[]}"#,
+        )
+        .await;
+        assert_eq!(rows[0]["state"], "released");
+        let _ = std::fs::remove_dir_all(home);
+        let _ = std::fs::remove_dir_all(ui);
     }
 
     #[tokio::test(flavor = "multi_thread")]

@@ -169,15 +169,15 @@ export async function interruptRequests(db: SqlDb, tenant: Tenant): Promise<void
       sql: `INSERT INTO request_log(id,workspace_id,user_id,thread_id,message_id,purpose,provider,model,attempt,
       cost_micro_usd,billing_state,attempt_id,project_id,created_at,updated_at)
       SELECT id,workspace_id,user_id,thread_id,message_id,purpose,provider,model,1,0,'unknown',id,project_id,created_at,?
-      FROM request_reservations WHERE workspace_id=? AND user_id=? AND state='dispatched' ON CONFLICT(id) DO NOTHING`,
+      FROM request_reservations WHERE workspace_id=? AND user_id=? AND purpose!='transcribe' AND state='dispatched' ON CONFLICT(id) DO NOTHING`,
       params: [now, tenant.workspaceId, tenant.userId],
     },
     {
-      sql: "UPDATE request_reservations SET state='unknown',request_id=id,updated_at=? WHERE workspace_id=? AND user_id=? AND state='dispatched'",
+      sql: "UPDATE request_reservations SET state='unknown',request_id=id,updated_at=? WHERE workspace_id=? AND user_id=? AND purpose!='transcribe' AND state='dispatched'",
       params: [now, tenant.workspaceId, tenant.userId],
     },
     {
-      sql: "UPDATE request_reservations SET state='released',updated_at=? WHERE workspace_id=? AND user_id=? AND state='held'",
+      sql: "UPDATE request_reservations SET state='released',updated_at=? WHERE workspace_id=? AND user_id=? AND purpose!='transcribe' AND state='held'",
       params: [now, tenant.workspaceId, tenant.userId],
     },
   ]);

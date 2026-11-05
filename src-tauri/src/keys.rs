@@ -276,7 +276,11 @@ impl Keys {
     pub(crate) fn with_store(store: Box<dyn SecretStore>) -> Self {
         Keys {
             store: std::sync::Arc::from(store),
-            client: reqwest::Client::new(),
+            // Paid POST retries are owned by the accounted adapter, never the HTTP client.
+            client: reqwest::Client::builder()
+                .retry(reqwest::retry::never())
+                .build()
+                .expect("Couldn't initialize the provider HTTP client"),
         }
     }
 }

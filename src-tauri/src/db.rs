@@ -346,6 +346,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "request_accounting",
         sql: include_str!("../migrations/0062_request_accounting.sql"),
     },
+    MigrationFile {
+        version: 63,
+        description: "transcription",
+        sql: include_str!("../migrations/0063_transcription.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
@@ -781,6 +786,9 @@ pub(crate) async fn db_open(ctx: &Ctx) -> Result<OpenStatus, String> {
         return Ok(OpenStatus::Ready);
     }
     let status = db.settle(open(&ctx.config_dir, ctx.keys.store.as_ref()).await?)?;
+    if matches!(status, OpenStatus::Ready) {
+        crate::transcription::recover(&db.pool()?).await?;
+    }
     #[cfg(not(test))]
     if matches!(status, OpenStatus::Ready) {
         crate::sync::worker::start(ctx)?;
@@ -792,6 +800,9 @@ pub(crate) async fn db_recover(ctx: &Ctx, key: String) -> Result<OpenStatus, Str
     let db = &ctx.db;
     let _one_at_a_time = db.opening.lock().await;
     let status = db.settle(recover(&ctx.config_dir, ctx.keys.store.as_ref(), &key).await?)?;
+    if matches!(status, OpenStatus::Ready) {
+        crate::transcription::recover(&db.pool()?).await?;
+    }
     #[cfg(not(test))]
     if matches!(status, OpenStatus::Ready) {
         crate::sync::worker::start(ctx)?;

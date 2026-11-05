@@ -129,6 +129,17 @@ test("startup recovery releases unsent holds and records dispatched work as unkn
   ]);
 });
 
+test("runner recovery leaves in-flight native transcription with its existing execution owner", async () => {
+  const { db, hold } = await setup();
+  await reserveRequest(db, tenant, { ...hold("native", 75), runId: null, purpose: "transcribe" });
+  await dispatchRequest(db, tenant, "native");
+  await interruptRequests(db, tenant);
+  expect(await db.select("SELECT state FROM request_reservations WHERE id='native'")).toEqual([
+    { state: "dispatched" },
+  ]);
+  expect(await db.select("SELECT id FROM request_log")).toEqual([]);
+});
+
 test("project-only audio cost metadata withdraws when privacy tightens; audit is content-free", async () => {
   const { db, hold } = await setup();
   await db.execute("UPDATE sync_state SET enabled=1");
