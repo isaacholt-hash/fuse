@@ -3,6 +3,7 @@
  * never read back here: the app only learns which are set.
  */
 import { invoke } from "@/platform/core";
+import { interpretConnectorResult, type NativeMcpResult } from "@/connectors/files";
 
 /** M9 step 8: one tool a server offers; `readOnly` from its annotations, else it writes. */
 export interface McpTool {
@@ -32,10 +33,21 @@ export interface McpCallResult {
   isError: boolean;
 }
 
+/** Chosen by FUSE, separately from model-controlled tool arguments. */
+export interface McpCallContext {
+  threadId?: string | null;
+  projectId?: string | null;
+  provider: string;
+}
 export interface McpApi {
   /** M9 step 9: its tools, starting it if it isn't running. */
   tools?(serverId: string): Promise<McpTool[]>;
-  call?(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
+  call?(
+    serverId: string,
+    name: string,
+    args: Record<string, unknown>,
+    context?: McpCallContext,
+  ): Promise<McpCallResult>;
   /** Starts the server (again), does the handshake and lists its tools. */
   check?(serverId: string): Promise<McpHealth>;
   /** M9 step 10: a remote server's sign-in (the system browser) and its tokens. */
@@ -55,8 +67,10 @@ export const tauriMcpApi: McpApi = {
   secretStatus: (serverId, names) => invoke<boolean[]>("mcp_secret_status", { serverId, names }),
   check: (serverId) => invoke<McpHealth>("mcp_check", { serverId }),
   tools: (serverId) => invoke<McpTool[]>("mcp_tools", { serverId }),
-  call: (serverId, name, args) =>
-    invoke<McpCallResult>("mcp_call", { serverId, name, arguments: args }),
+  call: (serverId, name, args, context) =>
+    invoke<NativeMcpResult>("mcp_call", { serverId, name, arguments: args, context }).then(
+      interpretConnectorResult,
+    ),
   stop: (serverId) => invoke("mcp_stop", { serverId }),
   signIn: (serverId) => invoke("mcp_sign_in", { serverId }),
   signOut: (serverId) => invoke("mcp_sign_out", { serverId }),

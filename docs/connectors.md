@@ -89,3 +89,76 @@ using accounts on each. Updating does not deploy HULK automatically, sign in to 
 re-enroll a device, grant a project access or transfer connector credentials. Existing sync
 pauses on incompatible schema versions while preserving pending local changes. Authorize the
 account separately on each execution owner where its readers are needed.
+
+## Microsoft readers (M15.2)
+
+The native participant offers `onedrive_list`, `onedrive_search`, `onedrive_read`,
+`outlook_mail_list`, `outlook_mail_search`, `outlook_mail_read`, `outlook_calendar_list` and
+`outlook_calendar_read` for services explicitly selected in its account registration. Shared
+setup/project controls arrive in M15.4; this step supplies the verified readers and call path.
+No owner account is signed in by this build.
+
+A request must identify its originating conversation/project and chosen model provider,
+separately from the model's tool arguments. Rust resolves the actual project, checks its local
+MCP enablement and current egress policy, then checks again before returning content. A moved
+conversation, revoked project link, disabled service, local-only scope or blocked provider
+fails closed. Project-only Code/Work runs use their explicit project scope. Consent on one
+installation provides no account or project permission on another installation or HULK.
+
+All operations use GET; reading mail does not mark it read, send it or download attachments.
+Calendar reads never schedule/respond, and file reads never install bytes, execute macros or
+grant folder access. Mail listing/search includes the signed-in mailbox's archived/deleted
+folders; it returns previews until a message is selected explicitly. Calendar listing requires
+an explicit UTC range, at most 31 days, between 1970 and 2100. Native request construction
+encodes identifiers/queries; callers cannot supply an arbitrary Graph URL or method.
+
+Limits and continuation:
+
+- Ten results per page and at most ten pages per traversal. The limit produces a labelled
+  partial result and asks for a narrower selection.
+- Native response bodies are capped at 512 KiB. Next links must retain the selected Graph
+  origin/resource. They never return to JavaScript: a random, single-use cursor is bound to
+  the registration, conversation/project, provider and reader, expires after fifteen minutes
+  and disappears on process restart. A wrong caller cannot consume a valid caller's cursor.
+- Read bodies return at most 30,000 characters, with a truncation flag. Message/event detail
+  includes up to eight recipients/participants, plus the source identity, revision and link.
+- OneDrive downloads are capped at 4 MiB; images at 3.75 MiB. File text is returned in bounded
+  30,000-character portions; repeat the selected revision with an offset for more text.
+- Word/Excel archives are checked before expansion: 256 entries, 4 MiB per entry, 8 MiB total.
+  The existing text parsers read content/formulas without executing them. PDF text extraction
+  is bounded to forty pages and 200,000 characters, with page provenance and an explicit limit
+  marker. Empty text files are valid; image-only PDFs explicitly report that text extraction is
+  unavailable and require an intentionally attached PDF for model vision. The same bundled
+  PDF parser works on desktop, browser and Node/HULK without a new
+  dependency, external worker file or native addon.
+
+Files are checked against their selected revision and rechecked after download; incomplete
+bytes, a changed revision or a failed published SHA-256 check return no content. Provenance
+records the actual downloaded SHA-256. A Microsoft download redirect is handled only in Rust:
+its preauthenticated URL never reaches JavaScript, the model, activity or the file store.
+Every hop must remain on a supported public Microsoft download host, with DNS pinned and no
+proxy, bearer token or cookies. Requests are size/time bounded and are never retried blindly.
+
+Only allowed metadata fields are returned. Message/event HTML becomes text without scripts,
+styles or active embeds. Content remains untrusted tool data through the existing injection
+flagging and approval pipeline; a source cannot confer permissions or become an instruction.
+Downloaded original document buffers are discarded after interpretation. Returned text/images
+are ordinary conversation content and follow that conversation's privacy, sync, export and
+backup rules; no knowledge-file import happens automatically. Account grants and cursor state
+remain local; there is no new replicated table or portable permission.
+
+Each actual Graph/download credential use records an opaque account event, without query,
+subject, URL or credential values. Provider errors discard their bodies. A rejected token
+clears local authorization and project links before future reads; signing in and enabling the
+project again are explicit actions. Tenant denial/rate limits are actionable errors and do not
+cause broader scopes, writes or automatic retries.
+
+Protocol references, verified 2026-11-05:
+
+- [OneDrive folder listing](https://learn.microsoft.com/en-us/graph/api/driveitem-list-children?view=graph-rest-1.0)
+- [OneDrive search](https://learn.microsoft.com/en-us/graph/api/driveitem-search?view=graph-rest-1.0)
+- [File download and preauthenticated redirects](https://learn.microsoft.com/en-us/graph/api/driveitem-get-content?view=graph-rest-1.0)
+- [Mail listing, paging and plain-text body preference](https://learn.microsoft.com/en-us/graph/api/user-list-messages?view=graph-rest-1.0)
+- [Message reads](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0)
+- [Calendar view and explicit time ranges](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0)
+- [Event reads](https://learn.microsoft.com/en-us/graph/api/event-get?view=graph-rest-1.0)

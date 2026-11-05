@@ -294,3 +294,16 @@ A sign-in grants no project tools. Generic MCP servers cannot turn into built-in
 through an imported command or remote URL. No built-in participant launches a shell/server.
 Provider authorization and installed repository scopes are owner responsibilities; local
 Disconnect cannot revoke an authorization at Microsoft/GitHub or erase prior retrieved text.
+
+### First-party reader content (M15.2)
+
+Native readers require the resolved project permission and recipient policy before reading a
+credential and again before returning content. Caller context is supplied by FUSE separately
+from model-controlled arguments. Private pagination URLs stay in owner memory behind bounded,
+short-lived handles tied to that context. Download redirects never receive the Graph bearer;
+every public target is validated and DNS pinned. Known size/revision/hash failures return no
+file bytes. HTML, Office formulas and source instructions remain data; parsers execute no
+source script/macro. Archive/page/character bounds constrain decoding. Returned text and
+selected images follow ordinary conversation privacy; transport URLs and native grants do not.
+A revoked token removes local project access; provider-side authorization remains under owner
+control. Recorded fixtures prove these boundaries separately from owner-operated live checks.

@@ -416,3 +416,11 @@ tokens remain in the existing secret store and pending sign-in is process memory
 `DELETE_ORDER` removes accounts before MCP servers, with a foreign-key cascade as a fallback.
 An update emits a redacted policy event. Native authorization events use existing
 `security_audit` rows with opaque account IDs; no new audit payload stores user codes/tokens.
+
+M15.2 adds no database table or portable columns. Connector paging handles and their validated
+Graph continuation URLs exist only in owner process memory, bound to exact registration and
+call context, with a fifteen-minute lifetime. They are absent from sync, exports and backups;
+a restored/restarted process cannot replay them. Download buffers remain transient. Interpreted
+text/images and source provenance become normal tool-result content under the existing
+conversation retention/privacy rules. Each actual credential-bearing HTTP attempt uses a
+redacted existing `security_audit` row; no query, download URL or token is stored there.

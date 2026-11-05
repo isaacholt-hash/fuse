@@ -24,6 +24,7 @@ import { statusFor, usableProfile, type InstalledFile } from "@/local/install";
 import { localCatalogModel, localModels, type LocalProfile } from "@/local/models";
 import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { PythonRuntimeSection } from "@/ui/PythonRuntime";
+import type { McpCallContext } from "@/mcp/api";
 import { McpServersSection, type McpServerDraft, type McpServerView } from "@/ui/McpServers";
 import { joinCommand, splitCommand, type McpApi } from "@/mcp/api";
 import {
@@ -1390,9 +1391,14 @@ export function ChatApp({
                   l.map((s) => ({ id: s.id, name: s.name })),
                 ),
               tools: (id: string) => mcpApi.tools?.(id) ?? Promise.resolve([]),
-              call: (id: string, name: string, args: Record<string, unknown>) =>
+              call: (
+                id: string,
+                name: string,
+                args: Record<string, unknown>,
+                context?: McpCallContext,
+              ) =>
                 mcpApi.call
-                  ? mcpApi.call(id, name, args)
+                  ? mcpApi.call(id, name, args, context)
                   : Promise.reject(new Error("MCP calls aren't available here.")),
             },
           }

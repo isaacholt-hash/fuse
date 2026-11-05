@@ -16,3 +16,7 @@ declare module "virtual:react-preview-runtime" {
   const code: string;
   export default code;
 }
+
+declare module "pdfjs-dist/legacy/build/pdf.worker.mjs" {
+  export const WorkerMessageHandler: unknown;
+}

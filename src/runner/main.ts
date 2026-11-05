@@ -1,3 +1,4 @@
+import type { McpCallContext } from "@/mcp/api";
 // The runner's entry point (M10 step 6). fuse-server starts it with Node and gives it the
 // server's address and a device token of its own; everything else (the database, provider
 // requests, folders, commands, git, MCP) goes through the server's commands, as the web app's
@@ -82,9 +83,14 @@ async function deps(): Promise<RunDeps> {
                 l.map((s) => ({ id: s.id, name: s.name })),
               ),
             tools: (id: string) => mcp.tools?.(id) ?? Promise.resolve([]),
-            call: (id: string, name: string, args: Record<string, unknown>) =>
+            call: (
+              id: string,
+              name: string,
+              args: Record<string, unknown>,
+              context?: McpCallContext,
+            ) =>
               mcp.call
-                ? mcp.call(id, name, args)
+                ? mcp.call(id, name, args, context)
                 : Promise.reject(new Error("MCP calls aren't available here.")),
           },
         }

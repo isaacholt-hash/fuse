@@ -859,7 +859,11 @@ async function runMcp(
     approval = "you";
   }
   try {
-    const r = await deps.mcp.call(m.serverId, m.tool, call.input);
+    const r = await deps.mcp.call(m.serverId, m.tool, call.input, {
+      threadId: run.threadId,
+      projectId: run.projectId,
+      provider: run.provider,
+    });
     const text = r.parts.flatMap((p) => (p.kind === "text" && p.text ? [p.text] : [])).join("\n");
     const images = r.parts.flatMap((p) =>
       p.kind === "image" && p.data
