@@ -15,7 +15,7 @@ const schema = (
         : {
             ...value,
             type: [value.type, "null"],
-            ...(Array.isArray(value.enum) ? { enum: [...value.enum, null] } : {}),
+            ...(Array.isArray(value.enum) ? { enum: [...(value.enum as unknown[]), null] } : {}),
           },
     ]),
   ),
