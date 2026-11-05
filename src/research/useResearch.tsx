@@ -315,11 +315,16 @@ export function useResearch(options: Options) {
           }
           if (!hulkReason) {
             const stored = await storedRouting(hulkDb(hulk), deps.tenant, projectId);
+            const ownerPolicy = await projectPolicy(hulkDb(hulk), deps.tenant, projectId);
             hulkCatalog = stored.catalog;
             hulkPolicy = stored.policy;
             for (const provider of ["openai", "anthropic"] as const) {
               const state = await hulk.invoke<{ saved: boolean }>("key_status", { provider });
-              if (state.saved && egressRefusal(policy, provider, "chat") === null)
+              if (
+                state.saved &&
+                egressRefusal(policy, provider, "chat") === null &&
+                egressRefusal(ownerPolicy, provider, "chat") === null
+              )
                 hulkProviders.push(provider);
             }
             try {

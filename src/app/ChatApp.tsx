@@ -855,6 +855,10 @@ export function ChatApp({
   // M10 step 12 (CH-19): Chat or Code; each area reopens on its own last thread.
   const [area, setArea] = useState<Area>(readArea);
   const [lastThread] = useState(() => readLastThread(readArea()));
+  // A HULK history link selects an existing Chat only; it cannot enqueue or resume execution.
+  const [linkedThread] = useState(() =>
+    webApp ? new URLSearchParams(window.location.search).get("thread") : null,
+  );
   // The path on screen (CH-04), every message in the thread, and where the path has siblings.
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadAll, setThreadAll] = useState<Message[]>([]);
@@ -1680,8 +1684,10 @@ export function ChatApp({
       .then(async (list) => {
         setThreadList({ threads: list, at: Date.now() });
         setLatestRuns(await latestRunByThread(db, tenant));
-        // Reopen on the thread that was open last time, if it still exists.
-        const last = lastThread ? list.find((t) => t.id === lastThread) : undefined;
+        // An authenticated history link wins; an unavailable/deleted ID falls back safely.
+        const last =
+          (linkedThread ? list.find((t) => t.id === linkedThread) : undefined) ??
+          (lastThread ? list.find((t) => t.id === lastThread) : undefined);
         if (!last) return;
         const { rows, all, attached, cited, used, upto, fromFiles, artifacts } = await loadThread(
           last.id,
@@ -1691,8 +1697,8 @@ export function ChatApp({
         setArea(areaOf(last.kind));
         setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
-        setSelectedId(lastThread);
-        selectedRef.current = lastThread;
+        setSelectedId(last.id);
+        selectedRef.current = last.id;
         setMessages(rows);
         setSummaryUpto(upto);
         setThreadAll(all);
@@ -1702,7 +1708,7 @@ export function ChatApp({
         setThreadMemories(used);
       })
       .catch(report);
-  }, [db, tenant, catalog, lastThread, loadThread, appBuild, backups]);
+  }, [db, tenant, catalog, lastThread, linkedThread, loadThread, appBuild, backups]);
   useEffect(() => {
     if (selectedId === null) return;
     const kind = threads.find((t) => t.id === selectedId)?.kind;

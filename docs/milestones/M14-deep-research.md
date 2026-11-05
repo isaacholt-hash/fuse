@@ -256,8 +256,22 @@ The browser check found and fixed loss of the editable draft when creating a new
 Chat. The first full-check attempt also identified the missing TypeScript project inclusion
 for the separate fixture Vite config; its project inclusion was corrected before rerunning.
 
-Final local `VITEST_MAX_WORKERS=2 pnpm check` passed: 188 files / 1,090 tests passed,
+Final local `VITEST_MAX_WORKERS=2 pnpm check` passed: 189 files / 1,092 tests passed,
 13 live/manual tests skipped across eight files. Lint, formatting, typecheck and secret scan
 passed. Default/server clippy with warnings denied passed, as did all 169 desktop and 183
 server Rust tests. Production browser regression passed 10/10. Current-head CI, including
 the new Windows Research click-through, remains the required merge gate.
+
+Further review added read-only authenticated Chat links for Open on HULK, with a regression
+asserting that opening paused history enqueues nothing. HULK previews intersect its provider
+restrictions with the source's; if bounded search is unavailable there, desktop is preferred
+explicitly. Continuation preserves the exact micro-dollar cap even at the safe-integer limit.
+Setup qualifies the base planning allowance before selected context. The final native and
+browser screenshots were refreshed and reviewed, and production web/runner builds, web 10/10
+and synthetic dictation 1/1 passed again.
+
+The first CI attempt found a missing final newline in copied benchmark JSON; formatting fixed
+it without changing results. The next attempt passed four gates but caught the Windows fixture
+reading setup before the cap field loaded. The fixture now waits for that field. Failed-run
+screenshots/logs were retained for diagnosis. All five gates must pass on the final current
+commit before merge; no failed or superseded attempt counts as acceptance.

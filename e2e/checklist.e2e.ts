@@ -315,6 +315,7 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     await app.type(composer, "Keep this editable research draft.");
     await app.click(button("Options"));
     await app.click('//button[@aria-label="Research"]');
+    await app.find('//input[@aria-label="Research spending cap (USD)"]');
     expect(
       await app.run(
         'return [...document.querySelectorAll("input")].find(e=>e.getAttribute("aria-label")==="Research spending cap (USD)").value;',

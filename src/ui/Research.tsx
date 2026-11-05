@@ -1,4 +1,4 @@
-import { parseResearchCap } from "@/research/cap";
+import { parseResearchCap, formatResearchCap } from "@/research/cap";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -191,9 +191,10 @@ export function ResearchSetup({
               actual usage can vary.
             </p>
             <p className="text-[11px] leading-5 text-muted-foreground">
-              Planning reserves up to {money(models.firstBoundMicroUsd)}; each search reserves up to{" "}
-              {money(models.searchBoundMicroUsd)}. These conservative allowances are not the final
-              bill. Actual tokens and searches are charged once.
+              Base planning reservation: {money(models.firstBoundMicroUsd)} before selected context;
+              the actual reservation includes that context. Each search reserves up to{" "}
+              {money(models.searchBoundMicroUsd)}. Allowances are not the final bill; actual tokens
+              and searches are charged once.
             </p>
           </div>
         )}
@@ -354,7 +355,7 @@ export function ContinueResearch({
   onCancel: () => void;
   onContinue: (capMicroUsd: number) => void;
 }) {
-  const [value, setValue] = useState(String(capMicroUsd / 1e6)),
+  const [value, setValue] = useState(formatResearchCap(capMicroUsd)),
     amount = parseResearchCap(value);
   return (
     <Modal

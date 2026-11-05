@@ -128,6 +128,43 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+test("a HULK research history link selects its existing Chat without starting or resuming execution", async () => {
+  const db = openTestDb();
+  const previous = await createThread(db, t, "Previous Chat"),
+    linked = await createThread(db, t, "Linked research Chat");
+  const messageId = await addMessage(db, t, {
+    threadId: linked.id,
+    parentId: null,
+    role: "assistant",
+    content: "Previously collected research evidence.",
+  });
+  const run = await createRun(db, t, {
+    threadId: linked.id,
+    projectId: null,
+    messageId,
+    task: "Existing research",
+    kind: "research",
+    provider: "openai",
+    model: "fixture",
+    mode: "plan",
+    capMicroUsd: 1000000,
+  });
+  await setRunStatus(db, t, run.id, "paused", "Explicit continuation required.");
+  localStorage.setItem("fuse.lastThread.chat", previous.id);
+  window.history.replaceState({}, "", `/?thread=${encodeURIComponent(linked.id)}`);
+  try {
+    start(db);
+    expect(await screen.findByText("Previously collected research evidence.")).toBeInTheDocument();
+    expect(await db.select("SELECT id FROM run_requests")).toEqual([]);
+    expect(await db.select("SELECT id FROM request_log")).toEqual([]);
+    expect(await db.select("SELECT status FROM runs WHERE id=?", [run.id])).toEqual([
+      { status: "paused" },
+    ]);
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
+});
+
 test("a Code run in the web app is asked of the runner; its question is answered here, and Stop asks it to stop", async () => {
   const db = openTestDb();
   const user = start(db);

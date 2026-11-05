@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { parseResearchCap } from "@/research/cap";
+import { parseResearchCap, formatResearchCap } from "@/research/cap";
 import { ResearchSetup, ContinueResearch } from "./Research";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
 import { defaultPolicy } from "@/routing/defaultPolicy";
@@ -27,6 +27,9 @@ test("research setup requires an empty cap to be filled and starts only through 
   expect(screen.getByLabelText("Research spending cap (USD)")).toHaveValue("");
   expect(screen.getByRole("button", { name: "Start research" })).toBeDisabled();
   expect(screen.getByLabelText("Memory: chosen fact")).not.toBeChecked();
+  expect(screen.getByText(/Base planning reservation/)).toHaveTextContent(
+    "before selected context",
+  );
   expect(onStart).not.toHaveBeenCalled();
   fireEvent.click(screen.getByLabelText("Memory: chosen fact"));
   fireEvent.change(screen.getByLabelText("Research spending cap (USD)"), {
@@ -88,6 +91,10 @@ test("continuation uses an explicit total cap without adding a default increment
 test("caps preserve integer micro-dollars and reject empty, fractional-micro and excessive values", () => {
   expect(parseResearchCap("0.000001")).toBe(1);
   expect(parseResearchCap("9007199254.740991")).toBe(Number.MAX_SAFE_INTEGER);
+  expect(formatResearchCap(Number.MAX_SAFE_INTEGER)).toBe("9007199254.740991");
+  expect(parseResearchCap(formatResearchCap(Number.MAX_SAFE_INTEGER))).toBe(
+    Number.MAX_SAFE_INTEGER,
+  );
   for (const value of ["", "0", "0.0000001", "9007199254.740992", "1e4", "9".repeat(10000)])
     expect(parseResearchCap(value)).toBeNull();
 });
