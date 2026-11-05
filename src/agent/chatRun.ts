@@ -126,6 +126,8 @@ export async function continueChatRun(
 ): Promise<Run> {
   const before = await getRun(deps.db, deps.tenant, runId);
   if (!before) throw new Error("Run not found");
+  if (before.kind === "research")
+    throw new Error("Research requires its restricted execution engine.");
   if (before.messageId) await markStreaming(deps.db, deps.tenant, before.messageId);
   const answerId = before.messageId ?? "";
   const run = await continueRun(deps, runId, {

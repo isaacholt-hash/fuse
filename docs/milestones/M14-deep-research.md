@@ -112,3 +112,7 @@ Final `VITEST_MAX_WORKERS=2 pnpm check` passed: 177 test files / 1,039 tests pas
 with 13 live/manual tests skipped (eight files). Lint, typecheck, formatting and secret scan
 passed on the completed step. Current-head Windows/CI and release evidence belongs to the
 step PR and the next delivery record; no skipped owner acceptance is presented as passed.
+
+The Code runner additionally rejects a research start before handover restore, cloning or
+folder grants, and rejects research continuation before changing its execution state. The
+focused runner/answer suite passed 12/12, including both isolation scenarios.

@@ -199,6 +199,8 @@ export class Runner {
     const deps = this.withApprovals(base);
     if (request.kind === "continue") {
       const { runId, raiseCapBy } = request.input;
+      if ((await getRun(db, tenant, runId))?.kind === "research")
+        throw new Error("Research requires its restricted execution engine.");
       if (this.going.has(runId)) throw new Error("That run is already going.");
       this.going.set(runId, controller);
       await finishRequest(db, tenant, request.id, { runId });
@@ -215,6 +217,8 @@ export class Runner {
       return;
     }
     const input = request.input;
+    if (input.kind === "research")
+      throw new Error("Research cannot use repository handover or the Code runner.");
     const scheduleId = input.scheduleId;
     let model: CatalogModel;
     let planner: CatalogModel | null;
