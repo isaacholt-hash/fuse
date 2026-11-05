@@ -536,8 +536,10 @@ fn quote_argument(value: &str) -> String {
 }
 
 fn spawn_inner(s: &Spawn, direct: Option<(&Path, &[String])>) -> io::Result<Child> {
-    let sid = container(s.container)?;
-    let temp = container_folder(&sid)?;
+    let stage =
+        |name: &str, error: io::Error| io::Error::new(error.kind(), format!("{name}: {error}"));
+    let sid = container(s.container).map_err(|e| stage("AppContainer identity", e))?;
+    let temp = container_folder(&sid).map_err(|e| stage("AppContainer temporary directory", e))?;
 
     // The network capabilities, only when allowed. Without them the container has no network.
     let kinds = [
@@ -687,7 +689,8 @@ fn spawn_inner(s: &Spawn, direct: Option<(&Path, &[String])>) -> io::Result<Chil
     let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
     let cmd = Path::new(&system).join("System32").join("cmd.exe");
     let (app, mut line) = if let Some((program, args)) = direct {
-        let program = plain(program);
+        let program =
+            plain(&std::fs::canonicalize(program).map_err(|e| stage("Selected executable", e))?);
         let mut parts = vec![quote_argument(&program.to_string_lossy())];
         parts.extend(args.iter().map(|a| quote_argument(a)));
         (wide(&program), wide(parts.join(" ")))
@@ -720,14 +723,15 @@ fn spawn_inner(s: &Spawn, direct: Option<(&Path, &[String])>) -> io::Result<Chil
             (&si as *const STARTUPINFOEXW).cast::<STARTUPINFOW>(),
             &mut pi,
         )
-    })?;
+    })
+    .map_err(|e| stage("CreateProcessW", e))?;
     let process = Handle(pi.hProcess);
     let thread = Handle(pi.hThread);
     // SAFETY: the job and the new, still suspended, process.
     if let Err(e) = check(unsafe { AssignProcessToJobObject(job.0, process.0) }) {
         // SAFETY: the process this just started; it never ran.
         unsafe { TerminateProcess(process.0, 1) };
-        return Err(e);
+        return Err(stage("AppContainer job assignment", e));
     }
     // SAFETY: the new process's main thread.
     if unsafe { ResumeThread(thread.0) } == u32::MAX {
@@ -823,8 +827,9 @@ mod tests {
         std::fs::write(b.join("private.txt"), "OTHER_PROFILE_ONLY\r\n").unwrap();
         grant_to(first, &a, READ).unwrap();
         grant_to(second, &b, READ).unwrap();
-        let program =
-            PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32/findstr.exe");
+        let program = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
+            .join("System32")
+            .join("findstr.exe");
         let run = |args: Vec<String>| {
             let mut child = spawn_direct(
                 &Spawn {

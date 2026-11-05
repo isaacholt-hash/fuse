@@ -723,7 +723,7 @@ pub(crate) async fn run(
                             .into_owned(),
                     ],
                 )
-                .map_err(|_| "Couldn't start the isolated Python process.".into())
+                .map_err(|e| format!("Couldn't start the isolated Python process: {e}"))
             })();
             match start {
                 Ok(child) => {

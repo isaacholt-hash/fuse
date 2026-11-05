@@ -291,3 +291,20 @@ charges. The final output approval/source/destination and saved-file captures we
 recorded change from net filesystem changes. The final native dark capture was refreshed after
 all source/build changes and reviewed, avoiding development hot-reload affecting the evidence.
 All twelve final native/web captures show their labelled themes and were reviewed.
+
+The first CI run on `9fe71753186aba1ffd64349b9bfab266981a7279`
+([42062183725](https://github.com/isaacholt-hash/fuse/actions/runs/42062183725)) passed the
+shared gate but exposed two platform issues. Linux passed 234/236: the two real script
+isolation tests could not initialize bubblewrap because Ubuntu's AppArmor user-namespace
+restriction blocked loopback setup. CI now installs a profile permitting user namespaces
+only for its system bubblewrap executable, and runs an actual startup probe. The setup
+refuses execution outside an ephemeral GitHub-hosted Linux runner; installed desktop/HULK
+configuration is untouched. This follows Ubuntu's
+[documented application-specific profile](https://documentation.ubuntu.com/release-notes/24.04/#unprivileged-user-namespace-restrictions),
+without disabling the system-wide restriction or skipping the isolation tests.
+
+Windows sandbox tests passed 11/12; the new direct-launch test failed before execution with
+OS error 203. The selected executable is now canonicalized to a native Windows path, the
+fixture uses native path components, and launch errors identify the failing API stage.
+CI retains the sandbox unit log immediately so failures remain diagnosable while later
+compatibility checks continue. A fresh current-commit run is required before merge.

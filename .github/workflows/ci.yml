@@ -67,7 +67,9 @@ jobs:
           # Newer runner images list the mirror in apt-mirrors.txt, so that file is switched too.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev libasound2-dev bubblewrap
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev libasound2-dev bubblewrap apparmor
+      - name: Verify real sandbox startup on the ephemeral runner
+        run: bash scripts/ci-sandbox.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -101,7 +103,9 @@ jobs:
         run: |
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
           sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev libasound2-dev bubblewrap
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libsecret-1-dev libasound2-dev bubblewrap apparmor
+      - name: Verify real sandbox startup on the ephemeral runner
+        run: bash scripts/ci-sandbox.sh
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
@@ -245,7 +249,16 @@ jobs:
             if ($errors) { $errors; exit 1 }
           }
       # One at a time: the tests share the one container and change folder permissions.
-      - run: cargo test --manifest-path src-tauri/sandbox-win/Cargo.toml -- --test-threads=1
+      - name: Windows sandbox unit tests
+        run: |
+          cargo test --manifest-path src-tauri/sandbox-win/Cargo.toml -- --test-threads=1 2>&1 | Tee-Object -FilePath sandbox-tests.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-sandbox-unit-log
+          path: sandbox-tests.log
+          if-no-files-found: error
       # tauri::generate_context! needs the frontend dist folder to exist at compile time.
       # These run even when a sandbox test fails, so one run reports both.
       - if: ${{ !cancelled() }}

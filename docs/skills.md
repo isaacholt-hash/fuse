@@ -82,9 +82,10 @@ refuses child-process creation and executable replacement through a syscall filt
 namespaces. Windows uses a fresh AppContainer identity for every invocation, with no network
 capabilities, a 512 MiB aggregate job-memory limit and one process, so child processes cannot start. Package inputs
 are read-only; only private output and sandbox temporary storage are writable. The existing
-Stop control ends the process tree. A 100 ms scratch guard stops runs exceeding 64 MiB,
+Stop control ends the process tree. A 100 ms output-directory guard stops runs exceeding 64 MiB,
 512 entries or eight directory levels; this is a monitored limit, not a filesystem quota.
-Returned files retain the existing 20 MiB/50-file bound. Links and Windows reparse outputs
+Other sandbox temporary files are transient and have no filesystem quota; the wall-clock
+and process-memory limits still apply. Returned files retain the existing 20 MiB/50-file bound. Links and Windows reparse outputs
 are not collected. Console output retains the existing 1 MiB cap.
 
 Forward-only schema 70 adds owner-local, content-free dispatch claims keyed by run, model
