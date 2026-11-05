@@ -1331,7 +1331,8 @@
     "security_audit": "Sanitized local credential-use and policy events; exported explicitly, not replicated",
     "research_state": "Execution-owner checkpoint, selected-context IDs and transient collected evidence; never starts from sync.",
     "research_operations": "Execution-owner dispatch claims and crash recovery; never replicated or replayed.",
-    "research_transfers": "Owner-local explicit HULK delivery intents and links. Never synced/exported or automatically replayed; source deletion cascades and privacy withdrawal purges pending snapshots."
+    "research_transfers": "Owner-local explicit HULK delivery intents and links. Never synced/exported or automatically replayed; source deletion cascades and privacy withdrawal purges pending snapshots.",
+    "connector_accounts": "Owner-registered connector applications and service consent; installation-local, excluded from portable export; native credentials are never in SQLite"
   },
   "internalTables": [
     "sync_state",

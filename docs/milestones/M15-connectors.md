@@ -21,7 +21,7 @@ AG-11 through AG-02; supports CA-10.
 
 ## Steps
 
-- [ ] **1. Native accounts and built-in MCP.** Add first-party MCP transport through the existing registry, owner-registered public application IDs, device authorization, native token storage and status-only UI responses.
+- [x] **1. Native accounts and built-in MCP.** Add first-party MCP transport through the existing registry, owner-registered public application IDs, device authorization, native token storage and status-only UI responses.
 - [ ] **2. Microsoft readers.** OneDrive list/search/read, Outlook Mail list/search/read and Outlook Calendar list/read for personal and work/school accounts, with delegated read scopes and explicit per-service consent.
 - [ ] **3. GitHub readers.** Repository, issue, PR and pinned diff readers through a read-only GitHub App. Expose source revision and verified path/line metadata for review.
 - [ ] **4. Setup and verification.** Shared M12 Settings controls, project enablement, account expiry/disconnect/tenant errors, deterministic authorization and pagination fixtures, desktop/web parity, reviewed screenshots and exact registration instructions.
@@ -60,4 +60,43 @@ Use isolated mock OAuth/API endpoints in tests. Real account authorization is ow
 ## Evidence
 
 Append PRs, exact checks/builds, screenshots and benchmark results as each step ships.
-No acceptance evidence has been recorded for this milestone yet.
+Step 1 adds native device authorization and an in-process MCP participant, reusing existing
+project permissions, secret storage and redacted activity. Schema 67 adds local public
+registration metadata only; existing populated history/server settings are preserved.
+No account is authorized by the build. Reader methods ship in steps 2/3 and shared controls
+in step 4. See [connector setup and privacy](../connectors.md).
+
+Verification/release evidence will be appended after the current-commit checks pass.
+
+Previous step verified: [M14.4 PR #298](https://github.com/isaacholt-hash/fuse/pull/298) merged
+as `85cce8eba73907d3d7be8d9fad408ce1e90b5dd1`. All five gates and JSON merge gate passed
+on `7646619921637e30fe21c63b466a3bce8fffdd3d` in
+[CI 41997991314](https://github.com/isaacholt-hash/fuse/actions/runs/41997991314).
+[Release v0.1.219](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.219) was published
+2026-11-05T09:14:47Z by the normal
+[release workflow 41999426388](https://github.com/isaacholt-hash/fuse/actions/runs/41999426388).
+Linux/Windows installers and all seven signed updater entries matched its eleven uploaded
+assets. The recorded research CI artifact passed eight Linux/HULK scenarios in 21,774 ms;
+Windows passed six portable cases with the two Linux-server cases explicitly skipped.
+Preserved encrypted sync passed 16/16 at schema 66 in 23,276 ms. No deployment or owner
+research acceptance was performed.
+
+Step 1 local verification: `pnpm check` passed 1,099 tests across 190 passing files; 21
+live/manual or opt-in cases in ten files were explicitly skipped. Focused schema/MCP/platform/
+delete coverage passed 15/15. Rust formatting and both default/server all-target clippy checks
+passed; default Rust passed 177/177 and server Rust 191/191, including encrypted sync. Eight
+new native authorization scenarios cover selective scopes, pending/slow/denied/expired flows,
+reconfiguration/cancellation, account switching, refresh, restart, malformed/oversized data
+and redaction. The normal browser production build/runner build and click-through passed
+10/10. Three startup tests initially exceeded their existing wait under concurrent Rust load;
+they passed unchanged in the quieter focused run and full check. No assertion was relaxed.
+Real Microsoft personal/work sign-in and GitHub authorization are explicitly unperformed.
+
+Reviewed actual native Settings startup and production web Settings in both themes:
+[desktop light](../screenshots/m15/accounts-native-light.png),
+[desktop dark](../screenshots/m15/accounts-native-dark.png),
+[web light](../screenshots/m15/accounts-web-light.png),
+[web dark](../screenshots/m15/accounts-web-dark.png).
+These verify the shared app still opens; step 1 adds no sign-in controls. The earlier captures
+showed startup/rebuild timing and were rejected, retained only in scratch. Shared connector
+setup and its interaction screenshots remain in step 4.

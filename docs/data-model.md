@@ -400,3 +400,19 @@ fields commit in the same insert and the same ID survives a lost creation acknow
 The existing queue's stable request ID prevents duplicate execution after a lost queue ACK.
 No folder or command permission is part of either record. All existing sync, privacy,
 delete/undo, backup and export classifications continue to apply.
+
+### M15 native accounts (schema 67)
+
+`mcp_servers.builtin_kind` is nullable `microsoft|github`; existing generic server rows retain
+NULL and all previous settings. The new field selects an in-process native MCP participant;
+no remote URL or executable is taken from built-in account configuration. Generic MCP setup
+lists only generic servers; built-in registration has its own typed native interface.
+
+`connector_accounts(id,workspace_id,user_id,client_id,tenant,services,created_at,updated_at)`
+references its installation-local MCP server. It stores public registration metadata only.
+All columns are classified local by `data/sync.json`; neither accounts nor server/permission
+settings are in portable exports. Full encrypted database backups retain public configuration;
+tokens remain in the existing secret store and pending sign-in is process memory only.
+`DELETE_ORDER` removes accounts before MCP servers, with a foreign-key cascade as a fallback.
+An update emits a redacted policy event. Native authorization events use existing
+`security_audit` rows with opaque account IDs; no new audit payload stores user codes/tokens.

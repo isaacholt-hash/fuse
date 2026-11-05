@@ -44,13 +44,13 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | AR-07 writing canvas | M17.2 |
 | AR-08 sandboxed code artifacts | M17.3, Python only under approved AG-03 boundary |
 | AG-01 tool framework | M6/M9 registry; finish memory/artifact operations in M17.1 |
-| AG-02 MCP | M9; complete generic client, extend first-party transport in M15 |
+| AG-02 MCP | M9 generic client preserved; M15.1 native first-party transport, readers/setup in M15.2–4 |
 | AG-03 execution sandbox | M8/M9, Python-only approved scope; artifact integration in M17.3 |
 | AG-04 approvals/audit | M6/M8/M9/M10; preserve, shared reservations/audit M13.1 and audit completeness M18.4 |
 | AG-05 plans/progress/pause/stop/caps | M6/M10; extend safe pre-dispatch caps in M13.1, research M14 and shared children M16 |
 | AG-07 scheduled tasks | M10; complete, HULK-only |
 | AG-10 prompt-injection guard | M9; complete, extend tests to new inputs |
-| AG-11 built-in connectors | M15.1–4, OneDrive/Outlook Mail/Calendar and GitHub replace Google examples |
+| AG-11 built-in connectors | M15.1 native accounts; M15.2–4 readers/setup/fixtures, OneDrive/Outlook Mail/Calendar and GitHub replace Google examples |
 | CA-10 structured code review | M16.1 using M15 GitHub reads |
 | CA-11 sandboxed commands | M8; complete, preserve |
 | CA-12 skills | M16.2–3 |

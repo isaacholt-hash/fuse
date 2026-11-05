@@ -9,6 +9,7 @@ mod backup;
 // The server's clone of a handed-over run's repository (M10 step 7), served by fuse-server.
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod clone;
+mod connectors;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod creds;
 mod ctx;
@@ -175,6 +176,11 @@ pub fn run() {
             keys::commands::mcp_secret_set,
             keys::commands::mcp_secret_delete,
             keys::commands::mcp_secret_status,
+            connectors::commands::connector_configure,
+            connectors::commands::connector_status,
+            connectors::commands::connector_begin,
+            connectors::commands::connector_poll,
+            connectors::commands::connector_disconnect,
             mcp::commands::mcp_check,
             mcp::commands::mcp_stop,
             mcp::commands::mcp_tools,

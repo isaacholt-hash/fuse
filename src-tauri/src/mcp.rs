@@ -856,6 +856,9 @@ pub struct McpServers {
 /// started again.
 async fn ensure(ctx: &Ctx, server_id: &str) -> Result<(Server, McpHealth), String> {
     use sqlx::Row;
+    if crate::connectors::builtin(ctx, server_id).await? {
+        return Err("Built-in connectors use their native transport.".into());
+    }
     let keys = &ctx.keys;
     let mut running = ctx.mcp.running.lock().await;
     if let Some((client, health)) = running.get(server_id) {
@@ -981,6 +984,9 @@ async fn ensure(ctx: &Ctx, server_id: &str) -> Result<(Server, McpHealth), Strin
 
 /// Starts the server again, does the handshake and lists its tools (Settings → Check).
 pub(crate) async fn mcp_check(ctx: &Ctx, server_id: String) -> Result<McpHealth, String> {
+    if crate::connectors::builtin(ctx, &server_id).await? {
+        return crate::connectors::health(ctx, &server_id).await;
+    }
     if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
         old.stop().await;
     }
@@ -989,6 +995,9 @@ pub(crate) async fn mcp_check(ctx: &Ctx, server_id: String) -> Result<McpHealth,
 
 /// M9 step 9: the server's tools, starting it if it isn't running.
 pub(crate) async fn mcp_tools(ctx: &Ctx, server_id: String) -> Result<Vec<McpTool>, String> {
+    if crate::connectors::builtin(ctx, &server_id).await? {
+        return Ok(crate::connectors::health(ctx, &server_id).await?.tools);
+    }
     Ok(ensure(ctx, &server_id).await?.1.tools)
 }
 
@@ -999,12 +1008,19 @@ pub(crate) async fn mcp_call(
     name: String,
     arguments: Value,
 ) -> Result<McpCallResult, String> {
+    if crate::connectors::builtin(ctx, &server_id).await? {
+        return crate::connectors::call(ctx, &server_id, &name, arguments).await;
+    }
     let (client, _) = ensure(ctx, &server_id).await?;
     client.call(&name, arguments).await
 }
 
 /// M9 step 10: forgets a remote server's tokens.
 pub(crate) async fn mcp_sign_out(ctx: &Ctx, server_id: String) -> Result<(), String> {
+    if crate::connectors::builtin(ctx, &server_id).await? {
+        crate::connectors::disconnect(ctx, server_id).await?;
+        return Ok(());
+    }
     crate::keys::mcp_oauth_delete(&ctx.keys, &server_id)?;
     if let Some((old, _)) = ctx.mcp.running.lock().await.remove(&server_id) {
         old.stop().await;
@@ -1013,7 +1029,13 @@ pub(crate) async fn mcp_sign_out(ctx: &Ctx, server_id: String) -> Result<(), Str
 }
 
 /// M9 step 10: whether there are tokens for it.
-pub(crate) fn mcp_signed_in(ctx: &Ctx, server_id: String) -> Result<bool, String> {
+pub(crate) async fn mcp_signed_in(ctx: &Ctx, server_id: String) -> Result<bool, String> {
+    if crate::connectors::builtin(ctx, &server_id).await? {
+        return Ok(crate::connectors::account_status(ctx, server_id)
+            .await?
+            .state
+            == "connected");
+    }
     Ok(crate::keys::mcp_oauth_get(&ctx.keys, &server_id)?.is_some())
 }
 
@@ -1128,8 +1150,8 @@ pub mod commands {
     }
 
     #[tauri::command]
-    pub fn mcp_signed_in(ctx: State<'_, Ctx>, server_id: String) -> Result<bool, String> {
-        super::mcp_signed_in(&ctx, server_id)
+    pub async fn mcp_signed_in(ctx: State<'_, Ctx>, server_id: String) -> Result<bool, String> {
+        super::mcp_signed_in(&ctx, server_id).await
     }
 
     #[tauri::command]
