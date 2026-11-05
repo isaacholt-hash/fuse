@@ -44,7 +44,9 @@ export function recordedParallelAdapter(
       // Leave enough time for the caller to navigate away after approving; the owner continues.
       if (child && !synthesis) await new Promise((r) => setTimeout(r, 2000));
       const text = plan
-        ? "1. Propose two isolated child tasks. 2. Preserve the parent. 3. Report their separate results without integration."
+        ? child
+          ? "1. Inspect the approved child task and committed base. 2. Write only its requested result. 3. Check that the changes stay in this worktree."
+          : "1. Propose two isolated child tasks. 2. Preserve the parent. 3. Report their separate results without integration."
         : child && declined
           ? "Child edit was declined; no file changed."
           : child

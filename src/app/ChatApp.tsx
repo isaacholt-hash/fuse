@@ -1,3 +1,4 @@
+import { useParallelRuns } from "@/parallel/useParallel";
 import { DictationSettings } from "@/ui/Dictation";
 import { pendingApproval } from "@/parallel/approvals";
 import { useSeenResult } from "./useSeenResult";
@@ -3503,6 +3504,18 @@ export function ChatApp({
     },
     onError: report,
   });
+  const parallel = useParallelRuns({
+    db,
+    tenant,
+    roots: [...threadRuns.values()].map((r) => r.run),
+    threadId: selectedId,
+    git: gitApi,
+    onChanged: () => {
+      if (selectedRef.current) void reload(selectedRef.current).catch(report);
+      void refreshThreads().catch(report);
+    },
+    onError: report,
+  });
   const research = useResearch({
     deps,
     threadId: selectedId,
@@ -3916,6 +3929,8 @@ export function ChatApp({
       const r = threadRuns.get(v.id);
       if (r && r.run.kind !== "research") {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
+        const childProgress = parallel.views.get(r.run.id);
+        if (childProgress) v.run.parallel = childProgress;
         const waiting = pendingApproval(approvals, r.run.id);
         if (waiting) {
           v.run.approval = approvalView(waiting.request);
@@ -3950,6 +3965,7 @@ export function ChatApp({
     fileUrls,
     catalog,
     threadRuns,
+    parallel.views,
     approvals,
   ]);
   // "Try a stronger model" goes on the latest answer only: earlier ones would need branching.
@@ -4999,6 +5015,7 @@ export function ChatApp({
 
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
+      if (parallel.hasDialog) return;
       if (event.ctrlKey || event.metaKey) {
         const key = event.key.toLowerCase();
         if (key === "b") {
@@ -6545,6 +6562,13 @@ export function ChatApp({
                           openSource(chunkId).catch(report);
                         }}
                         onContinueRun={continueRunHere}
+                        {...(parallel.available
+                          ? {
+                              onReviewChild: parallel.review,
+                              onIntegrateChildren: parallel.integrate,
+                            }
+                          : {})}
+                        onStopChild={parallel.stopChild}
                         onStopRun={stopRun}
                         onApprove={(runId, answer) => {
                           pendingApproval(approvals, runId)?.answer(answer);
@@ -7495,6 +7519,7 @@ export function ChatApp({
           </form>
         </Modal>
         {codeReview.dialog}
+        {parallel.dialog}
         {research.dialogs}
         <Modal
           open={view === "settings" && log !== null}

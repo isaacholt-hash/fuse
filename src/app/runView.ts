@@ -9,6 +9,10 @@ import { KIND_LABEL, kindOf } from "@/agent/registry";
 import type { ApprovalView, RunChangeView, RunStepView, RunView } from "@/ui/types";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
+const reviewActionKind = (name: string) =>
+  name === "commit_reviewed_child" || name === "integrate_reviewed_children"
+    ? ("write" as const)
+    : kindOf(name);
 
 export function toolLabel(name: string, input: Record<string, unknown>): string {
   const path = str(input.path);
@@ -27,6 +31,10 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Read ${str(input.url)}`;
     case "run_skill_script":
       return `Ran skill script ${typeof input.path === "string" ? input.path : ""}`;
+    case "commit_reviewed_child":
+      return "Committed reviewed child changes";
+    case "integrate_reviewed_children":
+      return "Created an approved integration branch";
     case "delegate_code":
       return "Ran approved child Code tasks";
     case "run_python":
@@ -201,7 +209,7 @@ export function auditCsv(entries: AuditEntry[]): string {
     "run cost",
   ];
   const rows = entries.map((e) => {
-    const k = kindOf(e.tool);
+    const k = reviewActionKind(e.tool);
     return [
       new Date(e.at).toISOString(),
       e.project,
@@ -242,7 +250,7 @@ export function auditRow(e: AuditEntry): AuditRowView {
     project: e.project,
     model: e.model,
     action: toolLabel(e.tool, e.input),
-    kind: ((k) => (k ? KIND_LABEL[k] : ""))(kindOf(e.tool)),
+    kind: ((k) => (k ? KIND_LABEL[k] : ""))(reviewActionKind(e.tool)),
     flagged: e.flags.length ? `Flagged: ${e.flags.map((f) => f.why).join("; ")}` : "",
     allowed: e.approval ? ALLOWED[e.approval] : "—",
     result: firstLine(e.output) ?? "",

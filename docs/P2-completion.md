@@ -54,7 +54,7 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | CA-10 structured code review | [M16.1 build](milestones/M16-coding-completion.md): pinned local/GitHub source and evidence-checked findings; released owner acceptance in M19 |
 | CA-11 sandboxed commands | M8; complete, preserve |
 | CA-12 skills | [M16.2–3 build](milestones/M16-coding-completion.md): named, pinned packages and explicitly approved isolated Python scripts |
-| CA-14 parallel Code worktrees | [M16.4 execution build](milestones/M16-coding-completion.md): isolated owner-local children and combined cap; dedicated review/integration in M16.5 |
+| CA-14 parallel Code worktrees | [M16.4–5 build](milestones/M16-coding-completion.md): isolated owner-local children, combined cap, plans/progress and explicitly reviewed commits/integration; released owner acceptance in M19 |
 | CA-15 HULK background/handover | M10 and fresh live acceptance; complete |
 | WF-01–WF-08 Work in folders | M8/M9 recorded/live/PC evidence; complete, preserve |
 | VI-01 dictation | M13.1–3 |

@@ -1,3 +1,4 @@
+import { ParallelRuns } from "./ParallelRuns";
 import { money, number } from "./format";
 import { speechPrice } from "@/cost/duration";
 import { DictationControls } from "./Dictation";
@@ -461,6 +462,9 @@ export function Messages({
   onOpenFile,
   onOpenSource,
   onContinueRun,
+  onReviewChild,
+  onIntegrateChildren,
+  onStopChild,
   onStopRun,
   onUndoChange,
   onUndoRun,
@@ -480,6 +484,9 @@ export function Messages({
   /** CA-03, CA-04: answers what a run asked for ("always": don't ask again for this command). */
   onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
   /** M6: goes on with a paused or stopped coding run; `raise` adds to its cost cap first. */
+  onReviewChild?: (parentId: string, childId: string) => void;
+  onIntegrateChildren?: (parentId: string) => void;
+  onStopChild?: (childId: string) => void;
   onContinueRun?: (runId: string, raise: boolean) => void;
   /** CA-02: puts one file a run changed back as it was. */
   onUndoChange?: (changeId: string) => void;
@@ -758,6 +765,9 @@ export function Messages({
                         {...(onUndoRun ? { onUndoRun } : {})}
                         {...(onApprove ? { onApprove } : {})}
                         {...(onPreviewChange ? { onPreviewChange } : {})}
+                        {...(onReviewChild ? { onReviewChild } : {})}
+                        {...(onIntegrateChildren ? { onIntegrateChildren } : {})}
+                        {...(onStopChild ? { onStopChild } : {})}
                       />
                     )}
                     {message.reasoning && !message.run && (
@@ -2354,8 +2364,14 @@ function RunCard({
   onUndoRun,
   onApprove,
   onPreviewChange,
+  onReviewChild,
+  onIntegrateChildren,
+  onStopChild,
 }: {
   run: RunView;
+  onReviewChild?: (parentId: string, childId: string) => void;
+  onIntegrateChildren?: (parentId: string) => void;
+  onStopChild?: (childId: string) => void;
   busy: boolean;
   /** WF-05: opens a changed file in the side panel. */
   onPreviewChange?: (changeId: string) => void;
@@ -2445,6 +2461,28 @@ function RunCard({
           </Button>
         )}
       </div>
+      {run.parallel && (
+        <ParallelRuns
+          view={run.parallel}
+          readOnly={Boolean(run.readOnly)}
+          parentRunning={live}
+          {...(onReviewChild
+            ? {
+                onReview: (childId: string) => {
+                  onReviewChild(run.id, childId);
+                },
+              }
+            : {})}
+          {...(onIntegrateChildren
+            ? {
+                onIntegrate: () => {
+                  onIntegrateChildren(run.id);
+                },
+              }
+            : {})}
+          {...(onStopChild ? { onStop: onStopChild } : {})}
+        />
+      )}
       {(run.steps.length > 0 || run.streaming) && (
         <ol className="mt-2 space-y-1 text-[12px]">
           {run.steps.map((s, i) =>

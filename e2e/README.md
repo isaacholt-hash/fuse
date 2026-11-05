@@ -59,8 +59,14 @@ pnpm e2e
 ```
 
 
-M16 child execution: `bash scripts/parallel-web.sh` exercises the shared UI against a native
+M16 parallel Code: `pnpm parallel:bench` records native worktree/review security tests,
+shared accounting/UI tests and `bash scripts/parallel-web.sh`. The latter exercises the shared UI against a native
 throwaway server, real Git worktrees and a background owner with synthetic models. It checks
-denial, separate child approvals, caller disconnection, exact ledger counters and preserved
-parent files/commit. Capture artifacts live in `e2e/screenshots/parallel/`; no provider key or
-production service is used. Production bundle checks exclude the separate fixture entry.
+denial, separate child approvals, caller disconnection, exact ledger counters, child plans,
+explicit commit/integration approval, conflicting results, stale parents and recovery after
+an interrupted acknowledgement. Review creates no extra provider request; the original
+parent files, index and commit stay intact. Results live in
+`src-tauri/target/parallel-benchmark.json` with native/shared records alongside it; reviewed
+browser captures live in `e2e/screenshots/parallel/`. CI uploads these artifacts, and Windows
+runs the native worktree and shared review regressions. No provider key or production service
+is used. Production bundle checks exclude the separate fixture entry.
