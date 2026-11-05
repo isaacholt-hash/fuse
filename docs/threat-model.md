@@ -232,3 +232,16 @@ behavior require owner-operated released checks.
 - A compromised OS or keychain. If someone owns your account, they own FUSE's data.
 - Side channels, and physical attacks on a running machine.
 - Multi-user hosting. That is a P3 decision with its own security review (PL-03).
+
+## Staged run routing and bounded search (M14 step 1)
+
+Auto's planning and final synthesis requests respect the current project/provider policy
+and reserve their cost against the existing run cap. The final model receives recorded
+evidence as data and has no execution tools; a returned tool call is refused. A paused final
+stage resumes only on explicit Continue. The owner-local stage checkpoint is not replicated;
+opening synced history grants no execution. Search metadata is untrusted and bounded, with
+HTTP(S) URLs only and no embedded URL credentials. Provider-native hosted search has a finite
+per-request allowance, conservative token/tool reservations and unresolved billing when a
+counter is absent. Provider search can still see its submitted query and returned content;
+these bounds do not make external sources trustworthy. The dedicated restricted research
+executor and its public-page access are implemented separately in M14 step 2.

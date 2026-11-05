@@ -13,7 +13,7 @@ export interface Schedule {
   projectId: string;
   name: string;
   prompt: string;
-  kind: RunKind;
+  kind: Exclude<RunKind, "research">;
   mode: RunMode;
   provider: string;
   model: string;
@@ -101,7 +101,7 @@ interface Row {
   project_id: string;
   name: string;
   prompt: string;
-  kind: RunKind;
+  kind: Exclude<RunKind, "research">;
   mode: RunMode;
   provider: string;
   model: string;

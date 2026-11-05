@@ -589,7 +589,7 @@ async function streamAnswer(
             input.onReasoning?.(reasoning);
           } else if (ev.type === "tool_call") {
             calls.push(ev.call);
-          } else {
+          } else if (ev.type === "done") {
             done = ev;
           }
         }

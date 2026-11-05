@@ -4,7 +4,7 @@ import type { RunKind, RunMode } from "@/storage/runs";
 
 /** What a new task starts with: the project's kind, mode and model, and the usual cost cap. */
 export interface ScheduleDefaults {
-  kind: RunKind;
+  kind: Exclude<RunKind, "research">;
   mode: RunMode;
   model: { provider: string; id: string };
   capMicroUsd: number;

@@ -149,7 +149,7 @@
       "provider": "anthropic",
       "tool": "web_search",
       "usd_per_call": 0.01,
-      "verified_on": "2026-10-27",
+      "verified_on": "2026-11-05",
       "source_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
       "notes": "$10 per 1,000 searches plus tokens; failed searches aren't billed. Counted in usage.server_tool_use.web_search_requests."
     },
@@ -157,9 +157,9 @@
       "provider": "openai",
       "tool": "web_search",
       "usd_per_call": 0.01,
-      "verified_on": "2026-10-27",
+      "verified_on": "2026-11-05",
       "source_url": "https://developers.openai.com/api/docs/pricing",
-      "notes": "$10 per 1,000 calls (all models) plus search content tokens at model rates. No usage counter: count web_search_call items with action.type 'search'."
+      "notes": "$10 per 1,000 calls (all models) plus search content tokens at model rates. Use tool_usage.web_search.num_requests when reported. Legacy search item counts are estimates; missing counters leave billing unresolved."
     }
   ],
   "embedding_models": [

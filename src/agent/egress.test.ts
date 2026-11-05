@@ -144,7 +144,7 @@ test("Local only: a run sends nothing anywhere, and says why", async () => {
   const run = await go(deps({ summarizer: gpt }), claude, gpt);
   expect(sent).toEqual([]);
   expect((await getRun(db, t, run.id))?.note).toMatch(/Local only/);
-  expect(run.status).toBe("error");
+  expect(run.status).toBe("paused");
 });
 
 test("the loop: a blocked provider gets no turn", async () => {
@@ -154,11 +154,13 @@ test("the loop: a blocked provider gets no turn", async () => {
   expect(run.note).toMatch(/blocks Anthropic/);
 });
 
-test("the plan: a blocked planner isn't asked; the run goes on without a plan", async () => {
+test("the plan: a blocked planner pauses before any routine work", async () => {
   const { sent, deps, go } = await setup((db, id) => setEgressRule(db, t, id, "openai", false));
   const run = await go(deps(), claude, gpt);
   expect(sent.filter((s) => s.provider === "openai")).toEqual([]);
-  expect(run.status).toBe("done");
+  expect(run.status).toBe("paused");
+  expect(run.routingStage).toBe("plan");
+  expect(sent).toEqual([]);
   expect(run.plan).toBeNull();
 });
 

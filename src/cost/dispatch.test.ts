@@ -161,3 +161,96 @@ test("byte bounds include UTF-8 and cache-write rates; media falls back to full 
     ),
   ).toBeGreaterThan(requestBound(fixtureModel, [{ role: "user", content: "Hello" }], options));
 });
+
+test("hosted search reserves all bounded iterations, long-context cache writes and tool fees", () => {
+  const model = {
+    ...fixtureModel,
+    provider: "openai" as const,
+    contextWindow: 200000,
+    maxOutput: 1000,
+    price: { input: 1, output: 2, cacheWrite: 3 },
+    longContextPrice: { input: 2, output: 4, cacheWrite: 5, aboveInputTokens: 100000 },
+  };
+  const toolPrices = [
+    {
+      provider: "openai" as const,
+      tool: "web_search" as const,
+      usdPerCall: 0.01,
+      verifiedOn: "2026-11-05",
+      sourceUrl: "https://example.com",
+    },
+  ];
+  const bound = requestBound(
+    model,
+    [],
+    { webSearch: true, searchBounds: { maxUses: 2 }, maxOutputTokens: 1000 },
+    toolPrices,
+  );
+  expect(bound).toBe(1_952_000); // (128k * $5/M + 1k * $4/M) * 3 + two searches.
+  expect(() => requestBound(model, [], { webSearch: true })).toThrow("verified");
+  expect(() =>
+    requestBound({ ...model, provider: "local" }, [], { webSearch: true }, toolPrices),
+  ).toThrow("housekeeping");
+});
+
+test.each([true, false])(
+  "search receipt settles only reported tool costs; reported=%s",
+  async (reported) => {
+    const { deps, context, db, run } = await setup(100_000_000);
+    const adapter: ProviderAdapter = {
+      provider: "anthropic",
+      listModels: () => Promise.resolve([]),
+      async *streamChat(_messages, _model, options) {
+        expect(options).toMatchObject({ noRetry: true, searchBounds: { maxUses: 2 } });
+        await Promise.resolve();
+        yield {
+          type: "done",
+          usage: {
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            webSearchCalls: 2,
+          },
+          usageReported: true,
+          searchUsageReported: reported,
+          stopReason: "end_turn",
+          providerRequestId: "fixture",
+          attempts: 1,
+        };
+      },
+    };
+    const events = await read(
+      trackedChat(
+        deps,
+        adapter,
+        fixtureModel,
+        [],
+        { webSearch: true, searchBounds: { maxUses: 2 } },
+        context,
+      ),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "done", usageReported: reported });
+    const receipt = (await listRecentRequests(db, tenant))[0];
+    expect(receipt).toMatchObject({
+      billingState: reported ? "reported" : "unknown",
+      usage: { costMicroUsd: reported ? 20_000 : 0 },
+    });
+    expect((await runExposure(db, tenant, run.id)).held).toBe(
+      reported
+        ? 0
+        : requestBound(
+            fixtureModel,
+            [],
+            {
+              webSearch: true,
+              searchBounds: { maxUses: 2 },
+              maxOutputTokens: Math.min(fixtureModel.maxOutput, 4000),
+            },
+            defaultCatalog.toolPrices,
+          ),
+    );
+    expect((await getRun(db, tenant, run.id))?.spentMicroUsd).toBe(reported ? 20_000 : 0);
+  },
+);

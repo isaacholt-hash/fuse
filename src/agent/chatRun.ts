@@ -53,8 +53,20 @@ async function finishFromRun(deps: RunDeps, run: Run): Promise<void> {
   if (!run.messageId) return;
   const steps = await listSteps(deps.db, deps.tenant, run.id);
   const answer = runAnswer(steps);
+  const final = steps.findLast((s) => s.kind === "model");
+  const receipt = final?.requestId
+    ? (
+        await deps.db.select<{ provider: string; model: string }>(
+          "SELECT provider,model FROM request_log WHERE workspace_id=? AND id=?",
+          [deps.tenant.workspaceId, final.requestId],
+        )
+      )[0]
+    : undefined;
   await finishMessage(deps.db, deps.tenant, run.messageId, {
     content: answer,
+    ...(receipt
+      ? { provider: receipt.provider, model: receipt.model, requestId: final?.requestId ?? null }
+      : {}),
     status: run.status === "done" ? "complete" : run.status === "error" ? "error" : "stopped",
     usage: await runUsage(deps, run),
     errorCode: run.status === "done" ? null : run.status,
@@ -64,6 +76,8 @@ async function finishFromRun(deps: RunDeps, run: Run): Promise<void> {
 
 /** Saves the question, starts the run as its answer, and finishes the answer from it. */
 export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<Run> {
+  if (input.kind === "research")
+    throw new Error("Research requires its restricted execution engine.");
   const { db, tenant } = deps;
   const { path } = await listPath(db, tenant, input.threadId);
   const questionId = await addMessage(db, tenant, {

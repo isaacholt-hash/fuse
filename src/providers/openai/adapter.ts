@@ -4,6 +4,7 @@
 import { ProviderError, parseRetryAfter, transportError, type ProviderErrorKind } from "../errors";
 import { withRetry, type RetryOptions } from "../retry";
 import { readSse } from "../sse";
+import { searchUses, searchSources, reportedSearchCount, type SearchCall } from "../search";
 import {
   SCOPE_HEADER,
   scopeValue,
@@ -46,7 +47,7 @@ interface OpenAIErrorBody {
 }
 
 /** OpenAI's `input_tokens` includes cache reads and writes; ours counts only base-rate input. */
-/** Usage plus searches: OpenAI has no search counter, so count the web_search_call items. */
+/** Base token usage; hosted tool usage is reported separately on the response. */
 export function normaliseUsage(u: OpenAIUsage, webSearchCalls = 0): TokenUsage {
   const cached = u.input_tokens_details?.cached_tokens ?? 0;
   const written = u.input_tokens_details?.cache_write_tokens ?? 0;
@@ -198,9 +199,17 @@ export function buildRequestBody(
   // M10 step 22: a summary of the reasoning streams in (free), shown under the answer.
   body.reasoning = { ...(options.effort ? { effort: options.effort } : {}), summary: "auto" };
   const tools: Record<string, unknown>[] = (options.tools ?? []).map(openaiTool);
-  if (options.webSearch) {
-    // An empty approximate location stops OpenAI defaulting results to the US.
-    tools.push({ type: "web_search", user_location: { type: "approximate" } });
+  const uses = searchUses(options);
+  if (uses !== null) {
+    // Native actions (search/open/find) all share this finite provider-enforced allowance.
+    body.max_tool_calls = uses;
+    body.include = ["web_search_call.action.sources"];
+    tools.push({
+      type: "web_search",
+      user_location: { type: "approximate" },
+      search_context_size: "low",
+      return_token_budget: "default",
+    });
   }
   if (tools.length) body.tools = tools;
   // Never temperature/top_p: rejected on GPT-6 models unless reasoning effort is "none".
@@ -210,6 +219,7 @@ export function buildRequestBody(
 interface ResponseObject {
   usage?: OpenAIUsage | null;
   output?: { type?: string; action?: { type?: string } | null }[] | null;
+  tool_usage?: { web_search?: { num_requests?: number | null } | null } | null;
   incomplete_details?: { reason?: string } | null;
   error?: { code?: string; message?: string } | null;
 }
@@ -344,6 +354,35 @@ export function createOpenAIAdapter(deps: {
               const item = data.item as Record<string, unknown> | undefined;
               if (!item) break;
               items.push(item);
+              if (item.type === "web_search_call") {
+                const action =
+                  item.action && typeof item.action === "object"
+                    ? (item.action as Record<string, unknown>)
+                    : {};
+                const kind =
+                  action.type === "open_page" || action.type === "find_in_page"
+                    ? action.type
+                    : "search";
+                const query =
+                  typeof action.query === "string"
+                    ? action.query
+                    : Array.isArray(action.queries)
+                      ? (action.queries as unknown[])
+                          .filter((q): q is string => typeof q === "string")
+                          .join("; ")
+                      : null;
+                const source = searchSources(
+                  action.sources ?? (typeof action.url === "string" ? [{ url: action.url }] : []),
+                );
+                const call: SearchCall = {
+                  id: typeof item.id === "string" ? item.id : "",
+                  action: kind,
+                  query: query?.slice(0, 1000) ?? null,
+                  ...source,
+                  error: null,
+                };
+                yield { type: "search_call", call };
+              }
               if (item.type === "function_call") {
                 const args = typeof item.arguments === "string" ? item.arguments : "";
                 const call: ToolCall = {
@@ -410,15 +449,26 @@ export function createOpenAIAdapter(deps: {
         });
       }
       const usage = final.response.usage;
+      const searchCount = reportedSearchCount(final.response.tool_usage?.web_search?.num_requests);
+      const observedSearches = countSearches(final.response.output);
       yield {
         type: "done",
-        usage: normaliseUsage(usage ?? {}, countSearches(final.response.output)),
+        usage: normaliseUsage(usage ?? {}, searchCount ?? observedSearches),
+        ...(options.webSearch
+          ? {
+              searchUsageReported:
+                searchCount !== null ||
+                (Array.isArray(final.response.output) && observedSearches === 0),
+            }
+          : {}),
         usageReported: Boolean(usage),
         // OpenAI has no "tool_use" stop reason: calls in the output mean the loop goes on.
         stopReason: items.some((i) => i.type === "function_call") ? "tool_use" : final.stopReason,
         providerRequestId: requestId,
         attempts,
-        ...(options.tools?.length ? { turn: { provider: "openai" as const, model, items } } : {}),
+        ...(options.tools?.length || options.webSearch
+          ? { turn: { provider: "openai" as const, model, items } }
+          : {}),
       };
     },
   };

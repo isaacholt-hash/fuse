@@ -90,6 +90,13 @@ export function scriptedTurn(body: Body): Turn {
     const asked = /<user_message>\s*([^\n]+)/.exec(input.join("\n"))?.[1];
     return { text: (asked ?? "A chat").slice(0, 60) };
   }
+  if (system.includes("<run_synthesis>")) {
+    const content = body.messages.at(-1)?.content;
+    const raw =
+      typeof content === "string" ? content : (content ?? []).map((b) => b.text ?? "").join("");
+    const evidence = JSON.parse(raw) as { draftResult?: string };
+    return { text: evidence.draftResult ?? "No draft result." };
+  }
   const last = body.messages.at(-1);
   const result = last ? blocks(last.content).find((b) => b.type === "tool_result") : undefined;
   if (result) return { text: `Command result:\n\n${resultText(result)}` };

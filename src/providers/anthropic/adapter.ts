@@ -2,6 +2,7 @@
 import { ProviderError, parseRetryAfter, transportError, type ProviderErrorKind } from "../errors";
 import { withRetry, type RetryOptions } from "../retry";
 import { readSse } from "../sse";
+import { searchUses, searchSources, reportedSearchCount } from "../search";
 import {
   SCOPE_HEADER,
   scopeValue,
@@ -247,9 +248,14 @@ export function buildRequestBody(
   // Effort only; never `thinking` (Opus 5.5 rejects "disabled", Sonnet 5.5 too).
   if (options.effort) body.output_config = { effort: options.effort };
   const tools: Record<string, unknown>[] = anthropicTools(options.tools ?? []);
-  if (options.webSearch) {
-    // Basic version: ZDR-eligible and no code execution (docs/providers.md, M1).
-    tools.push({ type: "web_search_20250305", name: "web_search", max_uses: 5 });
+  const uses = searchUses(options);
+  if (uses !== null) {
+    // Basic direct search: no dynamically provisioned code execution or extra tool grants.
+    tools.push({
+      type: "web_search_20250305",
+      name: "web_search",
+      max_uses: uses,
+    });
   }
   // tool_choice stays auto: Opus 5.5 and Sonnet 5.5 reject forced tools (docs/providers.md, M6).
   if (tools.length) body.tools = tools;
@@ -357,6 +363,31 @@ export function createAnthropicAdapter(deps: {
                 yield { type: "status", status: "searching" };
               } else if (block?.type === "web_search_tool_result") {
                 yield { type: "status", status: null };
+                const previous = blocks.find(
+                  (b) => b?.type === "server_tool_use" && b.id === block.tool_use_id,
+                );
+                const input =
+                  previous?.input && typeof previous.input === "object"
+                    ? (previous.input as Record<string, unknown>)
+                    : {};
+                const source = searchSources(block.content);
+                const error =
+                  block.content &&
+                  typeof block.content === "object" &&
+                  !Array.isArray(block.content)
+                    ? (block.content as Record<string, unknown>)
+                    : null;
+                yield {
+                  type: "search_call",
+                  call: {
+                    id: typeof block.tool_use_id === "string" ? block.tool_use_id : "",
+                    action: "search",
+                    query: typeof input.query === "string" ? input.query.slice(0, 1000) : null,
+                    ...source,
+                    error:
+                      typeof error?.error_code === "string" ? error.error_code.slice(0, 100) : null,
+                  },
+                };
               } else if (block?.type === "text" && searched && wroteText) {
                 // Text written before a search ("I'll look that up.") stays its own paragraph.
                 yield { type: "text", text: "\n\n" };
@@ -410,6 +441,10 @@ export function createAnthropicAdapter(deps: {
             case "content_block_stop": {
               const i = data.index;
               const b = typeof i === "number" ? blocks[i] : undefined;
+              if (b?.type === "server_tool_use" && typeof i === "number") {
+                const raw = toolJson[i] ?? "";
+                b.input = raw ? (JSON.parse(raw) as Record<string, unknown>) : b.input;
+              }
               if (b?.type === "tool_use" && typeof i === "number") {
                 const raw = toolJson[i] ?? "";
                 b.input = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
@@ -443,10 +478,19 @@ export function createAnthropicAdapter(deps: {
         type: "done",
         usage: normaliseUsage(usage),
         usageReported,
+        ...(options.webSearch
+          ? {
+              searchUsageReported:
+                reportedSearchCount(usage.server_tool_use?.web_search_requests) !== null ||
+                !blocks.some(
+                  (b) => b?.type === "server_tool_use" || b?.type === "web_search_tool_result",
+                ),
+            }
+          : {}),
         stopReason,
         providerRequestId: requestId,
         attempts,
-        ...(options.tools?.length
+        ...(options.tools?.length || options.webSearch
           ? {
               turn: {
                 provider: "anthropic" as const,

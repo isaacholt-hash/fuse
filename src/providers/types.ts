@@ -1,5 +1,6 @@
 import type { ProviderId } from "@/catalog/catalog";
 import type { Usage } from "@/storage/usage";
+import type { SearchCall } from "./search";
 
 /**
  * Minimal fetch the adapters need. Injected: on desktop it's the Rust transport (which adds the
@@ -117,6 +118,8 @@ export interface ChatOptions {
   maxOutputTokens?: number;
   /** Let the model use the provider's web search tool (billed per search). */
   webSearch?: boolean;
+  /** A provider-enforced bound; the run also tracks its overall remaining search allowance. */
+  searchBounds?: { maxUses: number };
   /**
    * Reasoning effort (RT-08), the same five levels on both providers. Omitted = the model's
    * default (docs/providers.md, M2).
@@ -138,6 +141,8 @@ export interface StreamDone {
   usage: TokenUsage;
   /** False when the provider sent no usage at all (cost will show as unknown). */
   usageReported: boolean;
+  /** False when tool billing is unavailable, even if base model tokens were reported. */
+  searchUsageReported?: boolean;
   stopReason: string | null;
   providerRequestId: string | null;
   /** HTTP attempts made, 1 = no retries. */
@@ -154,6 +159,8 @@ export type StreamEvent =
   | { type: "status"; status: "searching" | null }
   /** A source the answer cites. */
   | { type: "citation"; url: string; title: string | null }
+  /** Completed native search/read action, including sources not cited in the final text. */
+  | { type: "search_call"; call: SearchCall }
   /** A complete tool call; the caller runs it and sends the result in the next request. */
   | { type: "tool_call"; call: ToolCall }
   | StreamDone;

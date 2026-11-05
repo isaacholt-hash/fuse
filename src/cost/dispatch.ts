@@ -1,5 +1,5 @@
 /** One bounded, accounted run request. Never retries a possibly billed dispatch. */
-import type { Catalog, CatalogModel } from "@/catalog/catalog";
+import type { Catalog, CatalogModel, ToolPrice } from "@/catalog/catalog";
 import { priceFor } from "@/catalog/catalog";
 import { ProviderError } from "@/providers/errors";
 import type {
@@ -22,39 +22,79 @@ import {
 import type { SqlDb } from "@/storage/sql";
 import { EMPTY_USAGE } from "@/storage/usage";
 import { cost, priceToMicro } from "./cost";
+import { searchUses, searchConfig, reportedSearchCount } from "@/providers/search";
 
 /** UTF-8 byte upper bound for text, with framing headroom; opaque media uses the full window. */
 export function requestBound(
   model: CatalogModel,
   messages: ChatMessage[],
   options: ChatOptions,
+  toolPrices: readonly ToolPrice[] = [],
 ): number {
-  if (model.provider === "local") return 0;
+  if (model.provider === "local") {
+    if (options.webSearch)
+      throw new Error("Local models are restricted to housekeeping and cannot search.");
+    return 0;
+  }
   const media = messages.some(
     (m) =>
       m.attachments?.some((a) => a.kind !== "text") || m.toolResults?.some((t) => t.images?.length),
   );
-  const input = media
-    ? model.contextWindow
-    : Math.min(
-        model.contextWindow,
-        new TextEncoder().encode(
-          JSON.stringify({ messages, system: options.system, tools: options.tools }),
-        ).length + 8192,
-      );
+  const uses = searchUses(options);
+  const fee = uses === null ? 0 : searchFee(model, toolPrices);
+  const input =
+    uses !== null
+      ? model.provider === "openai"
+        ? Math.min(model.contextWindow, searchConfig.providers.openai.context_tokens)
+        : model.contextWindow
+      : media
+        ? model.contextWindow
+        : Math.min(
+            model.contextWindow,
+            new TextEncoder().encode(
+              JSON.stringify({ messages, system: options.system, tools: options.tools }),
+            ).length + 8192,
+          );
   const output = Math.min(model.maxOutput, options.maxOutputTokens ?? model.maxOutput);
   const prices = [model.price, ...(model.longContextPrice ? [model.longContextPrice] : [])];
   const rateIn = Math.max(
     ...prices.flatMap((p) => [p.input, p.cachedInput ?? p.input, p.cacheWrite ?? p.input]),
   );
   const rateOut = Math.max(...prices.map((p) => p.output));
+  // Hosted search may run multiple inference iterations. Reserve a full context/output
+  // for each possible iteration, including separately billed cache writes and long context.
+  const iterations = BigInt((uses ?? 0) + 1);
   const value =
-    (BigInt(input) * BigInt(priceToMicro(rateIn)) +
-      BigInt(output) * BigInt(priceToMicro(rateOut)) +
+    ((BigInt(input) * BigInt(priceToMicro(rateIn)) +
+      BigInt(output) * BigInt(priceToMicro(rateOut))) *
+      iterations +
       999_999n) /
-    1_000_000n;
+      1_000_000n +
+    BigInt(uses ?? 0) * BigInt(fee);
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Request cost bound overflow.");
   return Number(value);
+}
+
+function searchFee(model: CatalogModel, prices: readonly ToolPrice[]): number {
+  const fee = prices.find((p) => p.provider === model.provider)?.usdPerCall;
+  if (
+    fee === undefined ||
+    !Number.isFinite(fee) ||
+    fee < 0 ||
+    !Number.isSafeInteger(priceToMicro(fee))
+  )
+    throw new Error("Search needs a verified per-call price before dispatch.");
+  return priceToMicro(fee);
+}
+
+function validCharge(value: number): number {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Invalid request cost.");
+  return value;
+}
+function searchCharge(model: CatalogModel, prices: readonly ToolPrice[], raw: unknown): number {
+  const count = reportedSearchCount(raw);
+  if (count === null) throw new Error("Invalid search usage.");
+  return validCharge(searchFee(model, prices) * count);
 }
 
 export const noBill = (e: ProviderError): boolean =>
@@ -79,8 +119,7 @@ export async function* trackedChat(
     maxOutputTokens: Math.min(options.maxOutputTokens ?? model.maxOutput, 4000),
     noRetry: true,
   };
-  if (bounded.webSearch) throw new Error("Search requests need an explicit tool-cost bound.");
-  const boundMicroUsd = requestBound(model, messages, bounded);
+  const boundMicroUsd = requestBound(model, messages, bounded, deps.catalog.toolPrices);
   if (
     !(await reserveRequest(deps.db, deps.tenant, {
       ...context,
@@ -125,18 +164,26 @@ export async function* trackedChat(
   } finally {
     let tokens = done?.usage;
     let reported = done?.usageReported === true;
+    let complete = reported && (!bounded.webSearch || done?.searchUsageReported === true);
     let charged = 0;
     try {
       if (reported && tokens) {
         const totalInput = tokens.inputTokens + tokens.cachedInputTokens + tokens.cacheWriteTokens;
         charged = cost({ ...EMPTY_USAGE, ...tokens }, priceFor(model, totalInput));
+        if (bounded.webSearch) {
+          const tools = searchCharge(model, deps.catalog.toolPrices, tokens.webSearchCalls);
+          if (done?.searchUsageReported === true) charged += tools;
+        }
+        charged = validCharge(charged);
       }
     } catch {
       tokens = undefined;
+      if (!Number.isSafeInteger(charged) || charged < 0) charged = 0;
       reported = false;
+      complete = false;
       failure = new ProviderError("stream", "Invalid provider usage; billing is unresolved.");
     }
-    const billingState = reported
+    const billingState = complete
       ? "reported"
       : failure && noBill(failure)
         ? "not_billed"
@@ -177,5 +224,9 @@ export async function* trackedChat(
     error.requestLogId = id;
     throw error;
   }
-  yield { ...done, requestLogId: id };
+  yield {
+    ...done,
+    usageReported: done.usageReported && (!bounded.webSearch || done.searchUsageReported === true),
+    requestLogId: id,
+  };
 }

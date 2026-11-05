@@ -153,8 +153,8 @@ Checked against the live docs on 2026-10-27 (Markdown copies of each page). Wher
 | Image tokens | `⌈w/28⌉ × ⌈h/28⌉`, 5.x models cap at long edge 2,576 px / 4,784 tokens | 32×32 patches × multiplier (1.2 on gpt-6-astra); `high` ≤2,500 patches | Estimate with these formulas before sending; the bill comes from `usage` |
 | PDF | `{type:"document", source:{type:"base64", media_type:"application/pdf", data}}`; ≤600 pages, 32 MB request; billed as page text (≈1.5–3k tokens/page) **plus** each page as an image | `{type:"input_file", filename, file_data:"data:application/pdf;base64,…"}`; ≤50 MB per request; text + page images; `detail:"auto"` means `high` on GPT-5.6+ | **Native PDF on both** |
 | Other documents | Plain text via `{type:"document", source:{type:"text", media_type:"text/plain", data}}`; **DOCX/XLSX not accepted** | DOCX, PPTX, XLSX, CSV, code accepted natively (text only; spreadsheets first 1,000 rows) | **Extract text locally for everything except PDF**, so the same history works on either provider after a model switch |
-| Web search tool | `{type:"web_search_20250305", name:"web_search", max_uses, user_location}` (basic version: ZDR-eligible, no code execution) | `{type:"web_search", search_context_size, user_location:{type:"approximate"}}` (`web_search_preview` is legacy) | **Per-message toggle; basic Anthropic version; send an approximate location on OpenAI or it defaults to the US** |
-| Search price | $10 / 1,000 searches + tokens; failed searches not billed; `usage.server_tool_use.web_search_requests` | $10 / 1,000 calls + search content tokens; **no usage counter**: count `web_search_call` items with `action.type == "search"` | In `data/models.json` → `tool_prices`; added to the answer's cost |
+| Web search tool | `{type:"web_search_20250305", name:"web_search", max_uses, user_location}` (basic version: ZDR-eligible, no code execution) | `{type:"web_search", search_context_size, user_location:{type:"approximate"}}` (`web_search_preview` is legacy); `max_tool_calls` bounds built-in actions | **Per-message toggle; basic Anthropic version; send an approximate location on OpenAI or it defaults to the US** |
+| Search price | $10 / 1,000 searches + tokens; failed searches not billed; `usage.server_tool_use.web_search_requests` | $10 / 1,000 calls + search content tokens; `tool_usage.web_search.num_requests` when reported; legacy search-item counts are estimates | In `data/models.json` → `tool_prices`; added to the answer's cost |
 | System prompt | top-level `system` (string or text blocks) | `instructions`, sent on every request (not carried between turns) | One effective instruction string per request, built by FUSE |
 
 ### Streaming shapes to handle
@@ -314,3 +314,23 @@ Sources:
 **Runtime (M7 step 4).** The FUSE executable, started with `--local-worker`, runs llama.cpp (`llama-cpp-2` 0.1.160, CPU only). The app (`src-tauri/src/local.rs`) talks to it over JSON lines on stdin and stdout, one request at a time. The commands are `local_generate`, which streams Text and then Done, `local_cancel`, `local_unload` and `local_status`. The worker is started with an empty environment, so it sees no keys. If it crashes or runs out of memory, the current request fails with a plain message and the next request starts a fresh worker. Prompts use Qwen3's ChatML with an empty `<think>` block (non-thinking), and the sampling settings are Qwen's recommended non-thinking ones with a fixed seed.
 
 **Images in tool results (M8 step 4, WF-03).** A `ToolResult` can carry `images` (base64). On Anthropic, the `tool_result` content becomes `[{type: "text"}, {type: "image", source: {type: "base64", media_type, data}}]`. On OpenAI, `function_call_output.output` becomes `[{type: "input_text"}, {type: "input_image", image_url: "data:…;base64,…"}]`. Without images, both stay plain strings as in M6. These shapes are covered by unit tests but not yet by recorded fixtures or the live APIs; `pnpm work:live` will check them.
+
+### M14 bounded search (verified 2026-11-05)
+
+`data/research.json` defines finite allowances: at most 12 search actions per request, with
+a default of five for ordinary Chat. Anthropic uses basic `web_search_20250305` with
+`max_uses`; dynamic filtering/code execution is not enabled. OpenAI uses `max_tool_calls`
+and includes complete action sources. Both adapters emit typed source metadata separately
+from citations. Invalid URLs, credentials in URLs and excessive source lists are filtered.
+
+Tracked research requests reserve the full possible search context and output for each
+allowed iteration, using the highest applicable input/cache-write and output rates, plus
+per-search fees. A missing hosted-search usage counter retains the reservation and marks
+billing unresolved; legacy inferred counts are never treated as actual tool spend. A
+complete response with no search actions reports zero searches. The cost catalog retains
+its dated fee sources: [OpenAI pricing](https://developers.openai.com/api/docs/pricing) and
+[Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing).
+
+Limits and counter references: [OpenAI search](https://developers.openai.com/api/docs/guides/tools-web-search),
+[Responses](https://developers.openai.com/api/reference/python/resources/responses/methods/create),
+[Anthropic search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool).

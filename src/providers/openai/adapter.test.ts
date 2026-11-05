@@ -342,8 +342,17 @@ describe("web search", () => {
     const { a, sent } = adapter([sse(SEARCH_STREAM)]);
     await collect(a.streamChat(HI, "gpt-6-luna", { webSearch: true }));
     expect((sent[0]?.body as { tools: unknown }).tools).toEqual([
-      { type: "web_search", user_location: { type: "approximate" } },
+      {
+        type: "web_search",
+        user_location: { type: "approximate" },
+        search_context_size: "low",
+        return_token_budget: "default",
+      },
     ]);
+    expect(sent[0]?.body).toMatchObject({
+      max_tool_calls: 5,
+      include: ["web_search_call.action.sources"],
+    });
   });
 
   test("status, citations, and only search actions are counted (not page opens)", async () => {
@@ -387,4 +396,90 @@ test("embeddings: one float vector per input, in order, with billed tokens", asy
     [0, 1],
   ]);
   expect(r).toMatchObject({ tokens: 7, providerRequestId: "req_emb", attempts: 1 });
+});
+
+test("bounded search emits normalized sources and uses the authoritative billable counter", async () => {
+  const stream = [
+    event({
+      type: "response.output_item.done",
+      item: {
+        type: "web_search_call",
+        id: "s1",
+        action: {
+          type: "search",
+          query: "fixture",
+          sources: [{ url: "https://example.com", title: "Source" }, { url: "javascript:bad" }],
+        },
+      },
+    }),
+    event({
+      type: "response.output_item.done",
+      item: {
+        type: "web_search_call",
+        id: "s2",
+        action: { type: "open_page", url: "https://example.com/page" },
+      },
+    }),
+    event({
+      type: "response.completed",
+      response: {
+        output: [{ type: "web_search_call", action: { type: "search" } }],
+        tool_usage: { web_search: { num_requests: 2 } },
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    }),
+  ].join("");
+  const { a, sent } = adapter([sse(stream)]);
+  const { events } = await collect(
+    a.streamChat(HI, "gpt-6.1-sol", { webSearch: true, searchBounds: { maxUses: 3 } }),
+  );
+  expect(sent[0]?.body).toMatchObject({
+    max_tool_calls: 3,
+    include: ["web_search_call.action.sources"],
+  });
+  expect(events.filter((e) => e.type === "search_call")).toEqual([
+    {
+      type: "search_call",
+      call: {
+        id: "s1",
+        action: "search",
+        query: "fixture",
+        sources: [{ url: "https://example.com/", title: "Source" }],
+        truncated: false,
+        error: null,
+      },
+    },
+    {
+      type: "search_call",
+      call: {
+        id: "s2",
+        action: "open_page",
+        query: null,
+        sources: [{ url: "https://example.com/page", title: null }],
+        truncated: false,
+        error: null,
+      },
+    },
+  ]);
+  expect(done(events)).toMatchObject({
+    usage: { webSearchCalls: 2 },
+    searchUsageReported: true,
+    turn: { provider: "openai" },
+  });
+});
+
+test("legacy search item counts are estimates rather than a resolved bill", async () => {
+  const { a } = adapter([
+    sse(
+      event({
+        type: "response.completed",
+        response: {
+          output: [{ type: "web_search_call", action: { type: "search" } }],
+          usage: { input_tokens: 10, output_tokens: 1 },
+        },
+      }),
+    ),
+  ]);
+  const { events } = await collect(a.streamChat(HI, "gpt-6.1-sol", { webSearch: true }));
+  expect(done(events)).toMatchObject({ usage: { webSearchCalls: 1 }, searchUsageReported: false });
 });

@@ -6,7 +6,7 @@ import type { ProviderAdapter, StreamEvent } from "@/providers/types";
 import type { RepoApi } from "@/repo/api";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { createProject, setProjectRepo, setProjectRunLimits } from "@/storage/projects";
-import { addRunWait, getRun, setRunStatus } from "@/storage/runs";
+import { addRunWait, createRun, getRun, setRunStatus } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { continueRun, DEFAULT_RUN_CAP_MICRO_USD, startRun, type RunDeps } from "./run";
 
@@ -191,12 +191,14 @@ test("a project's own cap and limits apply to its runs; FUSE's defaults otherwis
 
 test("Continue starts a new leg: its clock restarts and the time it waited is forgotten", async () => {
   const { db, deps, project } = await setup(brief);
-  const run = await startRun(deps, {
+  const run = await createRun(db, t, {
     projectId: project.id,
     threadId: null,
     messageId: null,
     task: "Say done",
-    model,
+    provider: model.provider,
+    model: model.id,
+    capMicroUsd: DEFAULT_RUN_CAP_MICRO_USD,
   });
   await setRunStatus(db, t, run.id, "stopped", "Stopped.");
   await addRunWait(db, t, run.id, 5_000);

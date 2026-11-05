@@ -10,7 +10,8 @@ export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
 export type RunMode = "plan" | "ask" | "auto_edit";
 
 /** M6 coding, or M8 work on documents (WF-01). */
-export type RunKind = "code" | "work";
+export type RunKind = "code" | "work" | "research";
+export type RunRoutingStage = "plan" | "work" | "synthesis" | "complete";
 
 export interface Run {
   id: string;
@@ -19,6 +20,7 @@ export interface Run {
   /** Null for a run in a chat outside a project (M8, WF-02). */
   projectId: string | null;
   kind: RunKind;
+  routingStage: RunRoutingStage;
   threadId: string | null;
   messageId: string | null;
   task: string;
@@ -93,6 +95,7 @@ interface RunRow {
   sync_read_only: number;
   project_id: string | null;
   kind: RunKind;
+  routing_stage: RunRoutingStage;
   thread_id: string | null;
   message_id: string | null;
   task: string;
@@ -138,6 +141,7 @@ const toRun = (r: RunRow): Run => ({
   ...(r.sync_read_only === 1 ? { readOnly: true } : {}),
   projectId: r.project_id,
   kind: r.kind,
+  routingStage: r.routing_stage,
   threadId: r.thread_id,
   messageId: r.message_id,
   task: r.task,
@@ -226,7 +230,7 @@ export async function createRun(
 
 export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run | null> {
   const rows = await db.select<RunRow>(
-    `SELECT id, project_id, kind, thread_id, message_id, task, mode, provider, model, status,
+    `SELECT id, project_id, kind, routing_stage, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
        updated_at, started_at, waited_ms,
        (sync_owner IS NOT NULL AND sync_owner != (SELECT device_id FROM sync_state WHERE workspace_id=runs.workspace_id)) AS sync_read_only
@@ -269,16 +273,29 @@ export async function setRunStatus(
   );
 }
 
+/** Owner-local stage checkpoint; portable history never carries execution coordination. */
+export async function setRunRoutingStage(
+  db: SqlDb,
+  tenant: Tenant,
+  id: string,
+  stage: RunRoutingStage,
+): Promise<void> {
+  await db.execute(
+    "UPDATE runs SET routing_stage=?,updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND status='running'",
+    [stage, Date.now(), tenant.workspaceId, tenant.userId, id],
+  );
+}
+
 export async function setRunPlan(
   db: SqlDb,
   tenant: Tenant,
   id: string,
-  plan: string,
+  plan: string | null,
   planner: string,
 ): Promise<void> {
   await db.execute(
-    "UPDATE runs SET plan = ?, planner = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
-    [plan, planner, Date.now(), tenant.workspaceId, id],
+    "UPDATE runs SET plan = ?, planner = ?, routing_stage = ?, updated_at = ? WHERE workspace_id = ? AND id = ?",
+    [plan, planner, plan === null ? "plan" : "work", Date.now(), tenant.workspaceId, id],
   );
 }
 
@@ -397,33 +414,64 @@ export async function addModelStep(
   db: SqlDb,
   tenant: Tenant,
   runId: string,
-  step: { text: string; native: NativeTurn | null; requestId: string; costMicroUsd: number },
+  step: {
+    text: string;
+    native: NativeTurn | null;
+    requestId: string;
+    costMicroUsd: number;
+    complete?: boolean;
+    nextStage?: "synthesis";
+  },
 ): Promise<void> {
   const now = Date.now();
-  await db.execute(
-    `INSERT INTO run_steps (id, workspace_id, user_id, run_id, seq, kind, text, native, request_id,
-       cost_micro_usd, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'model', ?, ?, ?, ?, ?, ?)`,
-    [
-      uuidv7(now),
-      tenant.workspaceId,
-      tenant.userId,
-      runId,
-      await nextSeq(db, tenant, runId),
-      step.text,
-      step.native ? JSON.stringify(step.native) : null,
-      step.requestId,
-      step.costMicroUsd,
-      now,
-      now,
-    ],
-  );
-  await db.execute(
-    `UPDATE runs SET spent_micro_usd = spent_micro_usd + ?, updated_at = ?
-     WHERE workspace_id = ? AND id = ?
-       AND NOT EXISTS (SELECT 1 FROM request_reservations WHERE workspace_id=? AND run_id=? AND request_id=?)`,
-    [step.costMicroUsd, now, tenant.workspaceId, runId, tenant.workspaceId, runId, step.requestId],
-  );
+  await db.batch([
+    {
+      sql: `INSERT INTO run_steps (id,workspace_id,user_id,run_id,seq,kind,text,native,request_id,cost_micro_usd,created_at,updated_at)
+        VALUES(?,?,?,?,?,'model',?,?,?,?,?,?)`,
+      params: [
+        uuidv7(now),
+        tenant.workspaceId,
+        tenant.userId,
+        runId,
+        await nextSeq(db, tenant, runId),
+        step.text,
+        step.native ? JSON.stringify(step.native) : null,
+        step.requestId,
+        step.costMicroUsd,
+        now,
+        now,
+      ],
+    },
+    {
+      sql: `UPDATE runs SET spent_micro_usd=spent_micro_usd+?,updated_at=? WHERE workspace_id=? AND id=?
+        AND NOT EXISTS(SELECT 1 FROM request_reservations WHERE workspace_id=? AND run_id=? AND request_id=?)`,
+      params: [
+        step.costMicroUsd,
+        now,
+        tenant.workspaceId,
+        runId,
+        tenant.workspaceId,
+        runId,
+        step.requestId,
+      ],
+    },
+    ...(step.nextStage
+      ? [
+          {
+            sql: "UPDATE runs SET routing_stage=?,updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND status='running'",
+            params: [step.nextStage, now, tenant.workspaceId, tenant.userId, runId],
+          },
+        ]
+      : []),
+    ...(step.complete
+      ? [
+          {
+            sql: "UPDATE runs SET routing_stage='complete',status='done',note=NULL,updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND status='running'",
+            params: [now, tenant.workspaceId, tenant.userId, runId],
+          },
+        ]
+      : []),
+  ]);
 }
 
 export async function addToolStep(
