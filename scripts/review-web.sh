@@ -2,6 +2,7 @@
 # Real shared UI/native Git capture/Node owner, isolated repository and synthetic model replies.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+source scripts/web-fixture-server.sh
 mkdir -p e2e/screenshots/review
 review_test_home="$(mktemp -d "${TMPDIR:-/tmp}/fuse-review-web-XXXXXX")"
 # A granted server folder must be under the service user's home, as in the normal web app.
@@ -15,13 +16,14 @@ printf 'export const ratio = (num, den) => num / (den - 1);\n' > "$review_test_r
 VITE_E2E_REVIEW_SEED=1 VITE_E2E_FOLDER="$review_test_repo" pnpm exec vite build --mode e2e --outDir src-tauri/target/review-web
 pnpm exec vite build --config vite.review-fixture.config.ts
 review_test_port="${FUSE_REVIEW_PORT:-4214}"
+fixture_server_port_free "$review_test_port"
 FUSE_SERVER_TEST=1 "${FUSE_SERVER_BIN:-src-tauri/target/debug/fuse-server}" \
   --port "$review_test_port" --home "$review_test_home" --ui src-tauri/target/review-web \
   --runner "$(pwd)/src-tauri/target/review-runner-fixture/review-fixture.mjs" --node "$(command -v node)" \
   --test-keys-in-memory > e2e/screenshots/review/server.log 2>&1 &
 review_test_pid=$!
-trap 'kill "$review_test_pid" 2>/dev/null || true' EXIT
-for _ in $(seq 1 60); do curl -sf "http://127.0.0.1:$review_test_port/api/auth/state" >/dev/null && break; sleep 0.5; done
+trap 'fixture_server_cleanup "$review_test_pid"' EXIT
+fixture_server_ready "$review_test_pid" "$review_test_port"
 FUSE_REVIEW_WEB_URL="http://127.0.0.1:$review_test_port/" pnpm exec vitest run --config e2e/vitest.config.ts e2e/review-web.e2e.ts
 
 python3 - "$review_test_repo" <<'VERIFY'

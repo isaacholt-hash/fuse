@@ -317,3 +317,13 @@ read-only package access, exclusion of another invocation's grant, denied writes
 processes and absence of unapproved environment names. This removes dependence on a system
 utility's parsing/startup assumptions while retaining and strengthening the isolation checks.
 Windows execution still requires a passing current-head CI result before merge.
+
+Current-head CI on `b052227` passed all twelve Windows sandbox tests (1.68 s), including the
+new direct-launch isolation probe, and both Windows clippy steps. Shared checks and the new
+script browser scenario passed. The later named-skills browser fixture exposed a test-server
+collision: review, script and library fixtures all used port 4214, while an earlier server was
+still exiting. Retained logs identify `Address already in use`; no product assertion is
+removed. The three fixtures now use distinct ports, reject occupied endpoints, check their
+own child during readiness and wait for bounded shutdown. Only each fixture's own PID is
+signalled; production services are untouched. The complete sequence and fresh CI are required
+before merging.
