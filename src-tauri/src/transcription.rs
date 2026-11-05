@@ -96,8 +96,6 @@ const BUDGET_ALLOWED: &str = "NOT EXISTS (
     FROM request_reservations h LEFT JOIN request_log l ON l.id=h.request_id AND l.workspace_id=h.workspace_id
     LEFT JOIN threads t ON t.id=h.thread_id AND t.workspace_id=h.workspace_id
     WHERE h.workspace_id=?2 AND h.user_id=?3 AND h.id!=?1 AND h.state IN ('held','dispatched','unknown')
-    AND h.created_at >= CASE b.period WHEN 'day' THEN unixepoch(?9/1000,'unixepoch','localtime','start of day','utc')*1000
-       ELSE unixepoch(?9/1000,'unixepoch','localtime','start of month','utc')*1000 END
     AND (b.project_id IS NULL OR CASE WHEN t.id IS NOT NULL THEN t.project_id ELSE h.project_id END=b.project_id)))";
 
 #[derive(Serialize)]
@@ -780,6 +778,22 @@ mod tests {
             0
         );
         cancel(&ctx, &held.id).await.unwrap();
+        // An older unknown dispatch from another surface still consumes exposure today.
+        sqlx::query("UPDATE request_reservations SET state='unknown',created_at=1 WHERE id=?")
+            .bind(&held.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        assert!(
+            prepare(&ctx, "global".into(), 1000, true, "desktop")
+                .await
+                .is_err()
+        );
+        sqlx::query("UPDATE request_reservations SET state='released' WHERE id=?")
+            .bind(&held.id)
+            .execute(&pool)
+            .await
+            .unwrap();
         sqlx::query("UPDATE budgets SET limit_micro_usd=100")
             .execute(&pool)
             .await

@@ -1,6 +1,11 @@
 {
   "version": "2026-11-05",
-  "limits": { "searches": 12, "sources": 24, "model_calls": 30, "wall_minutes": 30 },
+  "limits": {
+    "searches": 12,
+    "sources": 24,
+    "model_calls": 30,
+    "wall_minutes": 30
+  },
   "default_search_uses": 5,
   "max_source_url_chars": 4096,
   "max_source_title_chars": 512,
@@ -10,12 +15,26 @@
       "context_tokens": 128000,
       "verified_on": "2026-11-05",
       "source_url": "https://developers.openai.com/api/docs/guides/tools-web-search",
-      "limit_url": "https://developers.openai.com/api/reference/python/resources/responses/methods/create"
+      "limit_url": "https://developers.openai.com/api/reference/python/resources/responses/methods/create",
+      "cost_bound": "max_tool_calls"
     },
     "anthropic": {
       "tool": "web_search_20250305",
       "verified_on": "2026-11-05",
-      "source_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool"
+      "source_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool",
+      "cost_bound": null,
+      "limit_note": "max_uses bounds successful searches, not all server-side inference iterations; capped research search is unavailable until a conservative token-cost bound is documented."
     }
+  },
+  "execution": {
+    "max_page_chars": 32000,
+    "max_query_chars": 500,
+    "max_model_chars": 64000,
+    "max_selected_context_chars": 64000,
+    "max_report_chars": 128000,
+    "request_timeout_ms": 90000,
+    "checkpoint_interval_ms": 200,
+    "max_claim_quote_chars": 500,
+    "max_context_items": 64
   }
 }

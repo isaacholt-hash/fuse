@@ -1,0 +1,26 @@
+import { EMPTY_SELECTION, type ResearchState } from "../types";
+
+export const fixtureState = (): ResearchState => ({
+  version: 1,
+  requestFingerprint: "fixture",
+  stage: "plan",
+  selection: structuredClone(EMPTY_SELECTION),
+  worker: { provider: "openai", id: "fixture" },
+  best: { provider: "openai", id: "best" },
+  location: "desktop",
+  pinned: false,
+  queries: [],
+  queryIndex: 0,
+  sources: [],
+  findings: [],
+  modelCalls: 0,
+  searches: 0,
+  reads: 0,
+  elapsedMs: 0,
+  contextFingerprint: null,
+  report: null,
+  markdown: null,
+  partialReason: null,
+  incompleteReason: null,
+  warnings: [],
+});

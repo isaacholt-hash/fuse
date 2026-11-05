@@ -350,3 +350,27 @@ native-owned transcription. Delete-all already covers the table.
 Microphone streams, sample buffers, WAV bytes and returned transcript text are transient RAM.
 There is no audio file-store, cache, database, backup, export or sync representation. Browser
 microphone permissions and OS default-input selection remain on their respective machine.
+
+
+### M14 research checkpoints (schema 65)
+
+`research_state` stores the execution owner's lease, control requests and versioned checkpoint
+JSON, including explicit context selection/fingerprint, stage, model references, collected
+source metadata/excerpts, cumulative work/time limits and report state. `research_operations`
+journals each stable attempt ID and sequence before dispatch. Cursor, completed operation and
+portable run step commit in one database batch. A receipt can survive an interrupted
+checkpoint; continuation skips its paid operation instead of guessing it was free.
+
+Both tables are machine-specific in `data/sync.json`, absent from portable JSON exports,
+deleted before runs by global deletion and cascade when their run is removed. Encrypted
+database backups retain them under the existing retention policy. Restoring or syncing data
+never executes research; continuation is explicit on the execution owner. Completed evidence
+uses existing `run_steps`, messages and Markdown artifact versions and their existing privacy,
+sync, deletion and export rules. Public-page reads receive locally regenerated transport
+checks, never grants copied from a source or report.
+
+Shared TypeScript dispatch now reserves global/project budgets atomically as well as the run
+cap. Actual costs plus remaining holds count once, including native transcription holds;
+unknown exposure remains until reconciled, across calendar boundaries. Dispatch rechecks
+budgets, current Chat/project attribution and research controls. Temporary owner-authorized
+budget overrides retain their existing expiry semantics; the run cap still applies.

@@ -131,7 +131,7 @@ instructions and the remaining acceptance checklist. M19 records the final evide
 - M13 accounting: [PR #288](https://github.com/isaacholt-hash/fuse/pull/288), release
   [v0.1.213](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.213).
 - M13 capture/transport: [PR #290](https://github.com/isaacholt-hash/fuse/pull/290), all five gates
-  green before merge; released as [v0.1.214](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.214). M13 controls finish in their own step-3 PR; [the milestone](milestones/M13-dictation.md)
+  green before merge; released as [v0.1.214](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.214). M13 controls shipped in the step-3 PR below; [the milestone](milestones/M13-dictation.md)
   records exact checks/screenshots and [dictation setup](dictation.md) keeps real acceptance pending.
 
 - M13 controls: [PR #291](https://github.com/isaacholt-hash/fuse/pull/291),
@@ -139,6 +139,14 @@ instructions and the remaining acceptance checklist. M19 records the final evide
   `cdb68ea95e567c133a1ba93039d72fa2ce39aa44`. Five CI gates and signed release publication
   verified; native, Windows and browser fixtures passed. Owner microphone/provider acceptance
   remains pending, as recorded in [M13](milestones/M13-dictation.md).
+
+- M14 routing/search interfaces: [PR #294](https://github.com/isaacholt-hash/fuse/pull/294),
+  [v0.1.216](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.216), source
+  `5bd1070aa94f8f76f590967fac86522b8f3bd286`. All five current-head gates passed in
+  [CI 41973164393](https://github.com/isaacholt-hash/fuse/actions/runs/41973164393);
+  [release 41974374835](https://github.com/isaacholt-hash/fuse/actions/runs/41974374835)
+  published signed Linux/Windows installers and seven updater entries on 2026-11-05 at
+  05:38:49 UTC. Research engine and Chat entry follow in their own numbered steps.
 
 ## Roadmap verification
 

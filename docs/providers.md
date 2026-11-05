@@ -323,8 +323,9 @@ a default of five for ordinary Chat. Anthropic uses basic `web_search_20250305` 
 and includes complete action sources. Both adapters emit typed source metadata separately
 from citations. Invalid URLs, credentials in URLs and excessive source lists are filtered.
 
-Tracked research requests reserve the full possible search context and output for each
-allowed iteration, using the highest applicable input/cache-write and output rates, plus
+Tracked requests fail closed unless the hosted-search inference cost can be bounded. OpenAI
+uses its enforced `max_tool_calls`, reserving full search context and output for every
+possible iteration, using the highest applicable input/cache-write and output rates, plus
 per-search fees. A missing hosted-search usage counter retains the reservation and marks
 billing unresolved; legacy inferred counts are never treated as actual tool spend. A
 complete response with no search actions reports zero searches. The cost catalog retains
@@ -334,3 +335,15 @@ its dated fee sources: [OpenAI pricing](https://developers.openai.com/api/docs/p
 Limits and counter references: [OpenAI search](https://developers.openai.com/api/docs/guides/tools-web-search),
 [Responses](https://developers.openai.com/api/reference/python/resources/responses/methods/create),
 [Anthropic search](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool).
+
+
+The M14 engine does not offer Anthropic as the research search worker yet. Its documented
+`max_uses` caps successful searches, while extra attempts can return `max_uses_exceeded`
+inside a successful HTTP response and the server may continue its inference loop. The
+[server-tool documentation](https://platform.claude.com/docs/en/agents-and-tools/tool-use/server-tools)
+does not specify a hard iteration count from which FUSE can compute a conservative bound.
+An advisory task budget is not a hard billing limit. Both adapters retain their typed search
+interfaces and fixtures; ordinary Chat search retains its existing behavior. Accounted run
+search fails before dispatch for an unsupported bound. Anthropic remains eligible for
+non-search Best planning, synthesis and source-support review. Explicit pins are never
+silently replaced: an unsupported pinned search model explains why it cannot start research.

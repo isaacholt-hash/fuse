@@ -22,7 +22,7 @@ FK-12, RT-14, AG-06, AG-05; bounded search and CO-08.
 ## Steps
 
 - [x] **1. Routing and search interfaces.** Complete Best planning/final synthesis, Balanced-or-floor routine work and Cheap housekeeping across runs, respecting explicit pins. Add bounded provider-native search options, conservative request bounds and a research run kind; keep research in Chat.
-- [ ] **2. Research engine.** Restricted read-only tool profile, execution-owner checkpoints, collected sources and a versioned cited Markdown report. Enforce cap and work limits, validate source links, flag unsupported claims and retain partial results. No commands, repository writes or additional MCP access.
+- [x] **2. Research engine.** Restricted read-only tool profile, execution-owner checkpoints, collected sources and a versioned cited Markdown report. Enforce cap and work limits, validate source links, flag unsupported claims and retain partial results. No commands, repository writes or additional MCP access.
 - [ ] **3. Chat controls.** Research action without a linked-folder requirement, scope/estimate/location preview and an unfilled cap field required to start. HULK preferred when permitted, explicit desktop option, progress/pause/stop and explicit continuation. Portable finished reports/history, owner-only active coordination.
 - [ ] **4. Benchmark and release.** Deterministic recorded research scenarios, both provider adapters, desktop/web click-through, HULK continuation after caller disconnects, interrupted desktop behavior, reviewed screenshots and setup documentation.
 
@@ -108,7 +108,7 @@ passed 3/3 after adding the final synthesis turn to their fixtures. Final answer
 their producing model's attribution and the run's combined actual spend. Missing final
 usage remains unresolved and is never displayed as a known step charge.
 
-Final `VITEST_MAX_WORKERS=2 pnpm check` passed: 177 test files / 1,039 tests passed,
+Final `VITEST_MAX_WORKERS=2 pnpm check` passed: 177 test files / 1,041 tests passed,
 with 13 live/manual tests skipped (eight files). Lint, typecheck, formatting and secret scan
 passed on the completed step. Current-head Windows/CI and release evidence belongs to the
 step PR and the next delivery record; no skipped owner acceptance is presented as passed.
@@ -116,3 +116,70 @@ step PR and the next delivery record; no skipped owner acceptance is presented a
 The Code runner additionally rejects a research start before handover restore, cloning or
 folder grants, and rejects research continuation before changing its execution state. The
 focused runner/answer suite passed 12/12, including both isolation scenarios.
+
+
+Step 1 merged as [PR #294](https://github.com/isaacholt-hash/fuse/pull/294), current-head
+`e99de887f477736a515562216d837512bc1d34d8`, all five gates green in
+[CI 41973164393](https://github.com/isaacholt-hash/fuse/actions/runs/41973164393).
+Windows compatibility screenshots were reviewed from artifact 13391191242; HULK passed 5/5,
+sync passed 16/16 on schema 64 in 37,666 ms in CI. The normal signed release
+[v0.1.216](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.216) published at
+2026-11-05 05:38:49 UTC from merge `5bd1070aa94f8f76f590967fac86522b8f3bd286`;
+[release workflow](https://github.com/isaacholt-hash/fuse/actions/runs/41974374835) and all
+seven signed updater entries were verified.
+
+Step 2 implements a restricted executor and schema-65 owner-local checkpoint/attempt journals.
+Only native search and collected public pages are available; the shared context assembler
+receives explicit record/instruction selections and no repo/MCP dependency. Provider policy,
+selected-content changes, pause/stop, ownership, budgets and cumulative limits are checked
+before dispatch. Duplicate start IDs observe one Chat branch. Cursor, operation result and
+portable evidence step commit together; a lost commit acknowledgement reloads SQLite's cursor.
+A billed/ambiguous operation whose result was lost is never replayed automatically. Explicit
+continuation can retry a proven unsent operation, while completed requests remain charged once.
+
+Best plans and synthesizes, the routed worker searches, and a separate Best support review
+checks factual claims. FUSE requires collected source IDs and retained passages; unsupported,
+missing or duplicate reviews remain visibly unverified. Versioned Markdown reports preserve
+source/query/time provenance, limitations and disagreements. Work/time/size limits publish
+partial results. A pure-text headless HTML reader supports HULK without executing page code.
+Global/project budget holds now serialize with run-cap reservations and native speech holds.
+
+Provider-bound correction: only OpenAI currently documents the enforced hosted-search action
+bound needed for conservative inference accounting. Anthropic `max_uses` caps successful
+searches but not a documented number of internal inference rounds, so accounted run search
+fails before dispatch. Anthropic remains eligible for non-search planning/synthesis/review;
+both adapters retain their typed search interfaces. See [the verified details](../providers.md).
+This follows the approved rule to offer only conservatively bounded research combinations.
+
+No Research start UI or runner queue is enabled by step 2. Those controls ship in step 3;
+caller-disconnection/background integration and the recorded benchmark follow in step 4.
+No provider call, deployment or live acceptance is part of these fixture checks.
+
+Step-2 local verification: default/server clippy passed with warnings denied, as did all
+169 default and 183 server tests. The preserved HULK benchmark passed 5/5. Encrypted sync
+passed all 16 scenarios on schema 65, two independent replicas and a throwaway HULK, in
+58,406 ms: [recorded JSON](../screenshots/m14/engine-sync-benchmark.json). Production
+`pnpm build:web` and Chromium click-through passed 10/10; the separate synthetic dictation
+scenario passed 1/1. `pnpm build:runner` passed. These fixtures made no live provider call.
+
+Reviewed native startup in [light](../screenshots/m14/engine-native-light.png) and
+[dark](../screenshots/m14/engine-native-dark.png), using fresh throwaway data/keyrings.
+The 9.9.9 updater banner is fixture data. Production web [light](../screenshots/m14/engine-web-light.png)
+and [dark](../screenshots/m14/engine-web-dark.png) screenshots were reviewed. The previous
+step's reviewed Windows [Code](../screenshots/m14/routing-windows-code.png) and
+[files](../screenshots/m14/routing-windows-files.png) evidence is retained here as well;
+this step still requires its own five current-head CI gates before merge.
+
+The final focused research/economics suite passed 30/30. Tests cover explicit-context
+exclusion, restrictive policy changes, hostile pages, quote/citation validation, duplicate
+starts, caps and shared budget holds, both early and between-operation controls, stale-owner
+writes, lost commit acknowledgements and interrupted known-billed work, cumulative limits,
+source/report size bounds, migration preservation and local journal classification/deletion.
+The existing economics fixture now has a 30-second integration timeout for its three full
+SQLite-backed workloads; all cost/quality assertions and the workload are unchanged.
+
+Final `VITEST_MAX_WORKERS=2 pnpm check` passed: 183 test files / 1,074 tests passed,
+with 13 live/manual tests skipped across eight files. Lint, typecheck, formatting and the
+secret scan passed. The initial full-check attempt was stopped after the economics fixture
+exceeded its short default timeout; the final complete run passed after the scoped timeout
+adjustment and control-race fixes. Owner-operated provider/research acceptance stays pending.

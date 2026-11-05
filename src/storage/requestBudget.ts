@@ -19,20 +19,48 @@ const pending = `(SELECT COALESCE(SUM(MAX(h.bound_micro_usd-COALESCE(l.cost_micr
  FROM request_reservations h LEFT JOIN request_log l ON l.id=h.request_id AND l.workspace_id=h.workspace_id
  WHERE h.workspace_id=r.workspace_id AND h.run_id=r.id AND h.state IN ('held','dispatched','unknown'))`;
 
+/** Both the actual ledger and unspent holds count. The statement evaluates atomically with its write.
+ * Old unresolved holds remain exposure across period boundaries: reconnect never assumes a free retry.
+ */
+function budgetAllowed(row: string, now: number, additional: string): string {
+  const project = `CASE WHEN EXISTS(SELECT 1 FROM threads t WHERE t.workspace_id=${row}.workspace_id AND t.id=${row}.thread_id)
+    THEN (SELECT project_id FROM threads t WHERE t.workspace_id=${row}.workspace_id AND t.id=${row}.thread_id)
+    ELSE ${row}.project_id END`;
+  return `NOT EXISTS(SELECT 1 FROM budgets b WHERE b.workspace_id=${row}.workspace_id AND b.user_id=${row}.user_id
+    AND (b.project_id IS NULL OR b.project_id=(${project})) AND COALESCE(b.allow_until,0)<=${String(now)}
+    AND b.limit_micro_usd < ${additional}
+      +(SELECT COALESCE(SUM(l.cost_micro_usd),0) FROM request_log l LEFT JOIN threads t ON t.id=l.thread_id AND t.workspace_id=l.workspace_id
+        WHERE l.workspace_id=b.workspace_id AND l.user_id=b.user_id
+        AND l.created_at >= CASE b.period WHEN 'day' THEN unixepoch(${String(now)}/1000,'unixepoch','localtime','start of day','utc')*1000
+          ELSE unixepoch(${String(now)}/1000,'unixepoch','localtime','start of month','utc')*1000 END
+        AND (b.project_id IS NULL OR CASE WHEN t.id IS NOT NULL THEN t.project_id ELSE l.project_id END=b.project_id))
+      +(SELECT COALESCE(SUM(MAX(h.bound_micro_usd-COALESCE(l.cost_micro_usd,0),0)),0)
+        FROM request_reservations h LEFT JOIN request_log l ON l.id=h.request_id AND l.workspace_id=h.workspace_id
+        LEFT JOIN threads t ON t.id=h.thread_id AND t.workspace_id=h.workspace_id
+        WHERE h.workspace_id=b.workspace_id AND h.user_id=b.user_id AND h.state IN ('held','dispatched','unknown')
+        AND (b.project_id IS NULL OR CASE WHEN t.id IS NOT NULL THEN t.project_id ELSE h.project_id END=b.project_id)))`;
+}
+
 export async function reserveRequest(db: SqlDb, tenant: Tenant, r: Reservation): Promise<boolean> {
   if (!Number.isSafeInteger(r.boundMicroUsd) || r.boundMicroUsd < 0)
     throw new Error("A request needs a non-negative integer cost bound.");
   const now = Date.now();
   const result = await db.execute(
-    `INSERT INTO request_reservations(id,workspace_id,user_id,run_id,provider,model,purpose,
+    `WITH candidate AS (SELECT ? AS workspace_id,? AS user_id,? AS project_id,? AS thread_id,? AS bound_micro_usd)
+     INSERT INTO request_reservations(id,workspace_id,user_id,run_id,provider,model,purpose,
       thread_id,message_id,project_id,bound_micro_usd,state,created_at,updated_at)
-     SELECT ?,?,?,?,?,?,?,?,?,?,?,'held',?,?
-     WHERE (? IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.workspace_id=? AND r.user_id=?
+     SELECT ?,?,?,?,?,?,?,?,?,?,?,'held',?,? FROM candidate c
+     WHERE ${budgetAllowed("c", now, "c.bound_micro_usd")} AND (? IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.workspace_id=? AND r.user_id=?
        AND r.id=? AND r.status='running'
        AND (r.sync_owner IS NULL OR r.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=r.workspace_id))
        AND r.cap_micro_usd-r.spent_micro_usd-${pending}>=?))
      ON CONFLICT(id) DO NOTHING`,
     [
+      tenant.workspaceId,
+      tenant.userId,
+      r.projectId ?? null,
+      r.threadId,
+      r.boundMicroUsd,
       r.id,
       tenant.workspaceId,
       tenant.userId,
@@ -58,12 +86,15 @@ export async function reserveRequest(db: SqlDb, tenant: Tenant, r: Reservation):
 
 /** The conditional transition is the single dispatch claim, including duplicate UI delivery. */
 export async function dispatchRequest(db: SqlDb, tenant: Tenant, id: string): Promise<boolean> {
+  const now = Date.now();
   const result = await db.execute(
     `UPDATE request_reservations SET state='dispatched',updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND state='held'
+      AND ${budgetAllowed("request_reservations", now, "0")}
       AND (run_id IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.workspace_id=request_reservations.workspace_id
         AND r.id=request_reservations.run_id AND r.status='running' AND r.spent_micro_usd+${pending}<=r.cap_micro_usd
+        AND NOT EXISTS(SELECT 1 FROM research_state c WHERE c.workspace_id=r.workspace_id AND c.run_id=r.id AND (c.pause_requested=1 OR c.stop_requested=1))
         AND (r.sync_owner IS NULL OR r.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=r.workspace_id))))`,
-    [Date.now(), tenant.workspaceId, tenant.userId, id],
+    [now, tenant.workspaceId, tenant.userId, id],
   );
   return result.rowsAffected === 1;
 }

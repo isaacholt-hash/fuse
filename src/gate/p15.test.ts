@@ -35,6 +35,10 @@ import { createThread } from "@/storage/threads";
 import { spentSince } from "@/storage/budgets";
 import { cloudCallsAvoidedSince, listQuestionTasks } from "@/storage/usageReport";
 
+// Three full SQLite-backed workloads exercise accounting and routing, not a latency target.
+// Leave room for the enlarged migrated schema and concurrent CI compilation.
+vi.setConfig({ testTimeout: 30_000 });
+
 const t = DEFAULT_TENANT;
 const ROOT = join(import.meta.dirname, "..", "..");
 const parsed = parseGoldenSet(
