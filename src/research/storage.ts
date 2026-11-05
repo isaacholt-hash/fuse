@@ -4,6 +4,44 @@ import { uuidv7 } from "@/storage/ids";
 import type { SqlDb, SqlStatement } from "@/storage/sql";
 import type { RunStatus } from "@/storage/runs";
 import type { ResearchOperation, ResearchState } from "./types";
+import { finishMessageStatement, type MessageResult } from "@/storage/messages";
+import { getThread } from "@/storage/threads";
+import type { RouteMode } from "@/routing/route";
+
+/** One reviewed setup keeps this identity even if its creation acknowledgement is lost. */
+export async function ensureResearchChat(
+  deps: ResearchDb,
+  input: {
+    id: string;
+    projectId: string | null;
+    task: string;
+    instructions: string;
+    mode: RouteMode;
+  },
+): Promise<string> {
+  const now = Date.now();
+  await deps.db.execute(
+    `INSERT INTO threads(id,workspace_id,user_id,title,title_source,kind,project_id,incognito,memory_injection,instructions,pinned_tier,pinned_provider,pinned_model,created_at,updated_at)
+    VALUES(?,?,?,?,'auto','chat',?,0,'on',?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING`,
+    [
+      input.id,
+      deps.tenant.workspaceId,
+      deps.tenant.userId,
+      `Research: ${input.task.slice(0, 80)}`,
+      input.projectId,
+      input.instructions.trim(),
+      input.mode.kind === "tier" ? input.mode.tier : null,
+      input.mode.kind === "model" ? input.mode.provider : null,
+      input.mode.kind === "model" ? input.mode.id : null,
+      now,
+      now,
+    ],
+  );
+  const thread = await getThread(deps.db, deps.tenant, input.id);
+  if (!thread || thread.kind !== "chat" || thread.projectId !== input.projectId || thread.incognito)
+    throw new Error("The reviewed Research Chat is unavailable or changed.");
+  return thread.id;
+}
 
 export interface ResearchDb {
   db: SqlDb;
@@ -266,10 +304,71 @@ export async function park(
   state: ResearchState,
   status: Exclude<RunStatus, "running">,
   note: string | null,
+  publication?: {
+    messageId: string;
+    message: MessageResult;
+    artifact?: { threadId: string; key: string; content: string };
+  },
 ): Promise<void> {
   const now = Date.now();
+  const writes: SqlStatement[] = [];
+  if (publication?.artifact) {
+    const { threadId, key, content } = publication.artifact;
+    const { workspaceId: ws, userId: user } = deps.tenant;
+    writes.push(
+      {
+        sql: `INSERT INTO artifacts(id,workspace_id,user_id,thread_id,key,title,type,language,created_at,updated_at)
+      SELECT ?,?,?,?,?,'Research report','markdown','',?,? WHERE ${owner}
+      ON CONFLICT(workspace_id,thread_id,key) DO UPDATE SET title='Research report',type='markdown',language='',deleted_at=NULL,updated_at=excluded.updated_at WHERE ${owner}`,
+        params: [
+          uuidv7(now),
+          ws,
+          user,
+          threadId,
+          key,
+          now,
+          now,
+          ...params(deps, runId, lease),
+          ...params(deps, runId, lease),
+        ],
+      },
+      {
+        sql: `INSERT INTO artifact_versions(id,workspace_id,user_id,artifact_id,version,content,source,message_id,created_at,updated_at)
+      SELECT ?,?,?,a.id,COALESCE((SELECT MAX(version) FROM artifact_versions WHERE artifact_id=a.id),0)+1,?,'model',?,?,?
+      FROM artifacts a WHERE a.workspace_id=? AND a.user_id=? AND a.thread_id=? AND a.key=? AND ${owner}
+      AND (SELECT content FROM artifact_versions WHERE artifact_id=a.id ORDER BY version DESC,id DESC LIMIT 1) IS NOT ?`,
+        params: [
+          uuidv7(now),
+          ws,
+          user,
+          content,
+          publication.messageId,
+          now,
+          now,
+          ws,
+          user,
+          threadId,
+          key,
+          ...params(deps, runId, lease),
+          content,
+        ],
+      },
+    );
+  }
+  if (publication) {
+    const statement = finishMessageStatement(
+      deps.tenant,
+      publication.messageId,
+      publication.message,
+    );
+    writes.push({
+      sql: `${statement.sql} AND ${owner}`,
+      params: [...(statement.params ?? []), ...params(deps, runId, lease)],
+    });
+  }
   const result = await deps.db.batch([
     saveStatement(deps, runId, lease, state),
+    ...writes,
     {
       sql: `UPDATE runs SET status=?,note=?,routing_stage=?,updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND ${owner}`,
       params: [
@@ -288,7 +387,8 @@ export async function park(
       ],
     },
     {
-      sql: "UPDATE research_state SET lease=NULL,updated_at=? WHERE workspace_id=? AND user_id=? AND run_id=? AND lease=?",
+      // changes() refers to the preceding top-level run update, excluding its trigger writes.
+      sql: "UPDATE research_state SET lease=NULL,updated_at=? WHERE workspace_id=? AND user_id=? AND run_id=? AND lease=? AND changes()=1",
       params: [now, ...params(deps, runId, lease)],
     },
   ]);

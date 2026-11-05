@@ -4,6 +4,8 @@ import { DEFAULT_TENANT as tenant } from "@/storage/defaults";
 import { createRun, getRun, setRunStatus } from "@/storage/runs";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { fixtureState } from "./testing/fixtures";
+import { createThread } from "@/storage/threads";
+import { addMessage, listMessages } from "@/storage/messages";
 import {
   beginOperation,
   checkpoint,
@@ -189,4 +191,30 @@ test("a stale owner cannot park over a status changed by the current owner", asy
     note: "Current owner",
   });
   expect((await checkpoint(deps, run.id)).state.modelCalls).toBe(0);
+});
+
+test("a stale publication cannot write an artifact, message, checkpoint or replication event", async () => {
+  const { db, deps, run } = await setup();
+  const thread = await createThread(db, tenant);
+  const messageId = await addMessage(db, tenant, {
+    threadId: thread.id,
+    parentId: null,
+    role: "assistant",
+    content: "Current owner's text",
+  });
+  const lease = await claim(deps, run.id);
+  await db.execute("UPDATE research_state SET lease='current-owner' WHERE run_id=?", [run.id]);
+  await db.execute("UPDATE sync_state SET enabled=1");
+  const outbox = await db.select("SELECT * FROM sync_outbox ORDER BY seq");
+  await expect(
+    park(deps, run.id, lease, { ...fixtureState(), stage: "finished" }, "done", null, {
+      messageId,
+      message: { content: "Stale text", status: "complete" },
+      artifact: { threadId: thread.id, key: `research-${run.id}`, content: "Stale report" },
+    }),
+  ).rejects.toThrow("ownership");
+  expect((await listMessages(db, tenant, thread.id))[0]?.content).toBe("Current owner's text");
+  expect(await db.select("SELECT id FROM artifacts")).toEqual([]);
+  expect(await db.select("SELECT * FROM sync_outbox ORDER BY seq")).toEqual(outbox);
+  expect((await checkpoint(deps, run.id)).lease).toBe("current-owner");
 });

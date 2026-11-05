@@ -333,6 +333,11 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     await app.type('//input[@aria-label="Research spending cap (USD)"]', "5");
     await app.click(button("Start research"));
     await app.sees("Research complete.", 60000);
+    await app.find(
+      '//*[@aria-label="Research progress"]//*[contains(normalize-space(), "· Finished")]',
+    );
+    await app.gone(button("Pause research"));
+    await app.gone('//*[normalize-space()="Generating response"]');
     expect(await app.run('return document.querySelector("textarea").value;')).toBe(
       "Keep this editable research draft.",
     );

@@ -6,7 +6,8 @@ import { defaultCatalog as catalog } from "@/catalog/defaultCatalog";
 import { setRequestSurface } from "@/storage/requestLog";
 import { Runner } from "@/runner/runner";
 import type { RepoApi } from "@/repo/api";
-import { scriptedResearchAdapter, scriptedResearchWeb } from "./scripted";
+import { scriptedResearchWeb } from "./scripted";
+import { recordedResearchAdapters } from "./recorded";
 
 const base = process.env.FUSE_SERVER_URL,
   token = process.env.FUSE_RUNNER_TOKEN;
@@ -22,13 +23,25 @@ if (
 configureHttp({ base, token });
 setRequestSurface("runner");
 const db = await openTauriDb();
+const crash = { requested: false };
+const recorded = recordedResearchAdapters({
+  delayMs: 700,
+  onCall: (call) => {
+    if (call.stage === "plan" && call.body.includes("FUSE_RESEARCH_CRASH_FIXTURE"))
+      crash.requested = true;
+    if (call.stage === "search" && crash.requested) {
+      console.log("research-fixture-runner: hard exit after journaled search dispatch");
+      process.exit(23);
+    }
+  },
+});
 const runner = new Runner({
   deps: () =>
     Promise.resolve({
       db,
       tenant,
       catalog,
-      adapterFor: (provider) => scriptedResearchAdapter(provider, { delayMs: 700 }),
+      adapterFor: recorded.adapterFor,
       web: scriptedResearchWeb(),
       repo: new Proxy({} as RepoApi, {
         get() {

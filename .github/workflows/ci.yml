@@ -27,6 +27,13 @@ jobs:
       - run: pnpm test
       - name: Recorded dictation regression benchmark
         run: pnpm dictation:bench
+      - name: Recorded research benchmark (portable core)
+        run: pnpm research:bench
+      - uses: actions/upload-artifact@v7
+        with:
+          name: research-benchmark-core
+          path: src-tauri/target/research-benchmark.json
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         with:
           name: dictation-benchmark
@@ -39,7 +46,7 @@ jobs:
           pnpm build
           pnpm build:runner
           if grep -rq fuse-e2e-scripted-build dist; then echo "The test build's code is in the release bundle"; exit 1; fi
-          if grep -rq research-fixture.example dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
+          if grep -rqE 'research-fixture.example|FUSE_RESEARCH_CRASH_FIXTURE' dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
 
   rust:
     name: Rust fmt, clippy, test
@@ -120,6 +127,17 @@ jobs:
         env:
           FUSE_SERVER_BIN: src-tauri/target/debug/fuse-server
         run: pnpm exec vitest run src/runner/hulk.bench.test.ts
+      - name: Recorded research benchmark (independent HULK owner)
+        env:
+          FUSE_SERVER_BIN: src-tauri/target/debug/fuse-server
+        run: pnpm research:bench
+      - uses: actions/upload-artifact@v7
+        with:
+          name: research-benchmark-hulk
+          path: |
+            src-tauri/target/research-benchmark.json
+            src-tauri/target/research-benchmark-server.log
+          if-no-files-found: error
       # M10 checklist: the web app's part of the steps 11 to 17 checklist, clicked through in
       # headless Chrome (preinstalled here) against a throwaway server of this build.
       - run: pnpm build:web
@@ -221,6 +239,13 @@ jobs:
         with:
           workspaces: src-tauri
           key: e2e
+      - name: Windows research compatibility benchmark
+        run: pnpm research:bench
+      - uses: actions/upload-artifact@v7
+        with:
+          name: research-benchmark-windows
+          path: src-tauri/target/research-benchmark.json
+          if-no-files-found: error
       - name: Test build
         env:
           VITE_E2E_FOLDER: C:\fuse-e2e

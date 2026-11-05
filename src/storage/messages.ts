@@ -180,13 +180,19 @@ export async function finishMessage(
   id: string,
   r: MessageResult,
 ): Promise<void> {
+  const statement = finishMessageStatement(tenant, id, r);
+  await db.execute(statement.sql, statement.params);
+}
+
+/** Shared with owner transactions that publish a message and checkpoint atomically. */
+export function finishMessageStatement(tenant: Tenant, id: string, r: MessageResult): SqlStatement {
   const usage = r.usage ?? EMPTY_USAGE;
-  await db.execute(
-    `UPDATE messages SET content = ?, status = ?, error_code = ?, error_message = ?, request_id = ?,
+  return {
+    sql: `UPDATE messages SET content = ?, status = ?, error_code = ?, error_message = ?, request_id = ?,
        best_cost_micro_usd = ?, reasoning_summary = ?, (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}),
        provider = COALESCE(?, provider), model = COALESCE(?, model), updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
-    [
+    params: [
       r.content,
       r.status,
       r.errorCode ?? null,
@@ -201,7 +207,7 @@ export async function finishMessage(
       tenant.workspaceId,
       id,
     ],
-  );
+  };
 }
 
 /** Saves streamed text so far (no message loss on crash: the row stays `streaming`). */

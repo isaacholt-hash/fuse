@@ -10,7 +10,7 @@ import { inScope } from "@/memory/inject";
 import { listMemories } from "@/storage/memories";
 import { listMessages } from "@/storage/messages";
 import { listArtifacts } from "@/storage/artifacts";
-import { createThread, getThread } from "@/storage/threads";
+import { getThread } from "@/storage/threads";
 import { runsForThread } from "@/storage/runs";
 import { uuidv7 } from "@/storage/ids";
 import { askToStartWithId, askToContinueResearch, askToPauseResearch } from "@/storage/runQueue";
@@ -25,7 +25,7 @@ import {
 } from "@/ui/Research";
 import { researchModels } from "./routing";
 import { startResearchRun, continueResearchRun, type ResearchDeps } from "./engine";
-import { requestControl } from "./storage";
+import { requestControl, ensureResearchChat } from "./storage";
 import { researchStatus, type ResearchTaskView } from "./status";
 import { captureTransfer, RESEARCH_PROTOCOL } from "./transfer";
 import {
@@ -38,6 +38,8 @@ import {
 
 interface Setup {
   requestId: string;
+  newThreadId: string;
+  draftInstructions: string;
   sourceId: string | null;
   projectId: string | null;
   scope: string;
@@ -62,6 +64,7 @@ interface Options {
   hulkStatus: HulkStatus | null;
   web: boolean;
   incognito: boolean;
+  draftInstructions?: string;
   onChanged: (threadId: string) => void;
   onSelect: (threadId: string, draft: string) => void;
   onError: (error: unknown) => void;
@@ -339,6 +342,8 @@ export function useResearch(options: Options) {
       }
       setSetup({
         requestId: uuidv7(),
+        newThreadId: uuidv7(),
+        draftInstructions: options.draftInstructions ?? "",
         sourceId,
         projectId,
         scope,
@@ -368,13 +373,14 @@ export function useResearch(options: Options) {
       );
       let sourceId = setup.sourceId;
       if (!sourceId) {
-        const created = await createThread(
-          deps.db,
-          deps.tenant,
-          `Research: ${choice.task.slice(0, 80)}`,
-          setup.projectId,
-        );
-        sourceId = created.id;
+        sourceId = await ensureResearchChat(deps, {
+          id: setup.newThreadId,
+          projectId: setup.projectId,
+          task: choice.task,
+          instructions: setup.draftInstructions,
+          mode: options.mode,
+        });
+        setSetup((value) => (value ? { ...value, sourceId } : null));
         callbacks.current.onSelect(sourceId, setup.scope);
       }
       if (choice.location === "hulk" && !web) {

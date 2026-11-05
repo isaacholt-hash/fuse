@@ -40,7 +40,7 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | PM-04 P2 decisions/artifact meaning retrieval | Typed decisions/memory in M5; artifact extension and scoped context tools in M17.1 |
 | FK-07 knowledge folder updates | M8.11; complete under desktop/watch and web replacement boundary |
 | FK-08 spreadsheet/CSV analysis | M9.6–7 and recorded/live/PC evidence; complete, preserve |
-| FK-12 deep research | M14.1–4 |
+| FK-12 deep research | [M14 build](milestones/M14-deep-research.md), released owner acceptance in M19 |
 | AR-07 writing canvas | M17.2 |
 | AR-08 sandboxed code artifacts | M17.3, Python only under approved AG-03 boundary |
 | AG-01 tool framework | M6/M9 registry; finish memory/artifact operations in M17.1 |
@@ -167,3 +167,12 @@ instead of serialized identifiers. No product behavior changes.
 Native startup reviewed with [this screenshot](screenshots/p2/roadmap-native.png), using the
 scripted build and a throwaway database/keyring. The 9.9.9 updater banner is test-fixture data,
 not the released application version. `VITEST_MAX_WORKERS=2 pnpm check` passed (164 files, 971 tests, 13 skipped), as did `pnpm build:web` and all nine Chromium web click-through tests against a fresh throwaway server with in-memory test secrets. No Rust source changed; native startup rebuilt successfully. Windows and benchmark results are gated by CI in the PR.
+- **M14.3:** [PR #296](https://github.com/isaacholt-hash/fuse/pull/296), merge
+  `cfad7ce6f38007f7e91bce186f7eb7adbcf02643`. Chat scope/context/location setup, empty required
+  cap, independent HULK ownership, progress and explicit continuation. All five gates passed
+  on `70a93ff8c74fb581344828abbe0c05ca26547464` in
+  [CI 41991596703](https://github.com/isaacholt-hash/fuse/actions/runs/41991596703).
+  Released [v0.1.218](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.218) through
+  [run 41992578860](https://github.com/isaacholt-hash/fuse/actions/runs/41992578860) at
+  2026-11-05 08:20:44 UTC. Installers/seven signed updater entries verified. The final research
+  benchmark and recovery assertions ship in M14.4; live owner acceptance remains M19 work.

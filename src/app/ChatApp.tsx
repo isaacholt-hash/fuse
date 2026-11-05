@@ -3455,6 +3455,7 @@ export function ChatApp({
     hulkStatus,
     web: webApp,
     incognito: thread?.incognito ?? draftIncognito,
+    draftInstructions,
     onChanged: (id) => {
       void reload(id).catch(report);
       void refreshThreads().catch(report);

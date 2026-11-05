@@ -10,11 +10,9 @@ import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, StreamDone } from "@/providers/types";
 import type { SearchCall } from "@/providers/search";
 import { getRun, assertRunWritable, listSteps, type Run } from "@/storage/runs";
-import { finishMessage } from "@/storage/messages";
 import { getThread } from "@/storage/threads";
-import { saveArtifacts } from "@/storage/artifacts";
 import { releaseRequest } from "@/storage/requestBudget";
-import { EMPTY_USAGE } from "@/storage/usage";
+import { usageFromRow, type UsageRow } from "@/storage/usage";
 import { readTransfer, transferredContext, type ResearchTransfer } from "./transfer";
 import { selectedContext, validateSelection } from "./context";
 import { parsePlan, parseReport, renderReportDetailed, verifyReport } from "./report";
@@ -392,6 +390,30 @@ async function recover(ctx: Execution): Promise<void> {
     });
   }
 }
+async function receiptUsage(ctx: Execution) {
+  const current = await getRun(ctx.deps.db, ctx.deps.tenant, ctx.run.id);
+  if (!current) throw new Error("Research run was deleted.");
+  const totals = (
+    await ctx.deps.db.select<UsageRow>(
+      `SELECT COALESCE(SUM(input_tokens),0) input_tokens,COALESCE(SUM(output_tokens),0) output_tokens,
+    COALESCE(SUM(cached_input_tokens),0) cached_input_tokens,COALESCE(SUM(cache_write_tokens),0) cache_write_tokens,
+    COALESCE(SUM(reasoning_tokens),0) reasoning_tokens,COALESCE(SUM(web_search_calls),0) web_search_calls,
+    COALESCE(SUM(cost_micro_usd),0) cost_micro_usd,SUM(latency_ms) latency_ms,NULL ttft_ms,
+    CASE WHEN COUNT(DISTINCT price_version)>1 THEN 'mixed' ELSE MAX(price_version) END price_version
+    FROM request_log WHERE workspace_id=? AND user_id=? AND id IN
+    (SELECT id FROM research_operations WHERE workspace_id=? AND user_id=? AND run_id=?)`,
+      [
+        ctx.deps.tenant.workspaceId,
+        ctx.deps.tenant.userId,
+        ctx.deps.tenant.workspaceId,
+        ctx.deps.tenant.userId,
+        ctx.run.id,
+      ],
+    )
+  )[0];
+  if (!totals) throw new Error("Research accounting could not be read.");
+  return { ...usageFromRow(totals), costMicroUsd: current.spentMicroUsd };
+}
 async function publish(
   ctx: Execution,
   status: "done" | "paused" | "stopped",
@@ -410,18 +432,6 @@ async function publish(
   }
   const markdown = ctx.state.markdown;
   const key = `research-${ctx.run.id}`;
-  await saveArtifacts(ctx.deps.db, ctx.deps.tenant, ctx.run.threadId, ctx.run.messageId, [
-    {
-      key,
-      title: "Research report",
-      type: "markdown",
-      language: "",
-      content: markdown,
-      complete: true,
-    },
-  ]);
-  const current = await getRun(ctx.deps.db, ctx.deps.tenant, ctx.run.id);
-  if (!current) throw new Error("Research run was deleted.");
   const last = (await listSteps(ctx.deps.db, ctx.deps.tenant, ctx.run.id)).findLast(
     (s) => s.kind === "model",
   );
@@ -433,18 +443,18 @@ async function publish(
         )
       )[0]
     : undefined;
-  await finishMessage(ctx.deps.db, ctx.deps.tenant, ctx.run.messageId, {
-    content: `${ctx.state.partialReason ? "Partial research result." : "Research complete."}\n\n<artifact id="${key}" type="markdown" title="Research report">\n${markdown}\n</artifact>`,
-    status: status === "done" ? "complete" : "stopped",
-    usage: {
-      ...EMPTY_USAGE,
-      costMicroUsd: current.spentMicroUsd,
-      priceVersion: ctx.deps.catalog.priceVersion,
+  await park(ctx.deps, ctx.run.id, ctx.lease, ctx.state, status, note, {
+    messageId: ctx.run.messageId,
+    artifact: { threadId: ctx.run.threadId, key, content: markdown },
+    message: {
+      content: `${ctx.state.partialReason ? "Partial research result." : "Research complete."}\n\n<artifact id="${key}" type="markdown" title="Research report">\n${markdown}\n</artifact>`,
+      status: status === "done" ? "complete" : "stopped",
+      usage: await receiptUsage(ctx),
+      ...(receipt ? { provider: receipt.provider, model: receipt.model } : {}),
+      requestId: last?.requestId ?? null,
+      errorCode: status === "done" ? null : status,
+      errorMessage: note,
     },
-    ...(receipt ? { provider: receipt.provider, model: receipt.model } : {}),
-    requestId: last?.requestId ?? null,
-    errorCode: status === "done" ? null : status,
-    errorMessage: note,
   });
 }
 async function readSource(ctx: Execution, source: ResearchSource): Promise<void> {
@@ -622,17 +632,9 @@ async function loop(ctx: Execution): Promise<void> {
         break;
       }
       case "publish": {
-        await publish(ctx, ctx.state.partialReason ? "stopped" : "done", ctx.state.partialReason);
         ctx.state.stage = "finished";
         ctx.state.elapsedMs = elapsed(ctx);
-        await park(
-          ctx.deps,
-          ctx.run.id,
-          ctx.lease,
-          ctx.state,
-          ctx.state.partialReason ? "stopped" : "done",
-          ctx.state.partialReason,
-        );
+        await publish(ctx, ctx.state.partialReason ? "stopped" : "done", ctx.state.partialReason);
         await emit(ctx);
         return;
       }
@@ -718,14 +720,14 @@ async function execute(deps: ResearchDeps, run: Run, signal?: AbortSignal): Prom
     await emit(ctx);
     await loop(ctx);
   } catch (error) {
-    if (ctx.ownershipLost)
-      throw new Error("Research execution ownership changed; no further requests were sent.", {
-        cause: error,
-      });
     // A commit acknowledgement can be lost after SQLite committed. Reload before parking;
     // never overwrite a committed cursor with the caller's stale in-memory state.
     const durable = await checkpoint(deps, run.id);
-    if (durable.lease !== lease)
+    if (durable.lease === null) {
+      const observed = await getRun(deps.db, deps.tenant, run.id);
+      if (observed && observed.status !== "running") return observed;
+    }
+    if (ctx.ownershipLost || durable.lease !== lease)
       throw new Error("Research execution ownership changed.", { cause: error });
     Object.assign(state, durable.state);
     const halt =
@@ -747,8 +749,40 @@ async function execute(deps: ResearchDeps, run: Run, signal?: AbortSignal): Prom
       state.stage = "finished";
       state.incompleteReason = halt.message;
     }
-    await publish(ctx, halt.status, halt.message);
-    await park(deps, run.id, lease, state, halt.status, halt.message);
+    try {
+      await publish(ctx, halt.status, halt.message);
+    } catch (publicationError) {
+      const latest = await checkpoint(deps, run.id);
+      if (latest.lease === null) {
+        const observed = await getRun(deps.db, deps.tenant, run.id);
+        if (observed && observed.status !== "running") return observed;
+      }
+      if (latest.lease !== lease) throw publicationError;
+      // A failed publication leaves its pre-publication cursor recoverable. No paid replay.
+      Object.assign(state, latest.state);
+      state.partialReason =
+        "Report publication paused. Continue explicitly to retry publication; recorded costs are retained.";
+      await park(
+        deps,
+        run.id,
+        lease,
+        state,
+        "paused",
+        state.partialReason,
+        ctx.run.messageId
+          ? {
+              messageId: ctx.run.messageId,
+              message: {
+                content: state.partialReason,
+                status: "stopped",
+                usage: await receiptUsage(ctx),
+                errorCode: "publication",
+                errorMessage: state.partialReason,
+              },
+            }
+          : undefined,
+      );
+    }
     await emit(ctx);
   } finally {
     dog.stop();
