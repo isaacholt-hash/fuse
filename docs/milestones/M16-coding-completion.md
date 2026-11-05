@@ -415,3 +415,16 @@ execution on the desktop. Real native worktrees and background execution are ver
 native and web fixtures separately. All ten final native/browser images are committed.
 Windows native execution and current-head CI remain required before merge. The normal release
 is verified after merging.
+
+The first CI head, `80b9fdabaf6b086bd4db0f681407a7b44f72cc42`, passed four gates in
+[CI 42085633545](https://github.com/isaacholt-hash/fuse/actions/runs/42085633545). The new Windows
+native worktree suite passed 3/7 and failed four cases during preparation, before file grants
+or commands. Its immediately retained `windows-child-worktree-log` prevents loss of evidence.
+Local Windows paths returned by canonicalization are now normalized through the existing
+Windows path adapter before passing them to Git; authority still uses resolved roots. Rust
+[documents this command-line interoperability boundary](https://doc.rust-lang.org/std/fs/fn.canonicalize.html).
+Fixed operation names improve diagnostics without exposing Git stderr or repository paths.
+Preparation assertions now require ready worktrees before later native probes, including the
+concurrent/deletion cases. No assertion is skipped or weakened. Both local all-target clippy
+configurations and all eight Linux worktree tests pass after the change (12.77 s); a fresh
+Windows/current-head five-gate run remains required before merging.

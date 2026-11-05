@@ -67,6 +67,18 @@ fn id() -> Result<String, String> {
 fn fail(_: sqlx::Error) -> String {
     "Couldn't record child execution on this owner.".into()
 }
+/// Git's command-line paths use ordinary local Windows spelling rather than Win32's
+/// verbatim prefix returned by canonicalize. Filesystem authority still uses resolved roots.
+fn git_path(path: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        fuse_sandbox_win::plain(&path)
+    }
+    #[cfg(not(windows))]
+    {
+        path
+    }
+}
 fn linklike(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return false;
@@ -141,15 +153,32 @@ async fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>, String
         .map_err(|_| "Git is unavailable on this execution owner.")?;
     let out = child.stdout.take().ok_or("Git stdout is unavailable.")?;
     let err = child.stderr.take().ok_or("Git stderr is unavailable.")?;
-    tokio::time::timeout(Duration::from_secs(15),async {
-        let(mut output,mut errors)=(Vec::new(),Vec::new());
-        let mut out=out.take((limit+1) as u64);let mut err=err.take(8193);
-        let (a,b)=tokio::join!(out.read_to_end(&mut output),err.read_to_end(&mut errors));
-        a.map_err(|_|"Couldn't read a Git object.")?;b.map_err(|_|"Couldn't read Git status.")?;
-        if output.len()>limit || errors.len()>8192 { return Err("Child worktree setup exceeded its Git output limit.".into()); }
-        if !child.wait().await.map_err(|_|"Git setup was interrupted.")?.success() { return Err("Git refused child worktree setup. Its worktree and dispatch evidence are retained.".into()); }
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (mut output, mut errors) = (Vec::new(), Vec::new());
+        let mut out = out.take((limit + 1) as u64);
+        let mut err = err.take(8193);
+        let (a, b) = tokio::join!(out.read_to_end(&mut output), err.read_to_end(&mut errors));
+        a.map_err(|_| "Couldn't read a Git object.")?;
+        b.map_err(|_| "Couldn't read Git status.")?;
+        if output.len() > limit || errors.len() > 8192 {
+            return Err("Child worktree setup exceeded its Git output limit.".into());
+        }
+        if !child
+            .wait()
+            .await
+            .map_err(|_| "Git setup was interrupted.")?
+            .success()
+        {
+            // Fixed operation name only: never expose repository paths or Git stderr.
+            return Err(format!(
+                "Git refused child worktree {}. Its worktree and dispatch evidence are retained.",
+                args.first().copied().unwrap_or("setup")
+            ));
+        }
         Ok(output)
-    }).await.map_err(|_|"Git worktree setup exceeded its operation limit.")?
+    })
+    .await
+    .map_err(|_| "Git worktree setup exceeded its operation limit.")?
 }
 
 async fn parent(
@@ -173,12 +202,14 @@ async fn parent(
     )
     .await?;
     let row=rows.into_iter().next().ok_or("This owner cannot delegate that run. Use a writable, non-review Code run with a linked Git repository.")?;
-    let root = std::fs::canonicalize(
-        row["folder_path"]
-            .as_str()
-            .ok_or("Missing parent folder.")?,
-    )
-    .map_err(|_| "The parent repository is missing.")?;
+    let root = git_path(
+        std::fs::canonicalize(
+            row["folder_path"]
+                .as_str()
+                .ok_or("Missing parent folder.")?,
+        )
+        .map_err(|_| "The parent repository is missing.")?,
+    );
     let folder = row["folder_id"]
         .as_str()
         .ok_or("Missing parent folder identity.")?
@@ -574,8 +605,9 @@ pub async fn prepare(ctx: &Ctx, request: Request) -> Result<Vec<Child>, String> 
         return Err("The child worktree store cannot be a link.".into());
     }
     std::fs::create_dir_all(&owner_dir).map_err(|_| "Couldn't create private child storage.")?;
-    let owner_dir =
-        std::fs::canonicalize(owner_dir).map_err(|_| "Couldn't resolve private child storage.")?;
+    let owner_dir = git_path(
+        std::fs::canonicalize(owner_dir).map_err(|_| "Couldn't resolve private child storage.")?,
+    );
     let pool = ctx.db.pool()?;
     let mut tx = pool.begin().await.map_err(fail)?;
     // First write obtains SQLite's writer lock before counting children. Every child relation
@@ -889,6 +921,13 @@ mod tests {
                 .await
                 .unwrap()
         }
+        async fn assert_ready(&self) {
+            let rows = self.rows("SELECT c.state,r.note FROM code_children c JOIN runs r ON r.id=c.child_id ORDER BY c.ordinal").await;
+            assert!(
+                !rows.is_empty() && rows.iter().all(|r| r["state"] == "ready"),
+                "Child preparation did not finish: {rows:?}"
+            );
+        }
         async fn close(self) {
             self.ctx.db.pool().unwrap().close().await;
             #[cfg(windows)]
@@ -944,6 +983,7 @@ mod tests {
         }
         let request = f.request().await;
         let children = prepare(&f.ctx, request.clone()).await.unwrap();
+        f.assert_ready().await;
         assert_eq!(children.len(), 2);
         assert!(children.iter().all(|c| c.state == "ready"), "{children:?}");
         let paths=f.rows("SELECT c.path,c.folder_id,r.parent_run_id,r.status,f.read_sensitive FROM code_children c JOIN runs r ON r.id=c.child_id JOIN folders f ON f.id=c.folder_id ORDER BY c.ordinal").await;
@@ -984,6 +1024,7 @@ mod tests {
         let request = f.request().await;
         let (a, b) = tokio::join!(prepare(&f.ctx, request.clone()), prepare(&f.ctx, request));
         assert!(a.is_ok() || b.is_ok());
+        f.assert_ready().await;
         assert_eq!(f.rows("SELECT child_id FROM code_children").await.len(), 2);
         assert_eq!(f.rows("SELECT id FROM runs").await.len(), 3);
         let mut next = f.request().await;
@@ -1051,6 +1092,7 @@ mod tests {
     async fn child_file_authority_ends_with_parent_stop_and_git_is_never_exposed() {
         let f = Fixture::new().await;
         let children = prepare(&f.ctx, f.request().await).await.unwrap();
+        f.assert_ready().await;
         let rows = f
             .rows("SELECT child_id,folder_id FROM code_children ORDER BY ordinal")
             .await;
@@ -1100,6 +1142,7 @@ mod tests {
     async fn isolated_commands_have_only_their_worktree_public_tools_and_private_tmp() {
         let f = Fixture::new().await;
         let children = prepare(&f.ctx, f.request().await).await.unwrap();
+        f.assert_ready().await;
         let rows = f
             .rows("SELECT path FROM code_children ORDER BY ordinal")
             .await;
@@ -1171,6 +1214,7 @@ mod tests {
         }
         let f = Fixture::new().await;
         prepare(&f.ctx, f.request().await).await.unwrap();
+        f.assert_ready().await;
         let pool = f.ctx.db.pool().unwrap();
         let rows = f
             .rows("SELECT child_id,folder_id,path FROM code_children ORDER BY ordinal")
@@ -1277,6 +1321,7 @@ mod tests {
     async fn global_deletion_removes_only_app_owned_worktrees_and_retains_parent_repository() {
         let f = Fixture::new().await;
         prepare(&f.ctx, f.request().await).await.unwrap();
+        f.assert_ready().await;
         let paths = f.rows("SELECT path FROM code_children").await;
         std::fs::write(f.ctx.data_dir.join("keep.txt"), "unrelated fixture file").unwrap();
         #[cfg(unix)]
@@ -1304,6 +1349,7 @@ mod tests {
     async fn private_child_commands_share_no_parent_or_sibling_grants_and_revoke_after_exit() {
         let f = Fixture::new().await;
         prepare(&f.ctx, f.request().await).await.unwrap();
+        f.assert_ready().await;
         let rows = f
             .rows("SELECT path FROM code_children ORDER BY ordinal")
             .await;
