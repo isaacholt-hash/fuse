@@ -342,3 +342,31 @@ test("incoming routes clear search even for repeated targets and remember explic
   await user.keyboard("{Enter}");
   expect(onNavigate).toHaveBeenLastCalledWith({ category: "general", target: "theme" });
 });
+
+test("recovery links focus the registered subheading without revealing recovery material", async () => {
+  const user = userEvent.setup();
+  const reveal = vi.fn();
+  render(
+    <SettingsView
+      {...props()}
+      sync={
+        <section>
+          <h2>Encrypted sync</h2>
+          <h3 data-settings-control="sync-recovery">Recovery for sync</h3>
+          <button onClick={reveal}>Show sync recovery code</button>
+        </section>
+      }
+      target="sync-recovery"
+    />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Recovery for sync" })).toHaveFocus();
+  });
+  expect(reveal).not.toHaveBeenCalled();
+  await user.type(screen.getByRole("combobox", { name: "Search settings" }), "Sync recovery");
+  await user.keyboard("{Enter}");
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Recovery for sync" })).toHaveFocus();
+  });
+  expect(reveal).not.toHaveBeenCalled();
+});

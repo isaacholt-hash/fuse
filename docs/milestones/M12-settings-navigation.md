@@ -52,7 +52,7 @@ unresolved product decision, unavailable required access or checks that cannot s
 - [x] **3. Category shell.** All existing controls in their categories, responsive navigation, last-category memory, explicit target handling, preserved ordinary form drafts and conversation state, cleared sensitive fields, closed dialogs and restored focus. Update existing tests to navigate categories.
 - [x] **4. Search.** Static metadata only; exact label, prefix, label substring, description/alias, then existing fuzzy matching. Result paths, control focus/scroll, temporary neutral highlight, keyboard navigation, clear/Escape and announced empty state. Retain unavailable controls with reasons. Aliases include dark mode, font, spending, backup, HULK and recovery.
 - [x] **5. Direct links and entry points.** `#settings/<category>/<target>` (target optional), initial load, reload, browser history and legacy `#sync`. Invalid settings destinations open General with an explanation. Contextual links for provider keys, pairing, instructions, routing, models and prices; registry-backed section commands in the existing palette. No form values or search queries in URLs.
-- [ ] **6. Verification and release documentation.** Desktop/web click-through coverage, inspected light/dark screenshots at minimum/typical/wide/mobile sizes, documented navigation behavior, final builds, PR and evidence summary with explicit platform limits.
+- [x] **6. Verification and release documentation.** Desktop/web click-through coverage, inspected light/dark screenshots at minimum/typical/wide/mobile sizes, documented navigation behavior, final builds, PR and evidence summary with explicit platform limits.
 
 ## Acceptance
 
@@ -84,3 +84,28 @@ test data only; production activation is outside this milestone.
 `#settings/<category>` opens a category; adding `/<target>` opens and focuses a registered section or control. Examples: `#settings/general/theme`, `#settings/providers-models/anthropic-key`, `#settings/code-tools/hulk`, `#settings/sync-devices/sync-recovery`, and `#settings/privacy-security/database-recovery`. The category IDs follow the map above (`general`, `providers-models`, `personalization`, `costs-limits`, `code-tools`, `sync-devices`, `privacy-security`, `data-storage`, `about-diagnostics`).
 
 Initial loading, reload and browser Back/Forward use the same registry. `#sync` remains an alias for encrypted sync. Unknown categories, targets and mismatched paths show General with a brief explanation. Search text and form values never become URLs. Category selection and search-result activation create history entries; typing a search does not. Back to Chat/Code restores the originating conversation and clears the Settings fragment. Ctrl+, keeps its existing toggle behavior; Ctrl+Shift+P includes registry-backed Settings section commands and aliases. Explicit links take priority over the locally remembered category.
+
+- Step 5: [PR #285](https://github.com/isaacholt-hash/fuse/pull/285), all CI green, 164 files / 969 tests passed. Eight Chromium click-through tests passed. Inspected native palette-to-routing screenshot: `docs/screenshots/m12/links-desktop.png`.
+
+- Step 6: [PR #286](https://github.com/isaacholt-hash/fuse/pull/286), final verification, native picker/focus/return-position fixes, screenshot matrix and release documentation. Local results and platform limits are recorded below; the PR carries the required five-job CI merge gate.
+
+## Release verification
+
+The release step extends Windows desktop click-through coverage for draft preservation, search, direct links and unsaved instructions. Web coverage verifies aliases, keyboard focus, private-draft exclusion, invalid links, Back/Forward, and full document reloads (including legacy sync). Reload tests use an explicit browser reload and verify that the old document is gone.
+
+The responsive matrix checks every category in both themes at 640×480, 1100×750, 1600×900 and 390×844: 72 cases, with no controls outside the viewport. Long panels scroll within the content area while search and category navigation remain available. Checked-in overview screenshots cover all eight theme/size combinations. Separate native 640×480 light/dark captures verify the category picker in WebKitGTK; its native styling is suppressed so dark text contrast follows the app theme. The picker retains native keyboard and label behavior.
+
+Regression coverage preserves Chat and Code drafts/attachments, selected conversation and focus; ordinary instructions/routing drafts; provider connections, permissions, budgets, sync, import/backup/restore, lock and diagnostics. A saved return-scroll snapshot restores the conversation even if hidden message geometry changes while an answer continues. Recovery links focus the registered heading and never activate reveal controls. Sensitive entries and revealed material clear on panel exit, and late async replies cannot reopen Settings dialogs.
+
+Local validation uses `VITEST_MAX_WORKERS=2 pnpm check`, `pnpm build`, `pnpm build:web`, real Chromium click-through against a fresh throwaway server, and native Tauri startup with inspected screenshots. Release requires all five existing CI jobs to pass, including Windows WebView2, Windows sync/file compatibility and the throwaway-server browser checks. No live provider calls, production deployment, device enrollment, storage policy changes or backend migrations are part of M12. Safari, Firefox and an owner-PC installer were not manually exercised.
+
+
+Final local results: `pnpm check` passed **164 test files / 971 tests**, with 13 opt-in tests skipped; both production builds passed. All **9 Chromium browser tests** passed on a fresh throwaway server, including the **72 layout cases** recorded in [the bounds report](../screenshots/m12/layout-bounds.json). Native startup and the two minimum-window screenshots were inspected after the picker fix. The release PR records the required CI outcome.
+
+| Viewport | Light | Dark |
+| --- | --- | --- |
+| 640×480 web | [Screenshot](../screenshots/m12/layout-640-light.png) | [Screenshot](../screenshots/m12/layout-640-dark.png) |
+| 1100×750 web | [Screenshot](../screenshots/m12/layout-1100-light.png) | [Screenshot](../screenshots/m12/layout-1100-dark.png) |
+| 1600×900 web | [Screenshot](../screenshots/m12/layout-1600-light.png) | [Screenshot](../screenshots/m12/layout-1600-dark.png) |
+| 390×844 web | [Screenshot](../screenshots/m12/layout-390-light.png) | [Screenshot](../screenshots/m12/layout-390-dark.png) |
+| 640×480 native | [Screenshot](../screenshots/m12/native-minimum-light.png) | [Screenshot](../screenshots/m12/native-minimum-dark.png) |

@@ -33,7 +33,8 @@ export function focusSettingsTarget(
   const enabled =
     'button:not(:disabled),input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled)';
   const control = base.matches(enabled) ? base : base.querySelector<HTMLElement>(enabled);
-  const focus = control ?? section.querySelector<HTMLElement>("h2,h3") ?? section;
+  const heading = base.matches("h2,h3") ? base : base.querySelector<HTMLElement>("h2,h3");
+  const focus = control ?? heading ?? section.querySelector<HTMLElement>("h2,h3") ?? section;
   if (!focus.matches(enabled)) focus.tabIndex = -1;
   if (typeof base.scrollIntoView === "function")
     base.scrollIntoView({ block: "start", behavior: reducedMotion ? "auto" : "smooth" });

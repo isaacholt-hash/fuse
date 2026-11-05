@@ -3887,14 +3887,18 @@ test("M12: returning from Settings preserves the selected conversation, scroll a
   const field = await composer();
   await user.type(field, "An unfinished reply");
   const selected = localStorage.getItem("fuse.lastThread.chat");
-  const scroll = document.querySelector<HTMLDivElement>(".scroll-smooth");
+  const scroll = document.querySelector<HTMLDivElement>("[data-conversation-scroll]");
   if (!scroll) throw new Error("Conversation scroll container missing");
   scroll.scrollTop = 73;
   await user.keyboard("{Control>},{/Control}");
+  // Hidden streaming/layout effects can change scrollTop; returning restores the saved position.
+  scroll.scrollTop = 0;
   await user.click(screen.getByRole("button", { name: "Back to Chat" }));
   expect(await composer()).toBe(field);
   expect(localStorage.getItem("fuse.lastThread.chat")).toBe(selected);
-  expect(scroll.scrollTop).toBe(73);
+  await waitFor(() => {
+    expect(scroll.scrollTop).toBe(73);
+  });
   await waitFor(() => {
     expect(field).toHaveFocus();
   });
@@ -3999,4 +4003,34 @@ test("M12: route changes close Settings dialogs and stale log replies cannot reo
     await Promise.resolve();
   });
   expect(screen.queryByRole("dialog", { name: "Request log" })).toBeNull();
+});
+
+test("M12: an answer continues and completes while Settings is open", async () => {
+  let finish: (() => void) | undefined;
+  let signal: AbortSignal | undefined;
+  const { user } = setup({
+    anthropic: [
+      async function* (_history, currentSignal) {
+        signal = currentSignal;
+        yield { type: "text", text: "Working" };
+        await new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        yield* answer(" while Settings is open.");
+      },
+    ],
+  });
+  await user.type(await composer(), "Keep working{Enter}");
+  await screen.findByText("Working");
+  await user.keyboard("{Control>},{/Control}");
+  await user.click(screen.getByRole("button", { name: "Personalization" }));
+  expect(signal?.aborted).toBe(false);
+  await act(async () => {
+    finish?.();
+    await Promise.resolve();
+  });
+  await user.click(screen.getByRole("button", { name: "Back to Chat" }));
+  await screen.findByText("Working while Settings is open.");
+  expect(signal?.aborted).toBe(false);
+  expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
 });

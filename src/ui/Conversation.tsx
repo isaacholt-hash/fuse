@@ -565,6 +565,7 @@ export function Messages({
       )}
       <div
         ref={scrollRef}
+        data-conversation-scroll
         className="@container h-full overflow-y-auto scroll-smooth"
         onScroll={(e) => {
           const el = e.currentTarget;

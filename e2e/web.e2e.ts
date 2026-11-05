@@ -248,7 +248,9 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     await step("settings-legacy-sync", async () => {
       await app.run('window.location.hash = "#sync";');
       await app.find('//h2[normalize-space()="Sync & devices"]');
-      await app.navigate(`${URL}#sync`);
+      await app.run('document.documentElement.dataset.m12Reload = "old";');
+      await app.reload();
+      await app.find("//html[not(@data-m12-reload)]");
       await app.find('//h2[normalize-space()="Sync & devices"]');
     });
     await step("settings-invalid-link", async () => {
@@ -268,8 +270,59 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     );
     await app.run('window.location.hash = "#settings/privacy-security/database-recovery";');
     await app.find('//h2[normalize-space()="Privacy & security"]');
-    await app.navigate(`${URL}#settings/privacy-security/database-recovery`);
+    await app.run('document.documentElement.dataset.m12Reload = "old";');
+    await app.reload();
+    await app.find("//html[not(@data-m12-reload)]");
     await app.find('//h2[normalize-space()="Privacy & security"]');
+    await app.click(button("Back to Code"));
+  });
+  test("M12: light/dark layouts keep controls inside all supported widths", async () => {
+    const labels = [
+      "General",
+      "Providers & models",
+      "Personalization",
+      "Costs & limits",
+      "Code & tools",
+      "Sync & devices",
+      "Privacy & security",
+      "Data & storage",
+      "About & diagnostics",
+    ];
+    const reports: unknown[] = [];
+    await app.chord(",");
+    for (const [width, height] of [
+      [640, 480],
+      [1100, 750],
+      [1600, 900],
+      [390, 844],
+    ]) {
+      await app.resize(width, height);
+      for (const theme of ["Light", "Dark"]) {
+        if (width < 800) await app.choose("Settings category", "General");
+        else await app.click(button("General"));
+        await app.click(button(theme));
+        await new Promise((done) => setTimeout(done, 250));
+        await app.screenshot(join(SHOTS, `m12-${String(width)}-${theme.toLowerCase()}.png`));
+        for (const label of labels) {
+          if (width < 800) await app.choose("Settings category", label);
+          else await app.click(button(label));
+          await new Promise((done) => setTimeout(done, 100));
+          const bounds = await app.run<{ pageWidth: number; outside: string[] }>(`
+            const controls = [...document.querySelectorAll('input,select,textarea,button')]
+              .filter(el => el.getClientRects().length && !el.closest('[inert],[hidden]'));
+            return { pageWidth: document.documentElement.scrollWidth, outside: controls
+              .filter(el => { const r = el.getBoundingClientRect(); return r.left < -1 || r.right > innerWidth + 1; })
+              .map(el => el.getAttribute('aria-label') || el.textContent.trim()) };`);
+          reports.push({ width, height, theme, category: label, ...bounds });
+          expect(bounds.pageWidth, `${String(width)} ${theme} ${label}`).toBeLessThanOrEqual(width);
+          expect(bounds.outside, `${String(width)} ${theme} ${label}`).toEqual([]);
+        }
+      }
+    }
+    writeFileSync(join(SHOTS, "m12-layout-bounds.json"), JSON.stringify(reports, null, 2));
+    await app.resize(1280, 800);
+    await app.click(button("General"));
+    await app.click(button("Light"));
     await app.click(button("Back to Code"));
   });
 });

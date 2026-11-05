@@ -1,0 +1,578 @@
+[
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "General",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Providers & models",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Personalization",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Costs & limits",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Code & tools",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Sync & devices",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Privacy & security",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "Data & storage",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Light",
+    "category": "About & diagnostics",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "General",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Providers & models",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Personalization",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Costs & limits",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Code & tools",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Sync & devices",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Privacy & security",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "Data & storage",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 640,
+    "height": 480,
+    "theme": "Dark",
+    "category": "About & diagnostics",
+    "pageWidth": 640,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "General",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Providers & models",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Personalization",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Costs & limits",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Code & tools",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Sync & devices",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Privacy & security",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "Data & storage",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Light",
+    "category": "About & diagnostics",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "General",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Providers & models",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Personalization",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Costs & limits",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Code & tools",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Sync & devices",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Privacy & security",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "Data & storage",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1100,
+    "height": 750,
+    "theme": "Dark",
+    "category": "About & diagnostics",
+    "pageWidth": 1100,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "General",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Providers & models",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Personalization",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Costs & limits",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Code & tools",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Sync & devices",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Privacy & security",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "Data & storage",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Light",
+    "category": "About & diagnostics",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "General",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Providers & models",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Personalization",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Costs & limits",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Code & tools",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Sync & devices",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Privacy & security",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "Data & storage",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 1600,
+    "height": 900,
+    "theme": "Dark",
+    "category": "About & diagnostics",
+    "pageWidth": 1600,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "General",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Providers & models",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Personalization",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Costs & limits",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Code & tools",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Sync & devices",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Privacy & security",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "Data & storage",
+    "pageWidth": 375,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Light",
+    "category": "About & diagnostics",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "General",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Providers & models",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Personalization",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Costs & limits",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Code & tools",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Sync & devices",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Privacy & security",
+    "pageWidth": 390,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "Data & storage",
+    "pageWidth": 375,
+    "outside": []
+  },
+  {
+    "width": 390,
+    "height": 844,
+    "theme": "Dark",
+    "category": "About & diagnostics",
+    "pageWidth": 390,
+    "outside": []
+  }
+]

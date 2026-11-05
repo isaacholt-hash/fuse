@@ -1216,6 +1216,11 @@ export function ChatApp({
         : "chat",
   );
   const settingsReturnFocus = useRef<HTMLElement | null>(null);
+  const settingsReturnScroll = useRef<{
+    element: HTMLElement;
+    top: number;
+    threadId: string | null;
+  } | null>(null);
   const settingsHistoryHash = useRef(window.location.hash);
   const settingsPanelEpoch = useRef(0);
   const settingsRequestGuard = usePanelRequestGuard(view === "settings");
@@ -1229,6 +1234,10 @@ export function ChatApp({
       settingsReturnFocus.current =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
       settingsReturnFocus.current?.blur();
+      const element = document.querySelector<HTMLElement>("[data-conversation-scroll]");
+      settingsReturnScroll.current = element
+        ? { element, top: element.scrollTop, threadId: selectedId }
+        : null;
     }
     leaveSettingsPanel();
     if (push) pushSettingsHistory(destination);
@@ -1246,6 +1255,15 @@ export function ChatApp({
     leaveSettingsPanel();
     setView("chat");
     requestAnimationFrame(() => {
+      // A stream can update hidden message geometry while Settings is open.
+      const scroll = settingsReturnScroll.current;
+      if (scroll?.element.isConnected && scroll.threadId === selectedRef.current) {
+        const behavior = scroll.element.style.scrollBehavior;
+        scroll.element.style.scrollBehavior = "auto";
+        scroll.element.scrollTop = scroll.top;
+        scroll.element.style.scrollBehavior = behavior;
+      }
+      settingsReturnScroll.current = null;
       const previous = settingsReturnFocus.current;
       if (previous?.isConnected) previous.focus();
       else document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
