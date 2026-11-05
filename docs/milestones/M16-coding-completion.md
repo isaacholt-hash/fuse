@@ -354,3 +354,26 @@ Children cannot inherit project command/network grants, recursively delegate or 
 [parallel-code.md](../parallel-code.md) records limits, permission and retention boundaries.
 Schema 71 classifies portable parent links and local claims; no dependencies were added.
 Dedicated progress/review and approved integration remain step 5. Final verification follows.
+
+Step 4 native verification passes: default 231/231 (394.74 s), server 245/245 (450.71 s),
+including the preserved encrypted-sync benchmark. Both all-target clippy configurations and
+formatting pass. The native worktree suite passes 8/8 separately (12.52 s). Its fixed Git probes
+verify omitted secret-looking blobs, disabled filters/hooks, an unchanged dirty parent,
+concurrent preparation, durable Stop, bounded growth and safe global deletion. The new sync
+regression stages a completed child until its parent arrives, grants no folders or execution
+and withdraws both histories on project privacy changes. An initial fixture replay attempted
+to insert an already staged event ID; fixture delivery now tracks previously delivered IDs,
+matching transport deduplication without weakening the dependency/privacy assertions.
+
+Focused shared verification passed 44/44 (13.05 s), including actual child-specific command
+and network approvals, existing project-command grants, no lasting permission widening, shared
+reservations, unknown billing and interruption. UI clicks and keyboard answers retain the
+displayed child ID; stale sibling cards cannot answer the next child's question. Production
+UI and standalone runner builds pass and exclude all synthetic fixture markers. Final full
+application checks, native screenshots and updated browser counters follow below.
+
+The first full application run passed 1,212 tests with 21 explicit skips and failed the
+registry's schema-coverage assertion: the new bounded task schema used array/string length
+keywords outside the shared validator's supported subset. The validator now enforces those
+bounds, including Unicode code-point length, with rejection/acceptance coverage. The focused
+rerun passed 42/42 (5.43 s); the full check is rerun before shipping. The assertion remains intact.
