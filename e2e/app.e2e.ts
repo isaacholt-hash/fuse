@@ -289,7 +289,7 @@ test("M13: dictation consent, editable transcript, cancellation and both themes"
   await app.find(
     '//*[@aria-label="Area"]//button[@aria-pressed="true" and normalize-space()="Chat"]',
   );
-  await app.click(button("New chat"));
+  await app.click('//button[text()[normalize-space()="New chat"]]');
   await app.gone("//*[@data-answer]");
   await app.find(composer);
   await app.click('//button[@aria-label="Dictate"]');

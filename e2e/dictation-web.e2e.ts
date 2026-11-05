@@ -47,6 +47,9 @@ describe.skipIf(!URL || !BROWSER)("dictation web fixture", () => {
     if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 500 });
   });
   test("consent, editable transcript, no send, settings and cancellation in both themes", async () => {
+    await app.click('//*[@aria-label="Area"]//button[normalize-space()="Chat"]');
+    await app.click('//button[text()[normalize-space()="New chat"]]');
+    await app.gone("//*[@data-answer]");
     await app.click('//button[@aria-label="Dictate"]');
     await app.find('//*[@role="dialog"]');
     await app.screenshot(join(SHOTS, "web-consent-light.png"));
