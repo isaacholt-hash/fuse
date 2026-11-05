@@ -1,6 +1,8 @@
 import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
 import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
-import { createProject } from "@/storage/projects";
+import { createProject, setProjectRepo } from "@/storage/projects";
+import { createThread } from "@/storage/threads";
+import { recordedReviewAdapter } from "@/review/testing/scripted";
 import { tauriWebApi } from "@/web/api";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
@@ -361,6 +363,15 @@ const dictation: DictationApi = {
   },
 };
 
+let reviewSeed: Promise<SqlDb> | undefined;
+const openReviewSeed = () =>
+  (reviewSeed ??= (async () => {
+    const db = await loggedDb();
+    const project = await createProject(db, DEFAULT_TENANT, "Review fixture");
+    await setProjectRepo(db, DEFAULT_TENANT, project.id, { root: FOLDER, readSecrets: false });
+    await createThread(db, DEFAULT_TENANT, "Recorded review workspace", project.id, false, "code");
+    return db;
+  })());
 export function e2eDeps() {
   if (import.meta.env.VITE_E2E_RESEARCH === "1") localStorage.setItem("fuse.e2e.research", "yes");
   if (import.meta.env.VITE_E2E_DICTATION === "1") localStorage.setItem("fuse.e2e.dictation", "yes");
@@ -411,10 +422,16 @@ export function e2eDeps() {
     hulk,
     keysApi,
     updates,
-    openDb: import.meta.env.VITE_E2E_CONNECTORS_SEED === "1" ? openConnectorSeed : loggedDb,
+    openDb:
+      import.meta.env.VITE_E2E_REVIEW_SEED === "1"
+        ? openReviewSeed
+        : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
+          ? openConnectorSeed
+          : loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       const base = p === "anthropic" ? anthropic : openai;
+      if (import.meta.env.VITE_E2E_REVIEW_SEED === "1") return recordedReviewAdapter(p, base);
       return localStorage.getItem("fuse.e2e.research") === "yes"
         ? scriptedResearchAdapter(p, { base, delayMs: 700 })
         : base;

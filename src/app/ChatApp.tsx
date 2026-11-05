@@ -349,6 +349,7 @@ import {
 } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
 import { useResearch } from "@/research/useResearch";
+import { useCodeReview } from "@/review/useReview";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
@@ -3457,6 +3458,30 @@ export function ChatApp({
     : sessionWhere === "hulk" && whereReasons.hulk === null
       ? "hulk"
       : "local";
+  const codeReview = useCodeReview({
+    accountNames: new Map(connectors.records.map((r) => [r.registration.id, connectorLabel(r)])),
+    deps: repoApi ? runDeps(repoApi) : undefined,
+    mode,
+    policy,
+    providers: savedProviders,
+    projectId: activeProjectId,
+    projectName: activeProject?.name ?? null,
+    threadId: selectedId,
+    folders: chatFolders,
+    web: webApp,
+    capMicroUsd: draftCap ?? activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
+    controllers: controllers.current,
+    startOnServer,
+    onSelect: select,
+    onChanged: (id) => {
+      void reload(id).catch(report);
+      void refreshThreads().catch(report);
+    },
+    onProgress: (answerId, p) => {
+      setThreadRuns((m) => new Map(m).set(answerId, p));
+    },
+    onError: report,
+  });
   const research = useResearch({
     deps,
     threadId: selectedId,
@@ -4817,6 +4842,16 @@ export function ChatApp({
       },
     },
     {
+      id: "code-review",
+      group: "Actions",
+      label: "Review code",
+      keywords: ["diff", "branch", "pull request", "read only"],
+      run: () => {
+        switchArea("code");
+        codeReview.open("");
+      },
+    },
+    {
       id: "search",
       group: "Actions",
       label: "Search chats",
@@ -4971,7 +5006,8 @@ export function ChatApp({
         !deleting &&
         !renaming &&
         !log &&
-        !research.hasDialog
+        !research.hasDialog &&
+        !codeReview.hasDialog
       )
         stop();
     };
@@ -6511,6 +6547,7 @@ export function ChatApp({
                         })}
                       />
                       <Composer
+                        {...(area === "code" ? { onReview: codeReview.open } : {})}
                         {...(area === "chat"
                           ? { onResearch: research.open, researchReason: research.reason }
                           : {})}
@@ -7401,6 +7438,7 @@ export function ChatApp({
             </div>
           </form>
         </Modal>
+        {codeReview.dialog}
         {research.dialogs}
         <Modal
           open={view === "settings" && log !== null}

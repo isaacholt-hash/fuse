@@ -336,3 +336,14 @@ writes, so erasure can cover partial writes and credentials deliberately retaine
 data-only deletion. All parts/index metadata remain outside JavaScript, database, sync and
 portable backup/export. FUSE database backups do not recover native authorization. Provider
 revocation remains a separate owner operation; disconnect does not erase retrieved history.
+
+
+M16 review snapshots are read-only, owner-local captures of an existing folder grant or an
+explicitly enabled first-party GitHub project account. Git subprocesses have fixed argument
+lists, bounded output/time, disabled external diff/textconv/fsmonitor helpers and no lazy
+network fetch. Source text remains untrusted; review has no mutation or command dispatcher.
+Accepted finding locations/quotes are checked against immutable captured source; consequence
+judgments remain model output. Preliminary source/analysis/journals are excluded from sync
+and portable export, with separate encrypted backup retention. A replicated review profile
+cannot invoke generic Code execution when its local checkpoint is missing. Setup does not
+sign in, grant a folder, enable an account or authorize execution by itself.

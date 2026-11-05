@@ -433,3 +433,13 @@ a later credential erase finds indexed grants even after public registration row
 Project enablement validates the exact registration/principal under the native account lock
 and commits its local permission and redacted audit atomically. Status exposes only public
 account metadata. Restoring registration metadata grants no new token or account access.
+
+
+M16 step 1 (schema 68): `runs.review_profile` is an explicit portable read-only profile.
+Owner-local `review_state` stores pinned source, models, checkpoint and lease;
+`review_operations` journals bounded paid attempts. Both tables have workspace/user ownership,
+foreign-key cascade on final run deletion, explicit delete-all ordering, sync exclusion and
+portable-export exclusion. Full encrypted database backups retain these local records;
+restoration never executes them. Completed reports and redacted snapshot metadata use
+existing run/message history. The forward-only migration refreshes run capture triggers to
+include the profile and preserves all existing rows and pending events.

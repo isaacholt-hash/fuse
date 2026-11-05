@@ -17,6 +17,8 @@ export interface Run {
   id: string;
   /** A replicated snapshot executes only through its original owner's remote path. */
   readOnly?: boolean;
+  /** Pinned, read-only Code review; a replica cannot fall back to generic execution. */
+  review?: boolean;
   /** Null for a run in a chat outside a project (M8, WF-02). */
   projectId: string | null;
   kind: RunKind;
@@ -93,6 +95,7 @@ export interface StepImage {
 interface RunRow {
   id: string;
   sync_read_only: number;
+  review_profile: number;
   project_id: string | null;
   kind: RunKind;
   routing_stage: RunRoutingStage;
@@ -139,6 +142,7 @@ interface StepRow {
 const toRun = (r: RunRow): Run => ({
   id: r.id,
   ...(r.sync_read_only === 1 ? { readOnly: true } : {}),
+  ...(r.review_profile === 1 ? { review: true } : {}),
   projectId: r.project_id,
   kind: r.kind,
   routingStage: r.routing_stage,
@@ -197,14 +201,14 @@ export async function createRun(
   run: Pick<
     Run,
     "projectId" | "threadId" | "messageId" | "task" | "provider" | "model" | "capMicroUsd"
-  > & { mode?: RunMode; kind?: RunKind },
+  > & { mode?: RunMode; kind?: RunKind; review?: boolean },
 ): Promise<Run> {
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO runs (id, workspace_id, user_id, project_id, thread_id, message_id, task, kind,
-       mode, provider, model, status, cap_micro_usd, created_at, updated_at, started_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?)`,
+       mode, provider, model, status, cap_micro_usd, created_at, updated_at, started_at, review_profile)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?, ?, ?, ?)`,
     [
       id,
       tenant.workspaceId,
@@ -221,6 +225,7 @@ export async function createRun(
       now,
       now,
       now,
+      run.review ? 1 : 0,
     ],
   );
   const created = await getRun(db, tenant, id);
@@ -232,7 +237,7 @@ export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, kind, routing_stage, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
-       updated_at, started_at, waited_ms,
+       updated_at, started_at, waited_ms, review_profile,
        (sync_owner IS NOT NULL AND sync_owner != (SELECT device_id FROM sync_state WHERE workspace_id=runs.workspace_id)) AS sync_read_only
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],

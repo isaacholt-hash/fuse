@@ -334,6 +334,7 @@ export class Runner {
     const live = this.live(deps);
     this.track(
       this.start(deps, {
+        ...(input.review ? { review: input.review } : {}),
         threadId,
         projectId: input.projectId,
         task: input.task,

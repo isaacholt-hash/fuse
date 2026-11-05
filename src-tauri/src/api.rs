@@ -76,6 +76,7 @@ pub const WEB_COMMANDS: &[&str] = &[
     "repo_exec_stop",
     "sandbox_status",
     "repo_git",
+    "repo_review_snapshot",
     "connector_configure",
     "connector_status",
     "connector_begin",
@@ -418,6 +419,10 @@ pub async fn dispatch(
             args!(name, args, folder_id: String, program: String, args: Vec<String>);
             json(git::repo_git(ctx, folder_id, program, args).await)
         }
+        "repo_review_snapshot" => {
+            args!(name, args, folder_id: String, selection: crate::code_review::Selection);
+            json(crate::code_review::snapshot(ctx, folder_id, selection).await)
+        }
 
         // Commands and Python (exec.rs)
         "repo_exec" => {
@@ -702,10 +707,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 103 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 104 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            103
+            104
         );
     }
 

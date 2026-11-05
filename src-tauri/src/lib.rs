@@ -9,6 +9,7 @@ mod backup;
 // The server's clone of a handed-over run's repository (M10 step 7), served by fuse-server.
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod clone;
+mod code_review;
 mod connectors;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod creds;
@@ -164,6 +165,7 @@ pub fn run() {
             exec::commands::sandbox_windows_set,
             exec::commands::sandbox_windows_reset,
             git::commands::repo_git,
+            code_review::commands::repo_review_snapshot,
             local::commands::local_generate,
             local::commands::local_cancel,
             local::commands::local_unload,
