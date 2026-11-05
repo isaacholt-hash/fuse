@@ -304,3 +304,41 @@ test("8. Usage shows spend by area and by where it ran", async () => {
     expect(await app.text(byLabel("By where it ran"))).toContain("Desktop app");
   });
 });
+
+test("9. Research requires a cap and finishes in Chat without a folder or sending the draft", async () => {
+  await step("research", async () => {
+    await app.run('localStorage.setItem("fuse.e2e.research", "yes");');
+    await app.reload();
+    await app.find(composer);
+    await app.chord("1");
+    await app.chord("n");
+    await app.type(composer, "Keep this editable research draft.");
+    await app.click(button("Options"));
+    await app.click('//button[@aria-label="Research"]');
+    await app.find('//input[@aria-label="Research spending cap (USD)"]');
+    expect(
+      await app.run(
+        'return [...document.querySelectorAll("input")].find(e=>e.getAttribute("aria-label")==="Research spending cap (USD)").value;',
+      ),
+    ).toBe("");
+    await app.clear('//textarea[@aria-label="Research scope"]');
+    await app.type(
+      '//textarea[@aria-label="Research scope"]',
+      "Compare recorded tidal measurements and their limitations.",
+    );
+    await app.run('document.documentElement.classList.remove("dark");');
+    await app.screenshot(join(SHOTS, "research-setup-light.png"));
+    await app.run('document.documentElement.classList.add("dark");');
+    await app.screenshot(join(SHOTS, "research-setup-dark.png"));
+    await app.type('//input[@aria-label="Research spending cap (USD)"]', "5");
+    await app.click(button("Start research"));
+    await app.sees("Research complete.", 60000);
+    expect(await app.run('return document.querySelector("textarea").value;')).toBe(
+      "Keep this editable research draft.",
+    );
+    await app.screenshot(join(SHOTS, "research-report-dark.png"));
+    await app.run('document.documentElement.classList.remove("dark");');
+    await app.screenshot(join(SHOTS, "research-report-light.png"));
+    await app.run('localStorage.removeItem("fuse.e2e.research");');
+  });
+}, 120000);

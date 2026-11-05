@@ -15,6 +15,7 @@ import { getThread } from "@/storage/threads";
 import { saveArtifacts } from "@/storage/artifacts";
 import { releaseRequest } from "@/storage/requestBudget";
 import { EMPTY_USAGE } from "@/storage/usage";
+import { readTransfer, transferredContext, type ResearchTransfer } from "./transfer";
 import { selectedContext, validateSelection } from "./context";
 import { parsePlan, parseReport, renderReportDetailed, verifyReport } from "./report";
 import {
@@ -65,6 +66,7 @@ export interface ResearchInput {
   location: "desktop" | "hulk";
   selection?: ResearchSelection;
   pinned?: boolean;
+  transfer?: ResearchTransfer;
 }
 class Halt extends Error {
   constructor(
@@ -149,7 +151,7 @@ async function guard(ctx: Execution, model: CatalogModel) {
     );
   if (ctx.pause) throw new Halt("Paused after the current operation settled.");
   if (!ctx.run.threadId) throw new Halt("Research Chat is unavailable.");
-  const context = await selectedContext(
+  const local = await selectedContext(
     ctx.deps,
     ctx.run.threadId,
     ctx.run.task,
@@ -157,6 +159,9 @@ async function guard(ctx: Execution, model: CatalogModel) {
     model.provider,
     ctx.state.location,
   );
+  const context = ctx.state.transfer
+    ? await transferredContext(ctx.state.transfer, model.provider)
+    : local;
   if (ctx.state.contextFingerprint && ctx.state.contextFingerprint !== context.fingerprint)
     throw new Halt(
       "Selected context changed. Start new research to review the updated scope; existing progress is preserved.",
@@ -726,11 +731,16 @@ async function execute(deps: ResearchDeps, run: Run, signal?: AbortSignal): Prom
     const halt =
       error instanceof Halt
         ? error
-        : new Halt(
-            error instanceof Error && error.message.startsWith("Selected")
-              ? error.message
-              : "Research paused because context or an operation could not be validated. Review the current scope before explicitly continuing.",
-          );
+        : durable.stop
+          ? new Halt(
+              "Stopped before the next operation; no new provider request was sent.",
+              "stopped",
+            )
+          : new Halt(
+              error instanceof Error && error.message.startsWith("Selected")
+                ? error.message
+                : "Research paused because context or an operation could not be validated. Review the current scope before explicitly continuing.",
+            );
     state.elapsedMs = elapsed(ctx);
     state.partialReason = halt.message;
     if (halt.terminal) {
@@ -790,6 +800,7 @@ export async function startResearchRun(
     capMicroUsd: input.capMicroUsd,
     location: input.location,
     pinned: input.pinned ?? false,
+    ...(input.transfer ? { transfer: input.transfer.fingerprint } : {}),
   });
   const existing = await getRun(deps.db, deps.tenant, input.requestId);
   if (existing) {
@@ -798,7 +809,7 @@ export async function startResearchRun(
       throw new Error("Research request ID was reused with a different scope.");
     return existing;
   }
-  const context = await selectedContext(
+  const localContext = await selectedContext(
     deps,
     input.threadId,
     input.task,
@@ -807,11 +818,23 @@ export async function startResearchRun(
     input.location,
   );
   await selectedContext(deps, input.threadId, input.task, selection, best.provider, input.location);
+  if (
+    input.transfer &&
+    (input.location !== "hulk" || JSON.stringify(selection) !== JSON.stringify(EMPTY_SELECTION))
+  )
+    throw new Error("Transferred context is only available on its HULK execution owner.");
+  const transfer = input.transfer ? await readTransfer(input.transfer) : undefined;
+  if (transfer) {
+    await transferredContext(transfer, worker.provider);
+    await transferredContext(transfer, best.provider);
+  }
+  const context = transfer ? await transferredContext(transfer, worker.provider) : localContext;
   const thread = await getThread(deps.db, deps.tenant, input.threadId);
   if (!thread) throw new Error("Research Chat not found.");
   const state: ResearchState = {
     version: 1,
     requestFingerprint: fingerprint,
+    ...(transfer ? { transfer } : {}),
     stage: "plan",
     selection,
     worker: modelRef(worker),

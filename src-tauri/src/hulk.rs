@@ -36,6 +36,9 @@ pub struct Build {
     pub built_from: String,
     /// The day it was built (UTC).
     pub built_on: String,
+    /// Optional feature handshake: older schema-compatible runners cannot execute research.
+    #[serde(default)]
+    pub research_protocol: u32,
 }
 
 /// This binary's build (src-tauri/build.rs sets the commit and day).
@@ -44,6 +47,7 @@ pub fn this_build() -> Build {
         schema: crate::db::schema_version(),
         built_from: env!("FUSE_BUILD_COMMIT").to_owned(),
         built_on: env!("FUSE_BUILD_DATE").to_owned(),
+        research_protocol: 1,
     }
 }
 
@@ -105,6 +109,11 @@ async fn hulk_build(ctx: &Ctx, address: &str, fresh: bool) -> Result<Build, Stri
         schema: v.get("schema").and_then(Value::as_i64).unwrap_or(0),
         built_from: text("builtFrom"),
         built_on: text("builtOn"),
+        research_protocol: v
+            .get("researchProtocol")
+            .and_then(Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok())
+            .unwrap_or(0),
     };
     *ctx.hulk.0.lock().unwrap() = Some((Instant::now(), address.to_owned(), build.clone()));
     Ok(build)
@@ -437,6 +446,7 @@ mod tests {
             schema: 0,
             built_from: "unknown".into(),
             built_on: "unknown".into(),
+            research_protocol: 0,
         };
         assert_eq!(
             mismatch(&mine, &before_f2).unwrap(),

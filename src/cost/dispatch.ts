@@ -136,7 +136,7 @@ export async function* trackedChat(
   )
     throw new ProviderError(
       "billing",
-      "Paused before the next request would exceed its cost cap. Continue with a higher cap.",
+      "Paused before the next request would exceed the run cap or a project/global budget. Review those limits before explicitly continuing.",
       { code: "request_cap" },
     );
   if (signal?.aborted) {

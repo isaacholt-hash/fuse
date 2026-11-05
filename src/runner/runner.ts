@@ -2,6 +2,14 @@
 // with every page closed. It takes what pages ask for from the database (run_requests), runs
 // chats' runs with the same loop as the desktop, and parks each approval there as "Waiting for
 // you" until some signed-in page answers it.
+import {
+  startResearchRun,
+  continueResearchRun,
+  type ResearchDeps,
+  type ResearchProgress,
+} from "@/research/engine";
+import { requestControl } from "@/research/storage";
+import { prepareQueuedResearch } from "@/research/queue";
 import { findModel, type CatalogModel, type ProviderId } from "@/catalog/catalog";
 import { continueChatRun, startChatRun } from "@/agent/chatRun";
 import type { ApprovalAnswer, ApprovalRequest, RunDeps, RunProgress } from "@/agent/run";
@@ -174,6 +182,30 @@ export class Runner {
     await setScheduleOutcome(deps.db, deps.tenant, scheduleId, run.status, note || null);
   }
 
+  private researchDeps(
+    base: RunDeps,
+    onProgress?: (progress: ResearchProgress) => void,
+  ): ResearchDeps {
+    let last = 0,
+      saved = "";
+    return {
+      db: base.db,
+      tenant: base.tenant,
+      catalog: base.catalog,
+      adapterFor: base.adapterFor,
+      ...(base.web ? { web: base.web } : {}),
+      onProgress: (progress) => {
+        onProgress?.(progress);
+        const now = Date.now();
+        if (progress.streaming === saved || (progress.streaming !== "" && now - last < this.liveMs))
+          return;
+        last = now;
+        saved = progress.streaming;
+        void setLive(base.db, base.tenant, progress.run.id, progress.streaming).catch(() => {});
+      },
+    };
+  }
+
   private track(p: Promise<void>): void {
     const t = p.finally(() => this.work.delete(t));
     this.work.add(t);
@@ -183,7 +215,16 @@ export class Runner {
     const base = await this.options.deps();
     const { db, tenant } = base;
     if (request.kind === "stop") {
+      const run = await getRun(db, tenant, request.input.runId);
+      if (request.input.pause && run?.kind !== "research")
+        throw new Error("Pause is available for Research runs.");
+      if (run?.kind === "research")
+        await requestControl({ db, tenant }, run.id, request.input.pause ? "pause" : "stop");
       const going = this.going.get(request.input.runId);
+      if (request.input.pause) {
+        await finishRequest(db, tenant, request.id, { runId: request.input.runId });
+        return;
+      }
       if (going) going.abort();
       else {
         // M10 step 11: nothing here is running it (a stale row, or another process's), so Stop
@@ -199,8 +240,24 @@ export class Runner {
     const deps = this.withApprovals(base);
     if (request.kind === "continue") {
       const { runId, raiseCapBy } = request.input;
-      if ((await getRun(db, tenant, runId))?.kind === "research")
-        throw new Error("Research requires its restricted execution engine.");
+      if ((await getRun(db, tenant, runId))?.kind === "research") {
+        if (request.input.research?.protocol !== 1 || raiseCapBy !== undefined)
+          throw new Error("Research requires its restricted execution engine.");
+        if (this.going.has(runId)) throw new Error("That research run is already going.");
+        this.going.set(runId, controller);
+        await finishRequest(db, tenant, request.id, { runId });
+        this.track(
+          continueResearchRun(this.researchDeps(base), runId, {
+            ...request.input.research,
+            signal: controller.signal,
+          }).then(
+            () => this.ended(base, runId),
+            (error: unknown) => this.failed(base, runId, error),
+          ),
+        );
+        return;
+      }
+      if (request.input.research) throw new Error("This is not a research run.");
       if (this.going.has(runId)) throw new Error("That run is already going.");
       this.going.set(runId, controller);
       await finishRequest(db, tenant, request.id, { runId });
@@ -217,8 +274,49 @@ export class Runner {
       return;
     }
     const input = request.input;
-    if (input.kind === "research")
-      throw new Error("Research cannot use repository handover or the Code runner.");
+    if (input.kind === "research") {
+      const research = await prepareQueuedResearch(base, input);
+      if (!input.threadId || input.capMicroUsd === undefined || !input.planner)
+        throw new Error("Research setup is incomplete.");
+      const worker = modelFor(base, input.model),
+        best = modelFor(base, input.planner);
+      const runId = request.id;
+      if (this.going.has(runId)) throw new Error("That research run is already going.");
+      this.going.set(runId, controller);
+      const progress = (p: ResearchProgress) => {
+        if (p.run.messageId)
+          void finishRequest(db, tenant, request.id, { runId: p.run.id }).catch(() => {});
+      };
+      this.track(
+        startResearchRun(
+          this.researchDeps(base, progress),
+          {
+            requestId: runId,
+            threadId: input.threadId,
+            task: input.task,
+            worker,
+            best,
+            capMicroUsd: input.capMicroUsd,
+            location: "hulk",
+            selection: research.selection,
+            pinned: research.pinned,
+            ...(research.transfer ? { transfer: research.transfer } : {}),
+          },
+          controller.signal,
+        ).then(
+          async (run) => {
+            await finishRequest(db, tenant, request.id, { runId: run.id });
+            await this.ended(base, run.id);
+          },
+          async (error: unknown) => {
+            this.going.delete(runId);
+            await finishRequest(db, tenant, request.id, { error: message(error) });
+          },
+        ),
+      );
+      return;
+    }
+    if (input.research) throw new Error("Research context cannot enter the Code engine.");
     const scheduleId = input.scheduleId;
     let model: CatalogModel;
     let planner: CatalogModel | null;

@@ -23,7 +23,7 @@ FK-12, RT-14, AG-06, AG-05; bounded search and CO-08.
 
 - [x] **1. Routing and search interfaces.** Complete Best planning/final synthesis, Balanced-or-floor routine work and Cheap housekeeping across runs, respecting explicit pins. Add bounded provider-native search options, conservative request bounds and a research run kind; keep research in Chat.
 - [x] **2. Research engine.** Restricted read-only tool profile, execution-owner checkpoints, collected sources and a versioned cited Markdown report. Enforce cap and work limits, validate source links, flag unsupported claims and retain partial results. No commands, repository writes or additional MCP access.
-- [ ] **3. Chat controls.** Research action without a linked-folder requirement, scope/estimate/location preview and an unfilled cap field required to start. HULK preferred when permitted, explicit desktop option, progress/pause/stop and explicit continuation. Portable finished reports/history, owner-only active coordination.
+- [x] **3. Chat controls.** Research action without a linked-folder requirement, scope/estimate/location preview and an unfilled cap field required to start. HULK preferred when permitted, explicit desktop option, progress/pause/stop and explicit continuation. Portable finished reports/history, owner-only active coordination.
 - [ ] **4. Benchmark and release.** Deterministic recorded research scenarios, both provider adapters, desktop/web click-through, HULK continuation after caller disconnects, interrupted desktop behavior, reviewed screenshots and setup documentation.
 
 ## Behavior and boundaries
@@ -183,3 +183,95 @@ with 13 live/manual tests skipped across eight files. Lint, typecheck, formattin
 secret scan passed. The initial full-check attempt was stopped after the economics fixture
 exceeded its short default timeout; the final complete run passed after the scoped timeout
 adjustment and control-race fixes. Owner-operated provider/research acceptance stays pending.
+
+Step 2 shipped in [PR #295](https://github.com/isaacholt-hash/fuse/pull/295), merged as
+`2c402488c2ee4502843e625141e293dbc0b98702` after all five current-head gates passed in
+[CI 41980895113](https://github.com/isaacholt-hash/fuse/actions/runs/41980895113)
+on `9de5fa519e0726e43871761e6f2fc29577c12048`. Reviewed that CI's Windows Code/files and
+dictation screenshots. Its encrypted-sync benchmark passed 16/16 in 22,462 ms on schema 65;
+the HULK benchmark and synthetic dictation/web checks passed. Normal release
+[v0.1.217](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.217) published on
+2026-11-05 at 06:49:51 UTC through
+[run 41981930551](https://github.com/isaacholt-hash/fuse/actions/runs/41981930551).
+Linux/Windows installers and the seven signed updater entries were verified. Nothing was
+deployed or activated on the existing HULK installation.
+
+## Step 3 — Chat controls and execution ownership
+
+Chat → Options → Research opens the scope/context/location preview and a required, empty cap.
+No linked folder is needed. Selected context is explicit and bounded; opening the dialog never
+calls a provider. The ordinary editable draft survives setup and creation of a new Research
+Chat. Progress shows stage, limits, actual cost and remaining/unknown exposure. Pause waits for
+the current operation; Stop interrupts; Continue explicitly confirms the total cap.
+
+HULK is preferred only when pairing, schema, research protocol, source policy, project identity
+and eligible provider/model configuration permit it. Its own accepted catalog, custom models,
+price edits and routing settings drive previews and the headless runner. Desktop execution is
+an explicit option; browsers display their local-execution restriction. A project must already
+exist on HULK, normally through enrolled sync. Research never creates a partial shared project
+or copies folder grants. Outside-project research does not require sync enrollment.
+
+An explicit native HTTPS transfer starts a dedicated Research Chat in the same existing project.
+Schema 66 stores an owner-local, once-claimed transfer intent before dispatch. Lost start
+acknowledgements are observed by stable ID and never automatically resent. Accepted transfers
+purge the pending text snapshot; local-only/privacy changes withdraw it atomically. The table is
+classified for sync exclusion, deletion, export exclusion and encrypted backup retention.
+
+The existing background runner handles typed research queue requests with the restricted engine,
+without Code handover, clone, schedules, branches or permissions. HULK continues independently
+of the caller; desktop checkpoints require explicit continuation after interruption. Synced
+history stays read-only. [Setup, controls, storage and update instructions](../research.md).
+
+Focused regression coverage includes populated schema-66 preservation/classification, empty
+caps and exact micro-dollar parsing, editable draft preservation, selected context and project
+links, unsupported pins, owner catalog overrides, pause/stop/continuation, lost transport
+acknowledgements, privacy withdrawal and HULK completion after caller disconnection. All model
+and page responses in automated fixtures are synthetic; live provider acceptance stays pending.
+
+Step-3 production web and Node bundles built successfully and contain neither the scripted
+build marker nor the synthetic research source. The isolated Chromium/background-runner
+click-through passed: empty starting cap, explicit pause and continuation, preserved draft,
+versioned report and linked citation. Its four attempts total 10,840 micro-dollars in both the
+request ledger and run history, with no folder grant or file change. The test used a 5-dollar
+cap followed by an explicitly confirmed 5.50-dollar total cap; no real provider was called.
+[Fixture accounting](../screenshots/m14/controls-web-result.json).
+
+Reviewed native [light](../screenshots/m14/controls-native-setup-light.png) and
+[dark](../screenshots/m14/controls-native-setup-dark.png) setup, browser
+[light](../screenshots/m14/controls-web-setup-light.png) and
+[dark](../screenshots/m14/controls-web-setup-dark.png) setup,
+[paused progress](../screenshots/m14/controls-web-paused-dark.png) and the opened report in
+[light](../screenshots/m14/controls-web-report-light.png) and
+[dark](../screenshots/m14/controls-web-report-dark.png). The 9.9.9 updater banner is fixture data.
+The preserved HULK benchmark passed 5/5; encrypted sync passed all 16 scenarios on schema 66
+in 56,161 ms: [recorded JSON](../screenshots/m14/controls-sync-benchmark.json).
+
+Native synthetic research was also started through the real composer and completed all four
+requests on the desktop owner, without a folder. Reviewed its finished state in
+[light](../screenshots/m14/controls-native-finished-light.png) and
+[dark](../screenshots/m14/controls-native-finished-dark.png), each using a fresh throwaway
+database/keyring. An initial screenshot-driving attempt typed too quickly for WebKit and did
+not start; it remains in scratch evidence. Slower user-style input completed successfully.
+The browser check found and fixed loss of the editable draft when creating a new Research
+Chat. The first full-check attempt also identified the missing TypeScript project inclusion
+for the separate fixture Vite config; its project inclusion was corrected before rerunning.
+
+Final local `VITEST_MAX_WORKERS=2 pnpm check` passed: 189 files / 1,092 tests passed,
+13 live/manual tests skipped across eight files. Lint, formatting, typecheck and secret scan
+passed. Default/server clippy with warnings denied passed, as did all 169 desktop and 183
+server Rust tests. Production browser regression passed 10/10. Current-head CI, including
+the new Windows Research click-through, remains the required merge gate.
+
+Further review added read-only authenticated Chat links for Open on HULK, with a regression
+asserting that opening paused history enqueues nothing. HULK previews intersect its provider
+restrictions with the source's; if bounded search is unavailable there, desktop is preferred
+explicitly. Continuation preserves the exact micro-dollar cap even at the safe-integer limit.
+Setup qualifies the base planning allowance before selected context. The final native and
+browser screenshots were refreshed and reviewed, and production web/runner builds, web 10/10
+and synthetic dictation 1/1 passed again.
+
+The first CI attempt found a missing final newline in copied benchmark JSON; formatting fixed
+it without changing results. The next attempt passed four gates but caught the Windows fixture
+reading setup before the cap field loaded. The fixture now waits for that field. Failed-run
+screenshots/logs were retained for diagnosis. All five gates must pass on the final current
+commit before merge; no failed or superseded attempt counts as acceptance.

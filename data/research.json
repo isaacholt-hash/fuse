@@ -36,5 +36,11 @@
     "checkpoint_interval_ms": 200,
     "max_claim_quote_chars": 500,
     "max_context_items": 64
+  },
+  "estimate": {
+    "searches": 5,
+    "text_calls": 3,
+    "input_tokens": 16000,
+    "output_tokens": 2000
   }
 }

@@ -1,6 +1,7 @@
 // Runs on HULK (M10 step 6, CA-15): what a page asks the server's runner to do, the questions a
 // run there waits on, and the text it's streaming. The page and the runner share the server's
 // database, so this is how they talk (migration 0050).
+import type { ResearchQueueInput } from "@/research/queue";
 import type { RunKind, RunMode } from "./runs";
 import type { SqlDb } from "./sql";
 import type { Tenant } from "./defaults";
@@ -14,6 +15,8 @@ export interface ModelRef {
 
 /** A chat run to start, as the page asks for it (`ChatRunInput` without the callbacks). */
 export interface StartInput {
+  /** A research request reaches only the restricted executor. */
+  research?: ResearchQueueInput;
   /** Null for a handover: the runner makes the chat. */
   threadId: string | null;
   projectId: string | null;
@@ -49,8 +52,15 @@ export interface GitAuthor {
 
 type Ask =
   | { kind: "start"; input: StartInput }
-  | { kind: "continue"; input: { runId: string; raiseCapBy?: number } }
-  | { kind: "stop"; input: { runId: string } };
+  | {
+      kind: "continue";
+      input: {
+        runId: string;
+        raiseCapBy?: number;
+        research?: { protocol: 1; capMicroUsd?: number };
+      };
+    }
+  | { kind: "stop"; input: { runId: string; pause?: boolean } };
 
 export type RunRequest = Ask & { id: string };
 
@@ -60,18 +70,31 @@ interface RequestRow {
   input: string;
 }
 
-async function enqueue(db: SqlDb, tenant: Tenant, ask: Ask): Promise<string> {
+async function enqueue(db: SqlDb, tenant: Tenant, ask: Ask, stableId?: string): Promise<string> {
   const now = Date.now();
-  const id = uuidv7(now);
+  const id = stableId ?? uuidv7(now);
   const runId = "runId" in ask.input ? ask.input.runId : null;
   await db.execute(
     `INSERT INTO run_requests (id, workspace_id, user_id, kind, input, run_id, created_at,
        updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
     [id, tenant.workspaceId, tenant.userId, ask.kind, JSON.stringify(ask.input), runId, now, now],
   );
+  if (stableId) {
+    const existing = (
+      await db.select<{ input: string; kind: string }>(
+        "SELECT input,kind FROM run_requests WHERE workspace_id=? AND user_id=? AND id=?",
+        [tenant.workspaceId, tenant.userId, id],
+      )
+    )[0];
+    if (!existing || existing.kind !== ask.kind || existing.input !== JSON.stringify(ask.input))
+      throw new Error("Request ID was reused with different research setup.");
+  }
   return id;
 }
+
+export const askToStartWithId = (db: SqlDb, tenant: Tenant, id: string, input: StartInput) =>
+  enqueue(db, tenant, { kind: "start", input }, id);
 
 export const askToStart = (db: SqlDb, tenant: Tenant, input: StartInput) =>
   enqueue(db, tenant, { kind: "start", input });
@@ -81,6 +104,23 @@ export const askToContinue = (db: SqlDb, tenant: Tenant, runId: string, raiseCap
     kind: "continue",
     input: raiseCapBy ? { runId, raiseCapBy } : { runId },
   });
+
+/** Absolute cap makes duplicate continuation requests harmless. */
+export const askToContinueResearch = (
+  db: SqlDb,
+  tenant: Tenant,
+  runId: string,
+  capMicroUsd?: number,
+) =>
+  enqueue(db, tenant, {
+    kind: "continue",
+    input: {
+      runId,
+      research: { protocol: 1, ...(capMicroUsd === undefined ? {} : { capMicroUsd }) },
+    },
+  });
+export const askToPauseResearch = (db: SqlDb, tenant: Tenant, runId: string) =>
+  enqueue(db, tenant, { kind: "stop", input: { runId, pause: true } });
 
 export const askToStop = (db: SqlDb, tenant: Tenant, runId: string) =>
   enqueue(db, tenant, { kind: "stop", input: { runId } });

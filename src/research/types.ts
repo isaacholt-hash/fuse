@@ -56,6 +56,8 @@ export interface ResearchReport {
 export type ResearchStage =
   "plan" | "search" | "read" | "synthesis" | "verify" | "publish" | "finished";
 export interface ResearchState {
+  /** A deliberate native-to-HULK transfer, never a replica of folders or permissions. */
+  transfer?: import("./transfer").ResearchTransfer;
   version: 1;
   requestFingerprint: string;
   stage: ResearchStage;

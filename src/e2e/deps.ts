@@ -1,3 +1,5 @@
+import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
+import { tauriWebApi } from "@/web/api";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
 import type { DictationApi } from "@/dictation/client";
@@ -209,7 +211,9 @@ const scriptedFetch: FetchLike = async (url, init) => {
 const keysApi: KeysApi = {
   status: (p) =>
     Promise.resolve(
-      p === "anthropic" || localStorage.getItem("fuse.e2e.dictation") === "yes"
+      p === "anthropic" ||
+        localStorage.getItem("fuse.e2e.dictation") === "yes" ||
+        localStorage.getItem("fuse.e2e.research") === "yes"
         ? { saved: true, masked: "e2e…test" }
         : { saved: false, masked: null },
     ),
@@ -356,6 +360,7 @@ const dictation: DictationApi = {
 };
 
 export function e2eDeps() {
+  if (import.meta.env.VITE_E2E_RESEARCH === "1") localStorage.setItem("fuse.e2e.research", "yes");
   if (import.meta.env.VITE_E2E_DICTATION === "1") localStorage.setItem("fuse.e2e.dictation", "yes");
   // The test checks this before it clicks anything, so it never drives a real build.
   document.documentElement.dataset.build = E2E_MARK;
@@ -374,13 +379,17 @@ export function e2eDeps() {
   });
   return {
     dictation,
+    web: scriptedResearchWeb(tauriWebApi),
     hulk,
     keysApi,
     updates,
     openDb: loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
-      return p === "anthropic" ? anthropic : openai;
+      const base = p === "anthropic" ? anthropic : openai;
+      return localStorage.getItem("fuse.e2e.research") === "yes"
+        ? scriptedResearchAdapter(p, { base, delayMs: 700 })
+        : base;
     },
   };
 }

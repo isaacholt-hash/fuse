@@ -263,3 +263,13 @@ source's correctness. Reports retain limitations and disagreements when size lim
 partial publication. Unknown billing and lost checkpoint acknowledgements never authorize a
 blind paid replay. A duplicated start request observes its original run. Local leases and
 journals are excluded from sync/export; their encrypted backups have independent retention.
+
+The explicit desktop-to-HULK research snapshot is bounded text with a version and content
+fingerprint, sent over existing authenticated native HTTPS. HULK is trusted and can read it.
+Source policy is rechecked before transfer, and the execution owner's current policy is checked
+before each model operation. Project identity is preserved without importing project settings
+or machine permissions. A durable local intent is claimed once before transport; uncertain
+delivery never authorizes automatic resend. Privacy withdrawal clears its retained payload.
+Browser polling, reconnect, sync and backup restore cannot dispatch research. A protocol/schema
+mismatch pauses setup with an explanation. Test-only scripted runner builds are separate from
+the production entrypoint and require an isolated loopback/in-memory-secrets server.

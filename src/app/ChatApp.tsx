@@ -343,6 +343,7 @@ import {
   type Thread,
 } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
+import { useResearch } from "@/research/useResearch";
 import { Composer, Messages } from "@/ui/Conversation";
 import { money, number } from "@/ui/format";
 import { Hint, Modal, ThreadMenu, Tip } from "@/ui/primitives";
@@ -854,6 +855,10 @@ export function ChatApp({
   // M10 step 12 (CH-19): Chat or Code; each area reopens on its own last thread.
   const [area, setArea] = useState<Area>(readArea);
   const [lastThread] = useState(() => readLastThread(readArea()));
+  // A HULK history link selects an existing Chat only; it cannot enqueue or resume execution.
+  const [linkedThread] = useState(() =>
+    webApp ? new URLSearchParams(window.location.search).get("thread") : null,
+  );
   // The path on screen (CH-04), every message in the thread, and where the path has siblings.
   const [messages, setMessages] = useState<Message[]>([]);
   const [threadAll, setThreadAll] = useState<Message[]>([]);
@@ -1464,6 +1469,7 @@ export function ChatApp({
   const [toolsOff, setToolsOff] = useState<Set<string>>(new Set());
   // M9 step 9: the MCP servers the edited project uses.
   const [projectServers, setProjectServers] = useState<Set<string>>(new Set());
+  const researchStopRef = useRef<((runId?: string) => boolean) | null>(null);
   const [threadRuns, setThreadRuns] = useState<Map<string, RunProgress>>(new Map());
   // CA-06: the open chat's project's CLAUDE.md and AGENTS.md, for the instructions view.
   const [repoFiles, setRepoFiles] = useState<{ projectId: string; files: RepoInstruction[] }>({
@@ -1582,9 +1588,7 @@ export function ChatApp({
       const ticket = ++reloads.current;
       const { rows, all, attached, cited, used, upto, fromFiles, artifacts } =
         await loadThread(threadId);
-      const runs: Awaited<ReturnType<typeof runsForThread>> = repoApi
-        ? await runsForThread(db, tenant, threadId)
-        : new Map<string, never>();
+      const runs = await runsForThread(db, tenant, threadId);
       if (selectedRef.current === threadId && ticket === reloads.current) {
         setThreadRuns(
           new Map(
@@ -1606,7 +1610,7 @@ export function ChatApp({
       }
       return rows;
     },
-    [loadThread, repoApi, db, tenant],
+    [loadThread, db, tenant],
   );
 
   const syncReceived = useCallback(async () => {
@@ -1680,8 +1684,10 @@ export function ChatApp({
       .then(async (list) => {
         setThreadList({ threads: list, at: Date.now() });
         setLatestRuns(await latestRunByThread(db, tenant));
-        // Reopen on the thread that was open last time, if it still exists.
-        const last = lastThread ? list.find((t) => t.id === lastThread) : undefined;
+        // An authenticated history link wins; an unavailable/deleted ID falls back safely.
+        const last =
+          (linkedThread ? list.find((t) => t.id === linkedThread) : undefined) ??
+          (lastThread ? list.find((t) => t.id === lastThread) : undefined);
         if (!last) return;
         const { rows, all, attached, cited, used, upto, fromFiles, artifacts } = await loadThread(
           last.id,
@@ -1691,8 +1697,8 @@ export function ChatApp({
         setArea(areaOf(last.kind));
         setThreadArtifacts(artifacts);
         setThreadFileSources(fromFiles);
-        setSelectedId(lastThread);
-        selectedRef.current = lastThread;
+        setSelectedId(last.id);
+        selectedRef.current = last.id;
         setMessages(rows);
         setSummaryUpto(upto);
         setThreadAll(all);
@@ -1702,7 +1708,7 @@ export function ChatApp({
         setThreadMemories(used);
       })
       .catch(report);
-  }, [db, tenant, catalog, lastThread, loadThread, appBuild, backups]);
+  }, [db, tenant, catalog, lastThread, linkedThread, loadThread, appBuild, backups]);
   useEffect(() => {
     if (selectedId === null) return;
     const kind = threads.find((t) => t.id === selectedId)?.kind;
@@ -2814,6 +2820,7 @@ export function ChatApp({
     );
   };
   const stop = useCallback(() => {
+    if (researchStopRef.current?.()) return;
     const threadId = selectedRef.current;
     const controller = threadId ? controllers.current.get(threadId) : undefined;
     controller?.abort();
@@ -2822,6 +2829,7 @@ export function ChatApp({
     // so Stop always works.
     for (const r of threadRuns.values()) {
       if (r.run.status !== "running") continue;
+      if (r.run.kind === "research" && researchStopRef.current?.(r.run.id)) continue;
       const settle = webApp
         ? askToStop(db, tenant, r.run.id)
         : controller
@@ -3436,6 +3444,30 @@ export function ChatApp({
     : sessionWhere === "hulk" && whereReasons.hulk === null
       ? "hulk"
       : "local";
+  const research = useResearch({
+    deps,
+    threadId: selectedId,
+    projectId: activeProjectId,
+    mode,
+    policy,
+    providers: savedProviders,
+    ...(hulkLink ? { hulk: hulkLink } : {}),
+    hulkStatus,
+    web: webApp,
+    incognito: thread?.incognito ?? draftIncognito,
+    onChanged: (id) => {
+      void reload(id).catch(report);
+      void refreshThreads().catch(report);
+    },
+    onSelect: (id, draft) => {
+      select(id);
+      if (draft) putInComposer(draft, id);
+    },
+    onError: report,
+  });
+  useEffect(() => {
+    researchStopRef.current = research.stopCurrent;
+  });
   const runOnHulk = (task: string) => {
     if (!hulkLink || !gitApi || !activeProjectId || !repoFolder) return;
     const projectId = activeProjectId;
@@ -3822,7 +3854,7 @@ export function ChatApp({
     }
     for (const v of views) {
       const r = threadRuns.get(v.id);
-      if (r) {
+      if (r && r.run.kind !== "research") {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
         const waiting = approvals.get(r.run.id);
         if (waiting) {
@@ -3871,7 +3903,8 @@ export function ChatApp({
   const streaming =
     selectedId !== null &&
     (selectedId in live ||
-      (webApp && [...threadRuns.values()].some((r) => r.run.status === "running")));
+      research.busy ||
+      [...threadRuns.values()].some((r) => r.run.status === "running"));
   // M10 step 16: every file the session's runs changed, oldest first, for the Files panel.
   const sessionChanges = withEscalation.flatMap((m) => m.run?.changes ?? []);
   /**
@@ -4918,7 +4951,15 @@ export function ChatApp({
           retry();
         }
       }
-      if (event.key === "Escape" && !picker && !deleting && !renaming && !log) stop();
+      if (
+        event.key === "Escape" &&
+        !picker &&
+        !deleting &&
+        !renaming &&
+        !log &&
+        !research.hasDialog
+      )
+        stop();
     };
     window.addEventListener("keydown", keyboard);
     return () => {
@@ -6323,6 +6364,7 @@ export function ChatApp({
                   )}
                   <div className="flex min-h-0 flex-1">
                     <div className="flex min-w-0 flex-1 flex-col">
+                      {research.progress}
                       <Messages
                         key={selectedId ?? "new"}
                         messages={withEscalation}
@@ -6448,6 +6490,9 @@ export function ChatApp({
                         })}
                       />
                       <Composer
+                        {...(area === "chat"
+                          ? { onResearch: research.open, researchReason: research.reason }
+                          : {})}
                         key={`composer-${selectedId ?? "new"}`}
                         dictation={{
                           api: dictation,
@@ -7325,6 +7370,7 @@ export function ChatApp({
             </div>
           </form>
         </Modal>
+        {research.dialogs}
         <Modal
           open={view === "settings" && log !== null}
           onOpenChange={(open) => {
