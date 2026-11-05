@@ -68,6 +68,27 @@ pub fn run() {
             app.manage(ctx);
             Ok(())
         })
+        // A reload/window close can bypass JavaScript cleanup. Do not leave its microphone open.
+        .on_page_load(|webview, payload| {
+            use tauri::Manager;
+            if matches!(payload.event(), tauri::webview::PageLoadEvent::Started)
+                && let Some(ctx) = webview.try_state::<ctx::Ctx>()
+            {
+                let audio = ctx.audio.clone();
+                tauri::async_runtime::spawn_blocking(move || audio.cancel_all());
+            }
+        })
+        .on_window_event(|window, event| {
+            use tauri::Manager;
+            if matches!(
+                event,
+                tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed
+            ) && let Some(ctx) = window.try_state::<ctx::Ctx>()
+            {
+                let audio = ctx.audio.clone();
+                tauri::async_runtime::spawn_blocking(move || audio.cancel_all());
+            }
+        })
         // AR-05: HTML artifact previews, each with a no-network policy (src/preview.rs).
         .register_uri_scheme_protocol("preview", |ctx, request| {
             use tauri::Manager;

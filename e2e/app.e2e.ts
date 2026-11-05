@@ -278,3 +278,44 @@ test.skipIf(!PYTHON)(
   },
   900_000,
 );
+
+test("M13: dictation consent, editable transcript, cancellation and both themes", async () => {
+  await app.run('localStorage.setItem("fuse.e2e.dictation", "yes");');
+  await app.reload();
+  await app.chord("1");
+  await app.chord("n");
+  await app.find(composer);
+  await app.click('//button[@aria-label="Dictate"]');
+  await app.find('//*[@role="dialog"]');
+  await app.click(button("Agree to audio transfer"));
+  await app.gone('//*[@role="dialog"]');
+  await app.type(composer, "Keep this draft.");
+  await app.click('//button[@aria-label="Dictate"]');
+  await app.find('//button[@aria-label="Stop recording and transcribe"]');
+  await app.screenshot(join(SHOTS, "m13-recording-light.png"));
+  await app.click('//button[@aria-label="Stop recording and transcribe"]');
+  await app.sees("Transcript added to your draft.");
+  expect(
+    await app.run(`return document.querySelector('textarea[aria-label="Message"]').value;`),
+  ).toBe("Keep this draft.\n\nA dictated fixture, ready to edit.");
+  expect(await app.run('return document.querySelectorAll("[data-answer]").length;')).toBe(0);
+  await app.screenshot(join(SHOTS, "m13-transcript-light.png"));
+  await app.chord(",");
+  await app.type(byLabel("Search settings"), "dictation");
+  await app.press("Enter");
+  await app.find('//button[@aria-label="Turn off dictation"]');
+  await app.screenshot(join(SHOTS, "m13-settings-light.png"));
+  await app.run('window.location.hash = "#settings/general/appearance";');
+  await app.click(button("Dark"));
+  await app.chord(",");
+  await app.find(composer);
+  await app.click('//button[@aria-label="Dictate"]');
+  await app.find('//button[@aria-label="Stop recording and transcribe"]');
+  await app.screenshot(join(SHOTS, "m13-recording-dark.png"));
+  await app.click('//button[@aria-label="Cancel dictation"]');
+  expect(
+    await app.run(`return document.querySelector('textarea[aria-label="Message"]').value;`),
+  ).toContain("Keep this draft.");
+  await app.run('localStorage.removeItem("fuse.e2e.dictation");');
+  await app.reload();
+});

@@ -122,6 +122,18 @@ owner-operated dictation, research, connector and usage checks are recorded agai
 builds.** Finish with merged PRs, release/build IDs, screenshots, benchmarks, update/setup
 instructions and the remaining acceptance checklist. M19 records the final evidence.
 
+## Delivery evidence
+
+- M12 Settings: [PR #286](https://github.com/isaacholt-hash/fuse/pull/286), release
+  [v0.1.211](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.211); current-head CI and release verified.
+- Roadmap: [PR #287](https://github.com/isaacholt-hash/fuse/pull/287), release
+  [v0.1.212](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.212).
+- M13 accounting: [PR #288](https://github.com/isaacholt-hash/fuse/pull/288), release
+  [v0.1.213](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.213).
+- M13 capture/transport: [PR #290](https://github.com/isaacholt-hash/fuse/pull/290), all five gates
+  green before merge; released as [v0.1.214](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.214). M13 controls finish in their own step-3 PR; [the milestone](milestones/M13-dictation.md)
+  records exact checks/screenshots and [dictation setup](dictation.md) keeps real acceptance pending.
+
 ## Roadmap verification
 
 The roadmap PR also corrects an existing memory-test assertion: a random record UUID can

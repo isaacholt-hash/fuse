@@ -1,6 +1,10 @@
 /** Static navigation metadata only. Never add setting values, credentials or user content. */
 export const SETTINGS_CATEGORIES = [
-  { id: "general", label: "General", description: "Appearance, notifications and quick capture." },
+  {
+    id: "general",
+    label: "General",
+    description: "Appearance, notifications, quick capture and dictation.",
+  },
   {
     id: "providers-models",
     label: "Providers & models",
@@ -131,6 +135,22 @@ export const SETTINGS_SECTIONS = [
         description: "Choose the days for quiet hours.",
         aliases: ["weekday", "weekend"],
         selector: '[aria-label="Quiet days"]',
+      },
+    ],
+  },
+  {
+    id: "dictation",
+    category: "general",
+    label: "Dictation",
+    description: "Microphone recording and consent to OpenAI audio transfer.",
+    aliases: ["voice", "speech", "microphone", "transcription", "audio"],
+    controls: [
+      {
+        id: "dictation-consent",
+        label: "Dictation audio consent",
+        description: "Enable audio transfer on this installation or browser.",
+        aliases: ["recording", "cloud audio"],
+        selector: '[data-settings-control="dictation-consent"]',
       },
     ],
   },

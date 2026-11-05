@@ -1,0 +1,161 @@
+{
+  "benchmark": "M13 dictation regression fixtures",
+  "verifiedOn": "2026-11-05",
+  "schema": 63,
+  "synthetic": true,
+  "providerCalls": 0,
+  "physicalMicrophones": 0,
+  "passed": 31,
+  "failed": 0,
+  "scenarios": [
+    {
+      "test": "discarding a transcript preserves its fee in thread, project and global totals exactly once",
+      "status": "passed"
+    },
+    {
+      "test": "a successful transcript is returned once and raw bytes are wiped",
+      "status": "passed"
+    },
+    {
+      "test": "consent and malformed audio refuse before preparing a paid operation",
+      "status": "passed"
+    },
+    {
+      "test": "cancellation during preparation releases the quote without uploading",
+      "status": "passed"
+    },
+    {
+      "test": "a late billed response is discarded after cancellation without replay",
+      "status": "passed"
+    },
+    {
+      "test": "unknown upload failure cancels safely, retains no audio and never retries",
+      "status": "passed"
+    },
+    {
+      "test": "browser stop returns editable-draft audio once and releases every microphone resource",
+      "status": "passed"
+    },
+    {
+      "test": "recording limits release tracks independently of further UI input",
+      "status": "passed"
+    },
+    {
+      "test": "abort, disconnect and a late permission grant discard samples and release tracks",
+      "status": "passed"
+    },
+    {
+      "test": "permission refusal, insecure origins and stalled initialization cannot leave a mic open",
+      "status": "passed"
+    },
+    {
+      "test": "native cancellation still releases a microphone opened after a cancelled start",
+      "status": "passed"
+    },
+    {
+      "test": "consent stays local, fails closed and revokes before a failed audit",
+      "status": "passed"
+    },
+    {
+      "test": "transcription appends once to the current edited draft, keeps scope and never sends",
+      "status": "passed"
+    },
+    {
+      "test": "consent is explicit and agreeing does not open the microphone",
+      "status": "passed"
+    },
+    {
+      "test": "policy or connection refusal blocks recording: Local-only project.",
+      "status": "passed"
+    },
+    {
+      "test": "policy or connection refusal blocks recording: Connect OpenAI in Settings to use dictation.",
+      "status": "passed"
+    },
+    {
+      "test": "leaving or changing permission cancels audio: panel",
+      "status": "passed"
+    },
+    {
+      "test": "leaving or changing permission cancels audio: scope",
+      "status": "passed"
+    },
+    {
+      "test": "leaving or changing permission cancels audio: consent",
+      "status": "passed"
+    },
+    {
+      "test": "leaving or changing permission cancels audio: unmount",
+      "status": "passed"
+    },
+    {
+      "test": "leaving or changing permission cancels audio: pagehide",
+      "status": "passed"
+    },
+    {
+      "test": "cancelled upload cannot insert a late transcript; incurred-cost refresh still runs",
+      "status": "passed"
+    },
+    {
+      "test": "permission denial is actionable, and unknown billing is visible without an automatic retry",
+      "status": "passed"
+    },
+    {
+      "test": "the native/browser duration limit transcribes once without sending",
+      "status": "passed"
+    },
+    {
+      "test": "hold-to-talk release during microphone startup finishes once, without a duplicate click",
+      "status": "passed"
+    },
+    {
+      "test": "a short pointer click starts recording and the next click stops it",
+      "status": "passed"
+    },
+    {
+      "test": "a cancelled pointer gesture does not swallow the next keyboard-started stop",
+      "status": "passed"
+    },
+    {
+      "test": "schema 63 preserves populated cost history, circular references and pending sync events",
+      "status": "passed"
+    },
+    {
+      "test": "canonical PCM16 carries actual duration, clamps samples and rejects forged metadata",
+      "status": "passed"
+    },
+    {
+      "test": "duration and byte limits are independent and empty recordings cannot be uploaded",
+      "status": "passed"
+    },
+    {
+      "test": "the actual worklet downmixes channels, clamps its frame count and stops producing audio",
+      "status": "passed"
+    }
+  ],
+  "nativeRust": {
+    "defaultTestsPassed": 169,
+    "serverTestsPassed": 183
+  },
+  "hulkBenchmark": {
+    "scenariosPassed": 5
+  },
+  "encryptedSync": {
+    "scenariosPassed": 16,
+    "replicas": 2,
+    "hulkServers": 1,
+    "totalMs": 30507
+  },
+  "webProductionClickThroughTests": 10,
+  "webDictationFixture": {
+    "verifiedOn": "2026-11-05",
+    "surface": "web",
+    "audio": "synthetic fixture",
+    "providerCalls": 0,
+    "automaticMessages": 0,
+    "reportedFixtureCostMicroUsd": 75,
+    "themes": ["light", "dark"],
+    "result": "passed"
+  },
+  "manualAcceptance": "pending on released desktop and HULK builds"
+}
