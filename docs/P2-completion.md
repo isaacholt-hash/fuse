@@ -50,7 +50,7 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | AG-05 plans/progress/pause/stop/caps | M6/M10; extend safe pre-dispatch caps in M13.1, research M14 and shared children M16 |
 | AG-07 scheduled tasks | M10; complete, HULK-only |
 | AG-10 prompt-injection guard | M9; complete, extend tests to new inputs |
-| AG-11 built-in connectors | M15.1 native accounts; M15.2 Microsoft readers; M15.3–4 GitHub/setup/fixtures, OneDrive/Outlook Mail/Calendar and GitHub replace Google examples |
+| AG-11 built-in connectors | M15.1 native accounts; M15.2 Microsoft and M15.3 GitHub readers; M15.4 shared setup/fixtures, OneDrive/Outlook Mail/Calendar and GitHub replace Google examples |
 | CA-10 structured code review | M16.1 using M15 GitHub reads |
 | CA-11 sandboxed commands | M8; complete, preserve |
 | CA-12 skills | M16.2–3 |

@@ -162,3 +162,64 @@ Protocol references, verified 2026-11-05:
 - [Message reads](https://learn.microsoft.com/en-us/graph/api/message-get?view=graph-rest-1.0)
 - [Calendar view and explicit time ranges](https://learn.microsoft.com/en-us/graph/api/calendar-list-calendarview?view=graph-rest-1.0)
 - [Event reads](https://learn.microsoft.com/en-us/graph/api/event-get?view=graph-rest-1.0)
+
+## GitHub readers (M15.3)
+
+The built-in participant offers `github_installations`, `github_repositories`,
+`github_repository_read`, `github_issues`, `github_issue_read`, `github_comments`,
+`github_pulls`, `github_pull_read`, `github_diff_read` and `github_file_read`. All use the
+same project enablement, recipient policy, approvals and untrusted-content checks as Microsoft.
+Shared setup remains in M15.4. The build does not authorize an account or install an App.
+
+Install the owner-registered GitHub App on **Only select repositories**. Enable only Metadata,
+Contents, Issues and Pull requests **Read-only** repository permissions; no organization or
+account permissions or webhooks are needed. Native readers check the selected installation's
+reported permissions and repository membership before every read. An installation with write
+or unrelated permissions is refused, even if a particular endpoint would permit a GET. A
+public repository is not eligible merely because GitHub allows public reads: it must occur in
+the selected installation's accessible repository list. This account/App intersection is
+checked again on subsequent calls, without a persistent permission cache.
+
+Limits and evidence:
+
+- Fixed `api.github.com` HTTPS endpoints, GET only, redirects disabled, twenty-second native
+  request timeout, two MiB maximum response, and no automatic retries. API version is
+  `2026-03-10`. Returned source URLs are constructed locally; API download/HTML URLs are not
+  followed or passed through. Errors omit provider bodies and token values. A rejected token
+  clears the grant and local project links; expiry asks for explicit sign-in.
+- Ten results per page, at most ten pages. Opaque single-use cursors are bound to the account
+  registration, conversation/project, recipient, reader and original selection; they expire
+  after fifteen minutes and disappear on restart/disconnect. The installation/repository
+  membership check is bounded to 100 entries each; narrow the App's selected repositories if
+  the required repository lies outside that bound. Reaching a traversal limit is explicit.
+- Issue text filtering applies within each fetched page, with further pages available through
+  its cursor. Issue/PR bodies and comment bodies are capped at 30,000 characters and labelled
+  when truncated. Conversation comments are separate reads; inline review comments and
+  attachments are not implicitly fetched. Content is data, never an instruction or permission.
+- Repository reads resolve a selected branch/tag to an immutable commit. PR reads return base
+  and head commits, including fork provenance; `expectedHead` refuses a stale selection.
+  Diff reads require full base/head SHAs and return the three-dot comparison's merge base.
+  Ten changed files per portion include path, previous path, blob revision, and checked
+  old/new hunk line numbers. Missing, malformed or oversized patches remain explicitly partial.
+  The API's 300-file ceiling is also labelled partial; no complete-review claim is inferred.
+- Text-file reads walk the exact commit's nonrecursive Git trees (at most 24 path components),
+  verify directory/blob identities and ordinary file modes, then fetch the exact raw blob.
+  Symlinks/submodules are refused, including intermediate path components. Truncated trees,
+  oversized directories/responses, mismatched revisions, incomplete bytes, binary data and
+  non-UTF-8 content fail visibly. Files are at most one MiB; portions return up to 1,000 lines
+  and 30,000 characters, with exact line numbers, next-line offset, blob SHA and actual
+  SHA-256. Executable-mode text is read as data and is never executed.
+
+These tools never clone repositories, edit files, run commands, grant folders, post reviews or
+comments, push or merge. No account crawl occurs in the background. Native request audit uses
+only opaque connector IDs; credentials and temporary cursors stay on the execution owner.
+Returned text follows the conversation's existing sync/deletion/export/backup policy. This
+step adds no table, migration, portable column or dependency.
+
+Protocol references, verified 2026-11-05:
+
+- [User-accessible App installations and repositories](https://docs.github.com/en/rest/apps/installations)
+- [Issues](https://docs.github.com/en/rest/issues/issues) and [conversation comments](https://docs.github.com/en/rest/issues/comments)
+- [Pull requests](https://docs.github.com/en/rest/pulls/pulls)
+- [Immutable comparisons and their file ceiling](https://docs.github.com/en/rest/commits/commits)
+- [Pinned Git commits](https://docs.github.com/en/rest/git/commits), [tree modes](https://docs.github.com/en/rest/git/trees) and [raw blobs](https://docs.github.com/en/rest/git/blobs)
