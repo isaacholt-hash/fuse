@@ -377,3 +377,40 @@ registry's schema-coverage assertion: the new bounded task schema used array/str
 keywords outside the shared validator's supported subset. The validator now enforces those
 bounds, including Unicode code-point length, with rejection/acceptance coverage. The focused
 rerun passed 42/42 (5.43 s); the full check is rerun before shipping. The assertion remains intact.
+
+The final complete application check now passes: 1,214 tests, 21 explicit live/manual or
+opt-in skips across 216 files (253.86 s). Lint, formatting, type checking and the secret scan
+pass. Native Rust source is unchanged from the passing full suites. No dependencies were
+added and no existing test assertion was relaxed.
+
+Final production UI and runner builds pass after the validator fix, excluding every synthetic
+fixture marker. The final shared browser run passes 2/2 (43.46 s) against the rebuilt native
+server: two independently approved child file edits, two completed local claims and separate
+results after caller disconnection. Across the denied and approved proposals it records
+14 synthetic agent requests / 2,400 micro-dollars; root aggregates equal request-ledger spend,
+with no unknown billing. The parent retains its exact dirty file and original single commit.
+No integration, push or real provider call occurs. The preserved HULK benchmark passes 5/5
+(12.62 s). All eight final shared web captures were reviewed:
+
+- [Task approval light](../screenshots/m16/children-web-approval-light.png) and
+  [dark](../screenshots/m16/children-web-approval-dark.png).
+- [Individual child approval light](../screenshots/m16/children-web-child-approval-light.png) and
+  [dark](../screenshots/m16/children-web-child-approval-dark.png).
+- [Completed light](../screenshots/m16/children-web-completed-light.png) and
+  [dark](../screenshots/m16/children-web-completed-dark.png).
+- [Mobile completion light](../screenshots/m16/children-web-mobile-completed-light.png) and
+  [dark](../screenshots/m16/children-web-mobile-completed-dark.png).
+
+[Recorded counters](../screenshots/m16/children-web-result.json) state the fixture boundary.
+The 9.9.9 updater banner is fixture data, not the release identifier. Existing crowded mobile
+composer controls remain an M19 layout check; new approval/result content stays within the
+viewport. Native capture iterations correct click position and scroll the approval into view;
+only the final reviewed captures are used for acceptance below.
+
+Final native startup and task/base/cap approval captures were reviewed in both themes:
+[light](../screenshots/m16/children-native-approval-light.png) and
+[dark](../screenshots/m16/children-native-approval-dark.png). They use isolated databases,
+keyrings, a disposable Git repository and synthetic model replies, without approving child
+execution on the desktop. Real native worktrees and background execution are verified by the
+native and web fixtures separately. All ten final native/browser images are committed.
+Windows native execution, current-head CI and the normal release remain required before merge.
