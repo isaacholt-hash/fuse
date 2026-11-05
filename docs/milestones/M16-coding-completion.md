@@ -413,4 +413,5 @@ Final native startup and task/base/cap approval captures were reviewed in both t
 keyrings, a disposable Git repository and synthetic model replies, without approving child
 execution on the desktop. Real native worktrees and background execution are verified by the
 native and web fixtures separately. All ten final native/browser images are committed.
-Windows native execution, current-head CI and the normal release remain required before merge.
+Windows native execution and current-head CI remain required before merge. The normal release
+is verified after merging.
