@@ -202,6 +202,7 @@ pub(crate) async fn provider_fetch(
         .map_err(|e| format!("keychain: {e}"))?
         .ok_or_else(|| "no_key: No API key saved for this provider.".to_string())?;
     let client = ctx.keys.client.clone();
+    crate::audit::credential_use(&ctx.db.pool()?, request.provider).await?;
     let id = ctx.transport.next_id.fetch_add(1, Ordering::Relaxed);
     let handle = tokio::spawn(async move {
         run_request(&client, &url, &request, &key, on_event.as_ref()).await;

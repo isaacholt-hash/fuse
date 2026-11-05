@@ -973,14 +973,25 @@
         "web_search_calls",
         "tier",
         "route_rule_id",
-        "surface"
+        "surface",
+        "project_id",
+        "audio_duration_ms",
+        "billing_state",
+        "attempt_id"
       ],
       "localColumns": [],
       "key": ["id"],
-      "eligible": "(1) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))))",
+      "eligible": "((1) AND ({a}.thread_id IS NULL OR (EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))))) AND ({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))",
       "ready": "1",
-      "dependencies": ["threads"],
+      "dependencies": ["threads", "projects"],
       "references": [
+        {
+          "column": "project_id",
+          "table": "projects",
+          "target": "id",
+          "optional": true,
+          "ownership": false
+        },
         {
           "column": "thread_id",
           "table": "threads",
@@ -1017,7 +1028,11 @@
         "web_search_calls": "INTEGER",
         "tier": "TEXT",
         "route_rule_id": "TEXT",
-        "surface": "TEXT"
+        "surface": "TEXT",
+        "project_id": "TEXT",
+        "audio_duration_ms": "INTEGER",
+        "billing_state": "TEXT",
+        "attempt_id": "TEXT"
       }
     },
     "settings": {
@@ -1311,7 +1326,9 @@
     "run_live": "Transient streamed output",
     "run_approvals": "Owner-only approvals",
     "schedules": "HULK-owned scheduler",
-    "memory_proposals": "Unreviewed suggestions and potentially private provenance"
+    "memory_proposals": "Unreviewed suggestions and potentially private provenance",
+    "request_reservations": "Owner-only pre-dispatch holds and unresolved charges; never replay on another replica",
+    "security_audit": "Sanitized local credential-use and policy events; exported explicitly, not replicated"
   },
   "internalTables": [
     "sync_state",

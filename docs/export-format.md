@@ -62,6 +62,12 @@ A project export holds:
 - memories scoped to the project or to one of its chats, including its decisions and tasks;
 - its prompts, budgets and egress rules.
 
+M13 receipts also include project-only costs incurred before a message exists, with integer
+costs, audio duration, billing state and stable attempt IDs. A linked chat's current project
+determines its costs' project export. Raw audio is never stored or exported. Owner-local
+request reservations are not portable records. Sanitized security events remain local;
+M18 provides their explicit activity export.
+
 Global records (instructions, global memories, the routing test set) aren't included. A row that points at something outside the export (for example a memory that replaced a global one) is restored with that link cleared.
 
 ## What is never exported

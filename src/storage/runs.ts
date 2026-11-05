@@ -2,6 +2,7 @@
 import type { NativeTurn, ToolCall } from "@/providers/types";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
+import { interruptRequests } from "./requestBudget";
 import type { SqlDb } from "./sql";
 
 export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
@@ -326,6 +327,7 @@ export async function setRunSummary(
 
 /** Runs left working when the app closed are stopped, so they can be continued. */
 export async function markInterruptedRuns(db: SqlDb, tenant: Tenant): Promise<number> {
+  await interruptRequests(db, tenant);
   const result = await db.execute(
     `UPDATE runs SET status = 'stopped', note = 'FUSE closed while it was working.', updated_at = ?
      WHERE workspace_id = ? AND status = 'running'`,
@@ -418,8 +420,9 @@ export async function addModelStep(
   );
   await db.execute(
     `UPDATE runs SET spent_micro_usd = spent_micro_usd + ?, updated_at = ?
-     WHERE workspace_id = ? AND id = ?`,
-    [step.costMicroUsd, now, tenant.workspaceId, runId],
+     WHERE workspace_id = ? AND id = ?
+       AND NOT EXISTS (SELECT 1 FROM request_reservations WHERE workspace_id=? AND run_id=? AND request_id=?)`,
+    [step.costMicroUsd, now, tenant.workspaceId, runId, tenant.workspaceId, runId, step.requestId],
   );
 }
 

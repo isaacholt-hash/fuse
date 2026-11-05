@@ -210,11 +210,13 @@ describe("HTTP errors", () => {
     body: JSON.stringify({ type: "error", error: { type, message: `msg ${type}`, ...extra } }),
   });
 
-  test("529 overloaded is retried, then succeeds", async () => {
+  test("529 on a paid POST is not replayed without billing evidence", async () => {
     const { a, sent } = adapter([err(529, "overloaded_error"), sse(DOCS_STREAM)]);
-    const { events } = await collect(a.streamChat(HI, "m", {}));
-    expect(sent).toHaveLength(2);
-    expect(done(events).attempts).toBe(2);
+    await expect(collect(a.streamChat(HI, "m", {}))).rejects.toMatchObject({
+      billingUncertain: true,
+      retryable: false,
+    });
+    expect(sent).toHaveLength(1);
   });
 
   test.each([
@@ -247,11 +249,11 @@ describe("HTTP errors", () => {
     expect(sleep).toHaveBeenCalledWith(3000, undefined);
   });
 
-  test("network failure is retried, and reported if it persists", async () => {
+  test("a lost paid POST response is retained without retry", async () => {
     const boom = new TypeError("connection reset");
     const { a, sent } = adapter([boom, boom, boom, boom]);
     await expect(collect(a.streamChat(HI, "m", {}))).rejects.toMatchObject({ kind: "network" });
-    expect(sent).toHaveLength(4);
+    expect(sent).toHaveLength(1);
   });
 });
 

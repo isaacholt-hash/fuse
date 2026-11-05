@@ -1,6 +1,6 @@
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
-import type { SqlDb } from "./sql";
+import type { SqlDb, SqlStatement } from "./sql";
 import {
   USAGE_COLUMNS,
   USAGE_PLACEHOLDERS,
@@ -13,6 +13,8 @@ import {
 /** `agent`: a model turn inside a coding run (M6). */
 export type RequestPurpose =
   "chat" | "key_test" | "title" | "classify" | "memory" | "summary" | "embed" | "agent";
+
+export type BillingState = "legacy" | "reported" | "estimated" | "unknown" | "not_billed";
 
 /** One provider HTTP call. Never put headers, bodies or keys in any field. */
 export interface RequestLogEntry {
@@ -30,6 +32,10 @@ export interface RequestLogEntry {
   /** Chat calls: the answer's tier and the routing rule that fired (RT-09). */
   tier?: string | null;
   routeRuleId?: string | null;
+  projectId?: string | null;
+  audioDurationMs?: number;
+  billingState?: BillingState;
+  attemptId?: string | null;
 }
 
 export interface RequestLogRecord extends RequestLogEntry {
@@ -52,6 +58,10 @@ interface RequestLogRow extends UsageRow {
   tier: string | null;
   route_rule_id: string | null;
   created_at: number;
+  project_id: string | null;
+  audio_duration_ms: number;
+  billing_state: BillingState;
+  attempt_id: string | null;
 }
 
 /** M10 step 17: where this process's requests come from; set once at start. */
@@ -63,15 +73,22 @@ export function setRequestSurface(s: RequestSurface | null): void {
   surface = s;
 }
 
-export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry): Promise<string> {
-  const now = Date.now();
-  const id = uuidv7(now);
-  await db.execute(
-    `INSERT INTO request_log (id, workspace_id, user_id, thread_id, message_id, purpose, provider,
+/** Shared insert used by atomic reservation settlement. No request content belongs here. */
+export function requestStatement(
+  tenant: Tenant,
+  e: RequestLogEntry,
+  id = uuidv7(),
+  now = Date.now(),
+): SqlStatement {
+  if (!Number.isSafeInteger(e.audioDurationMs ?? 0) || (e.audioDurationMs ?? 0) < 0)
+    throw new Error("Audio duration must be a non-negative safe integer.");
+  return {
+    sql: `INSERT INTO request_log (id, workspace_id, user_id, thread_id, message_id, purpose, provider,
        model, attempt, ${USAGE_COLUMNS}, http_status, error_code, error_message,
-       provider_request_id, tier, route_rule_id, surface, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
+       provider_request_id, tier, route_rule_id, surface, created_at, updated_at,
+       project_id, audio_duration_ms, billing_state, attempt_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${USAGE_PLACEHOLDERS}, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [
       id,
       tenant.workspaceId,
       tenant.userId,
@@ -91,8 +108,25 @@ export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry):
       surface,
       now,
       now,
+      e.projectId ?? null,
+      e.audioDurationMs ?? 0,
+      e.billingState ??
+        (e.usage.priceVersion
+          ? "reported"
+          : ["local", "cache", "deterministic"].includes(e.provider) ||
+              [400, 401, 402, 403, 404, 413, 422, 429].includes(e.httpStatus ?? 0) ||
+              (e.purpose === "key_test" && e.model === "models.list")
+            ? "not_billed"
+            : "unknown"),
+      e.attemptId ?? null,
     ],
-  );
+  };
+}
+
+export async function logRequest(db: SqlDb, tenant: Tenant, e: RequestLogEntry): Promise<string> {
+  const id = uuidv7();
+  const statement = requestStatement(tenant, e, id);
+  await db.execute(statement.sql, statement.params);
   return id;
 }
 
@@ -138,7 +172,7 @@ export async function listRecentRequests(
   const rows = await db.select<RequestLogRow>(
     `SELECT id, thread_id, message_id, purpose, provider, model, attempt, ${USAGE_COLUMNS},
             http_status, error_code, error_message, provider_request_id, tier, route_rule_id,
-            created_at
+            created_at, project_id, audio_duration_ms, billing_state, attempt_id
      FROM request_log WHERE workspace_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
     [tenant.workspaceId, limit],
   );
@@ -158,5 +192,9 @@ export async function listRecentRequests(
     tier: r.tier,
     routeRuleId: r.route_rule_id,
     createdAt: r.created_at,
+    projectId: r.project_id,
+    audioDurationMs: r.audio_duration_ms,
+    billingState: r.billing_state,
+    attemptId: r.attempt_id,
   }));
 }

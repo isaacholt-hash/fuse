@@ -9,8 +9,10 @@ import { createProject } from "@/storage/projects";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, listThreads, setThreadProject } from "@/storage/threads";
 import { deleteAllData } from "./deleteAll";
-import { EXPORTED_TABLES, exportAll } from "./exportAll";
+import { EXPORTED_TABLES, exportAll, exportData } from "./exportAll";
 import { applyRestore, onlyProject, planRestore, readFuseExport, RestoreError } from "./restore";
+import { logRequest } from "@/storage/requestLog";
+import { EMPTY_USAGE } from "@/storage/usage";
 
 const t = DEFAULT_TENANT;
 
@@ -60,6 +62,66 @@ const recordsOf = (bytes: Uint8Array) => {
     ]),
   );
 };
+
+test("project exports and scoped restores preserve project-only cost receipts without execution state", async () => {
+  const { db, files, kitchen, garden, chat } = await sample();
+  const moved = await createThread(db, t, "Moved away", garden.id);
+  for (const [attemptId, projectId, threadId] of [
+    ["kitchen-audio", kitchen.id, null],
+    ["garden-audio", garden.id, null],
+    ["kitchen-chat", kitchen.id, chat.id],
+    ["moved-chat", kitchen.id, moved.id],
+  ] as const) {
+    await logRequest(db, t, {
+      attemptId,
+      projectId,
+      threadId,
+      messageId: null,
+      purpose: "agent",
+      provider: "openai",
+      model: "fixture",
+      attempt: 1,
+      usage: { ...EMPTY_USAGE, costMicroUsd: 4500 },
+      audioDurationMs: 60000,
+      billingState: "reported",
+      httpStatus: 200,
+      errorCode: null,
+      errorMessage: null,
+      providerRequestId: null,
+    });
+  }
+  const full = await readFuseExport((await exportAll(db, t, files)).bytes);
+  const scoped = await readFuseExport(
+    (await exportData(db, t, files, { kind: "project", projectId: kitchen.id })).bytes,
+  );
+  const selected = onlyProject(full, kitchen.id);
+  expect(selected.records.request_log).toEqual(scoped.records.request_log);
+  expect(selected.records.request_log?.map((r) => r.attempt_id).sort()).toEqual([
+    "kitchen-audio",
+    "kitchen-chat",
+  ]);
+  const fresh = openTestDb();
+  await applyRestore(fresh, t, selected, memoryFilesApi());
+  expect(
+    await fresh.select(
+      "SELECT attempt_id,audio_duration_ms,billing_state,cost_micro_usd FROM request_log ORDER BY attempt_id",
+    ),
+  ).toEqual([
+    {
+      attempt_id: "kitchen-audio",
+      audio_duration_ms: 60000,
+      billing_state: "reported",
+      cost_micro_usd: 4500,
+    },
+    {
+      attempt_id: "kitchen-chat",
+      audio_duration_ms: 60000,
+      billing_state: "reported",
+      cost_micro_usd: 4500,
+    },
+  ]);
+  expect(await fresh.select("SELECT id FROM request_reservations")).toEqual([]);
+});
 
 test("export, wipe, restore: every record and file comes back as it was (PL-12)", async () => {
   const { db, files } = await sample();

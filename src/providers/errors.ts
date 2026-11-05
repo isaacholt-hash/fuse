@@ -20,6 +20,10 @@ const RETRYABLE: ReadonlySet<ProviderErrorKind> = new Set([
 ]);
 
 export class ProviderError extends Error {
+  /** Set by the accounting boundary after an interrupted attempt is durably recorded. */
+  requestLogId?: string;
+  /** A paid POST may have succeeded even though its response was lost. */
+  billingUncertain = false;
   readonly kind: ProviderErrorKind;
   readonly status: number | null;
   readonly providerRequestId: string | null;
@@ -48,7 +52,7 @@ export class ProviderError extends Error {
   }
 
   get retryable(): boolean {
-    return RETRYABLE.has(this.kind);
+    return !this.billingUncertain && RETRYABLE.has(this.kind);
   }
 }
 

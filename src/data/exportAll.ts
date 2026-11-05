@@ -160,7 +160,10 @@ function projectFilters(
     thread_tags: inThreads("thread_id"),
     prompts: { sql: "AND project_id = ?", params: [projectId] },
     egress_rules: { sql: "AND project_id = ?", params: [projectId] },
-    request_log: inThreads("thread_id"),
+    request_log: {
+      sql: `AND (thread_id IN (${threads.sql}) OR (thread_id IS NULL AND project_id = ?))`,
+      params: [...threads.params, projectId],
+    },
     // Global records only: not part of a project.
     user_instructions: { sql: "AND 0", params: [] },
     golden_prompts: { sql: "AND 0", params: [] },

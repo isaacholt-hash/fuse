@@ -53,7 +53,7 @@ const repo: RepoApi = {
   move: () => Promise.reject(new Error("unused")),
 };
 
-async function setup(planner: CatalogModel | null, planFails = false) {
+async function setup(planner: CatalogModel | null, planFails = false, failureStatus = 529) {
   const db = openTestDb();
   const project = await createProject(db, t, "Lighthouse");
   await setProjectRepo(db, t, project.id, { root: "/repo", readSecrets: false });
@@ -65,7 +65,7 @@ async function setup(planner: CatalogModel | null, planFails = false) {
       sent.push({ model, history: structuredClone(history), options: structuredClone(options) });
       await Promise.resolve();
       if (model === "best" && planFails)
-        throw new ProviderError("overloaded", "busy", { status: 529 });
+        throw new ProviderError("overloaded", "busy", { status: failureStatus });
       yield {
         type: "text",
         text: model === "best" ? "1. Find tide.ts.\n2. Check the rounding." : "Done.",
@@ -130,9 +130,16 @@ test("a pinned model (or the same model) does it all: no separate plan", async (
   expect((await getRun(pinned.db, t, pinned.run.id))?.plan).toBeNull();
 });
 
-test("if planning fails, the run goes on without a plan", async () => {
-  const { db, sent, run } = await setup(best, true);
+test("a known non-billable planner refusal permits work without a plan", async () => {
+  const { db, sent, run } = await setup(best, true, 429);
   expect(sent.map((s) => s.model)).toEqual(["best", "balanced"]);
   expect(sent[1]?.history[0]?.content).not.toContain("<plan>");
   expect((await getRun(db, t, run.id))?.status).toBe("done");
+});
+
+test("an ambiguous planner failure retains its hold and pauses before another paid call", async () => {
+  const { db, sent, run } = await setup(best, true);
+  expect(sent.map((s) => s.model)).toEqual(["best"]);
+  expect((await getRun(db, t, run.id))?.status).toBe("paused");
+  expect((await listRecentRequests(db, t))[0]?.billingState).toBe("unknown");
 });

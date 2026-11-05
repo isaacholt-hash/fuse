@@ -274,9 +274,15 @@ export function createAnthropicAdapter(deps: {
       });
     } catch (e) {
       if (init.signal?.aborted) throw new ProviderError("aborted", "Aborted");
-      throw new ProviderError("network", e instanceof Error ? e.message : String(e));
+      const error = new ProviderError("network", e instanceof Error ? e.message : String(e));
+      error.billingUncertain = init.method === "POST";
+      throw error;
     }
-    if (!res.ok) throw await errorFromResponse(res);
+    if (!res.ok) {
+      const error = await errorFromResponse(res);
+      error.billingUncertain = init.method === "POST" && res.status >= 500;
+      throw error;
+    }
     return res;
   };
 
@@ -305,7 +311,11 @@ export function createAnthropicAdapter(deps: {
             ...(signal ? { signal } : {}),
             ...(options.scope ? { scope: options.scope } : {}),
           }),
-        { ...deps.retry, ...(signal ? { signal } : {}) },
+        {
+          ...deps.retry,
+          ...(options.noRetry ? { maxRetries: 0 } : {}),
+          ...(signal ? { signal } : {}),
+        },
       );
       const requestId = res.headers.get("request-id");
       if (!res.body)
