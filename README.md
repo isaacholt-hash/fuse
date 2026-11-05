@@ -2,7 +2,7 @@
 
 **F**rontier models, **U**nified, **S**pend-**E**fficient — one desktop app for Claude and ChatGPT models on your own API keys, with routing that matches each request to the model it needs and shows what every answer cost.
 
-Status: **M0–M12 complete.** [Finish FUSE P2](docs/P2-completion.md) is approved for unattended sequential delivery: M13 dictation, M14 research, M15 Microsoft/GitHub connectors, M16 coding completion, M17 writing/artifacts, M18 offline/usage, M19 acceptance. M13 dictation and M14 research builds are delivered with owner acceptance pending; current milestone: [M15](docs/milestones/M15-connectors.md). M10/M11 live acceptance remains recorded separately from automated benchmarks. P2 closure requires released owner-operated checks.
+Status: **M0–M12 complete.** [Finish FUSE P2](docs/P2-completion.md) is approved for unattended sequential delivery: M13 dictation, M14 research, M15 Microsoft/GitHub connectors, M16 coding completion, M17 writing/artifacts, M18 offline/usage, M19 acceptance. M13 dictation, M14 research and M15 connectors builds are delivered with owner acceptance pending; current milestone: [M16](docs/milestones/M16-coding-completion.md). M10/M11 live acceptance remains recorded separately from automated benchmarks. P2 closure requires released owner-operated checks.
 
 ## Start building on HULK
 

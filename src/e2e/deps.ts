@@ -1,4 +1,6 @@
 import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
+import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
+import { createProject } from "@/storage/projects";
 import { tauriWebApi } from "@/web/api";
 import { defaultCatalog } from "@/catalog/defaultCatalog";
 import { createOpenAIAdapter } from "@/providers/openai/adapter";
@@ -365,6 +367,31 @@ export function e2eDeps() {
   // The test checks this before it clicks anything, so it never drives a real build.
   document.documentElement.dataset.build = E2E_MARK;
   const anthropic = logged(createAnthropicAdapter({ fetch: scriptedFetch }));
+  const connectors = scriptedConnectorsApi(loggedDb, DEFAULT_TENANT, { pollAfterSeconds: 3 });
+  let connectorSeed: Promise<SqlDb> | undefined;
+  const openConnectorSeed = () =>
+    (connectorSeed ??= (async () => {
+      const db = await loggedDb();
+      const project = await createProject(db, DEFAULT_TENANT, "Connector fixture");
+      localStorage.removeItem("fuse.e2e.connectorOutcome");
+      localStorage.setItem("fuse.e2e.connectorAccount", "work");
+      const registration = {
+        ...DEFAULT_TENANT,
+        id: "00000000-0000-7000-8000-000000001504",
+        kind: "microsoft" as const,
+        clientId: "10000000-0000-4000-8000-000000000001",
+        tenant: "common",
+        services: ["onedrive", "mail", "calendar"] as ("onedrive" | "mail" | "calendar")[],
+      };
+      await connectors.configure(registration);
+      const flow = await connectors.begin(registration.id);
+      if (!flow.flowId) throw new Error("Missing synthetic connector flow.");
+      const status = await connectors.poll(registration.id, flow.flowId);
+      await connectors.projectAccess(registration, project.id, status.identity, true);
+      return db;
+    })());
+  if (import.meta.env.VITE_E2E_CONNECTORS_SEED === "1")
+    window.location.hash = "#settings/code-tools/connectors";
   const openai = createOpenAIAdapter({
     fetch: (_url, init) =>
       init.method === "GET"
@@ -378,12 +405,13 @@ export function e2eDeps() {
         : Promise.reject(new Error("OpenAI model calls are disabled in the dictation fixture.")),
   });
   return {
+    connectors,
     dictation,
     web: scriptedResearchWeb(tauriWebApi),
     hulk,
     keysApi,
     updates,
-    openDb: loggedDb,
+    openDb: import.meta.env.VITE_E2E_CONNECTORS_SEED === "1" ? openConnectorSeed : loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       const base = p === "anthropic" ? anthropic : openai;

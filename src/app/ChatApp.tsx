@@ -26,6 +26,10 @@ import { LocalModelSection, type LocalModelView } from "@/ui/LocalModel";
 import { PythonRuntimeSection } from "@/ui/PythonRuntime";
 import type { McpCallContext } from "@/mcp/api";
 import { McpServersSection, type McpServerDraft, type McpServerView } from "@/ui/McpServers";
+import type { ConnectorsApi } from "@/connectors/api";
+import { prepareAccountDeletion } from "@/connectors/delete";
+import { useConnectors, connectorLabel } from "@/app/useConnectors";
+import { ConnectorsSettings } from "@/ui/ConnectorsSettings";
 import { joinCommand, splitCommand, type McpApi } from "@/mcp/api";
 import {
   addMcpServer,
@@ -607,6 +611,7 @@ export interface ChatAppProps {
   pythonApi?: PythonApi;
   /** M9 step 8: MCP servers' keychain values. */
   mcpApi?: McpApi;
+  connectorsApi?: ConnectorsApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
   dictation?: DictationApi;
@@ -828,6 +833,7 @@ export function ChatApp({
   localApi,
   pythonApi,
   mcpApi,
+  connectorsApi,
   quickCapture,
   dictation = dictationApi,
   zoom,
@@ -1040,6 +1046,7 @@ export function ChatApp({
   const [pyError, setPyError] = useState<string | null>(null);
   // M9 step 8: MCP servers, as Settings shows them.
   const [mcpServers, setMcpServers] = useState<McpServerView[]>([]);
+  const connectors = useConnectors(db, tenant, connectorsApi);
   const [mcpHealth, setMcpHealth] = useState<Record<string, McpServerView["health"]>>({});
   const refreshMcp = async () => {
     const list = await listMcpServers(db, tenant);
@@ -5605,6 +5612,8 @@ export function ChatApp({
                     onDeleteAll={async (removeKeys) => {
                       for (const c of controllers.current.values()) c.abort();
                       clearAudioConsent();
+                      // Preserve or explicitly erase native grants before registration rows go.
+                      await prepareAccountDeletion(db, tenant, removeKeys, connectorsApi, mcpApi);
                       await deleteAllData(db, tenant, filesApi);
                       if (removeKeys) {
                         for (const k of keys.keys) {
@@ -5658,6 +5667,11 @@ export function ChatApp({
                       }}
                     />
                   )
+                )
+              }
+              connectors={
+                connectorsApi && (
+                  <ConnectorsSettings controller={connectors} projects={projects} web={webApp} />
                 )
               }
               mcp={
@@ -6916,13 +6930,23 @@ export function ChatApp({
                             .then(setToolsOff)
                             .catch(report);
                         },
-                        servers: mcpServers.map((s) => ({
-                          id: s.id,
-                          name: s.name,
-                          on: projectServers.has(s.id),
-                        })),
+                        servers: [
+                          ...mcpServers.map((s) => ({
+                            id: s.id,
+                            name: s.name,
+                            on: projectServers.has(s.id),
+                          })),
+                          ...connectors.records.map((r) => ({
+                            id: r.registration.id,
+                            name: connectorLabel(r),
+                            on: projectServers.has(r.registration.id),
+                          })),
+                        ],
                         onServer: (id: string, on: boolean) => {
-                          setProjectMcpServer(db, tenant, editedProject.id, id, on)
+                          (connectors.records.some((r) => r.registration.id === id)
+                            ? connectors.project(id, editedProject.id, on)
+                            : setProjectMcpServer(db, tenant, editedProject.id, id, on)
+                          )
                             .then(() => listProjectMcpServers(db, tenant, editedProject.id))
                             .then((l) => {
                               setProjectServers(new Set(l.map((s) => s.id)));

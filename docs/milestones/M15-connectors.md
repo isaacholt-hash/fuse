@@ -24,7 +24,7 @@ AG-11 through AG-02; supports CA-10.
 - [x] **1. Native accounts and built-in MCP.** Add first-party MCP transport through the existing registry, owner-registered public application IDs, device authorization, native token storage and status-only UI responses.
 - [x] **2. Microsoft readers.** OneDrive list/search/read, Outlook Mail list/search/read and Outlook Calendar list/read for personal and work/school accounts, with delegated read scopes and explicit per-service consent.
 - [x] **3. GitHub readers.** Repository, issue, PR and pinned diff readers through a read-only GitHub App. Expose source revision and verified path/line metadata for review.
-- [ ] **4. Setup and verification.** Shared M12 Settings controls, project enablement, account expiry/disconnect/tenant errors, deterministic authorization and pagination fixtures, desktop/web parity, reviewed screenshots and exact registration instructions.
+- [x] **4. Setup and verification.** Shared M12 Settings controls, project enablement, account expiry/disconnect/tenant errors, deterministic authorization and pagination fixtures, desktop/web parity, reviewed screenshots and exact registration instructions.
 
 ## Behavior and boundaries
 
@@ -196,3 +196,67 @@ Reviewed current native Settings startup and production web Settings in both the
 These verify current shared startup; this step supplies the GitHub readers. Shared account
 controls and their interaction screenshots follow in step 4. Real account authorization and
 provider-backed acceptance remain unperformed.
+
+
+Step 4 completes the shared Connections section under M12 Code & tools, searchable by
+Microsoft/OneDrive/Outlook/GitHub/account aliases. Registration, selective services, device
+sign-in, account identity, status/errors, project enablement, account changes, confirmed
+removal and provider revocation guidance work on desktop and web. No folder is required.
+The native project operation binds registration and principal and atomically records policy
+activity. Refresh rejection clears access; transient renewal failures retain recoverable
+authorization. Global deletion honors the existing credential choice before metadata removal.
+
+Native grants use bounded secret-store records for Windows compatibility, with fixed slots,
+atomic manifest, integrity checks and explicit cleanup of interrupted writes. The private
+owner index preserves later erasure after data-only deletion. This introduces no dependency,
+SQLite migration, synced credential or portable permission. Setup and owner acceptance
+instructions are in [connectors.md](../connectors.md).
+
+Previous step: [PR #302](https://github.com/isaacholt-hash/fuse/pull/302) merged as
+`cbc94018daefb70501898d648309e0dcd3431e1f` on 2026-11-05T11:35:01Z. All five gates and the
+JSON gate passed on `f003fc566a2e849df34e403562d85f27ce49d421` in
+[CI 42018768741](https://github.com/isaacholt-hash/fuse/actions/runs/42018768741). The new
+Windows native connector step passed 32/32 (198.40 s). Reviewed Windows dictation Settings
+and both-theme research completion. Preserved recorded dictation passed 31/31, encrypted
+sync 16/16 at schema 67 (30,625 ms), and research eight Linux/HULK scenarios (18,618 ms).
+Windows research passed six portable scenarios (14,251 ms), with two Linux-server cases
+explicitly skipped. [Release v0.1.222](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.222)
+was published 2026-11-05T11:44:36Z by
+[workflow 42020143545](https://github.com/isaacholt-hash/fuse/actions/runs/42020143545). All
+eleven assets and seven updater signatures matched the merge. No deployment or live account
+authorization was performed.
+
+Step 4 focused verification: 41 native account/reader/storage fixtures passed (50.09 s).
+Eight new control scenarios plus three credential-deletion scenarios passed (15.85 s).
+Existing Settings coverage also passed in the earlier 22-test focused run. Full-app browser
+setup passed 3/3 (47.47 s), with zero live OAuth/provider calls, request rows, runs or folder
+grants. It covers selective consent, denied consent, explicit retry, account changes,
+confirmed removal, project reset, search and 390-pixel layout in both themes. The first
+full-app attempt exposed a fixture navigation race after project creation; it now waits for
+the visible active-project breadcrumb before opening Settings. No production behavior or
+assertion was weakened to make that test pass.
+
+Step 4 final local verification: `pnpm check` passed 1,117 tests in 193 files, with 21
+live/manual or opt-in cases in ten files explicitly skipped (232.14 s). The existing delete-all
+app test now injects its isolated connector client; the cleanup assertions and production
+behavior are unchanged. Rust formatting and default/server all-target clippy passed. Default
+Rust passed 210/210 (214.21 s), server Rust 224/224 (251.23 s). Production web and runner
+builds passed. The preserved HULK benchmark passed 5/5 (12.40 s), and production web
+click-through passed 10/10 (53.88 s).
+
+Reviewed actual native Connections startup with a recorded account in both themes:
+[desktop light](../screenshots/m15/setup-native-light.png),
+[desktop dark](../screenshots/m15/setup-native-dark.png).
+Reviewed full-app browser interactions in both themes:
+[registration](../screenshots/m15/setup-web-registration-light.png),
+[device code](../screenshots/m15/setup-web-device-code-dark.png),
+[Microsoft connected](../screenshots/m15/setup-web-microsoft-connected-light.png),
+[GitHub connected](../screenshots/m15/setup-web-github-connected-dark.png),
+[denied consent](../screenshots/m15/setup-web-denied-light.png),
+[removal review](../screenshots/m15/setup-web-remove-review-dark.png),
+[390-pixel layout](../screenshots/m15/setup-web-mobile-light.png).
+The fourteen browser screenshots include both themes for every listed interaction.
+
+Current-commit CI and normal release evidence follow after merge. M15's build is delivered;
+real released personal/work/GitHub sign-in and reader acceptance remain owner actions
+recorded separately in M19. P2 is not closed by these fixture results.

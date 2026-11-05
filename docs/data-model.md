@@ -424,3 +424,12 @@ a restored/restarted process cannot replay them. Download buffers remain transie
 text/images and source provenance become normal tool-result content under the existing
 conversation retention/privacy rules. Each actual credential-bearing HTTP attempt uses a
 redacted existing `security_audit` row; no query, download URL or token is stored there.
+
+
+M15.4 adds no SQLite schema or portable fields. The existing native secret store holds
+bounded multipart connector grants and an installation-only owner index, excluded from
+sync, exports and database backups. Data-only deletion retains grants by explicit choice;
+a later credential erase finds indexed grants even after public registration rows are gone.
+Project enablement validates the exact registration/principal under the native account lock
+and commits its local permission and redacted audit atomically. Status exposes only public
+account metadata. Restoring registration metadata grants no new token or account access.

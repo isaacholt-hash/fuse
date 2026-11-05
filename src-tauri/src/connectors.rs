@@ -4,6 +4,7 @@
 use crate::ctx::Ctx;
 mod github;
 mod graph;
+mod secrets;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -162,6 +163,8 @@ struct Grant {
     expires_at: Option<u64>,
     identity: String,
     label: String,
+    #[serde(default)]
+    account_hint: Option<String>,
 }
 #[derive(Default)]
 pub struct Accounts {
@@ -175,6 +178,7 @@ pub struct AccountStatus {
     pub state: &'static str,
     pub identity: Option<String>,
     pub label: Option<String>,
+    pub account_hint: Option<String>,
     pub expires_at: Option<u64>,
     pub flow_id: Option<String>,
     pub user_code: Option<String>,
@@ -186,6 +190,7 @@ fn status(state: &'static str) -> AccountStatus {
         state,
         identity: None,
         label: None,
+        account_hint: None,
         expires_at: None,
         flow_id: None,
         user_code: None,
@@ -222,6 +227,7 @@ fn grant_status(g: &Grant) -> AccountStatus {
     AccountStatus {
         identity: Some(g.identity.clone()),
         label: Some(g.label.clone()),
+        account_hint: g.account_hint.clone(),
         expires_at: g.expires_at,
         ..status(state)
     }
@@ -248,20 +254,87 @@ fn secret_id(id: &str) -> Result<String, String> {
     Ok(format!("connector:{id}"))
 }
 fn load(ctx: &Ctx, r: &Registration) -> Result<Option<Grant>, String> {
-    let raw = ctx.keys.store.get(&secret_id(&r.id)?)?;
-    raw.map(|raw| {
-        serde_json::from_str::<Grant>(&raw)
-            .map_err(|_| "Sign in again: the stored connector grant cannot be read.".to_string())
-    })
-    .transpose()
-    .map(|g| g.filter(|g| g.registration == *r))
+    let raw = secrets::load(&*ctx.keys.store, &secret_id(&r.id)?)?;
+    let grant = raw
+        .map(|raw| {
+            serde_json::from_str::<Grant>(&raw).map_err(|_| {
+                "Sign in again: the stored connector grant cannot be read.".to_string()
+            })
+        })
+        .transpose()
+        .map(|g| g.filter(|g| g.registration == *r))?;
+    if grant.is_some() {
+        remember(ctx, r)?;
+    }
+    Ok(grant)
 }
 fn save(ctx: &Ctx, g: &Grant) -> Result<(), String> {
-    ctx.keys.store.set(
+    remember(ctx, &g.registration)?; // Before any credential parts, including failed writes.
+    secrets::save(
+        &*ctx.keys.store,
         &secret_id(&g.registration.id)?,
         &serde_json::to_string(g)
             .map_err(|_| "Couldn't save connector authorization.".to_string())?,
     )
+}
+const GRANT_INDEX: &str = "connector:grant-index-v1";
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct GrantOwner {
+    id: String,
+    workspace_id: String,
+    user_id: String,
+}
+fn grant_index(ctx: &Ctx) -> Result<Vec<GrantOwner>, String> {
+    let Some(raw) = secrets::load(&*ctx.keys.store, GRANT_INDEX)? else {
+        return Ok(vec![]);
+    };
+    let entries:Vec<GrantOwner>=serde_json::from_str(&raw).map_err(|_| "The native connector index is damaged; restore its local secret store before deleting credentials.".to_string())?;
+    if entries.len() > 256
+        || entries
+            .iter()
+            .any(|e| !valid_id(&e.id) || !valid_id(&e.workspace_id) || !valid_id(&e.user_id))
+        || entries
+            .iter()
+            .enumerate()
+            .any(|(i, e)| entries[..i].iter().any(|old| old.id == e.id))
+    {
+        return Err("Invalid native connector index.".into());
+    }
+    Ok(entries)
+}
+fn write_index(ctx: &Ctx, entries: &[GrantOwner]) -> Result<(), String> {
+    secrets::save(
+        &*ctx.keys.store,
+        GRANT_INDEX,
+        &serde_json::to_string(entries)
+            .map_err(|_| "Couldn't encode the native connector index.".to_string())?,
+    )
+}
+fn remember(ctx: &Ctx, r: &Registration) -> Result<(), String> {
+    let mut entries = grant_index(ctx)?;
+    if let Some(e) = entries.iter().find(|e| e.id == r.id) {
+        return if e.workspace_id == r.workspace_id && e.user_id == r.user_id {
+            Ok(())
+        } else {
+            Err("This native connector belongs to another workspace.".into())
+        };
+    }
+    if entries.len() >= 256 {
+        return Err("Too many native connector grants are retained. Clear unused accounts explicitly before adding another.".into());
+    }
+    entries.push(GrantOwner {
+        id: r.id.clone(),
+        workspace_id: r.workspace_id.clone(),
+        user_id: r.user_id.clone(),
+    });
+    write_index(ctx, &entries)
+}
+fn forget(ctx: &Ctx, id: &str) -> Result<(), String> {
+    secrets::remove(&*ctx.keys.store, &secret_id(id)?)?;
+    let mut entries = grant_index(ctx)?;
+    entries.retain(|e| e.id != id);
+    write_index(ctx, &entries)
 }
 fn http() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
@@ -340,8 +413,18 @@ fn verification(kind: Kind, uri: &str) -> bool {
     }
 }
 async fn audit(ctx: &Ctx, r: &Registration, event: &str, action: &str) -> Result<(), String> {
+    audit_ids(ctx, &r.workspace_id, &r.user_id, &r.id, event, action).await
+}
+async fn audit_ids(
+    ctx: &Ctx,
+    workspace_id: &str,
+    user_id: &str,
+    id: &str,
+    event: &str,
+    action: &str,
+) -> Result<(), String> {
     sqlx::query("INSERT INTO security_audit(id,workspace_id,user_id,event_kind,scope_kind,scope_id,action,created_at,updated_at) VALUES(?,?,?,?, 'record',?,?,?,?)")
-        .bind(random_id()?).bind(&r.workspace_id).bind(&r.user_id).bind(event).bind(&r.id).bind(action)
+        .bind(random_id()?).bind(workspace_id).bind(user_id).bind(event).bind(id).bind(action)
         .bind((crate::mcp_oauth::now_secs()*1000) as i64).bind((crate::mcp_oauth::now_secs()*1000) as i64)
         .execute(&ctx.db.pool()?).await.map_err(|_| "Couldn't record connector security activity.".to_string())?;
     Ok(())
@@ -376,7 +459,7 @@ pub(crate) async fn configure(
     let mut flows = ctx.accounts.flows.lock().await;
     // Fail closed even if a subsequent database write fails. Old authorization never follows
     // changed registration settings, and account setup never creates project permissions.
-    ctx.keys.store.delete(&secret_id(&r.id)?)?;
+    forget(ctx, &r.id)?;
     flows.remove(&r.id);
     graph::clear(ctx, &r.id).await;
     github::clear(ctx, &r.id).await;
@@ -524,7 +607,7 @@ async fn identity(
     r: &Registration,
     endpoint: &str,
     access: &str,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, Option<String>), String> {
     let response = client
         .get(endpoint)
         .header("Accept", "application/json")
@@ -556,7 +639,15 @@ async fn identity(
         },
         256,
     )?;
-    Ok((id, label))
+    let hint = if r.kind == Kind::Microsoft {
+        v.get("userPrincipalName")
+            .and_then(Value::as_str)
+            .filter(|s| s.len() <= 256 && !s.chars().any(char::is_control))
+            .map(str::to_string)
+    } else {
+        None
+    };
+    Ok((id, label, hint))
 }
 pub(crate) async fn poll(ctx: &Ctx, id: String, flow_id: String) -> Result<AccountStatus, String> {
     poll_using(ctx, id, flow_id, None).await
@@ -629,7 +720,8 @@ async fn poll_using(
     verify_scopes(&r, &v)?;
     let access = field(&v, "access_token", 16384)?;
     let expires_at = token_expiry(&r, &v)?;
-    let (identity, label) = identity(&client, &r, &endpoints.identity, &access).await?;
+    let (identity, label, account_hint) =
+        identity(&client, &r, &endpoints.identity, &access).await?;
     let grant = Grant {
         registration: r.clone(),
         access,
@@ -644,6 +736,7 @@ async fn poll_using(
         expires_at,
         identity,
         label,
+        account_hint,
     };
     // Project consent belongs to the selected account, not just its application registration.
     // A different principal must never inherit the previous principal's enabled projects.
@@ -662,16 +755,135 @@ pub(crate) async fn disconnect(ctx: &Ctx, id: String) -> Result<AccountStatus, S
     let mut flows = ctx.accounts.flows.lock().await;
     let r = registration(ctx, &id).await?;
     flows.remove(&id);
-    graph::clear(ctx, &id).await;
-    github::clear(ctx, &id).await;
-    ctx.keys.store.delete(&secret_id(&id)?)?;
+    invalidate(ctx, &r).await?;
+    Ok(status("signed_out"))
+}
+// The caller owns Accounts.flows; refresh failure must not recursively lock it.
+async fn invalidate(ctx: &Ctx, r: &Registration) -> Result<(), String> {
+    graph::clear(ctx, &r.id).await;
+    github::clear(ctx, &r.id).await;
+    forget(ctx, &r.id)?;
     sqlx::query("DELETE FROM project_mcp_servers WHERE server_id=?")
-        .bind(&id)
+        .bind(&r.id)
         .execute(&ctx.db.pool()?)
         .await
         .map_err(|_| "Couldn't clear connector project consent.".to_string())?;
-    audit(ctx, &r, "policy_change", "remove").await?;
-    Ok(status("signed_out"))
+    audit(ctx, r, "policy_change", "remove").await
+}
+/// Run before global data deletion. Keeping credentials preserves a private owner index so
+/// a later explicit erase still finds grants whose registration rows have been deleted.
+pub(crate) async fn prepare_delete(
+    ctx: &Ctx,
+    workspace_id: String,
+    user_id: String,
+    remove_credentials: bool,
+) -> Result<usize, String> {
+    if !valid_id(&workspace_id) || !valid_id(&user_id) {
+        return Err("Invalid connector deletion scope.".into());
+    }
+    let mut flows = ctx.accounts.flows.lock().await;
+    let ids: Vec<String> =
+        sqlx::query_scalar("SELECT id FROM connector_accounts WHERE workspace_id=? AND user_id=?")
+            .bind(&workspace_id)
+            .bind(&user_id)
+            .fetch_all(&ctx.db.pool()?)
+            .await
+            .map_err(|_| "Couldn't prepare connector deletion.".to_string())?;
+    if ids.is_empty() && !remove_credentials {
+        return Ok(0);
+    }
+    let mut entries = grant_index(ctx)?;
+    for id in ids {
+        if entries
+            .iter()
+            .any(|e| e.id == id && (e.workspace_id != workspace_id || e.user_id != user_id))
+        {
+            return Err(
+                "Connector ownership changed; deletion stopped before removing credentials.".into(),
+            );
+        }
+        if !entries.iter().any(|e| e.id == id) {
+            entries.push(GrantOwner {
+                id,
+                workspace_id: workspace_id.clone(),
+                user_id: user_id.clone(),
+            });
+        }
+    }
+    if entries.len() > 256 {
+        return Err("Too many native connector registrations to prepare safely.".into());
+    }
+    write_index(ctx, &entries)?;
+    let selected = entries
+        .iter()
+        .filter(|e| e.workspace_id == workspace_id && e.user_id == user_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    for e in &selected {
+        flows.remove(&e.id);
+        graph::clear(ctx, &e.id).await;
+        github::clear(ctx, &e.id).await;
+        if remove_credentials {
+            secrets::remove(&*ctx.keys.store, &secret_id(&e.id)?)?;
+            sqlx::query("DELETE FROM project_mcp_servers WHERE server_id=? AND workspace_id=? AND user_id=?").bind(&e.id).bind(&workspace_id).bind(&user_id).execute(&ctx.db.pool()?).await.map_err(|_| "Couldn't clear connector project consent.".to_string())?;
+            audit_ids(
+                ctx,
+                &workspace_id,
+                &user_id,
+                &e.id,
+                "policy_change",
+                "remove",
+            )
+            .await?;
+        }
+    }
+    if remove_credentials {
+        entries.retain(|e| e.workspace_id != workspace_id || e.user_id != user_id);
+        write_index(ctx, &entries)?;
+    }
+    Ok(selected.len())
+}
+/// Project consent is serialized with account switching/configuration. A stale UI cannot
+/// enable a new principal using the previous account's checkbox.
+pub(crate) async fn project_access(
+    ctx: &Ctx,
+    expected: Registration,
+    project_id: String,
+    identity: Option<String>,
+    enabled: bool,
+) -> Result<(), String> {
+    let _flows = ctx.accounts.flows.lock().await;
+    let r = registration(ctx, &expected.id).await?;
+    if enabled && r != expected {
+        return Err("Connector configuration changed. Refresh and review its current services before enabling a project.".into());
+    }
+    let pool = ctx.db.pool()?;
+    let exists:i64=sqlx::query_scalar("SELECT count(*) FROM projects WHERE id=? AND workspace_id=? AND user_id=? AND deleted_at IS NULL").bind(&project_id).bind(&r.workspace_id).bind(&r.user_id).fetch_one(&pool).await.map_err(|_| "Couldn't verify connector project consent.".to_string())?;
+    if exists != 1 {
+        return Err("Choose an existing project on this installation.".into());
+    }
+    if enabled {
+        let grant = load(ctx, &r)?.ok_or("Sign in before enabling this account in a project.")?;
+        if identity.as_deref() != Some(&grant.identity) || grant_status(&grant).state != "connected"
+        {
+            return Err("This account changed or expired. Refresh its status and explicitly enable the current account.".into());
+        }
+    }
+    let mut tx = pool
+        .begin()
+        .await
+        .map_err(|_| "Couldn't update connector project consent.".to_string())?;
+    let now = (crate::mcp_oauth::now_secs() * 1000) as i64;
+    if enabled {
+        sqlx::query("INSERT OR IGNORE INTO project_mcp_servers(id,workspace_id,user_id,project_id,server_id,created_at) VALUES(?,?,?,?,?,?)").bind(random_id()?).bind(&r.workspace_id).bind(&r.user_id).bind(&project_id).bind(&r.id).bind(now).execute(&mut *tx).await.map_err(|_| "Couldn't enable this connector in the selected project.".to_string())?;
+    } else {
+        sqlx::query("DELETE FROM project_mcp_servers WHERE workspace_id=? AND user_id=? AND project_id=? AND server_id=?").bind(&r.workspace_id).bind(&r.user_id).bind(&project_id).bind(&r.id).execute(&mut *tx).await.map_err(|_| "Couldn't disable this connector in the selected project.".to_string())?;
+    }
+    sqlx::query("INSERT INTO security_audit(id,workspace_id,user_id,event_kind,scope_kind,scope_id,action,created_at,updated_at) VALUES(?,?,?,'policy_change','record',?,?,?,?)").bind(random_id()?).bind(&r.workspace_id).bind(&r.user_id).bind(&project_id).bind(if enabled{"set"}else{"remove"}).bind(now).bind(now).execute(&mut *tx).await.map_err(|_| "Couldn't record connector project consent.".to_string())?;
+    tx.commit()
+        .await
+        .map_err(|_| "Couldn't commit connector project consent.".to_string())?;
+    Ok(())
 }
 /// For native readers only; never exported as a command. Refresh is serialized with sign-out.
 pub(crate) async fn access_token(ctx: &Ctx, id: &str) -> Result<String, String> {
@@ -682,7 +894,7 @@ async fn access_using(
     id: &str,
     endpoints: Option<&Endpoints>,
 ) -> Result<String, String> {
-    let _guard = ctx.accounts.flows.lock().await;
+    let mut flows = ctx.accounts.flows.lock().await;
     let r = registration(ctx, id).await?;
     let mut grant =
         load(ctx, &r)?.ok_or("Sign in to this connector on this installation first.")?;
@@ -707,15 +919,31 @@ async fn access_using(
             ],
         )
         .await?;
-        if v.get("error").is_some() {
+        if let Some(error) = v.get("error").and_then(Value::as_str) {
+            if ["temporarily_unavailable", "server_error", "slow_down"].contains(&error) {
+                return Err("The account service could not renew authorization temporarily. Retry explicitly later.".into());
+            }
+            flows.remove(id);
+            invalidate(ctx, &r).await?;
             return Err(
                 "Account authorization needs sign-in again; tenant consent may have changed."
                     .into(),
             );
         }
-        verify_scopes(&r, &v)?;
-        grant.access = field(&v, "access_token", 16384)?;
-        grant.expires_at = token_expiry(&r, &v)?;
+        let renewed = (|| {
+            verify_scopes(&r, &v)?;
+            Ok::<_, String>((field(&v, "access_token", 16384)?, token_expiry(&r, &v)?))
+        })();
+        let (access, expires) = match renewed {
+            Ok(value) => value,
+            Err(error) => {
+                flows.remove(id);
+                invalidate(ctx, &r).await?;
+                return Err(error);
+            }
+        };
+        grant.access = access;
+        grant.expires_at = expires;
         if let Some(refresh) = v
             .get("refresh_token")
             .and_then(Value::as_str)
@@ -795,6 +1023,25 @@ pub mod commands {
         id: String,
     ) -> Result<AccountStatus, String> {
         disconnect(&ctx, id).await
+    }
+    #[tauri::command]
+    pub async fn connector_prepare_delete(
+        ctx: State<'_, Ctx>,
+        workspace_id: String,
+        user_id: String,
+        remove_credentials: bool,
+    ) -> Result<usize, String> {
+        prepare_delete(&ctx, workspace_id, user_id, remove_credentials).await
+    }
+    #[tauri::command]
+    pub async fn connector_project_access(
+        ctx: State<'_, Ctx>,
+        registration: Registration,
+        project_id: String,
+        identity: Option<String>,
+        enabled: bool,
+    ) -> Result<(), String> {
+        project_access(&ctx, registration, project_id, identity, enabled).await
     }
 }
 
@@ -1236,6 +1483,7 @@ mod tests {
                 expires_at: Some(1),
                 identity: "account-fixture".into(),
                 label: "Test owner".into(),
+                account_hint: None,
             },
         )
         .unwrap();
@@ -1343,5 +1591,229 @@ mod tests {
                 sqlx::query("INSERT INTO project_mcp_servers(id,workspace_id,user_id,project_id,server_id,created_at) VALUES('fixture-link',?,?,'fixture-project',?,1)").bind(&r.workspace_id).bind(&r.user_id).bind(&r.id).execute(&f.ctx.db.pool().unwrap()).await.unwrap();
             }
         }
+    }
+    async fn signed_in(f: &Fixture, hint: &str) -> AccountStatus {
+        let r = config(Kind::Microsoft);
+        let m=mock(vec![device(Kind::Microsoft),token(Kind::Microsoft),json!({"id":"fixture-principal","displayName":"Fixture owner","userPrincipalName":hint})]).await;
+        let flow = begin_using(&f.ctx, r.id.clone(), Some(&m.endpoints))
+            .await
+            .unwrap()
+            .flow_id
+            .unwrap();
+        ready(&f.ctx, &r.id).await;
+        poll_using(&f.ctx, r.id, flow, Some(&m.endpoints))
+            .await
+            .unwrap()
+    }
+    async fn project_fixture(f: &Fixture) {
+        let r = config(Kind::Microsoft);
+        sqlx::query("INSERT INTO projects(id,workspace_id,user_id,name,created_at,updated_at) VALUES('fixture-project',?,?,'Reader project',1,1)").bind(&r.workspace_id).bind(&r.user_id).execute(&f.ctx.db.pool().unwrap()).await.unwrap();
+    }
+    async fn link_count(f: &Fixture) -> i64 {
+        sqlx::query_scalar("SELECT count(*) FROM project_mcp_servers")
+            .fetch_one(&f.ctx.db.pool().unwrap())
+            .await
+            .unwrap()
+    }
+    #[tokio::test]
+    async fn account_hints_identify_personal_and_work_accounts_and_legacy_grants_survive() {
+        let f = fixture(Kind::Microsoft).await;
+        let r = config(Kind::Microsoft);
+        for hint in ["owner@outlook.test", "owner@organization.test"] {
+            let status = signed_in(&f, hint).await;
+            assert_eq!(status.account_hint.as_deref(), Some(hint));
+            let encoded = serde_json::to_string(&status).unwrap();
+            assert!(!encoded.contains("fixture-access-private"));
+            assert!(!encoded.contains("fixture-refresh-private"));
+        }
+        let mut legacy = serde_json::to_value(load(&f.ctx, &r).unwrap().unwrap()).unwrap();
+        legacy.as_object_mut().unwrap().remove("account_hint");
+        secrets::remove(&*f.ctx.keys.store, &secret_id(&r.id).unwrap()).unwrap();
+        f.ctx
+            .keys
+            .store
+            .set(&secret_id(&r.id).unwrap(), &legacy.to_string())
+            .unwrap();
+        let status = account_status(&f.ctx, r.id).await.unwrap();
+        assert_eq!(status.state, "connected");
+        assert!(status.account_hint.is_none());
+    }
+    #[tokio::test]
+    async fn refresh_transient_errors_preserve_grants_but_definitive_refusals_clear_access() {
+        let f = fixture(Kind::Microsoft).await;
+        let r = config(Kind::Microsoft);
+        signed_in(&f, "owner@organization.test").await;
+        project_fixture(&f).await;
+        project_access(
+            &f.ctx,
+            r.clone(),
+            "fixture-project".into(),
+            Some("fixture-principal".into()),
+            true,
+        )
+        .await
+        .unwrap();
+        let mut grant = load(&f.ctx, &r).unwrap().unwrap();
+        grant.expires_at = Some(0);
+        save(&f.ctx, &grant).unwrap();
+        let temporary=mock(vec![json!({"error":"temporarily_unavailable","error_description":"fixture-refresh-private"})]).await;
+        assert!(
+            access_using(&f.ctx, &r.id, Some(&temporary.endpoints))
+                .await
+                .unwrap_err()
+                .contains("temporarily")
+        );
+        assert!(load(&f.ctx, &r).unwrap().is_some());
+        assert_eq!(link_count(&f).await, 1);
+        let denied = mock(vec![
+            json!({"error":"invalid_grant","error_description":"fixture-refresh-private"}),
+        ])
+        .await;
+        let error = access_using(&f.ctx, &r.id, Some(&denied.endpoints))
+            .await
+            .unwrap_err();
+        assert!(error.contains("sign-in"));
+        assert!(!error.contains("fixture-refresh-private"));
+        assert!(load(&f.ctx, &r).unwrap().is_none());
+        assert_eq!(link_count(&f).await, 0);
+    }
+    #[tokio::test]
+    async fn project_enablement_checks_exact_registration_and_principal_and_audits_atomically() {
+        let f = fixture(Kind::Microsoft).await;
+        let r = config(Kind::Microsoft);
+        signed_in(&f, "owner@outlook.test").await;
+        project_fixture(&f).await;
+        assert!(
+            project_access(
+                &f.ctx,
+                r.clone(),
+                "fixture-project".into(),
+                Some("other-principal".into()),
+                true
+            )
+            .await
+            .is_err()
+        );
+        let mut stale = r.clone();
+        stale.services.push("calendar".into());
+        assert!(
+            project_access(
+                &f.ctx,
+                stale,
+                "fixture-project".into(),
+                Some("fixture-principal".into()),
+                true
+            )
+            .await
+            .unwrap_err()
+            .contains("configuration changed")
+        );
+        assert_eq!(link_count(&f).await, 0);
+        project_access(
+            &f.ctx,
+            r.clone(),
+            "fixture-project".into(),
+            Some("fixture-principal".into()),
+            true,
+        )
+        .await
+        .unwrap();
+        assert_eq!(link_count(&f).await, 1);
+        project_access(&f.ctx, r.clone(), "fixture-project".into(), None, false)
+            .await
+            .unwrap();
+        assert_eq!(link_count(&f).await, 0);
+        sqlx::query("CREATE TRIGGER fixture_refuse_policy BEFORE INSERT ON security_audit WHEN NEW.scope_id='fixture-project' BEGIN SELECT RAISE(ABORT,'fixture audit failure'); END").execute(&f.ctx.db.pool().unwrap()).await.unwrap();
+        assert!(
+            project_access(
+                &f.ctx,
+                r,
+                "fixture-project".into(),
+                Some("fixture-principal".into()),
+                true
+            )
+            .await
+            .is_err()
+        );
+        assert_eq!(link_count(&f).await, 0);
+    }
+    #[tokio::test]
+    async fn data_only_delete_preserves_grants_then_explicit_erase_finds_orphans_without_crossing_workspaces()
+     {
+        let f = fixture(Kind::Microsoft).await;
+        let r = config(Kind::Microsoft);
+        signed_in(&f, "owner@outlook.test").await;
+        let mut foreign = config(Kind::Microsoft);
+        foreign.id = "00000000-0000-7000-8000-000000001599".into();
+        foreign.workspace_id = "00000000-0000-7000-8000-000000009999".into();
+        let mut grant = load(&f.ctx, &r).unwrap().unwrap();
+        grant.registration = foreign.clone();
+        save(&f.ctx, &grant).unwrap();
+        assert_eq!(
+            prepare_delete(&f.ctx, r.workspace_id.clone(), r.user_id.clone(), false)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(load(&f.ctx, &r).unwrap().is_some());
+        sqlx::query("DELETE FROM connector_accounts")
+            .execute(&f.ctx.db.pool().unwrap())
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM mcp_servers")
+            .execute(&f.ctx.db.pool().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            prepare_delete(&f.ctx, r.workspace_id, r.user_id, true)
+                .await
+                .unwrap(),
+            1
+        );
+        assert!(
+            secrets::load(&*f.ctx.keys.store, &secret_id(&r.id).unwrap())
+                .unwrap()
+                .is_none()
+        );
+        assert!(load(&f.ctx, &foreign).unwrap().is_some());
+        assert_eq!(grant_index(&f.ctx).unwrap().len(), 1);
+    }
+    #[tokio::test]
+    async fn preserving_data_deletion_indexes_legacy_credentials_before_registration_rows_disappear()
+     {
+        let f = fixture(Kind::Microsoft).await;
+        let r = config(Kind::Microsoft);
+        signed_in(&f, "owner@outlook.test").await;
+        let raw = serde_json::to_string(&load(&f.ctx, &r).unwrap().unwrap()).unwrap();
+        secrets::remove(&*f.ctx.keys.store, &secret_id(&r.id).unwrap()).unwrap();
+        f.ctx
+            .keys
+            .store
+            .set(&secret_id(&r.id).unwrap(), &raw)
+            .unwrap();
+        secrets::remove(&*f.ctx.keys.store, GRANT_INDEX).unwrap();
+        prepare_delete(&f.ctx, r.workspace_id.clone(), r.user_id.clone(), false)
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM connector_accounts")
+            .execute(&f.ctx.db.pool().unwrap())
+            .await
+            .unwrap();
+        sqlx::query("DELETE FROM mcp_servers")
+            .execute(&f.ctx.db.pool().unwrap())
+            .await
+            .unwrap();
+        prepare_delete(&f.ctx, r.workspace_id, r.user_id, true)
+            .await
+            .unwrap();
+        assert!(
+            f.ctx
+                .keys
+                .store
+                .get(&secret_id(&r.id).unwrap())
+                .unwrap()
+                .is_none()
+        );
+        assert!(grant_index(&f.ctx).unwrap().is_empty());
     }
 }

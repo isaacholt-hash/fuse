@@ -159,6 +159,16 @@ jobs:
         env:
           FUSE_WEB_BROWSER: google-chrome
         run: bash scripts/research-web.sh
+      - name: Connector setup web fixture
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/connectors-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: connector-web-screenshots
+          path: e2e/screenshots/connectors/
+          if-no-files-found: ignore
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

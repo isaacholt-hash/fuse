@@ -1,4 +1,5 @@
 import type { DictationApi } from "@/dictation/client";
+import { nativeConnectorsApi, type ConnectorsApi } from "@/connectors/api";
 import { isDesktop } from "@/platform/core";
 import { nativeSyncApi, type SyncApi } from "@/sync/api";
 import { tauriLocalApi, type LocalApi } from "@/local/api";
@@ -118,6 +119,7 @@ interface Props {
   python?: PythonApi;
   /** MCP servers' keychain values (M9 step 8). */
   mcp?: McpApi;
+  connectors?: ConnectorsApi;
   quickCapture?: QuickCaptureApi;
   dictation?: DictationApi;
   /** Sets the webview zoom for the text size (PL-10). */
@@ -162,6 +164,7 @@ export default function App({
   local = webApp ? undefined : tauriLocalApi,
   python = tauriPythonApi,
   mcp = webApp ? webMcp : tauriMcpApi,
+  connectors = nativeConnectorsApi,
   quickCapture = webApp ? undefined : tauriQuickCapture,
   dictation,
   zoom = webApp ? undefined : tauriZoom,
@@ -356,6 +359,7 @@ export default function App({
       localApi={local}
       pythonApi={python}
       mcpApi={mcp}
+      connectorsApi={connectors}
       quickCapture={quickCapture}
       {...(dictation ? { dictation } : {})}
       zoom={zoom}

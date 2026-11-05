@@ -1127,6 +1127,7 @@ mod tests {
                 expires_at: Some(crate::mcp_oauth::now_secs() + 3600),
                 identity: "fixture-principal".into(),
                 label: "Fixture owner".into(),
+                account_hint: None,
             },
         )
         .unwrap();

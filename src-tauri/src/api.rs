@@ -81,6 +81,8 @@ pub const WEB_COMMANDS: &[&str] = &[
     "connector_begin",
     "connector_poll",
     "connector_disconnect",
+    "connector_prepare_delete",
+    "connector_project_access",
     "mcp_check",
     "mcp_stop",
     "mcp_tools",
@@ -471,6 +473,20 @@ pub async fn dispatch(
             args!(name, args, id: String);
             json(crate::connectors::disconnect(ctx, id).await)
         }
+        "connector_prepare_delete" => {
+            args!(name, args, workspace_id: String, user_id: String, remove_credentials: bool);
+            json(
+                crate::connectors::prepare_delete(ctx, workspace_id, user_id, remove_credentials)
+                    .await,
+            )
+        }
+        "connector_project_access" => {
+            args!(name,args,registration:crate::connectors::Registration,project_id:String,identity:Option<String>,enabled:bool);
+            json(
+                crate::connectors::project_access(ctx, registration, project_id, identity, enabled)
+                    .await,
+            )
+        }
         "mcp_check" => {
             args!(name, args, server_id: String);
             json(mcp::mcp_check(ctx, server_id).await)
@@ -686,10 +702,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 101 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 103 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            101
+            103
         );
     }
 

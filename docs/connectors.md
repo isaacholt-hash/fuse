@@ -8,8 +8,8 @@ planned Google integration. Existing generic stdio/HTTP MCP servers remain avail
 Registration and device authorization run on the installation whose account will be used:
 Rust on desktop, or Rust on HULK for its web app and runner. A browser is not a separate
 credential holder. There is no external authorization relay or embedded client secret.
-Shared registration/sign-in controls arrive in M15.4; this step exposes the typed native
-foundation, with no connector reader offered before its subsequent step.
+Open Settings → Code & tools → Connections for shared registration/sign-in controls.
+The same typed native participant serves desktop, browser and runner readers.
 
 Owner-registered applications:
 
@@ -25,13 +25,13 @@ Owner-registered applications:
   obtain an expiring grant. FUSE does not store or use its refresh token: renewal requiring a
   client secret instead asks the owner to sign in again. Never enter an application secret.
 
-No registration or authorization is performed by the build. Final registration instructions,
-account setup and the owner-operated acceptance checklist accompany M15.4's released controls.
+No registration or authorization is performed by the build. Registration instructions and the owner-operated acceptance checklist are below.
 Tenant consent, conditional access and organization policies may refuse device authorization;
 FUSE reports this and does not seek broader permissions or a secret-based fallback.
 
 The native commands are `connector_configure`, `connector_status`, `connector_begin`,
-`connector_poll` and `connector_disconnect`. Ordinary calls return only state, bounded account
+`connector_poll`, `connector_disconnect`, `connector_project_access` and
+`connector_prepare_delete`. Ordinary calls return only state, bounded account
 identity/label, expiry, the public verification address/user code and poll timing. The device
 credential, access token and refresh token never return to JavaScript. Requests use fixed
 provider endpoints, HTTPS, no redirects, bounded bodies and generic errors that discard
@@ -60,9 +60,10 @@ Project links are the existing local MCP permissions. Full encrypted database ba
 registration metadata and links; credentials remain separately in the native secret store.
 Restoring a database provides no new token and never starts sign-in. Native grants are bound
 to the exact account registration; they cannot follow a restored, mismatched configuration.
-A global data deletion removes registration rows before MCP servers; the existing separate
-choice about credential deletion still applies. Disconnect accounts before removing their
-registration when their native credentials must also be erased.
+A global data deletion prepares native credential retention/removal before deleting registration
+rows and MCP servers. The existing separate choice about deleting credentials still applies.
+A native-only owner index lets a later explicit credential erase find grants preserved by an
+earlier data-only deletion, even after those registration rows are gone.
 
 Sign-in, refresh, credential use and consent/configuration changes write redacted security
 activity using opaque connector IDs. Activity contains no user code, account address, OAuth
@@ -94,8 +95,7 @@ account separately on each execution owner where its readers are needed.
 
 The native participant offers `onedrive_list`, `onedrive_search`, `onedrive_read`,
 `outlook_mail_list`, `outlook_mail_search`, `outlook_mail_read`, `outlook_calendar_list` and
-`outlook_calendar_read` for services explicitly selected in its account registration. Shared
-setup/project controls arrive in M15.4; this step supplies the verified readers and call path.
+`outlook_calendar_read` for services explicitly selected in its account registration. Use Settings → Code & tools → Connections for account and project controls.
 No owner account is signed in by this build.
 
 A request must identify its originating conversation/project and chosen model provider,
@@ -169,7 +169,7 @@ The built-in participant offers `github_installations`, `github_repositories`,
 `github_repository_read`, `github_issues`, `github_issue_read`, `github_comments`,
 `github_pulls`, `github_pull_read`, `github_diff_read` and `github_file_read`. All use the
 same project enablement, recipient policy, approvals and untrusted-content checks as Microsoft.
-Shared setup remains in M15.4. The build does not authorize an account or install an App.
+Shared setup is in Settings → Code & tools → Connections. The build does not authorize an account or install an App.
 
 Install the owner-registered GitHub App on **Only select repositories**. Enable only Metadata,
 Contents, Issues and Pull requests **Read-only** repository permissions; no organization or
@@ -223,3 +223,107 @@ Protocol references, verified 2026-11-05:
 - [Pull requests](https://docs.github.com/en/rest/pulls/pulls)
 - [Immutable comparisons and their file ceiling](https://docs.github.com/en/rest/commits/commits)
 - [Pinned Git commits](https://docs.github.com/en/rest/git/commits), [tree modes](https://docs.github.com/en/rest/git/trees) and [raw blobs](https://docs.github.com/en/rest/git/blobs)
+
+## Set up on a released installation (M15.4)
+
+Update desktop and HULK through the normal release instructions before using these controls.
+HULK updates, app registration, sign-in and project permissions are owner actions. The build
+does not perform them. Existing generic MCP controls remain separate and unchanged.
+
+Microsoft application registration:
+
+1. In Microsoft Entra admin center → App registrations → New registration, choose an account
+   type that supports the accounts you intend to use. For personal plus work/school accounts,
+   select organizational directories plus personal Microsoft accounts; for one organization,
+   its single-tenant registration can use that tenant explicitly. Organization policy may
+   require an administrator's consent or refuse device authorization.
+2. Under Authentication → Advanced settings, set Allow public client flows to Yes and save.
+   Device authorization needs no redirect URI, embedded secret or external relay.
+3. Under API permissions, use delegated Microsoft Graph User.Read and only the enabled
+   services' Files.Read, Mail.Read and/or Calendars.Read. FUSE requests offline_access for
+   native refresh. Do not add application permissions or read/write service scopes.
+4. Copy the public Application (client) ID into FUSE → Settings → Code & tools → Connections →
+   Add Microsoft account. Use common for both account kinds, consumers for personal,
+   organizations for work/school, or the required tenant UUID/domain. Select services
+   explicitly; none are preselected. Save registration, then choose Sign in.
+5. Open the provider's sign-in page, enter the displayed device code, and finish consent as
+   the intended account. Verify the displayed account address/name. Only then enable the
+   desired projects. No folder is required for reader access. Saving/sign-in alone enables
+   no project, model request, run or folder permission.
+
+GitHub application registration:
+
+1. GitHub → Settings (or the intended organization's settings) → Developer settings → GitHub
+   Apps → New GitHub App. Give it a name and homepage; your own repository URL can be the
+   homepage. Enable Device Flow and keep expiring user authorization tokens enabled.
+2. Leave Webhooks Active off. Device flow ignores the callback URL; FUSE needs no callback,
+   private key, client secret or relay. Use only repository Metadata, Contents, Issues and
+   Pull requests Read-only permissions. No account/organization permissions are needed.
+3. Install the App on Only select repositories, selecting the intended repositories. Its
+   installation availability must cover their owner/organization; an organization may need
+   to approve installation and SAML access. FUSE refuses all-repository or broader App
+   permissions instead of changing them automatically.
+4. In FUSE Connections → Add GitHub account, enter the public Client ID (Iv1./Iv23. prefix),
+   not the numeric App ID, a PAT, client secret or private key. Save, choose Sign in, and
+   complete the provider's device flow. Verify the account and explicitly enable projects.
+   GitHub grants expire; FUSE asks for sign-in again rather than requesting a client secret
+   for refresh. An active organization SAML session may be required before reauthorization.
+
+Use the desktop controls for that computer's account or HULK's web controls for HULK's
+account. Another browser uses HULK's authorization; it does not become a credential replica.
+Project settings also list configured connections. Enablement binds the exact registration
+and principal under the native account lock, so an old checkbox cannot enable a replacement
+account or newly changed services. Project permission and its redacted audit commit together.
+Changing an account/registration clears previous project access and requires explicit review.
+
+Troubleshooting and removal:
+
+- Denied or expired codes require an explicit new Sign in. Check the public client ID, device
+  flow/public-client setting and tenant or organization policy. FUSE never requests a secret
+  or broader scopes to bypass a refusal. Cancel sign-in clears this local account's access.
+- Device checks respect the native interval. Leaving the panel pauses UI polling; reopen and
+  refresh to continue its already-requested flow. A transport error pauses automatic polling
+  until explicit refresh. A refused refresh/token clears authorization and project links; a
+  temporary renewal outage preserves the grant for an explicit retry.
+- Change account explicitly disconnects first and resets project access. Edit registration
+  saves public settings and disconnects. Remove requires confirmation, clears local credentials
+  and permissions, and removes registration; previously retrieved conversation content remains.
+- Disconnecting FUSE is separate from provider-side revocation. Use GitHub Settings →
+  Applications → Authorized GitHub Apps, the Microsoft personal account consent page, or
+  work/school My Apps → Manage your application. A tenant administrator may control revocation.
+- Data-only deletion preserves credentials when that existing option is selected, cancels
+  pending sign-in and removes the registration that readers require. Choosing credential
+  deletion erases registered/indexed native grants before their metadata disappears and
+  clears registered generic MCP credentials too. Cleanup failure stops data deletion for an
+  explicit retry. Native grant metadata is not a sign-in capability and never goes to sync.
+
+Native storage and platform limits:
+
+OAuth grants can exceed Windows Credential Manager's 2,560-byte entry limit. FUSE uses the
+existing OS secret-store interface with at most 1,024 UTF-8 bytes per part (at most 2,048
+UTF-16 bytes on Windows), a sixty-KiB record bound, two fixed slots and a small atomic
+manifest. The old record remains readable until commit. Byte length and SHA-256 reject
+missing/mixed/corrupt parts; fixed part names let explicit erasure cover interrupted writes.
+The private owner index is recorded before credential parts are written. Old unchunked
+grants remain readable; no re-enrollment or storage migration is required.
+
+All manifests, parts and the owner index stay solely in the native secret store. They never
+reach JavaScript, SQLite, sync, portable exports or FUSE database backups. Full encrypted
+backups retain public registration metadata and local links; token loss still requires
+provider sign-in. New public status includes a bounded Microsoft account hint, never tokens.
+No new table, portable column or dependency is introduced by these controls. The build grants no access.
+
+[Microsoft public-client configuration](https://learn.microsoft.com/en-us/entra/identity-platform/scenario-desktop-app-configuration),
+[GitHub registration](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app),
+[Windows credential entry bound](https://learn.microsoft.com/en-us/windows/win32/api/wincred/ns-wincred-credentiala).
+
+## Released owner acceptance — pending
+
+Automated authorization, paging, revocation, read bounds, project/provider isolation and UI
+scenarios use isolated fixtures. They do not establish live provider/tenant acceptance. After
+updating the released desktop/HULK builds, the owner records build IDs, account type/tenant,
+date and result in M19: real Microsoft personal/work sign-in and selected readers; GitHub
+App/organization sign-in and selected repository/issue/PR reads; project/provider denial;
+expiry/re-sign-in; disconnect/provider revocation and preserved conversation content. Keep
+actual tokens and device codes out of chat, screenshots and acceptance records. No such live
+authorization has been performed by this build.

@@ -278,6 +278,7 @@ export function SettingsView({
   local,
   python,
   mcp,
+  connectors,
   quickCapture,
   dictation,
   notifications,
@@ -349,6 +350,7 @@ export function SettingsView({
   python?: ReactNode;
   /** M9 step 8: MCP servers. */
   mcp?: ReactNode;
+  connectors?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
   dictation?: ReactNode;
@@ -565,6 +567,7 @@ export function SettingsView({
     sandbox,
     python,
     mcp,
+    connectors,
     sync,
     server,
     privacy,

@@ -416,7 +416,7 @@ export function DataSection({
             description={
               syncEnrolled
                 ? "Delete this installation’s data and propagate deletion of synced content across enrolled replicas when they reconnect. Paused or disabled sync must be explicitly resumed or re-enabled to send the deletion. This does not erase backups or copies on revoked devices. Export first if needed."
-                : "Every chat, memory, project, artifact, budget, usage record and attached file on this computer is deleted for good. Export first if you might want any of it."
+                : "Every chat, memory, project, artifact, budget, usage record and attached file on this installation is deleted for good. Export first if you might want any of it."
             }
           >
             <label className="mb-1.5 block text-xs">
@@ -437,8 +437,12 @@ export function DataSection({
                   setRemoveKeys(e.target.checked);
                 }}
               />
-              Also remove my API keys from this computer
+              Also remove saved API keys and account/tool credentials here
             </label>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This credential choice applies to this installation. Manage provider-side account
+              authorization separately.
+            </p>
             <div className="mt-5 flex justify-end gap-2">
               <Button
                 variant="outline"
