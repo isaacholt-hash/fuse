@@ -297,7 +297,8 @@ describe("extraction (PM-03)", () => {
       ["delete", "", "Has one cat."],
       ["add", "Has two cats.", null],
     ]);
-    expect(JSON.stringify(pending)).not.toContain("1234");
+    // Random UUIDs may contain these digits; the rejected PIN must not enter saved content.
+    expect(pending.flatMap((p) => [p.text, p.currentText]).join("\n")).not.toContain("1234");
 
     const [log] = await listRecentRequests(db, t, 1);
     expect(log).toMatchObject({ purpose: "memory", model: "small-a", threadId: thread.id });

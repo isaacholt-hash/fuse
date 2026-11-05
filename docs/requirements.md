@@ -64,7 +64,7 @@ Each phase ships only when its gate passes. P1's gate is the one that matters: i
 2. **Coding agent** (added 2026-10-30, section 11b): what Claude Code and Codex do for your daily work. A project linked to a local repository; the agent reads, searches and edits files, runs commands with your approval, shows every change as a diff, works with git, reads CLAUDE.md and AGENTS.md, and does long runs with a plan and a cost cap, each step routed and priced like chat. It brings forward the parts of P2 agents it needs (AG-04, AG-05, AG-06). **Gate:** for two weeks you do your edit, run, review and commit loop in FUSE rather than in Claude Code or Codex, and no repo content reaches a blocked provider in tests.
 3. **Local and lean:** cutting what each finished task costs, by answering what needs no model without one, doing housekeeping on a local model, sending less context, and reusing safe results (section 16b, from `docs/specs/local-ai-cost-optimization.md`). It is built while the P1 trial runs; anything the trial turns up is fixed first. **P1.5 gate:** measured cost per successful task is lower than the cloud-only baseline with no drop in quality on the routing test set, and local-only mode makes no cloud call. P2 follows P1.5.
 
-**P2 order (updated 2026-11-04):** Work in folders (M8), Tools and MCP (M9), Runs on HULK (M10, built through step 26), then Encrypted sync (M11, PL-04, built through step 8). Isaac approved the full trusted-HULK sync milestone and unattended build; see `docs/milestones/M11-encrypted-sync.md`. **Settings navigation and search (M12, complete)** follows the M10/M11 closeout, before dictation and deep research. Isaac approved all six M12 steps unattended on 2026-11-04; see `docs/milestones/M12-settings-navigation.md`.
+**P2 order (updated 2026-11-05):** M8 Work, M9 Tools/MCP, M10 HULK, M11 encrypted sync and M12 Settings are complete. Isaac approved [Finish FUSE P2](P2-completion.md), including unattended sequential M13–M19 delivery of every P2 Must/Should under prior boundaries: dictation, research/routing, Microsoft/GitHub connectors, coding completion, writing/artifacts, offline/usage and acceptance. The roadmap maps each requirement to shipped evidence or a numbered step. Optional Nice items stay explicit backlog. Live setup is owner-operated; build completion alone does not close P2.
 
 ## 4. Users and key use cases
 
@@ -237,7 +237,7 @@ Tools are opt-in per project, side effects need approval, and every run has a co
 | AG-08 | Browser automation through a browser extension or an embedded browser, limited to sites the user allows; computer use on desktop, opt-in, screenshots shown before each action. | Nice | P3 |
 | AG-09 | Parallel steps and sub-runs with a combined cost cap. | Nice | P3 |
 | AG-10 | Prompt-injection guard: content fetched by tools is treated as data; instructions found inside it are shown to the user and never executed without confirmation. | Must | P2 |
-| AG-11 | Built-in connectors (Drive, Gmail, Calendar, GitHub and similar) through MCP (AG-02), set up from settings. | Should | P2 |
+| AG-11 | Built-in read-first connectors through MCP (AG-02), set up from settings. P2 completion (approved 2026-11-05): OneDrive, Outlook Mail, Outlook Calendar and GitHub; personal and work/school Microsoft accounts, owner-registered applications, native tokens and explicit project enablement. | Should | P2 |
 
 ## 11b. Coding agent (P1.5)
 
@@ -496,5 +496,5 @@ Decided 2026-10-30:
 **Can wait**
 
 - [x] P2 settings navigation and search (M12): six steps complete; approved 2026-11-04 for unattended sequential delivery; `docs/milestones/M12-settings-navigation.md`
-- [ ] P2 dictation and deep research (after M12; requires a separately approved plan)
+- [ ] P2 completion (approved 2026-11-05): [M13–M19](P2-completion.md), every P2 Must/Should under approved boundaries, unattended build and separate released owner acceptance. Dictation and deep research are M13/M14.
 - [ ] P3 voice conversation, image generation, auth and billing hooks turned on
