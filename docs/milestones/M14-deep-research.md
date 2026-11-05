@@ -24,7 +24,7 @@ FK-12, RT-14, AG-06, AG-05; bounded search and CO-08.
 - [x] **1. Routing and search interfaces.** Complete Best planning/final synthesis, Balanced-or-floor routine work and Cheap housekeeping across runs, respecting explicit pins. Add bounded provider-native search options, conservative request bounds and a research run kind; keep research in Chat.
 - [x] **2. Research engine.** Restricted read-only tool profile, execution-owner checkpoints, collected sources and a versioned cited Markdown report. Enforce cap and work limits, validate source links, flag unsupported claims and retain partial results. No commands, repository writes or additional MCP access.
 - [x] **3. Chat controls.** Research action without a linked-folder requirement, scope/estimate/location preview and an unfilled cap field required to start. HULK preferred when permitted, explicit desktop option, progress/pause/stop and explicit continuation. Portable finished reports/history, owner-only active coordination.
-- [ ] **4. Benchmark and release.** Deterministic recorded research scenarios, both provider adapters, desktop/web click-through, HULK continuation after caller disconnects, interrupted desktop behavior, reviewed screenshots and setup documentation.
+- [x] **4. Benchmark and release.** Deterministic recorded research scenarios, both provider adapters, desktop/web click-through, HULK continuation after caller disconnects, interrupted desktop behavior, reviewed screenshots and setup documentation.
 
 ## Behavior and boundaries
 
@@ -275,3 +275,91 @@ it without changing results. The next attempt passed four gates but caught the W
 reading setup before the cap field loaded. The fixture now waits for that field. Failed-run
 screenshots/logs were retained for diagnosis. All five gates must pass on the final current
 commit before merge; no failed or superseded attempt counts as acceptance.
+
+Step 3 shipped in [PR #296](https://github.com/isaacholt-hash/fuse/pull/296), merged as
+`cfad7ce6f38007f7e91bce186f7eb7adbcf02643` after all five gates and the JSON gate passed on
+`70a93ff8c74fb581344828abbe0c05ca26547464` in
+[CI 41991596703](https://github.com/isaacholt-hash/fuse/actions/runs/41991596703).
+Current-head Windows Research setup/report screenshots in both themes were reviewed. CI
+confirmed dictation 31/31, encrypted sync 16/16 on schema 66 in 32,003 ms, and the four-request
+synthetic research UI fixture with matching 10,840-micro-dollar ledger/run costs. Normal
+release [v0.1.218](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.218) published at
+2026-11-05 08:20:44 UTC through
+[run 41992578860](https://github.com/isaacholt-hash/fuse/actions/runs/41992578860).
+Windows/Linux installers and seven signed updater entries were verified against uploaded
+assets. No HULK deployment or owner/provider acceptance occurred.
+
+## Step 4 — Recorded benchmark and release kit
+
+`pnpm research:bench` runs the real OpenAI/Anthropic adapters over synthetic event streams,
+plus the checkpoint, publication and transfer fault suites. With `FUSE_SERVER_BIN` on Linux,
+it also builds the separate test runner and starts a throwaway native HULK server using
+in-memory test secrets. The caller's session is closed while its independent Node owner
+finishes; repeated delivery creates no second execution. A separate case hard-exits Node
+immediately after a journaled search dispatch. The server restarts its runner, preserves one
+unknown charge/hold, sends nothing automatically and waits for explicit continuation. The
+search is skipped instead of replayed, and the resulting partial report retains that limit.
+
+The eight recorded scenarios cover both providers' Best stages with bounded OpenAI search,
+verified and unsupported citations, hostile-source exclusion, cap exhaustion/explicit
+continuation, ambiguous search billing, desktop interruption and a seeded model-call limit,
+plus the two actual HULK process cases. Supplementary tests cover wall/source limits,
+privacy/context changes, duplicate starts, lost commit acknowledgements and stale owners.
+The benchmark uses the dated shipped catalog and synthetic token counts, never live billing.
+An OpenAI-Best run records 58,000 micro-dollars; an Anthropic-Best run records 31,000, each
+with four request receipts and 4,000 input / 400 output tokens. The ambiguous search retains
+1,410,000 micro-dollars of unresolved exposure; it is not reported as an actual charge.
+
+Publication now commits the artifact/version, completed or interrupted message, aggregate
+receipt token counts, run status, checkpoint and lease release in one guarded database batch.
+A failing artifact insert rolls the bundle back and parks recoverably; explicit continuation
+publishes without another paid request. A lost acknowledgement observes the committed result.
+Stale owners cannot change any publication record or create replication events. Ordinary
+superseded report versions remain governed by the existing artifact/sync retention policy.
+
+A new Chat's reviewed identity exists before its creation request, so a lost creation/queue
+acknowledgement cannot create another Chat or paid start. Draft instructions and model pins
+are saved atomically on that Chat; instructions reach research only when explicitly selected.
+Folder grants, commands, MCP access and permissions are never copied. Desktop/web screenshots
+wait for settled progress before recording the final state.
+
+CI runs the portable benchmark in the web gate, the full eight scenarios in the existing HULK
+gate and portable compatibility on Windows. Linux server cases are explicitly skipped where
+no fixture server is available. The existing HULK and encrypted-sync benchmarks remain gates.
+Recorded fixtures prove accounting/control invariants, not live provider availability, source
+truth or deployment readiness. Chrome/native WebKit and Windows click-through are verified
+per step; the complete browser matrix remains M19's integrated acceptance.
+
+Build delivery is complete through these four steps; released owner acceptance stays open.
+Update desktop and HULK independently using [the research guide](../research.md), then record
+scope/cap review, explicit pause/continue, a cited report and HULK continuation with the caller
+closed against the actual released builds. P2 stays open until M19's owner checklist passes.
+
+Recorded local evidence: [eight scenarios](../screenshots/m14/research-benchmark.json),
+38 related tests, 22,059 ms elapsed, no skipped native scenarios and no live provider call.
+The portable-only command passed 36 tests with its two Linux server cases explicitly skipped.
+Reviewed native completion in [light](../screenshots/m14/benchmark-native-light.png) and
+[dark](../screenshots/m14/benchmark-native-dark.png), with aggregate receipt tokens and one
+search. Reviewed browser setup in [light](../screenshots/m14/benchmark-web-setup-light.png)
+and [dark](../screenshots/m14/benchmark-web-setup-dark.png),
+[pause](../screenshots/m14/benchmark-web-paused-dark.png) and opened reports in
+[light](../screenshots/m14/benchmark-web-report-light.png) and
+[dark](../screenshots/m14/benchmark-web-report-dark.png). The browser wire fixture records
+[four requests / 31,000 micro-dollars](../screenshots/m14/benchmark-web-result.json).
+The 9.9.9 updater banner is fixture data. Native screenshots use fresh data/keyrings.
+
+Rust source is unchanged in this step. Rust formatting, server all-target clippy with warnings
+denied and the native batch rollback test passed. The preserved HULK benchmark passed 5/5;
+encrypted sync passed 16/16 on schema 66 in 30,333 ms:
+[recorded sync JSON](../screenshots/m14/benchmark-sync.json). Production web/runner bundles
+built and exclude both the scripted source and crash marker. Full repository, browser and
+current-head CI results are required before merge; owner/live checks remain pending.
+
+Final local `VITEST_MAX_WORKERS=2 pnpm check` passed: 189 files / 1,097 tests passed.
+The normal suite explicitly skipped 13 live/manual checks plus eight opt-in benchmark cases;
+the separate recorded command passed all 38 related tests / eight scenarios. Production web
+regression passed 10/10, synthetic dictation 1/1 and the final synthetic Research browser flow
+1/1. The latter waits for Finished and for the composer to stop generating before screenshots.
+All screenshots/JSON here use synthetic content. No live deployment, enrollment or provider
+acceptance was performed. Current-head Windows/browser artifacts and all five CI gates remain
+the required merge gate; M19 records the released owner's live acceptance.

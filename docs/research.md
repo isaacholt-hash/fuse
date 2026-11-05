@@ -70,3 +70,24 @@ After updating, the owner should start a small capped Research run, review scope
 pause and continue explicitly, inspect its cited report and verify HULK continues after closing
 the caller. Live provider and deployment acceptance must be recorded against the released
 desktop/HULK builds. Synthetic fixtures do not establish live provider availability or quality.
+
+## Recorded verification
+
+Run `pnpm research:bench` for the portable adapter/control scenarios. On Linux, build the
+existing server first and run
+`FUSE_SERVER_BIN=src-tauri/target/debug/fuse-server pnpm research:bench` to include the two
+independent HULK-owner cases. An external Cargo target can supply its absolute binary path.
+The report is `src-tauri/target/research-benchmark.json`; skipped server scenarios are named
+explicitly. CI also runs portable compatibility on Windows. All inputs/responses are synthetic
+and the throwaway server uses in-memory secrets. No live sign-in or provider key is required.
+
+The wire fixture reports 1,000 input and 100 output tokens per attempt. Its four-request
+Anthropic-Best/OpenAI-search example totals 31,000 micro-dollars; the tiny native UI fixture
+reports 10/10 tokens per attempt instead. Both must match their own ledger and run totals.
+Report token counts aggregate the existing receipts and never add another charge.
+
+Publishing a report, its version, message and terminal checkpoint is atomic. A database write
+failure pauses publication while retaining recorded costs. Continue retries publication
+explicitly, without another model call. Unknown dispatched work still cannot be replayed.
+New unsaved Chats retain their instructions/pin and one stable start identity across lost
+acknowledgements; research still includes only the context selected in setup.

@@ -200,11 +200,60 @@ test("a bounded research run produces a versioned cited report and never acquire
   expect((await listMessages(db, tenant, thread.id)).at(-1)?.usage.costMicroUsd).toBe(
     run.spentMicroUsd,
   );
+  expect((await listMessages(db, tenant, thread.id)).at(-1)?.usage).toMatchObject({
+    inputTokens: 40,
+    outputTokens: 40,
+    webSearchCalls: 1,
+  });
   await startResearchRun(deps, input);
   await continueResearchRun(deps, run.id);
   expect(sent).toHaveLength(4);
   expect(await listVersions(db, tenant, report?.id ?? "")).toHaveLength(1);
   expect(await db.select("SELECT id FROM run_folders")).toEqual([]);
+});
+
+test("publication rolls back artifact, message and terminal checkpoint together, then resumes without another paid call", async () => {
+  const { db, deps, thread, sent, input } = await setup();
+  db.raw.exec(
+    "CREATE TEMP TRIGGER fail_report BEFORE INSERT ON artifact_versions BEGIN SELECT RAISE(ABORT,'fixture publication failure'); END",
+  );
+  const paused = await startResearchRun(deps, input);
+  expect(paused.status).toBe("paused");
+  expect(sent).toHaveLength(4);
+  expect(await listArtifacts(db, tenant, thread.id)).toEqual([]);
+  expect((await checkpoint(deps, paused.id)).state.stage).toBe("publish");
+  expect((await listMessages(db, tenant, thread.id)).at(-1)).toMatchObject({
+    status: "stopped",
+    errorCode: "publication",
+    usage: { inputTokens: 40, outputTokens: 40, costMicroUsd: 10009 },
+  });
+  db.raw.exec("DROP TRIGGER fail_report");
+  expect((await continueResearchRun(deps, paused.id)).status).toBe("done");
+  expect(sent).toHaveLength(4);
+  expect(await listRecentRequests(db, tenant)).toHaveLength(4);
+  const report = (await listArtifacts(db, tenant, thread.id))[0];
+  expect(await listVersions(db, tenant, report?.id ?? "")).toHaveLength(1);
+});
+
+test("a lost publication acknowledgement observes the atomic completed result without another version or request", async () => {
+  const { db, deps, thread, sent, input } = await setup();
+  const original = db.batch.bind(db);
+  let lose = true;
+  db.batch = async (statements) => {
+    const result = await original(statements);
+    if (lose && statements.some((s) => s.sql.includes("INSERT INTO artifact_versions"))) {
+      lose = false;
+      throw new Error("fixture publication acknowledgement lost");
+    }
+    return result;
+  };
+  const run = await startResearchRun(deps, input);
+  expect(run.status).toBe("done");
+  expect((await checkpoint(deps, run.id)).state.stage).toBe("finished");
+  expect(sent).toHaveLength(4);
+  const report = (await listArtifacts(db, tenant, thread.id))[0];
+  expect(await listVersions(db, tenant, report?.id ?? "")).toHaveLength(1);
+  expect((await listMessages(db, tenant, thread.id)).at(-1)?.usage.inputTokens).toBe(40);
 });
 
 test("an insufficient cap pauses before dispatch; explicit continuation preserves work and uses the new total cap once", async () => {

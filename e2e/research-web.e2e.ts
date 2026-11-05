@@ -78,6 +78,10 @@ describe.skipIf(!URL || !BROWSER)("research web fixture", () => {
     await app.type('//input[@aria-label="Continue research total cap (USD)"]', "5.50");
     await app.click('//*[@role="dialog"]//button[normalize-space()="Continue research"]');
     await app.sees("Research complete.", 30000);
+    await app.find(
+      '//*[@aria-label="Research progress"]//*[contains(normalize-space(), "· Finished")]',
+    );
+    await app.gone('//*[normalize-space()="Generating response"]');
     expect(
       await app.run('return document.querySelector("textarea[aria-label=\\"Message\\"]").value;'),
     ).toBe("Keep this research draft.");

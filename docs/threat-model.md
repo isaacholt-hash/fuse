@@ -273,3 +273,11 @@ delivery never authorizes automatic resend. Privacy withdrawal clears its retain
 Browser polling, reconnect, sync and backup restore cannot dispatch research. A protocol/schema
 mismatch pauses setup with an explanation. Test-only scripted runner builds are separate from
 the production entrypoint and require an isolated loopback/in-memory-secrets server.
+
+Research publication commits its artifact/version, message and execution checkpoint together,
+with every write guarded by the current owner's lease. Failed writes and stale owners cannot
+publish half a terminal result. Startup retains unknown dispatched exposure and never resumes
+execution; continuation can skip an ambiguous search while exposing its missing evidence.
+Recorded native-process tests hard-exit the isolated fixture runner after dispatch, restart it
+through the existing server supervisor and verify no automatic replay. The crash marker lives
+only in the separate synthetic runner entrypoint; release entrypoints never import it.

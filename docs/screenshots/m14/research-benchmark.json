@@ -1,0 +1,79 @@
+{
+  "benchmark": "M14 recorded research",
+  "synthetic": true,
+  "liveProviderCalls": 0,
+  "priceVersion": "2026-10-27",
+  "limits": {
+    "searches": 12,
+    "sources": 24,
+    "modelCalls": 30,
+    "activeMinutes": 30
+  },
+  "elapsedMs": 22059,
+  "results": [
+    {
+      "scenario": "openai Best stages; OpenAI bounded search",
+      "status": "done",
+      "requests": 4,
+      "costMicroUsd": 58000,
+      "verifiedCitations": 1,
+      "unverifiedClaims": 1,
+      "hostileInstructionsExcluded": true
+    },
+    {
+      "scenario": "anthropic Best stages; OpenAI bounded search",
+      "status": "done",
+      "requests": 4,
+      "costMicroUsd": 31000,
+      "verifiedCitations": 1,
+      "unverifiedClaims": 1,
+      "hostileInstructionsExcluded": true
+    },
+    {
+      "scenario": "cap exhaustion and explicit continuation",
+      "blockedRequests": 1,
+      "providerRequestsBeforeConfirmation": 0,
+      "completedRequests": 4,
+      "costMicroUsd": 31000
+    },
+    {
+      "scenario": "ambiguous billed search",
+      "searchAttempts": 1,
+      "replayedAttempts": 0,
+      "unknownBillingRows": 1,
+      "heldMicroUsd": 1410000
+    },
+    {
+      "scenario": "interrupted desktop and explicit continuation",
+      "automaticRequestsAfterStartup": 0,
+      "replayedSearchAttempts": 0,
+      "requests": 4
+    },
+    {
+      "scenario": "model-call limit boundary fixture",
+      "limit": 30,
+      "additionalProviderRequests": 0,
+      "partial": true
+    },
+    {
+      "scenario": "HULK continues after caller session closes",
+      "callerSessionClosed": true,
+      "requests": 4,
+      "costMicroUsd": 31000,
+      "executionOwner": "runner",
+      "duplicateExecutions": 0,
+      "folderGrants": 0
+    },
+    {
+      "scenario": "HULK hard owner exit and explicit continuation",
+      "hardExit": true,
+      "automaticRequestsAfterRestart": 0,
+      "searchAttempts": 1,
+      "replayedSearchAttempts": 0,
+      "unknownBillingRows": 1,
+      "heldMicroUsd": 1410000
+    }
+  ],
+  "platform": "linux",
+  "skipped": []
+}

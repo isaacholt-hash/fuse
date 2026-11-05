@@ -91,3 +91,95 @@ test("HULK preview respects the execution owner's policy and prefers desktop whe
   expect(await owner.select("SELECT id FROM request_log")).toEqual([]);
   expect(onError).not.toHaveBeenCalled();
 });
+
+test.each(["chat", "queue"] as const)(
+  "lost %s acknowledgement retries the same reviewed Chat and start identity",
+  async (where) => {
+    const db = openTestDb();
+    const original = db.execute.bind(db);
+    let lose = true;
+    db.execute = async (sql, params) => {
+      const result = await original(sql, params);
+      const matches =
+        where === "chat"
+          ? sql.includes("INSERT INTO threads")
+          : sql.includes("INSERT INTO run_requests");
+      if (lose && matches) {
+        lose = false;
+        throw new Error("fixture acknowledgement lost");
+      }
+      return result;
+    };
+    const model = researchModels(catalog, policy, { kind: "auto" }, "Tides", ["openai"]).worker;
+    const onSelect = vi.fn(),
+      onError = vi.fn();
+    function Harness() {
+      const research = useResearch({
+        deps: {
+          db,
+          tenant,
+          catalog,
+          adapterFor: () => {
+            throw new Error("A browser cannot execute research");
+          },
+        },
+        threadId: null,
+        projectId: null,
+        mode: { kind: "model", provider: model.provider, id: model.id },
+        policy,
+        providers: ["openai"],
+        hulkStatus: null,
+        web: true,
+        incognito: false,
+        draftInstructions: "Use the owner's outline.",
+        onSelect,
+        onError,
+        onChanged: vi.fn(),
+      });
+      return (
+        <>
+          <button
+            onClick={() => {
+              research.open("Compare tides");
+            }}
+          >
+            Open research
+          </button>
+          {research.dialogs}
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Open research" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Research" }));
+    fireEvent.click(dialog.getByRole("checkbox", { name: "Chat instructions" }));
+    fireEvent.change(dialog.getByLabelText("Research spending cap (USD)"), {
+      target: { value: "5" },
+    });
+    fireEvent.click(dialog.getByRole("button", { name: "Start research" }));
+    await screen.findByText("fixture acknowledgement lost");
+    fireEvent.click(dialog.getByRole("button", { name: "Start research" }));
+    await screen.findByRole("button", { name: "Open research" });
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Research" })).not.toBeInTheDocument(),
+    );
+    const threads = await db.select<{ id: string; instructions: string; pinned_model: string }>(
+      "SELECT id,instructions,pinned_model FROM threads",
+    );
+    expect(threads).toHaveLength(1);
+    expect(threads[0]).toMatchObject({
+      instructions: "Use the owner's outline.",
+      pinned_model: model.id,
+    });
+    const requests = await db.select<{ input: string }>("SELECT input FROM run_requests");
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(requests[0]?.input ?? "{}")).toMatchObject({
+      threadId: threads[0]?.id,
+      research: { selection: { instructions: ["thread"] } },
+    });
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onError).not.toHaveBeenCalled();
+    expect(await db.select("SELECT id FROM request_log")).toEqual([]);
+    expect(await db.select("SELECT id FROM folders")).toEqual([]);
+  },
+);

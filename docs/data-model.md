@@ -385,3 +385,18 @@ Acknowledged acceptance clears the snapshot. Reading/restoring an intent never r
 an uncertain acknowledgement is observed through the original HULK request ID only. Encrypted
 database backups retain intents under the existing retention policy. No execution permission,
 credential or repository path is stored here.
+
+### M14 atomic publication and stable new-Chat setup
+
+No new schema is needed in step 4. One guarded batch writes a research artifact/version,
+message receipt totals, owner checkpoint, terminal run status and lease release. Every write
+requires the same active lease; a stale publication produces no data or replication event.
+Versions keep authoritative UUIDs and deterministic ordering. A failed write rolls back the
+whole publication; explicit continuation can retry a free publication step. A lost commit
+acknowledgement observes the durable terminal result without another version or paid call.
+
+New Research Chat IDs are allocated in setup before creation. Their initial instruction/pin
+fields commit in the same insert and the same ID survives a lost creation acknowledgement.
+The existing queue's stable request ID prevents duplicate execution after a lost queue ACK.
+No folder or command permission is part of either record. All existing sync, privacy,
+delete/undo, backup and export classifications continue to apply.
