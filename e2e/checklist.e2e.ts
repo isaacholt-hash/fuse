@@ -31,6 +31,18 @@ async function step(name: string, body: () => Promise<void>) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** WebView2 may capture the previous compositor frame immediately after a theme change. */
+async function themedShot(name: string, dark: boolean) {
+  const actual = await app.run<boolean>(`
+    document.documentElement.classList.toggle("dark", ${String(dark)});
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.documentElement.classList.contains("dark");
+  `);
+  expect(actual).toBe(dark);
+  await app.screenshot(join(SHOTS, `${name}-${dark ? "dark" : "light"}.png`));
+}
+
 /** The answers on screen, newest last. */
 const answers = () =>
   app.run<string[]>(
@@ -333,10 +345,8 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
       '//textarea[@aria-label="Research scope"]',
       "Compare recorded tidal measurements and their limitations.",
     );
-    await app.run('document.documentElement.classList.remove("dark");');
-    await app.screenshot(join(SHOTS, "research-setup-light.png"));
-    await app.run('document.documentElement.classList.add("dark");');
-    await app.screenshot(join(SHOTS, "research-setup-dark.png"));
+    await themedShot("research-setup", false);
+    await themedShot("research-setup", true);
     await app.type('//input[@aria-label="Research spending cap (USD)"]', "5");
     await app.click(button("Start research"));
     await app.sees("Research complete.", 60000);
@@ -348,9 +358,8 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     expect(await app.run('return document.querySelector("textarea").value;')).toBe(
       "Keep this editable research draft.",
     );
-    await app.screenshot(join(SHOTS, "research-report-dark.png"));
-    await app.run('document.documentElement.classList.remove("dark");');
-    await app.screenshot(join(SHOTS, "research-report-light.png"));
+    await themedShot("research-report", true);
+    await themedShot("research-report", false);
     await app.run('localStorage.removeItem("fuse.e2e.research");');
   });
 }, 120000);

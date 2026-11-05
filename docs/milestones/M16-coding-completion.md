@@ -469,3 +469,18 @@ themes and replaced in the committed evidence set. The real browser fixture pass
 agreement, no unknown billing and no integration or push. The parent retains its original
 dirty file and commit after caller disconnection. The preserved HULK benchmark passes 5/5
 (12.43 s). The next current-head CI run must verify all Windows fixes before merge.
+
+The following CI run passes the shared gate (1,218 tests, 21 skips), full Rust server
+suite and Windows click-through (16 passed, 24 explicit skips). Windows no longer shows the
+repeated SQLite lock errors, and the watchdog/research behavior passes. Screenshot review
+nevertheless caught a compositor race: a research image labelled light still showed dark.
+The checklist now waits for theme painting and asserts the requested theme before capture;
+this changes no application behavior. Its lint/type checks pass, and a fresh current-head
+five-gate run is required for the corrected Windows evidence.
+
+Windows native child verification now passes all 8/8 cases (56.99 s) in
+[CI 42093474233](https://github.com/isaacholt-hash/fuse/actions/runs/42093474233). Its redacted
+probe records only the selected OS names, private temporary names, COMSPEC/PROMPT and the
+current-drive entry; the synthetic inherited sentinel is absent. Parent/sibling file denial,
+separate writable worktrees, path authority and retained failures all pass. This is real
+Windows execution evidence; the screenshot-only follow-up still needs its own full CI gate.
