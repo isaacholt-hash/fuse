@@ -1330,7 +1330,8 @@
     "request_reservations": "Owner-only pre-dispatch holds and unresolved charges; never replay on another replica",
     "security_audit": "Sanitized local credential-use and policy events; exported explicitly, not replicated",
     "research_state": "Execution-owner checkpoint, selected-context IDs and transient collected evidence; never starts from sync.",
-    "research_operations": "Execution-owner dispatch claims and crash recovery; never replicated or replayed."
+    "research_operations": "Execution-owner dispatch claims and crash recovery; never replicated or replayed.",
+    "research_transfers": "Owner-local explicit HULK delivery intents and links. Never synced/exported or automatically replayed; source deletion cascades and privacy withdrawal purges pending snapshots."
   },
   "internalTables": [
     "sync_state",

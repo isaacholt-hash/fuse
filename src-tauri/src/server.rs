@@ -218,6 +218,7 @@ async fn auth_state(State(server): State<Arc<Server>>, headers: HeaderMap) -> Re
         "schema": build.schema,
         "builtFrom": build.built_from,
         "builtOn": build.built_on,
+        "researchProtocol": build.research_protocol,
     }))
     .into_response()
 }
@@ -670,6 +671,7 @@ async fn serve(config: Config) -> Result<(), String> {
             script.clone(),
             format!("http://{addr}"),
             server.auth.runner_token()?,
+            config.test_keys_in_memory,
         )),
         None => {
             println!("fuse-server: no --runner, so runs can't be started here");
@@ -715,7 +717,13 @@ struct Runner {
 }
 
 impl Runner {
-    fn start(node: PathBuf, script: PathBuf, server: String, token: String) -> Self {
+    fn start(
+        node: PathBuf,
+        script: PathBuf,
+        server: String,
+        token: String,
+        test_mode: bool,
+    ) -> Self {
         let (stop, mut stopping) = tokio::sync::oneshot::channel::<()>();
         let done = tokio::spawn(async move {
             loop {
@@ -725,6 +733,11 @@ impl Runner {
                     if let Some(v) = std::env::var_os(var) {
                         cmd.env(var, v);
                     }
+                }
+                // Synthetic runner entrypoints refuse to start unless the server explicitly
+                // uses in-memory test secrets. Production children never receive this flag.
+                if test_mode {
+                    cmd.env(TEST_ENV, "1");
                 }
                 cmd.env("FUSE_SERVER_URL", &server)
                     .env("FUSE_RUNNER_TOKEN", &token);

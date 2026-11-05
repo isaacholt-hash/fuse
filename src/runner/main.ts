@@ -3,7 +3,7 @@
 // requests, folders, commands, git, MCP) goes through the server's commands, as the web app's
 // do. Built by `pnpm build:runner` into one file, dist-runner/runner.mjs.
 import type { ProviderId } from "@/catalog/catalog";
-import { defaultCatalog } from "@/catalog/defaultCatalog";
+import { storedRouting } from "@/catalog/stored";
 import type { RunDeps } from "@/agent/run";
 import { housekeepingModel } from "@/chat/housekeeping";
 import { tauriFilesApi } from "@/files/api";
@@ -18,7 +18,6 @@ import { tauriPythonApi } from "@/python/runtime";
 import { tauriRepo } from "@/repo/api";
 import { tauriExec } from "@/repo/exec";
 import { tauriGit } from "@/repo/git";
-import { defaultPolicy } from "@/routing/defaultPolicy";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { listProjectMcpServers } from "@/storage/mcp";
 import { openTauriDb } from "@/storage/tauriDb";
@@ -60,12 +59,13 @@ async function keyed(): Promise<ProviderId[]> {
 }
 
 async function deps(): Promise<RunDeps> {
-  const summarizer = housekeepingModel(defaultPolicy, defaultCatalog, "summary", await keyed());
+  const { catalog, policy } = await storedRouting(db, tenant, null);
+  const summarizer = housekeepingModel(policy, catalog, "summary", await keyed());
   const mcp = tauriMcpApi;
   return {
     db,
     tenant,
-    catalog: defaultCatalog,
+    catalog,
     adapterFor,
     files: tauriFilesApi,
     repo: tauriRepo,

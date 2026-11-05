@@ -21,7 +21,15 @@ export function validateSelection(selection: ResearchSelection): void {
     )
       throw new Error("Select a bounded set of existing context records.");
   if (
+    Object.keys(selection).some(
+      (key) => !["memoryIds", "artifactIds", "messageIds", "instructions"].includes(key),
+    )
+  )
+    throw new Error("Research context contains unsupported fields.");
+  if (
     !Array.isArray(selection.instructions) ||
+    selection.instructions.length > 3 ||
+    new Set(selection.instructions).size !== selection.instructions.length ||
     selection.instructions.some((level) => !["global", "project", "thread"].includes(level))
   )
     throw new Error("Invalid instruction selection.");

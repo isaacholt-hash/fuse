@@ -374,3 +374,14 @@ cap. Actual costs plus remaining holds count once, including native transcriptio
 unknown exposure remains until reconciled, across calendar boundaries. Dispatch rechecks
 budgets, current Chat/project attribution and research controls. Temporary owner-authorized
 budget overrides retain their existing expiry semantics; the run cap still applies.
+
+### M14 research transfer intents (schema 66)
+
+`research_transfers` keeps one stable desktop-to-HULK request identity, source/destination
+Chat IDs, reviewed setup metadata, delivery state and a bounded pending text snapshot. It is
+machine-specific, excluded from sync and portable export, covered by delete-all before Chats,
+and cascades with its source Chat. Privacy changes withdraw pending payloads atomically.
+Acknowledged acceptance clears the snapshot. Reading/restoring an intent never resends it;
+an uncertain acknowledgement is observed through the original HULK request ID only. Encrypted
+database backups retain intents under the existing retention policy. No execution permission,
+credential or repository path is stored here.

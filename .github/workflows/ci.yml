@@ -37,7 +37,9 @@ jobs:
       - name: Release bundle has no test code
         run: |
           pnpm build
+          pnpm build:runner
           if grep -rq fuse-e2e-scripted-build dist; then echo "The test build's code is in the release bundle"; exit 1; fi
+          if grep -rq research-fixture.example dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
 
   rust:
     name: Rust fmt, clippy, test
@@ -135,6 +137,16 @@ jobs:
         env:
           FUSE_WEB_BROWSER: google-chrome
         run: bash scripts/dictation-web.sh
+      - name: Research web fixture
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/research-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: research-web-screenshots
+          path: e2e/screenshots/research/
+          if-no-files-found: ignore
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

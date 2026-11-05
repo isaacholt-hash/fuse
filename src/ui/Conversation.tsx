@@ -1180,6 +1180,8 @@ export function Composer({
   codeBranch = false,
   onCodeBranch,
   onRunOnHulk,
+  onResearch,
+  researchReason = null,
   runOnHulkReason = null,
   routing,
   insert,
@@ -1248,6 +1250,9 @@ export function Composer({
    * here. Shown for a chat in a project with a repository folder.
    */
   onRunOnHulk?: (task: string) => void;
+  /** Opens scope/cost/location setup; never starts execution by itself. */
+  onResearch?: (draft: string) => void;
+  researchReason?: string | null;
   /** Why Run on HULK is greyed (not paired yet); null when it can be used. */
   runOnHulkReason?: string | null;
   /** Auto and pinned tiers (RT-01); without it the picker lists models only. */
@@ -1478,6 +1483,22 @@ export function Composer({
                 />
               )}
             </div>
+          )}
+          {onResearch && !code && !work && (
+            <MenuRow
+              icon={<Search className="size-3.5" />}
+              label="Research"
+              detail={
+                researchReason ??
+                "Review scope, context, location and a spending cap before starting"
+              }
+              aria-label="Research"
+              disabled={streaming || researchReason !== null}
+              onClick={() => {
+                setOptionsOpen(false);
+                onResearch(text.trim());
+              }}
+            />
           )}
           {onToggleWebSearch && (
             <MenuRow

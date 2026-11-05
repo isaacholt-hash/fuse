@@ -41,3 +41,26 @@ test("schema 65 leaves populated application rows, triggers and sync events unch
   }
   db.close();
 });
+
+test("schema 66 preserves populated history and classifies transfer intents as owner-local", () => {
+  const db = new DatabaseSync(":memory:");
+  const sql = (file: string) =>
+    readFileSync(new URL(`../../src-tauri/migrations/${file}`, import.meta.url), "utf8");
+  for (const file of migrationFiles().filter((file) => file < "0066")) db.exec(sql(file));
+  db.exec("UPDATE sync_state SET enabled=1");
+  db.prepare(
+    "INSERT INTO threads(id,workspace_id,user_id,title,created_at,updated_at) VALUES('kept',?,?,'Existing Chat',1,2)",
+  ).run(tenant.workspaceId, tenant.userId);
+  const rows = db.prepare("SELECT * FROM threads").all(),
+    outbox = db.prepare("SELECT * FROM sync_outbox ORDER BY seq").all();
+  db.exec("BEGIN IMMEDIATE");
+  db.exec(sql("0066_research_transfers.sql"));
+  db.exec("COMMIT");
+  expect(db.prepare("SELECT * FROM threads").all()).toEqual(rows);
+  expect(db.prepare("SELECT * FROM sync_outbox ORDER BY seq").all()).toEqual(outbox);
+  expect(db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  expect(registry.localTables).toHaveProperty("research_transfers");
+  expect(EXPORTED_TABLES).not.toContain("research_transfers");
+  expect(DELETE_ORDER.indexOf("research_transfers")).toBeLessThan(DELETE_ORDER.indexOf("threads"));
+  db.close();
+});

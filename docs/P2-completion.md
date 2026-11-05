@@ -147,6 +147,16 @@ instructions and the remaining acceptance checklist. M19 records the final evide
   [release 41974374835](https://github.com/isaacholt-hash/fuse/actions/runs/41974374835)
   published signed Linux/Windows installers and seven updater entries on 2026-11-05 at
   05:38:49 UTC. Research engine and Chat entry follow in their own numbered steps.
+- **M14.2:** [PR #295](https://github.com/isaacholt-hash/fuse/pull/295), merge
+  `2c402488c2ee4502843e625141e293dbc0b98702`. Restricted execution, owner-local checkpoints,
+  explicit context, bounded public reads, validated cited/versioned reports and atomic
+  global/project/run budget holds. All five current-head gates passed in
+  [CI 41980895113](https://github.com/isaacholt-hash/fuse/actions/runs/41980895113).
+  Released [v0.1.217](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.217) through
+  [run 41981930551](https://github.com/isaacholt-hash/fuse/actions/runs/41981930551) at
+  2026-11-05 06:49:51 UTC. Installers and seven signed updater entries verified. The milestone
+  records 1,074 passing tests, Rust checks, reviewed screenshots, preserved HULK benchmark
+  and 16-scenario sync evidence. Live deployment/provider research acceptance remains pending.
 
 ## Roadmap verification
 

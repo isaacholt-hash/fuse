@@ -9,6 +9,8 @@ export interface HulkBuild {
   schema: number;
   builtFrom: string;
   builtOn: string;
+  /** Absent on schema-compatible builds that predate the dedicated research runner. */
+  researchProtocol?: number;
 }
 
 export interface HulkStatus {
