@@ -85,4 +85,11 @@ test("M10 step 13: opened, marked unread, and the one-time settle of old threads
   expect((await getThread(db, t, old.id))?.seenAt).toBe(0);
   await markThreadSeen(db, t, old.id, 1000);
   expect((await getThread(db, t, old.id))?.seenAt).toBe(1000);
+  await markThreadSeen(db, t, old.id, 800);
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(1000);
+  await markThreadUnread(db, t, old.id);
+  await markThreadSeen(db, t, old.id, 1200, 1000);
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(0);
+  await markThreadSeen(db, t, old.id, 1400); // Explicitly reopening clears unread.
+  expect((await getThread(db, t, old.id))?.seenAt).toBe(1400);
 });

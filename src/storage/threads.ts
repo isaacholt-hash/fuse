@@ -562,12 +562,15 @@ export async function markThreadSeen(
   tenant: Tenant,
   id: string,
   at = Date.now(),
+  expected?: number | null,
 ): Promise<void> {
-  await db.execute("UPDATE threads SET seen_at = ? WHERE workspace_id = ? AND id = ?", [
-    at,
-    tenant.workspaceId,
-    id,
-  ]);
+  // An older queued read must not move the watermark backwards. Automatic result updates
+  // additionally compare the value they observed, preserving a subsequent Mark as unread.
+  await db.execute(
+    `UPDATE threads SET seen_at = ? WHERE workspace_id = ? AND id = ?
+      AND (seen_at IS NULL OR seen_at < ?)${expected === undefined ? "" : " AND seen_at IS ? AND (seen_at IS NULL OR seen_at > 0)"}`,
+    [at, tenant.workspaceId, id, at, ...(expected === undefined ? [] : [expected])],
+  );
 }
 
 /** M10 step 13: "Mark as unread": bold in the sidebar until it's opened again. */

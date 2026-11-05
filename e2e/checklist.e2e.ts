@@ -276,6 +276,9 @@ test("6. with a 1-minute idle limit, a stalled run stops and says why", async ()
   await step("watchdog", async () => {
     await newSession();
     await send("E2E stall");
+    // Native database writes can still be settling after the send. Observe the run itself
+    // before checking the sidebar; a missing run must never count as a watchdog success.
+    await app.find('//section[@aria-label="Coding run"]', 60_000);
     await app.find(dot("E2E stall", "Going"), 15_000);
     // The watchdog looks every 15 s, so it stops between 60 and 75 s without progress.
     await app.sees("Stopped: no progress for", 120_000);
@@ -283,7 +286,7 @@ test("6. with a 1-minute idle limit, a stalled run stops and says why", async ()
     // And the composer is ready again: it doesn't stay on "Generating response".
     await app.gone('//*[normalize-space()="Generating response"]');
   });
-}, 180_000);
+}, 240_000);
 
 test("7. the Scheduled page opens, and says why it's empty when not paired with HULK", async () => {
   await step("scheduled", async () => {
@@ -311,7 +314,11 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     await app.reload();
     await app.find(composer);
     await app.chord("1");
+    await app.find(
+      '//*[@aria-label="Area"]//button[@aria-pressed="true" and normalize-space()="Chat"]',
+    );
     await app.chord("n");
+    await app.find('//h1[normalize-space()="New chat"]');
     await app.type(composer, "Keep this editable research draft.");
     await app.click(button("Options"));
     await app.click('//button[@aria-label="Research"]');

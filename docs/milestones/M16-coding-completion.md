@@ -435,3 +435,37 @@ two distinct directories whose ordinary spellings could alias, then requires ref
 keeps the original folder authority intact while fixing command-line compatibility. Updated
 local default/server all-target lint checks and eight Linux worktree tests pass (12.32 s).
 The new Windows alias test and private-command probe require current-head CI verification.
+
+The next Windows run verified preparation and path scope (7/8 native cases passed), including
+real worktrees, raw-object exclusion, retained failures and the alias regression. Its remaining
+private-command case rejected an environment variable name after launching the shell. The
+launcher still passes only six selected OS variables; the fixture now distinguishes known
+shell-created metadata/current-drive entries from inherited application variables, reports
+names without values, and CI supplies an ambient synthetic sentinel that must remain absent.
+The private-command probe must pass before merge; no production allowlist was expanded.
+
+The same run's Windows click-through trace retained database lock errors during overlapping
+read-watermark updates and a stale startup restore overriding a newly selected Chat draft.
+Automatic read marks now depend on scalar run revisions, compare their observed watermark,
+never regress it and preserve explicit unread marks. A future-dated result settles once.
+Startup restoration yields to explicit navigation, including a new draft whose selected ID
+is null. Three controlled deferred-write hook regressions plus a delayed startup/navigation
+regression pass. The checklist waits for the actual Code run before its Going dot and waits
+for Chat/new-draft transitions before research; watchdog and research assertions remain intact.
+No dependencies, permissions, migrations or portable-data classifications change in these fixes.
+Fresh complete application checks and native/web verification follow before the next CI head.
+
+The complete application rerun after the Windows UI fixes passes 1,218 tests in 207 files,
+with 21 existing opt-in/live cases skipped in ten files (251.61 s). Lint, formatting, type
+checking and the secret scan pass. The initial Windows failures and their screenshots/logs
+remain retained rather than replaced by the rerun. Native production behavior remains the
+verified path-scope fix; the changed Windows fixture reports names only and tests rejection
+of a synthetic inherited variable. Current-head Windows execution is still required.
+
+The final current-source production UI/runner builds pass and exclude fixture markers.
+Fresh native approval captures and all eight shared browser captures were reviewed in both
+themes and replaced in the committed evidence set. The real browser fixture passes 2/2
+(42.47 s): 14 synthetic requests, 2,400 micro-dollars, two independent changes, exact root/ledger
+agreement, no unknown billing and no integration or push. The parent retains its original
+dirty file and commit after caller disconnection. The preserved HULK benchmark passes 5/5
+(12.43 s). The next current-head CI run must verify all Windows fixes before merge.

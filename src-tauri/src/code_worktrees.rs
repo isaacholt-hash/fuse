@@ -1391,7 +1391,14 @@ mod tests {
           assert!(std::fs::read(&args[2]).is_err(),"sibling grant escaped");
           assert_eq!(std::fs::read_to_string("notes.txt").unwrap(),"committed base\n");
           std::fs::write("made.txt","private child").unwrap();
-          for (name,_) in std::env::vars_os(){assert!(["systemroot","userprofile","appdata","localappdata","path","pathext","temp","tmp"].contains(&name.to_string_lossy().to_lowercase().as_str()),"unapproved environment name");}
+          for (name,_) in std::env::vars_os(){
+            let name=name.to_string_lossy().to_lowercase();
+            println!("ENV_NAME:{name}");
+            // cmd.exe may add its own shell metadata and current-drive directory.
+            // The native launcher still passes only its six selected OS variables.
+            let drive=name.len()==3 && name.starts_with('=') && name.ends_with(':') && name.as_bytes()[1].is_ascii_alphabetic();
+            assert!(["systemroot","userprofile","appdata","localappdata","path","pathext","temp","tmp","comspec","prompt"].contains(&name.as_str())||drive,"unapproved environment name: {name}");
+          }
           let cmd=std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap()).join("System32").join("cmd.exe");
           assert!(std::process::Command::new(cmd).args(["/C","exit","0"]).status().unwrap().success());
           println!("ISOLATED_CHILD");
@@ -1465,6 +1472,17 @@ mod tests {
         );
         assert_eq!(da, Some(Some(0)), "{oa}");
         assert_eq!(db, Some(Some(0)), "{ob}");
+        for output in [&oa, &ob] {
+            // Redacted fixture evidence: names only, never environment values.
+            eprintln!(
+                "{}",
+                output
+                    .lines()
+                    .filter(|l| l.starts_with("ENV_NAME:"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
         assert!(oa.contains("ISOLATED_CHILD") && ob.contains("ISOLATED_CHILD"));
         assert_eq!(
             std::fs::read_to_string(a.join("made.txt")).unwrap(),

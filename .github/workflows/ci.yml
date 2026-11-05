@@ -290,6 +290,7 @@ jobs:
       - name: Windows isolated child worktree fixtures
         if: ${{ !cancelled() }}
         run: |
+          $env:FUSE_CHILD_PROBE = 'synthetic-should-not-reach-child'
           cargo test --manifest-path src-tauri/Cargo.toml --lib code_worktrees:: -- --nocapture --test-threads=1 2>&1 | Tee-Object -FilePath child-worktrees.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - if: ${{ !cancelled() }}
