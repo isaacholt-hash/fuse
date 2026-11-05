@@ -827,48 +827,74 @@ mod tests {
         std::fs::write(b.join("private.txt"), "OTHER_PROFILE_ONLY\r\n").unwrap();
         grant_to(first, &a, READ).unwrap();
         grant_to(second, &b, READ).unwrap();
-        let program = PathBuf::from(std::env::var_os("SystemRoot").unwrap())
-            .join("System32")
-            .join("findstr.exe");
-        let run = |args: Vec<String>| {
-            let mut child = spawn_direct(
-                &Spawn {
-                    cwd: &a,
-                    command: "",
-                    network: false,
-                    env_remove: &[],
-                    container: first,
-                    env_set: &[],
-                    memory_bytes: Some(512 * 1024 * 1024),
-                    piped: false,
-                    env_only: Some(&["SystemRoot"]),
-                },
-                &program,
-                &args,
-            )
+        // A fixed Rust helper exercises native argv and ACLs directly, without a system
+        // utility's additional command-line or environment assumptions.
+        let source = a.join("probe.rs");
+        std::fs::write(&source, r#"
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    assert_eq!(std::fs::read_to_string("input.txt").unwrap().trim(), args[1]);
+    assert!(std::fs::read_to_string(&args[2]).is_err(), "read another invocation's grant");
+    assert!(std::fs::write("forbidden.txt", b"escape").is_err(), "wrote a read-only input");
+    let system=std::path::PathBuf::from(std::env::var_os("SystemRoot").unwrap());
+    let child=std::process::Command::new(system.join("System32").join("cmd.exe"))
+        .args(["/d","/c","echo CHILD_RAN"]).status();
+    assert!(child.is_err() || !child.unwrap().success(), "created an extra process");
+    let allowed=["systemroot","userprofile","appdata","localappdata","temp","tmp"];
+    for (name,_) in std::env::vars_os() {
+        assert!(allowed.contains(&name.to_string_lossy().to_lowercase().as_str()),"inherited an unapproved environment name");
+    }
+    println!("ARG={:?}",args[1]);
+    println!("ISOLATION_OK");
+}
+"#).unwrap();
+        let program = a.join("probe.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2024")
+            .arg(&source)
+            .arg("-o")
+            .arg(&program)
+            .output()
             .unwrap();
-            let mut output = String::new();
-            child
-                .take_output()
-                .unwrap()
-                .read_to_string(&mut output)
-                .unwrap();
-            (output, child.wait().unwrap())
-        };
-        let (text, code) = run(vec![
-            "/L".into(),
-            format!("/C:{literal}"),
-            a.join("input.txt").to_string_lossy().into_owned(),
-        ]);
+        assert!(
+            compile.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let literal = "literal & echo injected > escaped.txt \"quote\" C:\\end\\ 日本語";
+        std::fs::write(a.join("input.txt"), format!("{literal}\r\n")).unwrap();
+        let mut child = spawn_direct(
+            &Spawn {
+                cwd: &a,
+                command: "",
+                network: false,
+                env_remove: &[],
+                container: first,
+                env_set: &[],
+                memory_bytes: Some(512 * 1024 * 1024),
+                piped: false,
+                env_only: Some(&["SystemRoot", "USERPROFILE", "APPDATA", "LOCALAPPDATA"]),
+            },
+            &program,
+            &[
+                literal.into(),
+                b.join("private.txt").to_string_lossy().into_owned(),
+            ],
+        )
+        .unwrap();
+        let mut text = String::new();
+        child
+            .take_output()
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        let code = child.wait().unwrap();
+        drop(child);
         assert_eq!(code, 0, "{text}");
-        assert!(text.contains(literal), "{text}");
+        assert!(text.contains(&format!("ARG={literal:?}")), "{text}");
+        assert!(text.contains("ISOLATION_OK"), "{text}");
+        assert!(!text.contains("CHILD_RAN"), "{text}");
         assert!(!a.join("escaped.txt").exists());
-        let (text, code) = run(vec![
-            "OTHER_PROFILE_ONLY".into(),
-            b.join("private.txt").to_string_lossy().into_owned(),
-        ]);
-        assert_ne!(code, 0);
-        assert!(!text.contains("OTHER_PROFILE_ONLY"), "{text}");
         revoke_from(first, &a).unwrap();
         revoke_from(second, &b).unwrap();
         remove_profile_of(first).unwrap();

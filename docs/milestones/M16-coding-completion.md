@@ -308,3 +308,12 @@ OS error 203. The selected executable is now canonicalized to a native Windows p
 fixture uses native path components, and launch errors identify the failing API stage.
 CI retains the sandbox unit log immediately so failures remain diagnosable while later
 compatibility checks continue. A fresh current-commit run is required before merge.
+
+The immediate Windows artifact on the second CI head locates error 203 at `CreateProcessW`;
+path normalization alone did not resolve the system-utility probe. The probe now compiles a
+fixed native helper with the already-required Rust toolchain and launches it under the same
+OS-environment allowlist as production Python. It verifies literal quoted/Unicode arguments,
+read-only package access, exclusion of another invocation's grant, denied writes/child
+processes and absence of unapproved environment names. This removes dependence on a system
+utility's parsing/startup assumptions while retaining and strengthening the isolation checks.
+Windows execution still requires a passing current-head CI result before merge.
