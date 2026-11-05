@@ -2,6 +2,15 @@
 //! grants live only in the existing native secret store. No OAuth response is logged or
 //! forwarded to a webview. Device codes exist only in this installation's process memory.
 use crate::ctx::Ctx;
+mod graph;
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CallContext {
+    pub thread_id: Option<String>,
+    pub project_id: Option<String>,
+    pub provider: String,
+}
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::Row;
@@ -156,6 +165,7 @@ struct Grant {
 #[derive(Default)]
 pub struct Accounts {
     flows: Mutex<HashMap<String, Flow>>,
+    cursors: Mutex<HashMap<String, graph::Cursor>>,
 }
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -366,6 +376,7 @@ pub(crate) async fn configure(
     // changed registration settings, and account setup never creates project permissions.
     ctx.keys.store.delete(&secret_id(&r.id)?)?;
     flows.remove(&r.id);
+    graph::clear(ctx, &r.id).await;
     let pool = ctx.db.pool()?;
     let mut tx = pool
         .begin()
@@ -576,6 +587,7 @@ async fn poll_using(
     let default_endpoints = r.endpoints();
     let endpoints = endpoints.unwrap_or(&default_endpoints);
     let client = http()?;
+    audit(ctx, &r, "credential_use", "request").await?;
     let v = post(
         &client,
         &endpoints.token,
@@ -647,6 +659,7 @@ pub(crate) async fn disconnect(ctx: &Ctx, id: String) -> Result<AccountStatus, S
     let mut flows = ctx.accounts.flows.lock().await;
     let r = registration(ctx, &id).await?;
     flows.remove(&id);
+    graph::clear(ctx, &id).await;
     ctx.keys.store.delete(&secret_id(&id)?)?;
     sqlx::query("DELETE FROM project_mcp_servers WHERE server_id=?")
         .bind(&id)
@@ -709,7 +722,6 @@ async fn access_using(
         }
         save(ctx, &grant)?;
     }
-    audit(ctx, &r, "credential_use", "request").await?;
     Ok(grant.access)
 }
 /// In-process MCP transport: same health/tool/result contract as stdio/HTTP, no downloaded
@@ -723,17 +735,29 @@ pub(crate) async fn health(ctx: &Ctx, id: &str) -> Result<crate::mcp::McpHealth,
         server_name: format!("FUSE {}", r.kind.as_str()),
         server_version: env!("CARGO_PKG_VERSION").into(),
         protocol: crate::mcp::PROTOCOL.into(),
-        tools: vec![],
+        tools: if r.kind == Kind::Microsoft {
+            graph::tools(&r)
+        } else {
+            vec![]
+        },
     })
 }
 pub(crate) async fn call(
-    _ctx: &Ctx,
-    _id: &str,
-    _name: &str,
-    _arguments: Value,
+    ctx: &Ctx,
+    id: &str,
+    name: &str,
+    arguments: Value,
+    context: Option<CallContext>,
 ) -> Result<crate::mcp::McpCallResult, String> {
-    Err("This connector reader is not available in this build.".into())
+    let r = registration(ctx, id).await?;
+    let context = context
+        .ok_or("Built-in readers require an enabled project and a chosen model provider.")?;
+    match r.kind {
+        Kind::Microsoft => graph::call(ctx, &r, name, arguments, &context).await,
+        Kind::Github => Err("GitHub readers are not available in this build.".into()),
+    }
 }
+
 pub mod commands {
     use super::*;
     use tauri::State;
@@ -1026,14 +1050,14 @@ mod tests {
             .unwrap();
         assert_eq!(permitted, 0);
         assert!(
-            crate::mcp::mcp_check(&f.ctx, id.clone())
+            !crate::mcp::mcp_check(&f.ctx, id.clone())
                 .await
                 .unwrap()
                 .tools
                 .is_empty()
         );
         assert!(
-            crate::mcp::mcp_call(&f.ctx, id.clone(), "execute".into(), json!({}))
+            crate::mcp::mcp_call(&f.ctx, id.clone(), "execute".into(), json!({}), None)
                 .await
                 .is_err()
         );

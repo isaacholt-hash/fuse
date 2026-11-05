@@ -1007,9 +1007,10 @@ pub(crate) async fn mcp_call(
     server_id: String,
     name: String,
     arguments: Value,
+    context: Option<crate::connectors::CallContext>,
 ) -> Result<McpCallResult, String> {
     if crate::connectors::builtin(ctx, &server_id).await? {
-        return crate::connectors::call(ctx, &server_id, &name, arguments).await;
+        return crate::connectors::call(ctx, &server_id, &name, arguments, context).await;
     }
     let (client, _) = ensure(ctx, &server_id).await?;
     client.call(&name, arguments).await
@@ -1088,8 +1089,9 @@ pub mod commands {
         server_id: String,
         name: String,
         arguments: Value,
+        context: Option<crate::connectors::CallContext>,
     ) -> Result<McpCallResult, String> {
-        super::mcp_call(&ctx, server_id, name, arguments).await
+        super::mcp_call(&ctx, server_id, name, arguments, context).await
     }
 
     /// M9 step 10: signs in to a remote server in the system browser and keeps the tokens.

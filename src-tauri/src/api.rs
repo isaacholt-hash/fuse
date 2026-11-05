@@ -484,8 +484,8 @@ pub async fn dispatch(
             json(mcp::mcp_tools(ctx, server_id).await)
         }
         "mcp_call" => {
-            args!(name, args, server_id: String, name: String, arguments: Value);
-            json(mcp::mcp_call(ctx, server_id, name, arguments).await)
+            args!(name, args, server_id: String, name: String, arguments: Value, context: Option<crate::connectors::CallContext>);
+            json(mcp::mcp_call(ctx, server_id, name, arguments, context).await)
         }
         "mcp_sign_out" => {
             args!(name, args, server_id: String);

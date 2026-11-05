@@ -1,5 +1,6 @@
 dist
 dist-web
+dist-runner
 coverage
 pnpm-lock.yaml
 src-tauri/target

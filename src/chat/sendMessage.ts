@@ -627,7 +627,11 @@ async function streamAnswer(
           const fromMcp = chatMcp.byName.get(call.name);
           if (fromMcp && deps.mcp) {
             try {
-              const r = await deps.mcp.call(fromMcp.serverId, fromMcp.tool, call.input);
+              const r = await deps.mcp.call(fromMcp.serverId, fromMcp.tool, call.input, {
+                threadId: input.threadId,
+                projectId: thread?.projectId ?? null,
+                provider: m.provider,
+              });
               const out = mcpOutput(r);
               results.push({
                 callId: call.id,

@@ -1,6 +1,6 @@
 // MCP tools as runs and chats offer them (M9 step 9, AG-02): a project's servers' tools, named
 // for providers, with what FUSE needs to call each.
-import type { McpCallResult, McpTool } from "@/mcp/api";
+import type { McpCallContext, McpCallResult, McpTool } from "@/mcp/api";
 import type { ToolSpec } from "@/providers/types";
 
 /** M9 step 9: what a run needs of MCP servers. */
@@ -8,7 +8,12 @@ export interface McpRunApi {
   /** The servers a project switched on. */
   forProject(projectId: string): Promise<{ id: string; name: string }[]>;
   tools(serverId: string): Promise<McpTool[]>;
-  call(serverId: string, name: string, args: Record<string, unknown>): Promise<McpCallResult>;
+  call(
+    serverId: string,
+    name: string,
+    args: Record<string, unknown>,
+    context?: McpCallContext,
+  ): Promise<McpCallResult>;
 }
 
 /** M9 step 9: an MCP tool as a run offers it. */

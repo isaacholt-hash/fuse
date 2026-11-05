@@ -272,6 +272,7 @@ test("M9 step 4: chat can't ask, so an address carrying the conversation isn't r
 
 test("M9 step 9: a project's read-only MCP tools are offered in chat; writes aren't", async () => {
   const called: string[] = [];
+  const contexts: unknown[] = [];
   const { adapter, histories, options } = scripted([
     {
       text: "Looking it up.",
@@ -299,7 +300,8 @@ test("M9 step 9: a project's read-only MCP tools are offered in chat; writes are
           destructive: null,
         },
       ]),
-    call: (_id, name, args) => {
+    call: (_id, name, args, context) => {
+      contexts.push(context);
       called.push(`${name} ${JSON.stringify(args)}`);
       return Promise.resolve({
         parts: [{ kind: "text", text: "High tide is at 6.", mime: null, data: null }],
@@ -316,6 +318,7 @@ test("M9 step 9: a project's read-only MCP tools are offered in chat; writes are
     ["mcp__Notes__search", false],
   ]);
   expect(called).toEqual(['search {"q":"tide"}']);
+  expect(contexts).toEqual([{ threadId: thread.id, projectId: p.id, provider: "anthropic" }]);
   const sent = histories[1]?.at(-1)?.toolResults?.[0]?.content ?? "";
   expect(sent).toContain('source="an MCP server"');
   expect(sent).toContain("High tide is at 6.");

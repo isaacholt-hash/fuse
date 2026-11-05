@@ -95,23 +95,27 @@ fn resolve_public(url: &reqwest::Url) -> Result<SocketAddr, String> {
     Ok(addrs[0])
 }
 
+/// A public-address-pinned client for bounded native downloads; no proxy, cookies or redirects.
+pub(crate) async fn public_client(url: &reqwest::Url) -> Result<reqwest::Client, String> {
+    let target = url.clone();
+    let addr = tauri::async_runtime::spawn_blocking(move || resolve_public(&target))
+        .await
+        .map_err(|_| "Couldn't resolve the public download host.".to_string())??;
+    let host = url.host_str().ok_or("That link has no host.")?;
+    reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(TIMEOUT)
+        .user_agent("FUSE/0.1 (reads one page for a chat)")
+        .resolve(host, addr)
+        .build()
+        .map_err(|_| "Couldn't initialize public downloading.".into())
+}
+
 async fn read(start: &str) -> Result<WebPage, String> {
     let mut url = check_url(start)?;
     for _ in 0..=MAX_REDIRECTS {
-        let target = url.clone();
-        let addr = tauri::async_runtime::spawn_blocking(move || resolve_public(&target))
-            .await
-            .map_err(|e| e.to_string())??;
-        let host = url.host_str().unwrap_or_default().to_string();
-        // Pinned to the address just checked, so DNS can't change between check and connect.
-        let client = reqwest::Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(TIMEOUT)
-            .user_agent("FUSE/0.1 (reads one page for a chat)")
-            .resolve(&host, addr)
-            .build()
-            .map_err(|e| e.to_string())?;
+        let client = public_client(&url).await?;
         let mut res = client
             .get(url.clone())
             .header(

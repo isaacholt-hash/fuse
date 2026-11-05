@@ -95,6 +95,7 @@ async function setup(mode: "plan" | "ask" | "auto_edit", turns: ToolCall[][], fa
   const project = await createProject(db, t, "Notes work");
   await setProjectRepo(db, t, project.id, { root: "/repo", readSecrets: false });
   const called: string[] = [];
+  const contexts: unknown[] = [];
   const mcp: McpRunApi = {
     forProject: () =>
       Promise.resolve([
@@ -109,7 +110,8 @@ async function setup(mode: "plan" | "ask" | "auto_edit", turns: ToolCall[][], fa
             tool("wipe", false, true),
           ])
         : Promise.reject(new Error("crashed on start")),
-    call: (_id, name, args) => {
+    call: (_id, name, args, context) => {
+      contexts.push(context);
       called.push(`${name} ${JSON.stringify(args)}`);
       if (failCall) return Promise.reject(new Error("The server stopped."));
       return Promise.resolve({
@@ -147,15 +149,18 @@ async function setup(mode: "plan" | "ask" | "auto_edit", turns: ToolCall[][], fa
     mode,
   });
   const steps = await listSteps(db, t, r.id);
-  return { r, tools, asked, called, steps };
+  return { r, tools, asked, called, steps, contexts };
 }
 
 test("a project's server's tools are offered, non-strict; reads run, writes run in Auto-edit, destructive asks", async () => {
-  const { r, tools, asked, called, steps } = await setup("auto_edit", [
+  const { r, tools, asked, called, steps, contexts } = await setup("auto_edit", [
     [call("mcp__Notes__search"), call("mcp__Notes__add_note"), call("mcp__Notes__wipe")],
     [],
   ]);
   expect(r.status).toBe("done");
+  expect(contexts).toEqual(
+    Array(3).fill({ threadId: null, projectId: r.projectId, provider: "anthropic" }),
+  );
   const offered = tools[0]?.filter((x) => x.name.startsWith("mcp__")) ?? [];
   expect(offered.map((x) => [x.name, x.strict])).toEqual([
     ["mcp__Notes__search", false],

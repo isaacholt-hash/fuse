@@ -22,7 +22,7 @@ AG-11 through AG-02; supports CA-10.
 ## Steps
 
 - [x] **1. Native accounts and built-in MCP.** Add first-party MCP transport through the existing registry, owner-registered public application IDs, device authorization, native token storage and status-only UI responses.
-- [ ] **2. Microsoft readers.** OneDrive list/search/read, Outlook Mail list/search/read and Outlook Calendar list/read for personal and work/school accounts, with delegated read scopes and explicit per-service consent.
+- [x] **2. Microsoft readers.** OneDrive list/search/read, Outlook Mail list/search/read and Outlook Calendar list/read for personal and work/school accounts, with delegated read scopes and explicit per-service consent.
 - [ ] **3. GitHub readers.** Repository, issue, PR and pinned diff readers through a read-only GitHub App. Expose source revision and verified path/line metadata for review.
 - [ ] **4. Setup and verification.** Shared M12 Settings controls, project enablement, account expiry/disconnect/tenant errors, deterministic authorization and pagination fixtures, desktop/web parity, reviewed screenshots and exact registration instructions.
 
@@ -100,3 +100,51 @@ Reviewed actual native Settings startup and production web Settings in both them
 These verify the shared app still opens; step 1 adds no sign-in controls. The earlier captures
 showed startup/rebuild timing and were rejected, retained only in scratch. Shared connector
 setup and its interaction screenshots remain in step 4.
+
+
+Step 2 adds the eight Microsoft readers through the existing MCP/tool call path. Rust checks
+project/provider/service consent before credential use and again before delivering content.
+Bounded opaque paging, read-only GET operations, provenance, private download redirects,
+revision/size/hash checks and transient document interpretation use existing dependencies.
+No database migration is needed: cursors/buffers are process-local, returned content follows
+normal conversation privacy. Shared setup and owner sign-in remain in step 4.
+
+Previous step: [PR #299](https://github.com/isaacholt-hash/fuse/pull/299) merged as
+`0596fc1c05bb98e3f2af87d430589a47758c8799` on 2026-11-05T09:45:43Z. All five gates and the
+JSON gate passed on `1b13223ebb219df7fcbb587d8a89a8644fa3ef6f` in
+[CI 42003822453](https://github.com/isaacholt-hash/fuse/actions/runs/42003822453).
+Reviewed Windows Code/Files/dictation and both-theme research completion screenshots. CI
+preserved dictation 31/31, encrypted sync 16/16 at schema 67 in 49,070 ms, and eight research
+HULK scenarios in 21,555 ms without skips. Windows research passed six portable scenarios in
+14,008 ms, with its two Linux-server scenarios explicitly skipped.
+[Release v0.1.220](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.220) was published
+2026-11-05T09:55:40Z by
+[release workflow 42005048106](https://github.com/isaacholt-hash/fuse/actions/runs/42005048106).
+All eleven assets/seven signed updater entries matched the merged build. No HULK deployment,
+account sign-in or owner acceptance was performed.
+
+Step 2 focused verification: nineteen native authorization/reader tests and twenty focused
+TypeScript file/PDF/MCP/Chat tests passed. These include in-flight revocation, recipient and
+project isolation, private cursors, pagination limits, malformed/bounded responses, secret
+redaction, changed file revisions, expanded ZIP limits, source provenance and unchanged generic
+MCP text. A separately bundled PDF reader extracted a real recorded PDF from an isolated
+folder without node_modules, with native addons disabled. Full checks/release evidence follows.
+
+
+Step 2 final local verification: `pnpm check` passed 1,106 tests across 191 files, with 21
+live/manual or opt-in cases in ten files explicitly skipped (217.90 s). Rust formatting and
+both default/server all-target clippy checks passed. Default Rust passed 188/188 (186.91 s)
+and server Rust 202/202 (215.75 s), including encrypted sync. Production web and standalone
+runner builds passed; the preserved HULK benchmark passed 5/5 (12.99 s). Final production web
+click-through passed 10/10 (53.92 s). Empty text and scanned-PDF limitations have explicit
+regression coverage. Generated `dist-runner` output is excluded from lint/format checks like
+other generated builds; application source remains checked. There are no new dependencies.
+
+Reviewed current native Settings startup and production web Settings in both themes:
+[desktop light](../screenshots/m15/readers-native-light.png),
+[desktop dark](../screenshots/m15/readers-native-dark.png),
+[web light](../screenshots/m15/readers-web-light.png),
+[web dark](../screenshots/m15/readers-web-dark.png).
+These verify the shared app's startup; this step adds reader/call handling. Shared sign-in and
+project controls and their interaction screenshots remain in step 4. Live owner accounts and
+provider-backed acceptance remain unperformed.

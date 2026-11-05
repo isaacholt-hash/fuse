@@ -11,6 +11,7 @@ export default tseslint.config(
     ignores: [
       "dist",
       "dist-web",
+      "dist-runner",
       "coverage",
       "src-tauri/target",
       "src-tauri/gen",
