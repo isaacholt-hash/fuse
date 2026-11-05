@@ -10,6 +10,7 @@ import { EMPTY_USAGE, type Usage } from "@/storage/usage";
 import { continueRun, runAnswer, startRun, type RunDeps, type RunProgress } from "./run";
 
 export interface ChatRunInput {
+  review?: import("@/review/types").ReviewSource;
   threadId: string;
   /** Null for a chat outside a project (M8, WF-02). */
   projectId: string | null;
@@ -97,6 +98,7 @@ export async function startChatRun(deps: RunDeps, input: ChatRunInput): Promise<
   });
   await setActiveLeaf(db, tenant, input.threadId, answerId);
   const run = await startRun(deps, {
+    ...(input.review ? { review: input.review } : {}),
     projectId: input.projectId,
     threadId: input.threadId,
     messageId: answerId,

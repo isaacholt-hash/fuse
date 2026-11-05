@@ -15,6 +15,7 @@ export interface ModelRef {
 
 /** A chat run to start, as the page asks for it (`ChatRunInput` without the callbacks). */
 export interface StartInput {
+  review?: import("@/review/types").ReviewSource;
   /** A research request reaches only the restricted executor. */
   research?: ResearchQueueInput;
   /** Null for a handover: the runner makes the chat. */

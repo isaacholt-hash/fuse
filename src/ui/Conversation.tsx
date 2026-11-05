@@ -1181,6 +1181,7 @@ export function Composer({
   onCodeBranch,
   onRunOnHulk,
   onResearch,
+  onReview,
   researchReason = null,
   runOnHulkReason = null,
   routing,
@@ -1252,6 +1253,7 @@ export function Composer({
   onRunOnHulk?: (task: string) => void;
   /** Opens scope/cost/location setup; never starts execution by itself. */
   onResearch?: (draft: string) => void;
+  onReview?: (draft: string) => void;
   researchReason?: string | null;
   /** Why Run on HULK is greyed (not paired yet); null when it can be used. */
   runOnHulkReason?: string | null;
@@ -1483,6 +1485,19 @@ export function Composer({
                 />
               )}
             </div>
+          )}
+          {onReview && (
+            <MenuRow
+              icon={<Search className="size-3.5" />}
+              label="Review code"
+              detail="Pin local changes, a branch or a GitHub pull request; read only"
+              aria-label="Review code"
+              disabled={streaming}
+              onClick={() => {
+                setOptionsOpen(false);
+                onReview(text.trim());
+              }}
+            />
           )}
           {onResearch && !code && !work && (
             <MenuRow

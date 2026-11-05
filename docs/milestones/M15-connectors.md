@@ -257,6 +257,19 @@ Reviewed full-app browser interactions in both themes:
 [390-pixel layout](../screenshots/m15/setup-web-mobile-light.png).
 The fourteen browser screenshots include both themes for every listed interaction.
 
-Current-commit CI and normal release evidence follow after merge. M15's build is delivered;
+Step 4 shipped in [PR #303](https://github.com/isaacholt-hash/fuse/pull/303), merge
+`0f9ec0baddd0653e94e42005c503b03f17a64b97` at 2026-11-05T12:54:14Z. All five current-commit
+gates and the JSON gate passed on `5cb4dbe832db48165552ec731af4eff971395433` in
+[CI 42029204959](https://github.com/isaacholt-hash/fuse/actions/runs/42029204959).
+Windows connectors passed 41/41 (271.25 s), sync compatibility 29/29 and atomic files 9/9.
+Reviewed Windows dictation Settings, both-theme research completion and connector web
+sign-in/denial/mobile captures. CI dictation passed 31/31; encrypted sync 16/16 at schema 67
+(38,900 ms); research eight Linux/HULK scenarios (22,285 ms) and six Windows scenarios
+(13,319 ms), with two Linux-server cases explicitly skipped. The connector browser fixture
+recorded zero live OAuth/provider calls, requests, runs, new folder grants or remaining links.
+[Release v0.1.223](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.223), published
+2026-11-05T13:03:38Z by [workflow 42031070956](https://github.com/isaacholt-hash/fuse/actions/runs/42031070956),
+has eleven assets and seven updater entries matching the published signature files.
+No live authorization or deployment was performed. M15's build is delivered;
 real released personal/work/GitHub sign-in and reader acceptance remain owner actions
 recorded separately in M19. P2 is not closed by these fixture results.

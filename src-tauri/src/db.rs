@@ -371,6 +371,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "connector_accounts",
         sql: include_str!("../migrations/0067_connector_accounts.sql"),
     },
+    MigrationFile {
+        version: 68,
+        description: "code_review",
+        sql: include_str!("../migrations/0068_code_review.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same

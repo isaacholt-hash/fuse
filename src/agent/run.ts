@@ -272,6 +272,8 @@ export interface RunProgress {
 }
 
 export interface RunInput {
+  /** A pinned, read-only review uses only the restricted review engine. */
+  review?: import("@/review/types").ReviewSource;
   /** Null for a run in a chat outside a project (M8, WF-02). */
   projectId: string | null;
   /**
@@ -1507,6 +1509,7 @@ async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
 }
 
 export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
+  if (input.review) return (await import("@/review/engine")).startReviewRun(base, input);
   if (input.kind === "research")
     throw new Error("Research requires its restricted execution engine.");
   if (input.model.provider === "local" || input.planner?.provider === "local")
@@ -1792,6 +1795,8 @@ export async function continueRun(
   await assertRunWritable(db, tenant, runId);
   const checkpoint = await getRun(db, tenant, runId);
   if (!checkpoint) throw new Error("Run not found");
+  if (checkpoint.review)
+    return (await import("@/review/engine")).continueReviewRun(deps, checkpoint, input);
   if (checkpoint.kind === "research")
     throw new Error("Research requires its restricted execution engine.");
   if (checkpoint.status === "done" || checkpoint.routingStage === "complete") return checkpoint;
@@ -1819,7 +1824,12 @@ export async function continueRun(
 
 /** The run's answer: the text of its last model turn. */
 export function runAnswer(steps: RunStep[]): string {
-  return steps.findLast((s) => s.kind === "model")?.text.trim() ?? "";
+  const model = steps.findLast((s) => s.kind === "model");
+  if (model) return model.text.trim();
+  const local = steps.findLast(
+    (s) => s.kind === "tool" && s.call.name === "review_result" && !s.isError,
+  );
+  return local?.kind === "tool" ? local.output.trim() : "";
 }
 
 /**

@@ -1078,7 +1078,8 @@
         "created_at",
         "updated_at",
         "started_at",
-        "waited_ms"
+        "waited_ms",
+        "review_profile"
       ],
       "localColumns": ["sync_owner", "routing_stage"],
       "key": ["id"],
@@ -1132,7 +1133,8 @@
         "created_at": "INTEGER",
         "updated_at": "INTEGER",
         "started_at": "INTEGER",
-        "waited_ms": "INTEGER"
+        "waited_ms": "INTEGER",
+        "review_profile": "INTEGER"
       }
     },
     "run_steps": {
@@ -1332,7 +1334,9 @@
     "research_state": "Execution-owner checkpoint, selected-context IDs and transient collected evidence; never starts from sync.",
     "research_operations": "Execution-owner dispatch claims and crash recovery; never replicated or replayed.",
     "research_transfers": "Owner-local explicit HULK delivery intents and links. Never synced/exported or automatically replayed; source deletion cascades and privacy withdrawal purges pending snapshots.",
-    "connector_accounts": "Owner-registered connector applications and service consent; installation-local, excluded from portable export; native credentials are never in SQLite"
+    "connector_accounts": "Owner-registered connector applications and service consent; installation-local, excluded from portable export; native credentials are never in SQLite",
+    "review_state": "Pinned repository bytes, review checkpoint and lease; execution-owner only; excluded from portable sync/export; encrypted full-database backups retain it without replay.",
+    "review_operations": "Owner-local paid-attempt journal and transient source analysis; never synced/exported or automatically replayed after restore."
   },
   "internalTables": [
     "sync_state",
