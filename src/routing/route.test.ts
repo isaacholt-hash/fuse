@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import { parsePolicy, type Task } from "./policy";
-import { AUTO, modeOf, route } from "./route";
+import { AUTO, modeOf, route, routeForRun } from "./route";
 
 const model = (provider: "anthropic" | "openai", id: string, price: number, caps: string[]) => ({
   provider,
@@ -237,4 +237,32 @@ test("RT-06: a price tie goes to the faster model, where both have been measured
   expect(
     picked(route(policy, tied, AUTO, task(), { ...both, latency: { "anthropic/mid-a": 400 } })),
   ).toBe(picked(route(policy, tied, AUTO, task(), both)));
+});
+
+test("Auto runs require Best while explicit model pins and ordinary Chat keep existing routing", () => {
+  const withoutBest = {
+    ...catalog,
+    models: catalog.models.filter((m) => !m.id.startsWith("top-")),
+  };
+  expect(route(policy, withoutBest, AUTO, task(), both)).toMatchObject({
+    ok: true,
+    model: { id: "mid-o" },
+  });
+  const blocked = routeForRun(policy, withoutBest, AUTO, task(), both);
+  expect(blocked.ok).toBe(false);
+  if (!blocked.ok) expect(blocked.error).toContain("Best");
+  expect(
+    routeForRun(
+      policy,
+      withoutBest,
+      { kind: "model", provider: "openai", id: "mid-o" },
+      task(),
+      both,
+    ),
+  ).toMatchObject({ ok: true, model: { id: "mid-o" } });
+  expect(routeForRun(policy, catalog, AUTO, task(), both)).toMatchObject({
+    ok: true,
+    model: { id: "mid-o" },
+    info: { best: { id: "top-o" } },
+  });
 });

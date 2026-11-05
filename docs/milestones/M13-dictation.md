@@ -203,3 +203,14 @@ remain mandatory for this PR; physical devices/provider charges stay owner-opera
 1,020 tests passed; 13 live/manual tests skipped. Lint, typecheck and the secret scan passed.
 The focused dictation suite passed 31/31, and final clippy checks passed for default and
 server features. No new dependency, migration or production activation is part of step 3.
+
+Step 3 shipped in [PR #291](https://github.com/isaacholt-hash/fuse/pull/291), merged
+2026-11-05T04:40:47Z as `cdb68ea95e567c133a1ba93039d72fa2ce39aa44`. All five gates
+passed on head `1f321705a596d0158ca5e9af4d13cd28baba08db` in
+[CI 41968312106](https://github.com/isaacholt-hash/fuse/actions/runs/41968312106).
+Windows screenshots and its synthetic recording/transcript scenario passed and were reviewed.
+[Release v0.1.215](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.215),
+published 2026-11-05T04:47:15Z, contains that merge. Linux and Windows builds and publication
+passed in [build 41969294439](https://github.com/isaacholt-hash/fuse/actions/runs/41969294439);
+installer, signature and updater assets are present. No HULK deployment or microphone/provider
+activation was performed. Released owner microphone/provider acceptance remains pending.

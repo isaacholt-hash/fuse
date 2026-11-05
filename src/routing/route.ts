@@ -196,6 +196,20 @@ export function route(
   };
 }
 
+/** Auto runs require Best planning/final synthesis as well as an eligible routine model. */
+export function routeForRun(...args: Parameters<typeof route>): Routed {
+  const routed = route(...args);
+  if (routed.ok && routed.info.mode === "auto" && !routed.info.best)
+    return {
+      ok: false,
+      error:
+        "Auto runs need an available Best model for planning and final synthesis. Configure Best in Settings or explicitly pick a model.",
+    };
+  if (routed.ok && routed.model.provider === "local")
+    return { ok: false, error: "Local models are restricted to housekeeping." };
+  return routed;
+}
+
 /** The mode a thread is pinned to: a model, a tier, or neither (Auto). */
 export function modeOf(pins: {
   pinnedTier: "balanced" | "best" | null;

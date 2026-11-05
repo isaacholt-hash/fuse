@@ -159,6 +159,9 @@ export async function addMessage(db: SqlDb, tenant: Tenant, m: NewMessage): Prom
 }
 
 export interface MessageResult {
+  /** The model that produced the displayed final text; absent keeps the current attribution. */
+  provider?: string;
+  model?: string;
   content: string;
   status: Exclude<MessageStatus, "streaming">;
   usage?: Usage;
@@ -181,7 +184,7 @@ export async function finishMessage(
   await db.execute(
     `UPDATE messages SET content = ?, status = ?, error_code = ?, error_message = ?, request_id = ?,
        best_cost_micro_usd = ?, reasoning_summary = ?, (${USAGE_COLUMNS}) = (${USAGE_PLACEHOLDERS}),
-       updated_at = ?
+       provider = COALESCE(?, provider), model = COALESCE(?, model), updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
     [
       r.content,
@@ -192,6 +195,8 @@ export async function finishMessage(
       r.bestCostMicroUsd ?? null,
       r.reasoningSummary ?? null,
       ...usageValues(usage),
+      r.provider ?? null,
+      r.model ?? null,
       Date.now(),
       tenant.workspaceId,
       id,

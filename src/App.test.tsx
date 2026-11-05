@@ -12,7 +12,7 @@ import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
-import type { ChatMessage, ProviderAdapter, StreamEvent } from "@/providers/types";
+import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
 import { getSetting, setSetting } from "@/storage/settings";
 import { addMemory, addProposals } from "@/storage/memories";
 import { DEFAULT_TENANT } from "@/storage/defaults";
@@ -180,7 +180,7 @@ function setup(
   const keys = fakeKeysApi();
   for (const p of savedKeys) keys.keys.set(p, "fake-value-for-tests-0000");
   const calls: Record<string, ChatMessage[][]> = { anthropic: [], openai: [] };
-  const options_: unknown[] = [];
+  const options_: ChatOptions[] = [];
   const choreCalls: { kind: keyof Chores; model: string; input: string }[] = [];
   // What each provider's model list returns (MM-03); empty means "couldn't read it".
   const remote: Record<"anthropic" | "openai", { id: string; displayName: string | null }[]> = {
@@ -3292,6 +3292,7 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
       anthropic: [
         () => answer("1. Read the README."),
         lookFirst,
+        () => answer("Draft: called Lighthouse."),
         () => answer("It's called Lighthouse."),
       ],
     },
@@ -3328,7 +3329,7 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   expect(card.getByText("1. Read the README.")).toBeInTheDocument();
   expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
   // The tool result went back to the model with the turn.
-  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
+  expect(calls.anthropic?.at(-2)?.at(-1)?.toolResults?.[0]?.content).toBe(
     asData("read_file", "# Lighthouse\n"),
   );
 });
@@ -3386,7 +3387,12 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   }
   const { user, options, db } = setup(
     {
-      anthropic: [() => answer("1. Edit the tide."), edit, () => answer("Changed the tide to 4.")],
+      anthropic: [
+        () => answer("1. Edit the tide."),
+        edit,
+        () => answer("Draft: tide is 4."),
+        () => answer("Changed the tide to 4."),
+      ],
     },
     undefined,
     {},
@@ -3414,7 +3420,9 @@ test("M6: a run that can edit shows each change as a diff, and Undo puts the fil
   expect(card.getByText("can edit files")).toBeInTheDocument();
   expect(files.get("src/tide.ts")).toBe("export const tide = 4;\n");
   // The edit tools went with the request.
-  const sentTools = (options.at(-1) as { tools?: { name: string }[] }).tools?.map((x) => x.name);
+  expect(options.at(-1)?.tools).toBeUndefined();
+  expect(options.at(-1)?.system).toContain("<run_synthesis>");
+  const sentTools = options.at(-2)?.tools?.map((x) => x.name);
   expect(sentTools).toContain("edit_file");
   // The chat was new: saving it keeps Code on and its mode, so the next message is a run too.
   await user.click(screen.getByRole("button", { name: "Options" }));
@@ -3490,7 +3498,14 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
     };
   }
   const { user, calls } = setup(
-    { anthropic: [() => answer("1. Run the tests."), test1, () => answer("All 3 tests pass.")] },
+    {
+      anthropic: [
+        () => answer("1. Run the tests."),
+        test1,
+        () => answer("Draft: tests passed."),
+        () => answer("All 3 tests pass."),
+      ],
+    },
     undefined,
     {},
     { repo, exec },
@@ -3522,7 +3537,7 @@ test("M6: a command waits for Allow, then runs, and its output goes back to the 
   // F2: the command's row opens what it printed.
   await user.click(screen.getByRole("button", { name: "Ran pnpm test" }));
   expect(screen.getByLabelText("Output of Ran pnpm test")).toHaveTextContent("3 passed");
-  expect(calls.anthropic?.at(-1)?.at(-1)?.toolResults?.[0]?.content).toBe(
+  expect(calls.anthropic?.at(-2)?.at(-1)?.toolResults?.[0]?.content).toBe(
     asData(
       "run_command",
       "$ pnpm test\n3 passed\n[exit code 0, 0.9 s]\n[not sandboxed: this computer can't sandbox commands]",

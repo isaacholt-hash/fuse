@@ -138,3 +138,33 @@ test("paused at the cap: the answer says why; continuing finishes it", async () 
   });
   expect(answer?.usage.costMicroUsd).toBe(600_000);
 });
+
+test("an Auto answer attributes its final text to Best and retains all three request costs", async () => {
+  const { db, deps, project, thread } = await setup([
+    { text: "Plan" },
+    { text: "Worker draft" },
+    { text: "Verified final" },
+  ]);
+  const best = { ...model, id: "best", displayName: "Best" };
+  deps.catalog = { ...catalog, models: [model, best] };
+  const run = await startChatRun(deps, {
+    threadId: thread.id,
+    projectId: project.id,
+    task: "Review files",
+    model,
+    planner: best,
+    capMicroUsd: 5_000_000,
+  });
+  expect(run.status).toBe("done");
+  const { path } = await listPath(db, t, thread.id);
+  expect(path.at(-1)).toMatchObject({
+    content: "Verified final",
+    model: "best",
+    provider: "openai",
+    usage: { costMicroUsd: 900000 },
+  });
+  const rows = await db.select<{ model: string }>(
+    "SELECT model FROM request_log ORDER BY created_at,rowid",
+  );
+  expect(rows.map((r) => r.model)).toEqual(["best", "test-gpt", "best"]);
+});

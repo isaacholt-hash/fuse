@@ -134,6 +134,12 @@ instructions and the remaining acceptance checklist. M19 records the final evide
   green before merge; released as [v0.1.214](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.214). M13 controls finish in their own step-3 PR; [the milestone](milestones/M13-dictation.md)
   records exact checks/screenshots and [dictation setup](dictation.md) keeps real acceptance pending.
 
+- M13 controls: [PR #291](https://github.com/isaacholt-hash/fuse/pull/291),
+  [v0.1.215](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.215), source
+  `cdb68ea95e567c133a1ba93039d72fa2ce39aa44`. Five CI gates and signed release publication
+  verified; native, Windows and browser fixtures passed. Owner microphone/provider acceptance
+  remains pending, as recorded in [M13](milestones/M13-dictation.md).
+
 ## Roadmap verification
 
 The roadmap PR also corrects an existing memory-test assertion: a random record UUID can

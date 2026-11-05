@@ -472,3 +472,57 @@ test("M9: strict goes to the cheapest tools first, inside Claude's grammar budge
   };
   expect(anthropicTools([loose])[0]).not.toHaveProperty("strict");
 });
+
+test("bounded basic search emits sources, queries and reported billable usage without code execution", async () => {
+  const event = (type: string, rest: Record<string, unknown> = {}) =>
+    `event: ${type}\ndata: ${JSON.stringify({ type, ...rest })}\n\n`;
+  const stream = [
+    event("message_start", { message: { usage: { input_tokens: 10, output_tokens: 0 } } }),
+    event("content_block_start", {
+      index: 0,
+      content_block: { type: "server_tool_use", id: "s", name: "web_search", input: {} },
+    }),
+    event("content_block_delta", {
+      index: 0,
+      delta: { type: "input_json_delta", partial_json: '{"query":"fixture"}' },
+    }),
+    event("content_block_stop", { index: 0 }),
+    event("content_block_start", {
+      index: 1,
+      content_block: {
+        type: "web_search_tool_result",
+        tool_use_id: "s",
+        content: [{ type: "web_search_result", url: "https://example.com", title: "Source" }],
+      },
+    }),
+    event("content_block_stop", { index: 1 }),
+    event("message_delta", {
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 3, server_tool_use: { web_search_requests: 1 } },
+    }),
+    event("message_stop"),
+  ].join("");
+  const { a, sent } = adapter([sse(stream)]);
+  const { events } = await collect(
+    a.streamChat(HI, "claude-opus-5-5", { webSearch: true, searchBounds: { maxUses: 2 } }),
+  );
+  expect(sent[0]?.body).toMatchObject({
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }],
+  });
+  expect(events.find((e) => e.type === "search_call")).toEqual({
+    type: "search_call",
+    call: {
+      id: "s",
+      action: "search",
+      query: "fixture",
+      sources: [{ url: "https://example.com/", title: "Source" }],
+      truncated: false,
+      error: null,
+    },
+  });
+  expect(done(events)).toMatchObject({
+    usage: { webSearchCalls: 1 },
+    searchUsageReported: true,
+    turn: { provider: "anthropic" },
+  });
+});

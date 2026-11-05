@@ -6,6 +6,7 @@ const run: Run = {
   id: "r1",
   projectId: "p",
   kind: "code",
+  routingStage: "complete",
   threadId: "t",
   messageId: "m",
   task: "How high is the tide?",

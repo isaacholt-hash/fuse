@@ -1,0 +1,21 @@
+{
+  "version": "2026-11-05",
+  "limits": { "searches": 12, "sources": 24, "model_calls": 30, "wall_minutes": 30 },
+  "default_search_uses": 5,
+  "max_source_url_chars": 4096,
+  "max_source_title_chars": 512,
+  "providers": {
+    "openai": {
+      "tool": "web_search",
+      "context_tokens": 128000,
+      "verified_on": "2026-11-05",
+      "source_url": "https://developers.openai.com/api/docs/guides/tools-web-search",
+      "limit_url": "https://developers.openai.com/api/reference/python/resources/responses/methods/create"
+    },
+    "anthropic": {
+      "tool": "web_search_20250305",
+      "verified_on": "2026-11-05",
+      "source_url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool"
+    }
+  }
+}

@@ -219,3 +219,66 @@ test("M10 step 11: Stop for a run nothing here is running still marks it stopped
   await new Runner({ deps: depsFor(db), ...fast }).tick();
   expect((await getRun(db, t, run.id))?.status).toBe("done");
 });
+
+test("research cannot enter Code handover, restore data or acquire folder grants", async () => {
+  const db = openTestDb();
+  let clones = 0,
+    starts = 0;
+  const runner = new Runner({
+    deps: depsFor(db),
+    ...fast,
+    clone: () => {
+      clones++;
+      return Promise.resolve("/unused");
+    },
+    start: (...args) => {
+      starts++;
+      return askingRun(...args);
+    },
+  });
+  const request = await askToStart(db, t, {
+    threadId: null,
+    projectId: null,
+    task: "Research",
+    model: ref,
+    kind: "research",
+    handover: {
+      remote: "https://github.com/example/fixture.git",
+      branch: "main",
+      exportSha: "unused",
+    },
+  });
+  await runner.tick();
+  await runner.idle();
+  expect(await getRequest(db, t, request)).toMatchObject({ status: "failed" });
+  expect(clones).toBe(0);
+  expect(starts).toBe(0);
+  expect(await db.select("SELECT id FROM folders")).toEqual([]);
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
+});
+
+test("a research history cannot be resumed through Code's queue", async () => {
+  const db = openTestDb();
+  const run = await createRun(db, t, {
+    projectId: null,
+    threadId: null,
+    messageId: null,
+    task: "Research",
+    provider: ref.provider,
+    model: ref.id,
+    kind: "research",
+    capMicroUsd: 1_000_000,
+  });
+  await setRunStatus(db, t, run.id, "paused");
+  const runner = new Runner({
+    deps: depsFor(db),
+    ...fast,
+    continue: () => Promise.reject(new Error("Must not execute")),
+  });
+  const request = await askToContinue(db, t, run.id);
+  await runner.tick();
+  await runner.idle();
+  expect(await getRequest(db, t, request)).toMatchObject({ status: "failed" });
+  expect(await getRun(db, t, run.id)).toMatchObject({ status: "paused" });
+  expect(runner.going.size).toBe(0);
+});

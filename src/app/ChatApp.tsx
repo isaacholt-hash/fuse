@@ -206,7 +206,14 @@ import {
   type RoutingPolicy,
   type TierId,
 } from "@/routing/policy";
-import { AUTO, effortFor as routedEffortFor, modeOf, route, type RouteMode } from "@/routing/route";
+import {
+  AUTO,
+  effortFor as routedEffortFor,
+  modeOf,
+  route,
+  routeForRun,
+  type RouteMode,
+} from "@/routing/route";
 import { autoTitle, wantsAutoTitle } from "@/chat/title";
 import { maybeSummarize, pathTokens, summaryThreshold } from "@/chat/summary";
 import { activeSummary, listSummaries } from "@/storage/summaries";
@@ -2034,13 +2041,19 @@ export function ChatApp({
       return null;
     }
     const task = checked ?? classify(classifyInput(text, files, history, webSearch));
-    const routed = route(policy, catalog, modeOverride ?? mode, task, {
-      providers: savedProviders,
-      ...(stayOn ? { prefer: stayOn } : {}),
-      ...(stayProvider ? { stay: stayProvider } : {}),
-      latency,
-      downshift,
-    });
+    const routed = (area === "code" ? routeForRun : route)(
+      policy,
+      catalog,
+      modeOverride ?? mode,
+      task,
+      {
+        providers: savedProviders,
+        ...(stayOn ? { prefer: stayOn } : {}),
+        ...(stayProvider ? { stay: stayProvider } : {}),
+        latency,
+        downshift,
+      },
+    );
     if (!routed.ok) {
       // SE-13: say when the project's privacy settings, not a missing key, left nothing to use.
       const blockedHere = keyedProviders.filter((p) => egress.blocked.includes(p));

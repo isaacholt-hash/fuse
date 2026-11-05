@@ -1080,7 +1080,7 @@
         "started_at",
         "waited_ms"
       ],
-      "localColumns": ["sync_owner"],
+      "localColumns": ["sync_owner", "routing_stage"],
       "key": ["id"],
       "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "{a}.status IN ('done','stopped','error')",
