@@ -206,6 +206,27 @@ see [backup boundaries](sync.md#backup-and-restore-boundaries).
 | A server whose keys aren't sealed | `--test-keys-in-memory` (M10 step 10) keeps keys and the database key in memory, for the benchmark on CI, whose systemd is too old for systemd-creds. It's refused unless `FUSE_SERVER_TEST=1` is set too, prints a warning when it starts, and is never in the deploy kit | Anything that can start fuse-server with both gets a server whose secrets are in its memory only, gone when it stops |
 | Linking a folder outside Isaac's files | The web app has no folder dialog: a folder is typed in, and the server's `repo_check` accepts only folders under its user's home, after following symlinks and `..` (M10 step 5) | It guides rather than fences: the server trusts its one signed-in user, who could also grant a folder through the database or reach it with a command. The OS account is the boundary, as above |
 
+### 10. Bounded dictation transport (M13)
+
+Audio transfer requires explicit consent and the existing OpenAI connection. Native capture
+uses CPAL on a dedicated thread; web capture uses the browser's microphone permission and an
+app-owned AudioWorklet. Limits are two minutes and 20 MiB; buffers stay in RAM and cancellation,
+abort and capture limits release microphone resources. No raw audio enters
+the file store, sync, backups or exports. Browser audio passes through trusted HULK to OpenAI;
+both can read it while handling the request, and provider retention follows its own policy.
+
+The authenticated binary route has its own body limit. Rust validates canonical PCM16 WAV and
+actual duration, checks original/current source restrictions, reserves cost, and sends one
+multipart request with native credentials. It refuses redirects and automatic HTTP retries.
+Raw audio, transcript text, headers and provider error bodies are absent from accounting and
+audit records. Duration/cost metadata remains ordinary cost history. Unknown billing retains
+exposure without replay. Native settlement survives caller loss; a discarded transcript does
+not discard an incurred charge. A compromised OS can still inspect process memory.
+
+M13 step 2 supplies the backend; step 3 supplies the consent/settings/composer lifecycle,
+including lock/navigation cancellation, that activates it. Real microphone and provider
+behavior require owner-operated released checks.
+
 ## Out of scope for now
 
 - A compromised OS or keychain. If someone owns your account, they own FUSE's data.

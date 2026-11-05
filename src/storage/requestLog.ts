@@ -12,7 +12,15 @@ import {
 
 /** `agent`: a model turn inside a coding run (M6). */
 export type RequestPurpose =
-  "chat" | "key_test" | "title" | "classify" | "memory" | "summary" | "embed" | "agent";
+  | "chat"
+  | "key_test"
+  | "title"
+  | "classify"
+  | "memory"
+  | "summary"
+  | "embed"
+  | "agent"
+  | "transcribe";
 
 export type BillingState = "legacy" | "reported" | "estimated" | "unknown" | "not_billed";
 

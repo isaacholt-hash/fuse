@@ -74,6 +74,12 @@ If the first job can't reach HULK, the laptop isn't on the tailnet, or the tailn
 
 ## Updating
 
+M13 native audio adds the Linux build prerequisite `libasound2-dev`, including for the shared
+server crate. Install it with `sudo apt-get install libasound2-dev` (or rerun the updated
+`scripts/setup-hulk.sh`) before building. Browsers record on their own device; the server never
+opens HULK's microphone. Schema 63 requires matching desktop/HULK builds, with the existing
+pairing and enrollment preserved. Deployment remains an explicit owner action.
+
 Run `bash scripts/deploy-server.sh` again. The service restarts. Runs that were going are saved as stopped, and Continue picks them up.
 
 The last three builds are kept. To go back to one:

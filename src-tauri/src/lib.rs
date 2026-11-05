@@ -1,6 +1,7 @@
 // The command table fuse-server serves (M10); the desktop app doesn't use it.
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod api;
+mod audio;
 mod audit;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod auth;
@@ -33,6 +34,7 @@ mod repo;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod server;
 mod sync;
+mod transcription;
 mod transport;
 mod web;
 
@@ -78,6 +80,13 @@ pub fn run() {
             keys::commands::key_delete,
             transport::commands::provider_fetch,
             transport::commands::provider_abort,
+            audio::commands::audio_start,
+            audio::commands::audio_status,
+            audio::commands::audio_stop,
+            audio::commands::audio_cancel,
+            transcription::commands::transcribe_prepare,
+            transcription::commands::transcribe_audio,
+            transcription::commands::transcribe_cancel,
             web::commands::url_fetch,
             preview::commands::preview_put,
             export::commands::save_as,

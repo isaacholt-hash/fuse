@@ -331,3 +331,22 @@ message or policy text. Credential-use records are native; policy events commit 
 through triggers. It stays local and in encrypted backups; M18 adds the complete explicit
 activity export. Delete-all covers both tables, clearing audit events after policy rows so
 deleting rules cannot leave new audit records behind.
+
+### M13 native transcription (0063)
+
+`request_log.purpose` also accepts `transcribe`. Its table is rebuilt forward-only, preserving
+every record, index, trigger and reference. All receipt columns retain their M11/M13.1 sync,
+deletion, portable export and backup classification. Native receipts contain duration and
+integer costs, never recording bytes or transcript text.
+
+Owner-local `request_reservations` adds `source_scope` (JSON holding the original scope/project
+IDs), `audio_duration_ms` and `surface` (desktop/web). These stay out of sync and portable
+export/restore; encrypted database backups retain accounting metadata. Keeping original IDs
+prevents deletion or a move from silently changing an audio upload to a permissive global
+scope. Native startup converts interrupted transcription dispatches to unknown billing and
+releases only unsent holds. Reconnecting UI tabs or the Node runner does not recover or replay
+native-owned transcription. Delete-all already covers the table.
+
+Microphone streams, sample buffers, WAV bytes and returned transcript text are transient RAM.
+There is no audio file-store, cache, database, backup, export or sync representation. Browser
+microphone permissions and OS default-input selection remain on their respective machine.

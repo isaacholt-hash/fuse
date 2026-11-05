@@ -29,6 +29,9 @@ pub const WEB_COMMANDS: &[&str] = &[
     "mcp_secret_status",
     "provider_fetch",
     "provider_abort",
+    "transcribe_prepare",
+    "transcribe_audio",
+    "transcribe_cancel",
     "url_fetch",
     "preview_put",
     "file_put",
@@ -243,6 +246,18 @@ pub async fn dispatch(
         "db_batch" => {
             args!(name, args, statements: Vec<db::Statement>);
             json(db::db_batch(ctx, statements).await)
+        }
+        "transcribe_prepare" => {
+            args!(name,args,scope:String,duration_ms:u64,consent:bool);
+            json(crate::transcription::prepare(ctx, scope, duration_ms, consent, "web").await)
+        }
+        "transcribe_cancel" => {
+            args!(name,args,id:String);
+            json(crate::transcription::cancel(ctx, &id).await)
+        }
+        "transcribe_audio" => {
+            let (body, headers) = raw(body)?;
+            json(crate::transcription::upload(ctx, body, &headers).await)
         }
         // Keys (keys.rs)
         "key_status" => {
@@ -535,6 +550,10 @@ mod tests {
 
     /// Every command the desktop has that the server doesn't.
     const DESKTOP_ONLY: &[&str] = &[
+        "audio_start",
+        "audio_status",
+        "audio_stop",
+        "audio_cancel",
         "sync_enroll",
         "save_as",
         "quick_capture_set",
@@ -642,10 +661,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 89 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 96 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            89
+            96
         );
     }
 

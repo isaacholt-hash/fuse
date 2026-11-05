@@ -52,6 +52,8 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
       // Ubuntu 24.04 blocks the user namespaces Chrome's sandbox needs. This browser only ever
       // opens the test's own server on localhost.
       "--no-sandbox",
+      // M13: synthetic Web Audio verification; no physical microphone or provider request.
+      "--autoplay-policy=no-user-gesture-required",
       "about:blank",
     ]);
     await app.navigate(URL);
@@ -324,5 +326,46 @@ describe.skipIf(!URL || !BROWSER)("the web app", () => {
     await app.click(button("General"));
     await app.click(button("Light"));
     await app.click(button("Back to Code"));
+  });
+
+  test("M13: the published audio worklet transfers bounded mono frames and stops", async () => {
+    const report = await app.run<{
+      rate: number;
+      frames: number;
+      expected: number;
+      finite: boolean;
+    }>(`
+      const context = new AudioContext();
+      let tone, node, gain, timer;
+      try {
+        await context.audioWorklet.addModule(new URL('/dictation-worklet.js', location.origin).href);
+        const expected = Math.floor(context.sampleRate / 10);
+        node = new AudioWorkletNode(context, 'fuse-dictation', {
+          numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [1], processorOptions: { maxFrames: expected }
+        });
+        let frames = 0, finite = true;
+        const completed = new Promise((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('Audio worklet timed out')), 5000);
+          node.port.onmessage = ({data}) => {
+            if (data.type === 'samples') {
+              frames += data.samples.length;
+              finite = finite && data.samples.every(Number.isFinite);
+              data.samples.fill(0);
+            } else if (data.type === 'limit') resolve();
+          };
+          node.onprocessorerror = () => reject(new Error('Audio worklet failed'));
+        });
+        tone = context.createOscillator(); gain = context.createGain(); gain.gain.value = 0;
+        tone.connect(node); node.connect(gain); gain.connect(context.destination); tone.start();
+        await Promise.all([context.resume(), completed]);
+        return {rate: context.sampleRate, frames, expected, finite};
+      } finally {
+        clearTimeout(timer); tone?.stop(); tone?.disconnect(); node?.port.close(); node?.disconnect(); gain?.disconnect();
+        await context.close();
+      }
+    `);
+    expect(report.frames).toBe(report.expected);
+    expect(report.finite).toBe(true);
+    writeFileSync(join(SHOTS, "m13-worklet.json"), JSON.stringify(report, null, 2));
   });
 });

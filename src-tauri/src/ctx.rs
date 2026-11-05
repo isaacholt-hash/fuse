@@ -26,6 +26,8 @@ pub struct Ctx {
     pub db: Database,
     pub keys: Keys,
     pub transport: Transport,
+    pub audio: crate::audio::Audio,
+    pub speech: crate::transcription::Speech,
     pub execs: Execs,
     pub previews: Previews,
     pub local: Local,
@@ -48,6 +50,7 @@ impl Ctx {
         );
         view.db = Database::from_pool(self.db.pool()?);
         view.sync = self.sync.clone();
+        view.speech = self.speech.clone();
         Ok(view)
     }
     pub fn new(data_dir: PathBuf, config_dir: PathBuf, keys: Keys) -> Self {
@@ -57,6 +60,8 @@ impl Ctx {
             db: Database::default(),
             keys,
             transport: Transport::default(),
+            audio: crate::audio::Audio::default(),
+            speech: crate::transcription::Speech::default(),
             execs: Execs::default(),
             previews: Previews::default(),
             local: Local::default(),

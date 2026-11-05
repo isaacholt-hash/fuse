@@ -1,0 +1,9 @@
+{
+  "rate": 44100,
+  "frames": 4410,
+  "expected": 4410,
+  "finite": true,
+  "verifiedOn": "2026-11-05",
+  "schema": 63,
+  "source": "Synthetic oscillator in Chromium; no physical microphone or provider request"
+}

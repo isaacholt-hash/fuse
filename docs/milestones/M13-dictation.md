@@ -22,7 +22,7 @@ VI-01, CO-08; shared accounting and SE-10 foundations.
 ## Steps
 
 - [x] **1. Shared accounting.** Add conservative request-cost reservations and atomic settlement against a run or parent cap, actual-attempt identities, explicit unresolved billing, duration pricing and sanitized audit records. Preserve integer micro-dollars and current rollups. Reserve before dispatch; do not retry an ambiguously billed request automatically.
-- [ ] **2. Capture and transcription.** Native Rust capture with pinned `cpal = 0.18.2`, browser microphone capture, and typed bounded Rust binary/multipart transport using the existing OpenAI connection. Two-minute / 20 MiB limits, cancellation and microphone teardown. Raw audio stays transient. Credential values never return from Rust.
+- [x] **2. Capture and transcription.** Native Rust capture with pinned `cpal = 0.18.2`, browser microphone capture, and typed bounded Rust binary/multipart transport using the existing OpenAI connection. Two-minute / 20 MiB limits, cancellation and microphone teardown. Raw audio stays transient. Credential values never return from Rust.
 - [ ] **3. Controls and release.** Push-to-talk plus accessible start/stop in the composer and existing quick-capture flow. Explicit cloud-audio consent, duration/cost display, editable transcript insertion preserving the draft, never automatic send. Settings use M12 search/direct-link metadata. Recorded regression benchmark, desktop/web screenshots and release documentation.
 
 ## Behavior and boundaries
@@ -96,3 +96,52 @@ Reviewed screenshots: [native startup](../screenshots/m13/accounting-native.png)
 banner is the existing scripted screenshot fixture, not a published build. Real provider
 charges, Windows installer operation and microphone acceptance were not exercised locally.
 The PR requires all five current-commit CI gates, including Windows and both benchmarks.
+
+Step 1 shipped in [PR #288](https://github.com/isaacholt-hash/fuse/pull/288), merged as
+`9dcae566fb10ba3d74b122f76706948849f9f72d` after all five gates passed on `fda23e2` in
+[CI 41954892291](https://github.com/isaacholt-hash/fuse/actions/runs/41954892291).
+[v0.1.213](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.213) published on
+2026-11-05 at 02:54:21 UTC through [release 41957420796](https://github.com/isaacholt-hash/fuse/actions/runs/41957420796).
+Windows/Linux installers, signatures and updater manifest were verified. Windows click-through
+screenshots were reviewed; its Chat/Code amounts sum to its overall cost. Additional synthetic
+receipt checks show unresolved/known-free/reported charges in
+[light](../screenshots/m13/accounting-billing-light.png) and
+[dark](../screenshots/m13/accounting-billing-dark.png). No provider request was made.
+
+Step 2 adds schema 63 and backend APIs, leaving consent/settings/composer controls to step 3.
+Native capture uses the system's default input on a dedicated CPAL thread; the browser uses
+an app-owned AudioWorklet and its own microphone permission. Both produce only bounded mono
+PCM16 WAV in RAM. Cancel, abort, disconnection, startup failure and size/duration limits release
+microphone resources. An abandoned native recording expires after 30 seconds once stopped.
+The web binary upload route rejects bodies above 20 MiB before buffering; Rust independently
+validates canonical headers, length, sample rate and actual duration before dispatch.
+
+Rust reserves duration rounded upward to a whole second, checks original/current source policy
+and budgets again before one multipart POST, and owns receipt settlement after caller loss.
+The existing OpenAI secret never returns through these APIs. HTTP retries and redirects are
+disabled. Missing/invalid usage remains unresolved with its hold retained. A known charge is
+saved even when the transcript is empty, unusable or discarded. Startup recovery runs when
+the native owner's database first opens; a browser or runner reconnect cannot interrupt it.
+No audio/transcript is stored in the reservation or receipt. An accepted transcript becomes
+ordinary history only if the owner later sends it.
+
+Forward migration 0063 preserves existing cost records, circular references, indexes, capture
+triggers and pending sync events. Local reservations add source-scope IDs, audio duration and
+surface; portable receipts use the fields from 0062. No new table or portable permission is
+introduced. Linux builds need `libasound2-dev` (setup, CI and release builds updated).
+Real microphone/provider acceptance remains pending on the eventual released dictation UI.
+
+Step-2 local verification (2026-11-05): `pnpm check` passed (172 files / 1,003 tests;
+13 live/manual tests skipped). Default Rust clippy and 168 tests passed; server clippy and
+all 182 server-feature tests passed. Both preserved benchmarks passed: HULK 5/5, encrypted
+sync 16/16 with schema 63, two replicas and one throwaway server (48,013 ms).
+The rebuilt web app passed 10 Chromium click-through tests, including a real AudioWorklet
+round trip: 4,410 finite mono frames at 44,100 Hz, then its configured limit.
+[Recorded worklet result](../screenshots/m13/capture-worklet.json).
+
+Reviewed [native startup](../screenshots/m13/capture-native.png) and
+[dark web Settings](../screenshots/m13/capture-web-dark.png). These show startup/regression
+verification; the recording UI is step 3. The native updater banner is the scripted 9.9.9
+fixture. No physical microphone, provider request, Windows installer or live deployment was
+used locally. Windows compatibility/click-through and all other current-commit CI gates are
+required before merging this step.
