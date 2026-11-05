@@ -87,7 +87,9 @@ export function homeView(input: {
   const going: HomeRun[] = [];
   for (const r of input.recent) {
     if (r.status !== "running") continue;
-    const q = input.questions.get(r.id);
+    const q =
+      input.questions.get(r.id) ??
+      [...input.questions.values()].find((q) => q.child?.parentId === r.id);
     const row: HomeRun = {
       id: r.id,
       threadId: open(r.threadId),

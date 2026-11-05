@@ -558,6 +558,7 @@ pub fn search(
 /// A granted folder (WF-02) by id: its path and whether it may read secret-looking files.
 /// The path comes from the database, never from the webview.
 pub async fn folder_root(pool: &SqlitePool, folder_id: &str) -> Result<(PathBuf, bool), String> {
+    crate::code_worktrees::folder_guard(pool, folder_id).await?;
     let row = sqlx::query("SELECT path, read_sensitive FROM folders WHERE id = ?")
         .bind(folder_id)
         .fetch_optional(pool)

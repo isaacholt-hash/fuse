@@ -72,6 +72,8 @@ pub enum Container {
     Mcp,
     /// An isolated identity for one approved package script; never inherits other grants.
     Skill(u128),
+    /// One child command; never inherits a parent's or sibling's folder grants.
+    CodeChild(u128),
 }
 
 impl Container {
@@ -81,6 +83,7 @@ impl Container {
             Container::Python => "FUSE.Python".into(),
             Container::Mcp => "FUSE.MCP".into(),
             Container::Skill(id) => format!("FUSE.Skill.{id:032x}").into(),
+            Container::CodeChild(id) => format!("FUSE.CodeChild.{id:032x}").into(),
         }
     }
 
@@ -90,6 +93,10 @@ impl Container {
             Container::Python => ("FUSE Python sandbox", "Python scripts FUSE runs for you"),
             Container::Mcp => ("FUSE MCP sandbox", "MCP servers FUSE runs for you"),
             Container::Skill(_) => ("FUSE skill script", "One approved Python package execution"),
+            Container::CodeChild(_) => (
+                "FUSE child command",
+                "One approved command in a child worktree",
+            ),
         }
     }
 }
@@ -674,6 +681,11 @@ fn spawn_inner(s: &Spawn, direct: Option<(&Path, &[String])>) -> io::Result<Chil
             JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
         limits.BasicLimitInformation.ActiveProcessLimit = 1;
         limits.JobMemoryLimit = s.memory_bytes.unwrap_or(512 * 1024 * 1024);
+    } else if matches!(s.container, Container::CodeChild(_)) {
+        limits.BasicLimitInformation.LimitFlags |=
+            JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_ACTIVE_PROCESS;
+        limits.BasicLimitInformation.ActiveProcessLimit = 64;
+        limits.JobMemoryLimit = s.memory_bytes.unwrap_or(2 * 1024 * 1024 * 1024);
     }
 
     // SAFETY: the job from above and a struct of the size given.

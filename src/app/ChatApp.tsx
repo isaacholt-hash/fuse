@@ -1,4 +1,5 @@
 import { DictationSettings } from "@/ui/Dictation";
+import { pendingApproval } from "@/parallel/approvals";
 import { useAudioConsent, setAudioConsent, clearAudioConsent } from "@/dictation/consent";
 import { dictationApi, type DictationApi } from "@/dictation/client";
 import type { SyncApi } from "@/sync/api";
@@ -3911,7 +3912,7 @@ export function ChatApp({
       const r = threadRuns.get(v.id);
       if (r && r.run.kind !== "research") {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
-        const waiting = approvals.get(r.run.id);
+        const waiting = pendingApproval(approvals, r.run.id);
         if (waiting) {
           v.run.approval = approvalView(waiting.request);
           const flags = waiting.request.flags ?? [];
@@ -4134,7 +4135,10 @@ export function ChatApp({
   const cacheRate = cacheHitRate(messages);
   // M10 step 13: questions waiting (this app's runs, or every page's on the web), and how each
   // chat's handovers to HULK are going.
-  const waitingRuns = new Set(approvals.keys());
+  const waitingRuns = new Set([
+    ...approvals.keys(),
+    ...[...approvals.values()].flatMap((q) => (q.request.child ? [q.request.child.parentId] : [])),
+  ]);
   const hulkLooks = new Map<string, string[]>();
   for (const h of handovers) {
     const s = hulkStates.get(h.requestId);
@@ -6545,7 +6549,7 @@ export function ChatApp({
                         onContinueRun={continueRunHere}
                         onStopRun={stopRun}
                         onApprove={(runId, answer) => {
-                          approvals.get(runId)?.answer(answer);
+                          pendingApproval(approvals, runId)?.answer(answer);
                         }}
                         onPreviewChange={(changeId) => {
                           previewChange(changeId).catch(report);

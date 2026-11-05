@@ -372,3 +372,20 @@ back to the model. Explicit invocation/approval remains the disclosure boundary;
 hashes identify the version, not its author or correctness. Crash remnants are removed after
 expiry, and historical encrypted backups retain their separate retention policy. Native
 sandbox tests and the isolated server fixture do not establish released owner acceptance.
+
+### M16 child Code execution
+
+A child shares the parent's execution owner and cap, without its other folders or ambient
+command/network grants. Native fixed Git operations materialize bounded raw committed objects,
+excluding secret-looking paths and refusing links/submodules. Hooks and checkout filters do not
+execute. Linux commands mount public system tools plus only their own worktree, mask `.git`,
+clear the environment and retain explicit network isolation. Windows commands use fresh private
+AppContainers and bounded jobs, without parent/sibling grants; exit revokes their scoped grant.
+Durable parent/tool revocation is polled natively. Resource monitoring bounds growth with a
+possible transient overshoot, as documented in [parallel-code.md](parallel-code.md).
+
+Child results remain untrusted tool data and pass injection checks. Children cannot recursively
+delegate or use Git tools; committing/integrating requires the next step's explicit parent
+review controls. Dispatch claims, paths, active execution and permissions never replicate.
+Stop/restart retains evidence and unknown billing instead of replaying paid work. App-managed
+worktree deletion cannot erase parent repository objects, independent backups or external copies.

@@ -3,6 +3,7 @@ import type { NativeTurn, ToolCall } from "@/providers/types";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
 import { interruptRequests } from "./requestBudget";
+import { interruptChildren } from "@/parallel/storage";
 import type { SqlDb } from "./sql";
 
 export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
@@ -15,6 +16,8 @@ export type RunRoutingStage = "plan" | "work" | "synthesis" | "complete";
 
 export interface Run {
   id: string;
+  /** A child has its own steps and worktree, but shares its root's owner and cap. */
+  parentRunId?: string;
   /** A replicated snapshot executes only through its original owner's remote path. */
   readOnly?: boolean;
   /** Pinned, read-only Code review; a replica cannot fall back to generic execution. */
@@ -94,6 +97,7 @@ export interface StepImage {
 
 interface RunRow {
   id: string;
+  parent_run_id: string | null;
   sync_read_only: number;
   review_profile: number;
   project_id: string | null;
@@ -141,6 +145,7 @@ interface StepRow {
 
 const toRun = (r: RunRow): Run => ({
   id: r.id,
+  ...(r.parent_run_id ? { parentRunId: r.parent_run_id } : {}),
   ...(r.sync_read_only === 1 ? { readOnly: true } : {}),
   ...(r.review_profile === 1 ? { review: true } : {}),
   projectId: r.project_id,
@@ -237,7 +242,7 @@ export async function getRun(db: SqlDb, tenant: Tenant, id: string): Promise<Run
   const rows = await db.select<RunRow>(
     `SELECT id, project_id, kind, routing_stage, thread_id, message_id, task, mode, provider, model, status,
        cap_micro_usd, spent_micro_usd, note, summary, summary_upto, branch, plan, planner, created_at,
-       updated_at, started_at, waited_ms, review_profile,
+       updated_at, started_at, waited_ms, review_profile, parent_run_id,
        (sync_owner IS NOT NULL AND sync_owner != (SELECT device_id FROM sync_state WHERE workspace_id=runs.workspace_id)) AS sync_read_only
      FROM runs WHERE workspace_id = ? AND id = ?`,
     [tenant.workspaceId, id],
@@ -259,7 +264,7 @@ export async function runForMessage(
   messageId: string,
 ): Promise<Run | null> {
   const rows = await db.select<{ id: string }>(
-    "SELECT id FROM runs WHERE workspace_id = ? AND message_id = ?",
+    "SELECT id FROM runs WHERE workspace_id = ? AND message_id = ? AND parent_run_id IS NULL",
     [tenant.workspaceId, messageId],
   );
   return rows[0] ? getRun(db, tenant, rows[0].id) : null;
@@ -350,6 +355,7 @@ export async function setRunSummary(
 /** Runs left working when the app closed are stopped, so they can be continued. */
 export async function markInterruptedRuns(db: SqlDb, tenant: Tenant): Promise<number> {
   await interruptRequests(db, tenant);
+  await interruptChildren(db, tenant);
   const result = await db.execute(
     `UPDATE runs SET status = 'stopped', note = 'FUSE closed while it was working.', updated_at = ?
      WHERE workspace_id = ? AND status = 'running'`,
@@ -387,6 +393,8 @@ export async function raiseRunCap(
   id: string,
   byMicroUsd: number,
 ): Promise<void> {
+  if ((await getRun(db, tenant, id))?.parentRunId)
+    throw new Error("Children share the parent's cap. Change it through the parent run.");
   await db.execute(
     `UPDATE runs SET cap_micro_usd = cap_micro_usd + ?, updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
@@ -526,7 +534,7 @@ export async function runsForThread(
   threadId: string,
 ): Promise<Map<string, { run: Run; steps: RunStep[]; changes: RunChange[] }>> {
   const rows = await db.select<{ id: string }>(
-    "SELECT id FROM runs WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL",
+    "SELECT id FROM runs WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL AND parent_run_id IS NULL",
     [tenant.workspaceId, threadId],
   );
   const out = new Map<string, { run: Run; steps: RunStep[]; changes: RunChange[] }>();
@@ -782,7 +790,7 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
      FROM runs r
      LEFT JOIN threads t ON t.id = r.thread_id AND t.workspace_id = r.workspace_id
        AND t.deleted_at IS NULL
-     WHERE r.workspace_id = ? ORDER BY r.updated_at DESC, r.id DESC LIMIT ?`,
+     WHERE r.workspace_id = ? AND r.parent_run_id IS NULL ORDER BY r.updated_at DESC, r.id DESC LIMIT ?`,
     [tenant.workspaceId, limit],
   );
   return rows.map((r) => ({
@@ -804,7 +812,7 @@ export async function recentRuns(db: SqlDb, tenant: Tenant, limit = 50): Promise
 export async function runsEndedSince(db: SqlDb, tenant: Tenant, since: number): Promise<number> {
   const rows = await db.select<{ n: number }>(
     `SELECT COUNT(*) AS n FROM runs
-     WHERE workspace_id = ? AND status IN ('done', 'error') AND updated_at > ?`,
+     WHERE workspace_id = ? AND parent_run_id IS NULL AND status IN ('done', 'error') AND updated_at > ?`,
     [tenant.workspaceId, since],
   );
   return rows[0]?.n ?? 0;
@@ -826,7 +834,7 @@ export async function runStatesForThread(
     updated_at: number;
   }>(
     `SELECT id, message_id, status, updated_at FROM runs
-     WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL`,
+     WHERE workspace_id = ? AND thread_id = ? AND message_id IS NOT NULL AND parent_run_id IS NULL`,
     [tenant.workspaceId, threadId],
   );
   return rows.map((r) => ({
@@ -856,8 +864,8 @@ export async function latestRunByThread(
     updated_at: number;
   }>(
     `SELECT r.thread_id, r.id, r.status, r.updated_at FROM runs r
-     WHERE r.workspace_id = ? AND r.thread_id IS NOT NULL
-       AND r.id = (SELECT r2.id FROM runs r2 WHERE r2.thread_id = r.thread_id
+     WHERE r.workspace_id = ? AND r.thread_id IS NOT NULL AND r.parent_run_id IS NULL
+       AND r.id = (SELECT r2.id FROM runs r2 WHERE r2.thread_id = r.thread_id AND r2.workspace_id=r.workspace_id AND r2.parent_run_id IS NULL
                    ORDER BY r2.created_at DESC, r2.id DESC LIMIT 1)`,
     [tenant.workspaceId],
   );

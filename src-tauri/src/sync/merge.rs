@@ -1382,6 +1382,89 @@ mod tests {
         cleanup(&target).await;
     }
     #[tokio::test]
+    async fn completed_children_stage_for_their_parent_and_never_replicate_execution_or_grants() {
+        let source = fixture(true);
+        setup(&source, true).await.unwrap();
+        put(&source,"INSERT INTO projects(id,workspace_id,user_id,name,created_at,updated_at) VALUES('p',?,?,'Recorded child history',1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(&source,"INSERT INTO runs(id,workspace_id,user_id,project_id,task,kind,mode,provider,model,status,cap_micro_usd,created_at,updated_at) VALUES('parent',?,?,'p','Recorded parent','code','ask','fixture','fixture','running',1000,1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(&source,"INSERT INTO runs(id,workspace_id,user_id,project_id,parent_run_id,task,kind,mode,provider,model,status,cap_micro_usd,created_at,updated_at) VALUES('child',?,?,'p','parent','Recorded child','code','ask','fixture','fixture','running',1000,1,1)",&[json!(WORKSPACE),json!(USER)]).await;
+        put(
+            &source,
+            "UPDATE runs SET status='done' WHERE id='child'",
+            &[],
+        )
+        .await;
+        let mut delivered = std::collections::BTreeSet::new();
+        let target = fixture(true);
+        setup(&target, true).await.unwrap();
+        for event in worker::pending(&source).await.unwrap() {
+            if delivered.insert(event.id.clone()) {
+                stage(&target, &event).await;
+            }
+        }
+        apply(&target).await.unwrap();
+        assert_eq!(scalar(&target, "SELECT COUNT(*) FROM runs").await, 0);
+        assert!(scalar(&target, "SELECT COUNT(*) FROM sync_inbox").await > 0);
+        put(
+            &source,
+            "UPDATE runs SET status='done' WHERE id='parent'",
+            &[],
+        )
+        .await;
+        worker::seed(&source).await.unwrap();
+        for event in worker::pending(&source).await.unwrap() {
+            if delivered.insert(event.id.clone()) {
+                stage(&target, &event).await;
+            }
+        }
+        apply(&target).await.unwrap();
+        assert_eq!(
+            scalar(
+                &target,
+                "SELECT COUNT(*) FROM runs WHERE status='done' AND sync_owner IS NOT NULL"
+            )
+            .await,
+            2
+        );
+        assert_eq!(
+            scalar(
+                &target,
+                "SELECT COUNT(*) FROM runs WHERE id='child' AND parent_run_id='parent'"
+            )
+            .await,
+            1
+        );
+        for table in [
+            "code_children",
+            "run_folders",
+            "folders",
+            "run_requests",
+            "run_approvals",
+        ] {
+            assert_eq!(
+                scalar(&target, &format!("SELECT COUNT(*) FROM {table}")).await,
+                0
+            );
+        }
+        put(
+            &source,
+            "UPDATE projects SET privacy_mode='local_only' WHERE id='p'",
+            &[],
+        )
+        .await;
+        worker::seed(&source).await.unwrap();
+        for event in worker::pending(&source).await.unwrap() {
+            if delivered.insert(event.id.clone()) {
+                stage(&target, &event).await;
+            }
+        }
+        apply(&target).await.unwrap();
+        assert_eq!(scalar(&target, "SELECT COUNT(*) FROM runs").await, 0);
+        assert_eq!(scalar(&source, "SELECT COUNT(*) FROM runs").await, 2);
+        cleanup(&source).await;
+        cleanup(&target).await;
+    }
+    #[tokio::test]
     async fn workspace_wipe_covers_unseen_offline_records_and_preserves_private_content() {
         let source = fixture(true);
         setup(&source, true).await.unwrap();

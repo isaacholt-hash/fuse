@@ -4,7 +4,7 @@
 //! limit, an output cap, and Stop or the time limit end the whole process tree. Provider keys
 //! that happen to be in FUSE's own environment are not passed on.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -28,6 +28,15 @@ const SCRUBBED: &[&str] = &[
     "FUSE_ANTHROPIC_API_KEY",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+];
+#[cfg(windows)]
+const CHILD_ENV: &[&str] = &[
+    "SystemRoot",
+    "USERPROFILE",
+    "APPDATA",
+    "LOCALAPPDATA",
+    "PATH",
+    "PATHEXT",
 ];
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -140,6 +149,8 @@ async fn pump(mut from: impl AsyncRead + Unpin, to: mpsc::UnboundedSender<Vec<u8
 pub struct Sandbox {
     pub writable: Vec<PathBuf>,
     pub network: bool,
+    /// Child commands receive only public system tools and their own worktree.
+    pub isolated: bool,
 }
 
 /// What can sandbox commands on this computer.
@@ -228,6 +239,55 @@ fn command_for(root: &Path, command: &str, sandbox: Option<&Sandbox>) -> tokio::
             "/bin/sh"
         };
         let mut c = tokio::process::Command::new(bwrap);
+        if sb.isolated {
+            c.env_clear()
+                .env("PATH", "/usr/bin:/bin")
+                .env("HOME", "/tmp");
+            c.args([
+                "--unshare-all",
+                "--die-with-parent",
+                "--new-session",
+                "--cap-drop",
+                "ALL",
+                "--ro-bind",
+                "/usr",
+                "/usr",
+                "--dev",
+                "/dev",
+                "--proc",
+                "/proc",
+                "--size",
+                "67108864",
+                "--tmpfs",
+                "/tmp",
+            ]);
+            for path in ["/bin", "/lib", "/lib64", "/etc/ld.so.cache", "/etc/fonts"] {
+                if Path::new(path).exists() {
+                    c.args(["--ro-bind", path, path]);
+                }
+            }
+            if sb.network {
+                c.arg("--share-net");
+                for path in [
+                    "/etc/resolv.conf",
+                    "/etc/hosts",
+                    "/etc/nsswitch.conf",
+                    "/etc/ssl/certs",
+                ] {
+                    if Path::new(path).exists() {
+                        c.args(["--ro-bind", path, path]);
+                    }
+                }
+            }
+            c.arg("--bind").arg(root).arg(root).arg("--chdir").arg(root);
+            // The worktree's .git pointer cannot expose the shared repository through a shell.
+            if root.join(".git").exists() {
+                c.arg("--ro-bind").arg("/dev/null").arg(root.join(".git"));
+            }
+            c.args(["--", sh, "-c"])
+                .arg(format!("ulimit -v 2097152 && ulimit -f 65536 && {command}"));
+            return c;
+        }
         c.args([
             "--ro-bind",
             "/",
@@ -371,6 +431,13 @@ pub async fn run(
     let mut on = on;
     let started = Instant::now();
     let timeout = timeout.min(MAX_TIMEOUT);
+    if sandbox.is_some_and(|s| s.isolated) && sandbox_kind() == SandboxKind::None {
+        let mut on = on;
+        on(ExecMsg::Error {
+            message: "The child command sandbox is unavailable. Nothing was executed.".into(),
+        });
+        return;
+    }
     // `canonicalize` gives `\\?\C:\...`, where cmd.exe can't start.
     #[cfg(windows)]
     let root = &fuse_sandbox_win::plain(root);
@@ -378,16 +445,30 @@ pub async fn run(
     if let Some(sb) = sandbox
         && sandbox_kind() == SandboxKind::AppContainer
     {
+        let private = if sb.isolated {
+            match crate::code_worktrees::CommandGrant::new(root) {
+                Ok(grant) => Some(grant),
+                Err(message) => {
+                    on(ExecMsg::Error { message });
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let spawned = fuse_sandbox_win::spawn(&fuse_sandbox_win::Spawn {
             cwd: root,
             command,
             network: sb.network,
             env_remove: SCRUBBED,
-            container: fuse_sandbox_win::Container::Commands,
+            container: private
+                .as_ref()
+                .map(|g| g.container)
+                .unwrap_or(fuse_sandbox_win::Container::Commands),
             env_set: &[],
-            memory_bytes: None,
+            memory_bytes: private.as_ref().map(|_| 2 * 1024 * 1024 * 1024),
             piped: false,
-            env_only: None,
+            env_only: private.as_ref().map(|_| CHILD_ENV),
         });
         match spawned {
             Ok(child) => run_contained(child, started, timeout, stop, on).await,
@@ -676,6 +757,19 @@ fn reset_folders(data: &Path) -> Result<u32, String> {
 pub struct Execs {
     pub(crate) next_id: AtomicU32,
     pub(crate) running: Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>,
+    pub(crate) child_running: Arc<Mutex<HashSet<u32>>>,
+}
+
+struct ChildActive {
+    jobs: Arc<Mutex<HashSet<u32>>>,
+    id: u32,
+}
+impl Drop for ChildActive {
+    fn drop(&mut self) {
+        if let Ok(mut jobs) = self.jobs.lock() {
+            jobs.remove(&self.id);
+        }
+    }
 }
 
 // The commands' bodies (M10 step 2), without Tauri.
@@ -696,6 +790,18 @@ pub(crate) async fn repo_exec(
     let db = &ctx.db;
     let execs = &ctx.execs;
     let (root, _) = crate::repo::folder_root(&db.pool()?, &folder_id).await?;
+    let isolated = crate::code_worktrees::folder_guard(&db.pool()?, &folder_id).await?;
+    if isolated && !crate::code_worktrees::command_allowed(&db.pool()?, &folder_id).await? {
+        return Err("Child commands are disabled for this project.".into());
+    }
+    if isolated
+        && (sandbox_kind() == SandboxKind::None
+            || sandbox
+                .as_ref()
+                .is_none_or(|s| s.folder_ids.iter().any(|f| f != &folder_id)))
+    {
+        return Err("A child command needs the OS sandbox and only its own worktree.".into());
+    }
     let root =
         std::fs::canonicalize(&root).map_err(|e| format!("The linked folder is missing: {e}"))?;
     let id = execs.next_id.fetch_add(1, Ordering::Relaxed);
@@ -723,18 +829,36 @@ pub(crate) async fn repo_exec(
             Some(Sandbox {
                 writable,
                 network: sb.network,
+                isolated,
             })
         }
         None => None,
     };
     #[cfg(windows)]
     let data = ctx.data_dir.clone();
+    let running = execs.running.clone();
+    let child_active = if isolated {
+        execs
+            .child_running
+            .lock()
+            .map_err(|_| "Couldn't track the child command.")?
+            .insert(id);
+        Some(ChildActive {
+            jobs: execs.child_running.clone(),
+            id,
+        })
+    } else {
+        None
+    };
+    let pool = db.pool()?;
     tokio::spawn(async move {
+        let _child_active = child_active;
         // The first command in a folder gives the sandbox its access there, which on a
         // large folder takes a while.
         #[cfg(windows)]
         if let Some(sb) = &sandbox
             && sandbox_kind() == SandboxKind::AppContainer
+            && !sb.isolated
         {
             let folders = sb.writable.clone();
             let granted = tokio::task::spawn_blocking(move || grant_folders(&data, &folders)).await;
@@ -748,10 +872,20 @@ pub(crate) async fn repo_exec(
                 return;
             }
         }
-        run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
-            let _ = on_event.send(m);
-        })
-        .await;
+        if let Some(sb) = sandbox.as_ref().filter(|s| s.isolated) {
+            crate::code_worktrees::run_command(
+                &pool, &folder_id, &root, &command, timeout, stop_rx, sb, &on_event,
+            )
+            .await;
+        } else {
+            run(&root, &command, timeout, stop_rx, sandbox.as_ref(), |m| {
+                let _ = on_event.send(m);
+            })
+            .await;
+        }
+        if let Ok(mut jobs) = running.lock() {
+            jobs.remove(&id);
+        }
     });
     Ok(id)
 }
@@ -1159,6 +1293,7 @@ except OSError:
         let sb = Sandbox {
             writable: vec![dir.clone()],
             network,
+            isolated: false,
         };
         let (_tx, rx) = oneshot::channel();
         let mut out = String::new();
@@ -1211,6 +1346,7 @@ except OSError:
         let sb = Sandbox {
             writable: vec![dir.clone()],
             network: false,
+            isolated: false,
         };
         let (_tx, rx) = oneshot::channel();
         let mut done = None;

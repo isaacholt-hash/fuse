@@ -27,6 +27,8 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Read ${str(input.url)}`;
     case "run_skill_script":
       return `Ran skill script ${typeof input.path === "string" ? input.path : ""}`;
+    case "delegate_code":
+      return "Ran approved child Code tasks";
     case "run_python":
       return "Ran a Python script";
     case "git_status":
@@ -113,6 +115,10 @@ export function groupBatches(changes: readonly RunChange[]): RunChangeView[] {
 
 /** What the run is asking you about, as the card shows it. */
 export function approvalView(req: ApprovalRequest): ApprovalView {
+  const view = baseApprovalView(req);
+  return req.child ? { ...view, child: req.child } : view;
+}
+function baseApprovalView(req: ApprovalRequest): ApprovalView {
   if (req.kind === "git") return { kind: "git", summary: req.summary, remote: req.remote };
   if (req.kind === "organise") return { kind: "organise", moves: req.moves, reason: req.reason };
   if (req.kind === "network") return { kind: "network", command: req.command };

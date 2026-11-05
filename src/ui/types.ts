@@ -181,7 +181,9 @@ export interface RunView {
   approvalFlags?: { source: string; why: string; passage: string }[];
 }
 
-export type ApprovalView =
+export type ApprovalView = {
+  child?: { runId: string; parentId: string; branch: string | null };
+} & (
   | {
       kind: "command";
       command: string;
@@ -208,7 +210,8 @@ export type ApprovalView =
   /** WF-06: a reorganisation to allow in full, in part, or not at all. */
   | { kind: "organise"; moves: { from: string; to: string }[]; reason: string | null }
   /** `remote`: it leaves this computer (push, pull request). */
-  | { kind: "git"; summary: string; remote: boolean };
+  | { kind: "git"; summary: string; remote: boolean }
+);
 
 export interface RunChangeView {
   id: string;

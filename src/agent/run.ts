@@ -1,4 +1,8 @@
 import { RUN_SKILL_TOOL, selectedSkillScript, type SkillScriptApproval } from "@/skills/scripts";
+import { childTasks, DELEGATE_CODE_TOOL } from "@/parallel/tool";
+import type { ChildPreparation } from "@/parallel/types";
+import { runExposure } from "@/storage/requestBudget";
+import { recoverChildResults } from "@/parallel/storage";
 import type { PythonResult } from "@/repo/exec";
 // Coding runs (M6 step 5, CA-07 part 1, CA-04 Plan only, CA-09): a task in a project's linked
 // repository, worked through by one model with read-only tools. Each model turn and tool call is
@@ -24,7 +28,7 @@ import type { Folder } from "@/storage/folders";
 import { findModel, priceFor, type CatalogModel } from "@/catalog/catalog";
 import { effectiveInstructions, systemPrompt } from "@/chat/instructions";
 import { PROVIDER_NAMES, type ChatDeps } from "@/chat/sendMessage";
-import { cost } from "@/cost/cost";
+import { cost, formatUsd } from "@/cost/cost";
 import { egressRefusal, projectPolicy } from "@/context/egress";
 import { inScope, memoryLine } from "@/memory/inject";
 import { ProviderError, userMessage } from "@/providers/errors";
@@ -185,6 +189,8 @@ const HERE = "";
 
 export interface RunDeps extends ChatDeps {
   repo: RepoApi;
+  /** Unscoped owner APIs, retained only so a child can be scoped to its own recorded folder. */
+  rawExecution?: { repo: RepoApi; exec?: ExecApi; git?: GitApi };
   /** CA-08: the Cheap-tier model that summarizes earlier steps; without it FUSE lists them. */
   summarizer?: CatalogModel;
   /** Runs commands (CA-03); without it, run_command is refused. */
@@ -211,8 +217,11 @@ async function mcpFor(
   input: Pick<RunInput, "signal" | "onProgress">,
 ): Promise<{ specs: ToolSpec[]; byName: Map<string, McpOffered> }> {
   if (!deps.mcp || !run.projectId) return { specs: [], byName: new Map() };
-  return mcpToolsFor(deps.mcp, run.projectId, run.mode === "plan", (server, e) =>
-    progress(deps, run.id, input, `The MCP server ${server} isn't available: ${e}`),
+  return mcpToolsFor(
+    deps.mcp,
+    run.projectId,
+    run.mode === "plan" || !!run.parentRunId,
+    (server, e) => progress(deps, run.id, input, `The MCP server ${server} isn't available: ${e}`),
   );
 }
 
@@ -263,6 +272,7 @@ export interface PriorFlag {
 
 export type ApprovalRequest = ApprovalAsk & {
   runId: string;
+  child?: { runId: string; parentId: string; branch: string | null };
   /**
    * M9 step 4 (AG-10): what earlier tool results in this run seemed to ask for. While there are
    * any, everything asks, and "always" counts as a single yes.
@@ -638,6 +648,18 @@ async function workTurns(
     if (!skillCommands(run.task).length || !(await skillPythonUsable(deps)))
       offered.add(RUN_SKILL_TOOL.name);
     if (!(await pythonUsable(deps, run))) offered.add(RUN_PYTHON_TOOL.name);
+    if (
+      !deps.git?.childBase ||
+      !deps.git.prepareChildren ||
+      !deps.approve ||
+      run.parentRunId ||
+      run.kind !== "code"
+    )
+      offered.add(DELEGATE_CODE_TOOL.name);
+    if (run.parentRunId) {
+      for (const name of [...GIT_READ_NAMES, ...GIT_WRITE_TOOLS.map((t) => t.name)])
+        offered.add(name);
+    }
 
     const started = (deps.now ?? Date.now)();
     let text = "";
@@ -826,12 +848,17 @@ async function ask(
         .approve({
           ...req,
           runId: run.id,
+          ...(run.parentRunId
+            ? { child: { runId: run.id, parentId: run.parentRunId, branch: run.branch } }
+            : {}),
           ...(flags.length ? { flags } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
         })
         .then((a): ApprovalAnswer => (a === true ? "yes" : a === false ? "no" : a))
         // After a flag nothing is always-allowed: a yes is for this one.
-        .then((a): ApprovalAnswer => (flags.length && a === "always" ? "yes" : a)),
+        .then((a): ApprovalAnswer =>
+          (flags.length || run.parentRunId) && a === "always" ? "yes" : a,
+        ),
       stopped,
     ]);
     return input.signal?.aborted ? "stopped" : answer;
@@ -868,7 +895,7 @@ async function runMcp(
   input: Pick<RunInput, "signal" | "onProgress">,
 ): Promise<CallOutcome> {
   if (!deps.mcp) return { output: "Error: MCP servers aren't available here.", isError: true };
-  if (run.mode === "plan" && !m.readOnly) {
+  if ((run.mode === "plan" || run.parentRunId) && !m.readOnly) {
     return { output: "Error: this run is read-only.", isError: true };
   }
   let approval: Approval = "auto";
@@ -1285,6 +1312,17 @@ async function handleCall(
 ): Promise<CallOutcome> {
   if (run.kind === "research")
     return { output: "Research has no repository, command or MCP access.", isError: true };
+  if (
+    run.parentRunId &&
+    (call.name === DELEGATE_CODE_TOOL.name ||
+      GIT_READ_NAMES.has(call.name) ||
+      GIT_WRITE_TOOLS.some((t) => t.name === call.name))
+  )
+    return {
+      output:
+        "Child runs cannot delegate or use Git directly. Review their worktree edits and commit/integrate through the parent controls.",
+      isError: true,
+    };
   const fromMcp = mcpTools.get(call.name);
   if (fromMcp) {
     if (off.has(call.name)) {
@@ -1311,6 +1349,7 @@ async function handleCall(
     };
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
+  if (call.name === DELEGATE_CODE_TOOL.name) return delegateCode(deps, run, call, input);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
   if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call, input);
   if (call.name === READ_SKILL_TOOL.name) {
@@ -1601,7 +1640,7 @@ async function runCommand(
     ? await listAllowedCommands(deps.db, deps.tenant, run.projectId)
     : [];
   let approval: Approval = "always";
-  if (danger || !allowed.includes(command) || (await flaggedRun(deps, run))) {
+  if (run.parentRunId || danger || !allowed.includes(command) || (await flaggedRun(deps, run))) {
     await progress(deps, run.id, input, `Waiting for your OK to run: ${command}`);
     const unsandboxed = !isSandboxed(await deps.exec.sandboxKind?.());
     const answer = await ask(
@@ -1631,7 +1670,7 @@ async function runCommand(
       ...(run.threadId ? [{ kind: "thread" as const, id: run.threadId }] : []),
       ...folders.map((f) => ({ kind: "folder" as const, id: f.folderId })),
     ];
-    let network = await networkAllowed(deps.db, deps.tenant, scopes);
+    let network = !run.parentRunId && (await networkAllowed(deps.db, deps.tenant, scopes));
     const once = (net: boolean) =>
       deps.exec?.run(HERE, command, {
         timeoutSecs,
@@ -1660,7 +1699,7 @@ async function runCommand(
             : run.threadId
               ? { kind: "thread", id: run.threadId }
               : { kind: "folder", id: first?.folderId ?? "" };
-        await allowNetwork(deps.db, deps.tenant, scope);
+        if (!run.parentRunId) await allowNetwork(deps.db, deps.tenant, scope);
         network = true;
         result = await once(true);
       }
@@ -1682,6 +1721,231 @@ async function runCommand(
   }
 }
 
+/** One ready child may be dispatched once. A restart retains interrupted work, never replays it. */
+async function executeChild(
+  deps: RunDeps,
+  childId: string,
+  parentId: string,
+  input: LoopInput,
+): Promise<void> {
+  const { db, tenant } = deps;
+  const stamp = Date.now();
+  const claimed = await db.batch([
+    {
+      sql: `UPDATE code_children SET state='running',updated_at=? WHERE workspace_id=? AND user_id=? AND child_id=? AND parent_id=? AND state='ready'
+      AND EXISTS(SELECT 1 FROM runs c JOIN runs p ON p.id=c.parent_run_id AND p.workspace_id=c.workspace_id AND p.user_id=c.user_id
+        WHERE c.id=code_children.child_id AND c.status='paused' AND c.kind='code' AND c.review_profile=0 AND c.mode!='plan'
+        AND p.id=code_children.parent_id AND p.status='running' AND p.parent_run_id IS NULL AND p.project_id IS c.project_id AND p.thread_id IS c.thread_id
+        AND (p.sync_owner IS NULL OR p.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=p.workspace_id))
+        AND (c.sync_owner IS NULL OR c.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=c.workspace_id)))`,
+      params: [stamp, tenant.workspaceId, tenant.userId, childId, parentId],
+    },
+    {
+      sql: "UPDATE runs SET status='running',note=NULL,started_at=?,updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND changes()=1 AND status='paused'",
+      params: [stamp, stamp, tenant.workspaceId, tenant.userId, childId],
+    },
+  ]);
+  if (claimed[0]?.rowsAffected !== 1 || claimed[1]?.rowsAffected !== 1) return;
+  const controller = new AbortController();
+  const forward = () => {
+    controller.abort();
+  };
+  if (input.signal?.aborted) controller.abort();
+  else input.signal?.addEventListener("abort", forward);
+  const poll = setInterval(() => {
+    void Promise.all([getRun(db, tenant, parentId), getRun(db, tenant, childId)])
+      .then(([p, c]) => {
+        if (p?.status !== "running" || c?.status !== "running" || p.readOnly || c.readOnly)
+          controller.abort();
+      })
+      .catch(() => {
+        controller.abort();
+      });
+  }, 150);
+  try {
+    const raw = deps.rawExecution ?? {
+      repo: deps.repo,
+      ...(deps.exec ? { exec: deps.exec } : {}),
+      ...(deps.git ? { git: deps.git } : {}),
+    };
+    const scoped = await forRun({ ...deps, ...raw, rawExecution: raw }, childId);
+    await work(scoped, childId, {
+      signal: controller.signal,
+      onProgress: (p) => {
+        input.dog?.progress();
+        void progress(
+          deps,
+          parentId,
+          input,
+          `Child ${childId}: ${p.run.status}${p.streaming ? `\n${p.streaming.slice(-2000)}` : ""}`,
+        ).catch(() => {});
+      },
+    });
+  } catch (error) {
+    if ((await getRun(db, tenant, childId))?.status === "running")
+      await setRunStatus(
+        db,
+        tenant,
+        childId,
+        controller.signal.aborted ? "stopped" : "error",
+        error instanceof Error ? error.message : "Child execution failed. Evidence is retained.",
+      );
+  } finally {
+    clearInterval(poll);
+    input.signal?.removeEventListener("abort", forward);
+    const final = await getRun(db, tenant, childId);
+    await db.execute(
+      "UPDATE code_children SET state=?,updated_at=? WHERE workspace_id=? AND user_id=? AND child_id=? AND state='running'",
+      [
+        final?.status === "done"
+          ? "complete"
+          : final?.status === "error"
+            ? "failed"
+            : "interrupted",
+        Date.now(),
+        tenant.workspaceId,
+        tenant.userId,
+        childId,
+      ],
+    );
+  }
+}
+
+async function delegateCode(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: LoopInput,
+): Promise<CallOutcome> {
+  if (
+    run.parentRunId ||
+    run.kind !== "code" ||
+    run.mode === "plan" ||
+    run.review ||
+    !deps.approve ||
+    !deps.git?.childBase ||
+    !deps.git.prepareChildren
+  )
+    return {
+      output: "Parallel work needs a writable parent Code run, native worktrees and approval.",
+      isError: true,
+    };
+  try {
+    const tasks = childTasks(call.input);
+    const base = await deps.git.childBase(run.id);
+    const exposure = await runExposure(deps.db, deps.tenant, run.id);
+    const model = (await listSteps(deps.db, deps.tenant, run.id)).findLast(
+      (s) => s.kind === "model",
+    );
+    if (!model || input.signal?.aborted) return STOPPED;
+    const request: ChildPreparation = {
+      parentId: run.id,
+      modelStepId: model.id,
+      callId: call.id,
+      base,
+      tasks: [...tasks],
+    };
+    const answer = await ask(
+      deps,
+      run,
+      {
+        kind: "git",
+        remote: false,
+        summary: `Start ${String(tasks.length)} child Code run${tasks.length === 1 ? "" : "s"} at commit ${base.commit}\n\n${tasks.map((t, i) => `${String(i + 1)}. ${t}`).join("\n\n")}\n\nOne owner and one combined cap: ${formatUsd(exposure.cap)}; ${formatUsd(exposure.spent)} spent and ${formatUsd(exposure.held)} reserved. Each child gets a separate worktree. Uncommitted parent changes and secret-looking files are excluded. Children cannot delegate or use Git directly. Review, commit and integration happen through the parent controls`,
+      },
+      input,
+    );
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no")
+      return {
+        output: "The user declined child execution. No worktree or child was created.",
+        isError: true,
+        approval: "denied",
+      };
+    const current = await getRun(deps.db, deps.tenant, run.id);
+    if (
+      input.signal?.aborted ||
+      current?.status !== "running" ||
+      current.readOnly ||
+      current.parentRunId ||
+      current.projectId !== run.projectId ||
+      current.threadId !== run.threadId
+    )
+      return STOPPED;
+    const onStop = () => {
+      void setRunStatus(
+        deps.db,
+        deps.tenant,
+        run.id,
+        "stopped",
+        "Stopped during child execution. Worktrees and billing evidence are retained.",
+      ).catch(() => {});
+    };
+    input.signal?.addEventListener("abort", onStop);
+    try {
+      const children = await deps.git.prepareChildren(request);
+      if (!input.signal?.aborted)
+        await Promise.allSettled(
+          children
+            .filter((c) => c.state === "ready")
+            .map((c) => executeChild(deps, c.id, run.id, input)),
+        );
+      const results = await Promise.all(
+        children.map(async (c) => {
+          const child = await getRun(deps.db, deps.tenant, c.id);
+          return {
+            id: c.id,
+            status: child?.status ?? "deleted",
+            branch: child?.branch ?? null,
+            spentMicroUsd: child?.spentMicroUsd ?? 0,
+            answer: runAnswer(await listSteps(deps.db, deps.tenant, c.id)).slice(0, 2500),
+            note: child?.note ?? null,
+            changes: (await listChanges(deps.db, deps.tenant, c.id)).length,
+          };
+        }),
+      );
+      const partial = results.some((r) => r.status !== "done");
+      if (partial && (await getRun(deps.db, deps.tenant, run.id))?.status === "running")
+        await setRunStatus(
+          deps.db,
+          deps.tenant,
+          run.id,
+          "paused",
+          "Child work is incomplete. Review retained worktrees and billing before explicitly continuing; no child is replayed automatically.",
+        );
+      return {
+        output: JSON.stringify({
+          baseCommit: base.commit,
+          integrated: false,
+          partial,
+          children: results,
+        }),
+        isError: partial,
+        approval: "you",
+      };
+    } finally {
+      input.signal?.removeEventListener("abort", onStop);
+      await deps.db.batch([
+        {
+          sql: `UPDATE runs SET status='stopped',note='The parent stopped during preparation. No child was dispatched.',updated_at=?
+          WHERE id IN(SELECT c.child_id FROM code_children c JOIN runs p ON p.id=c.parent_id WHERE c.workspace_id=? AND c.user_id=? AND c.parent_id=? AND c.state IN('creating','ready') AND p.status!='running')`,
+          params: [Date.now(), deps.tenant.workspaceId, deps.tenant.userId, run.id],
+        },
+        {
+          sql: `UPDATE code_children SET state='interrupted',updated_at=? WHERE workspace_id=? AND user_id=? AND parent_id=? AND state IN('creating','ready')
+          AND EXISTS(SELECT 1 FROM runs p WHERE p.id=code_children.parent_id AND p.status!='running')`,
+          params: [Date.now(), deps.tenant.workspaceId, deps.tenant.userId, run.id],
+        },
+      ]);
+    }
+  } catch (error) {
+    return {
+      output: `Error: ${error instanceof Error ? error.message : "Child preparation failed; evidence is retained."}`,
+      isError: true,
+    };
+  }
+}
+
 /** The run's dependencies, with files, commands and git scoped to its recorded folders. */
 async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
   await assertRunWritable(deps.db, deps.tenant, runId);
@@ -1690,6 +1954,11 @@ async function forRun(deps: RunDeps, runId: string): Promise<RunDeps> {
   const folders = await listRunFolders(deps.db, deps.tenant, runId);
   return {
     ...deps,
+    rawExecution: deps.rawExecution ?? {
+      repo: deps.repo,
+      ...(deps.exec ? { exec: deps.exec } : {}),
+      ...(deps.git ? { git: deps.git } : {}),
+    },
     repo: scopedRepo(deps.repo, folders),
     ...(deps.exec ? { exec: scopedExec(deps.exec, folders) } : {}),
     ...(deps.git ? { git: scopedGit(deps.git, folders) } : {}),
@@ -1984,6 +2253,19 @@ export async function continueRun(
   await assertRunWritable(db, tenant, runId);
   const checkpoint = await getRun(db, tenant, runId);
   if (!checkpoint) throw new Error("Run not found");
+  if (checkpoint.parentRunId)
+    throw new Error(
+      "Continue child work through its parent. A child cannot acquire another owner or spending cap.",
+    );
+  const activeChildren = await db.select(
+    "SELECT 1 FROM code_children WHERE workspace_id=? AND user_id=? AND parent_id=? AND state IN ('creating','ready','running') LIMIT 1",
+    [tenant.workspaceId, tenant.userId, runId],
+  );
+  if (activeChildren.length)
+    throw new Error(
+      "This owner's child work is still active or finishing Stop. Wait for it to finish; after a restart use retained recovery evidence.",
+    );
+  await recoverChildResults(db, tenant, runId);
   if (checkpoint.review)
     return (await import("@/review/engine")).continueReviewRun(deps, checkpoint, input);
   if (checkpoint.kind === "research")

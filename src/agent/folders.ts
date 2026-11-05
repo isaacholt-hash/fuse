@@ -195,6 +195,8 @@ export function scopedExec(base: ExecApi, folders: readonly RunFolder[]): ExecAp
 /** git and gh run in the run's first folder. */
 export function scopedGit(base: GitApi, folders: readonly RunFolder[]): GitApi {
   return {
+    ...(base.childBase ? { childBase: base.childBase.bind(base) } : {}),
+    ...(base.prepareChildren ? { prepareChildren: base.prepareChildren.bind(base) } : {}),
     run: (_id, program, args) => {
       const first = folders[0];
       if (!first) return Promise.reject(new Error("This chat has no folder for git."));

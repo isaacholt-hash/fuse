@@ -24,7 +24,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 - [x] **1. Structured review.** Review pinned local changes, branches and GitHub PRs using the M15 reader. Findings carry severity, verified path/line and evidence. Reviewing edits no files and posts no comments.
 - [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
 - [x] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
-- [ ] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
+- [x] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
 - [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
 
 ## Behavior and boundaries
@@ -327,3 +327,30 @@ removed. The three fixtures now use distinct ports, reject occupied endpoints, c
 own child during readiness and wait for bounded shutdown. Only each fixture's own PID is
 signalled; production services are untouched. The complete sequence and fresh CI are required
 before merging.
+
+
+Step 3 shipped in [PR #308](https://github.com/isaacholt-hash/fuse/pull/308), merged
+2026-11-05T17:02:17Z as `0a34c3f4886141a3ff36b934ce1c47a38a9cae54`. All five gates and the
+JSON gate passed on `98f92cdd9283ffa5f52c3a03f3b34b762beff0bb` in
+[CI 42068411542](https://github.com/isaacholt-hash/fuse/actions/runs/42068411542), with CLEAN
+merge status and no unresolved reviews/comments. Shared checks: 1,192 passed, 21 explicit
+skips (211.78 s); server Rust 236/236 (246.10 s). Windows sandbox 12/12, sync 31/31, atomic
+files 9/9, review 4/4, skill integrity/replay 3/3 and connectors 41/41. Windows click-through
+passed 16 with 22 explicit environment-only skips. Both Windows research themes and all ten
+new CI script captures were reviewed. Existing benchmarks passed: dictation 31; HULK five;
+sync 16 at schema 70 (40,186 ms); research eight Linux/HULK (22,352 ms), six Windows (14,952 ms)
+and two explicit Linux-only Windows skips. Native/background-owner script web passed 2/2
+(17.29 s). [v0.1.226](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.226) published
+2026-11-05T17:11:40Z from that merge via
+[release 42070618229](https://github.com/isaacholt-hash/fuse/actions/runs/42070618229).
+All eleven assets and seven updater entries matched published signature files. No deployment,
+installation or live activation occurred.
+
+Step 4 adds bounded, approval-gated child execution through the existing run engine, with
+native raw-object worktree preparation, owner-local claims, narrow OS command isolation and
+atomic root-cap reservations/receipts. Parent stop propagates; startup retains interrupted
+work and never replays it. Parent conversation cards present each exact child's approval.
+Children cannot inherit project command/network grants, recursively delegate or use Git.
+[parallel-code.md](../parallel-code.md) records limits, permission and retention boundaries.
+Schema 71 classifies portable parent links and local claims; no dependencies were added.
+Dedicated progress/review and approved integration remain step 5. Final verification follows.

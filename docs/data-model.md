@@ -471,3 +471,21 @@ app-managed attachment store and backup/export/sync inputs. Scratch is removed a
 Stop or cancellation; expired crash remnants are cleaned on startup or the next request.
 Only the existing bounded result/file processing may publish output into run history. Script
 execution never installs an ambient folder, command, network or MCP grant.
+
+## M16 child execution (schema 71)
+
+`runs.parent_run_id` is a portable, owning self-reference. Completed snapshots stage until their
+parent exists; sync applies no local execution metadata. `code_children` contains local dispatch
+identity (parent/model step/tool call), task request, ordinal, base commit, worktree/folder and Git
+pointer verification metadata, state and timestamps. It allows only one batch of at most three
+children per parent. Preparation claims all children atomically before touching Git or making
+paid requests. Ready/running claims cannot replay after owner restart. Parent stop/pause updates
+live children in the originating transaction; incoming sync suppresses this execution trigger.
+
+The sync registry excludes the entire claim table; portable exports exclude execution state.
+Global deletion includes claims and stops/removes app-owned worktrees. Encrypted backups retain
+inert database metadata, excluding filesystem worktree bytes. See [parallel-code.md](parallel-code.md)
+for isolation, limits, failed evidence and repository-object retention. The existing request
+reservation ledger now reserves atomically against root-plus-child exposure. Settlement records
+one receipt, updates the child total and aggregates the root total once; root totals are not extra
+ledger spend. No provider aggregate or worktree operation creates a cost receipt.

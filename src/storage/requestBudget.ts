@@ -17,7 +17,18 @@ export interface Reservation {
 
 const pending = `(SELECT COALESCE(SUM(MAX(h.bound_micro_usd-COALESCE(l.cost_micro_usd,0),0)),0)
  FROM request_reservations h LEFT JOIN request_log l ON l.id=h.request_id AND l.workspace_id=h.workspace_id
- WHERE h.workspace_id=r.workspace_id AND h.run_id=r.id AND h.state IN ('held','dispatched','unknown'))`;
+ WHERE h.workspace_id=r.workspace_id AND h.user_id=r.user_id AND h.run_id IN
+ (SELECT c.id FROM runs c WHERE c.workspace_id=r.workspace_id AND c.user_id=r.user_id AND (c.id=r.id OR c.parent_run_id=r.id))
+ AND h.state IN ('held','dispatched','unknown'))`;
+
+/** The root and the leaf must still be live on the same installation at dispatch time. */
+const owned = `(r.sync_owner IS NULL OR r.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=r.workspace_id))
+ AND (leaf.sync_owner IS NULL OR leaf.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=leaf.workspace_id))
+ AND leaf.project_id IS r.project_id AND leaf.thread_id IS r.thread_id
+ AND (r.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=r.project_id AND p.workspace_id=r.workspace_id AND p.user_id=r.user_id AND p.deleted_at IS NULL))
+ AND (r.thread_id IS NULL OR EXISTS(SELECT 1 FROM threads t WHERE t.id=r.thread_id AND t.workspace_id=r.workspace_id AND t.user_id=r.user_id AND t.project_id IS r.project_id AND t.deleted_at IS NULL))`;
+const rootJoin = `FROM runs leaf JOIN runs r ON r.id=COALESCE(leaf.parent_run_id,leaf.id)
+ AND r.workspace_id=leaf.workspace_id AND r.user_id=leaf.user_id AND r.parent_run_id IS NULL`;
 
 /** Both the actual ledger and unspent holds count. The statement evaluates atomically with its write.
  * Old unresolved holds remain exposure across period boundaries: reconnect never assumes a free retry.
@@ -50,9 +61,8 @@ export async function reserveRequest(db: SqlDb, tenant: Tenant, r: Reservation):
      INSERT INTO request_reservations(id,workspace_id,user_id,run_id,provider,model,purpose,
       thread_id,message_id,project_id,bound_micro_usd,state,created_at,updated_at)
      SELECT ?,?,?,?,?,?,?,?,?,?,?,'held',?,? FROM candidate c
-     WHERE ${budgetAllowed("c", now, "c.bound_micro_usd")} AND (? IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.workspace_id=? AND r.user_id=?
-       AND r.id=? AND r.status='running'
-       AND (r.sync_owner IS NULL OR r.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=r.workspace_id))
+     WHERE ${budgetAllowed("c", now, "c.bound_micro_usd")} AND (? IS NULL OR EXISTS (SELECT 1 ${rootJoin} WHERE leaf.workspace_id=? AND leaf.user_id=?
+       AND leaf.id=? AND leaf.status='running' AND r.status='running' AND ${owned}
        AND r.cap_micro_usd-r.spent_micro_usd-${pending}>=?))
      ON CONFLICT(id) DO NOTHING`,
     [
@@ -90,10 +100,10 @@ export async function dispatchRequest(db: SqlDb, tenant: Tenant, id: string): Pr
   const result = await db.execute(
     `UPDATE request_reservations SET state='dispatched',updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND state='held'
       AND ${budgetAllowed("request_reservations", now, "0")}
-      AND (run_id IS NULL OR EXISTS (SELECT 1 FROM runs r WHERE r.workspace_id=request_reservations.workspace_id
-        AND r.id=request_reservations.run_id AND r.status='running' AND r.spent_micro_usd+${pending}<=r.cap_micro_usd
+      AND (run_id IS NULL OR EXISTS (SELECT 1 ${rootJoin} WHERE leaf.workspace_id=request_reservations.workspace_id AND leaf.user_id=request_reservations.user_id
+        AND leaf.id=request_reservations.run_id AND leaf.status='running' AND r.status='running' AND r.spent_micro_usd+${pending}<=r.cap_micro_usd
         AND NOT EXISTS(SELECT 1 FROM research_state c WHERE c.workspace_id=r.workspace_id AND c.run_id=r.id AND (c.pause_requested=1 OR c.stop_requested=1))
-        AND (r.sync_owner IS NULL OR r.sync_owner=(SELECT device_id FROM sync_state WHERE workspace_id=r.workspace_id))))`,
+        AND ${owned}))`,
     [now, tenant.workspaceId, tenant.userId, id],
   );
   return result.rowsAffected === 1;
@@ -137,13 +147,16 @@ export async function settleRequest(
     },
     {
       sql: `UPDATE runs SET spent_micro_usd=spent_micro_usd+?,updated_at=? WHERE workspace_id=? AND user_id=?
-      AND id=(SELECT run_id FROM request_reservations WHERE workspace_id=? AND id=?)
+      AND id IN (SELECT leaf.id ${rootJoin} JOIN request_reservations h ON h.run_id=leaf.id AND h.workspace_id=leaf.workspace_id AND h.user_id=leaf.user_id WHERE h.workspace_id=? AND h.id=?
+        UNION SELECT leaf.parent_run_id FROM runs leaf JOIN request_reservations h ON h.run_id=leaf.id AND h.workspace_id=leaf.workspace_id AND h.user_id=leaf.user_id WHERE h.workspace_id=? AND h.id=?)
       AND EXISTS (${live}) AND EXISTS (SELECT 1 FROM request_log WHERE workspace_id=? AND id=? AND attempt_id=?)`,
       params: [
         entry.usage.costMicroUsd,
         now,
         tenant.workspaceId,
         tenant.userId,
+        tenant.workspaceId,
+        id,
         tenant.workspaceId,
         id,
         ...match,
@@ -185,7 +198,7 @@ export async function runExposure(
   runId: string,
 ): Promise<{ spent: number; held: number; cap: number }> {
   const rows = await db.select<{ spent: number; held: number; cap: number }>(
-    `SELECT spent_micro_usd AS spent,cap_micro_usd AS cap,${pending} AS held FROM runs r WHERE workspace_id=? AND user_id=? AND id=?`,
+    `SELECT r.spent_micro_usd AS spent,r.cap_micro_usd AS cap,${pending} AS held ${rootJoin} WHERE leaf.workspace_id=? AND leaf.user_id=? AND leaf.id=?`,
     [tenant.workspaceId, tenant.userId, runId],
   );
   if (!rows[0]) throw new Error("Run not found.");

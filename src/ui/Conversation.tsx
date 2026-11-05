@@ -2388,13 +2388,13 @@ function RunCard({
       const key = e.key.toLowerCase();
       if (key !== "y" && key !== "n") return;
       e.preventDefault();
-      onApprove(run.id, key === "y" ? "yes" : "no");
+      onApprove(approval?.child?.runId ?? run.id, key === "y" ? "yes" : "no");
     };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [pending, onApprove, run.id, run.readOnly]);
+  }, [pending, onApprove, run.id, run.readOnly, approval?.child?.runId]);
   return (
     <section aria-label={run.title} className="mb-4 rounded-md border px-3 py-2.5 text-[13px]">
       <div className="flex items-center gap-2 text-[12px]">
@@ -2536,7 +2536,7 @@ function RunCard({
           key={approval.moves.map((m) => m.from).join("|")}
           plan={approval}
           onAnswer={(a) => {
-            onApprove(run.id, a);
+            onApprove(approval.child?.runId ?? run.id, a);
           }}
         />
       )}
@@ -2546,6 +2546,12 @@ function RunCard({
           aria-label="Allow the network?"
           className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
         >
+          {approval.child && (
+            <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
+              Child worktree: {approval.child.branch ?? approval.child.runId}. This change stays
+              separate from the parent.
+            </p>
+          )}
           <p className="mb-1 font-medium">This command seems to need the network:</p>
           <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap">
             {approval.command}
@@ -2557,17 +2563,17 @@ function RunCard({
             <Button
               size="xs"
               onClick={() => {
-                onApprove(run.id, "yes");
+                onApprove(approval.child?.runId ?? run.id, "yes");
               }}
             >
-              Allow for this chat
+              {approval.child ? "Allow once" : "Allow for this chat"}
             </Button>
-            {!run.approvalFlags?.length && (
+            {!approval.child && !run.approvalFlags?.length && (
               <Button
                 variant="outline"
                 size="xs"
                 onClick={() => {
-                  onApprove(run.id, "always");
+                  onApprove(approval.child?.runId ?? run.id, "always");
                 }}
               >
                 Allow for this folder
@@ -2577,7 +2583,7 @@ function RunCard({
               variant="outline"
               size="xs"
               onClick={() => {
-                onApprove(run.id, "no");
+                onApprove(approval.child?.runId ?? run.id, "no");
               }}
             >
               No
@@ -2603,6 +2609,12 @@ function RunCard({
           }
           className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
         >
+          {approval.child && (
+            <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
+              Child worktree: {approval.child.branch ?? approval.child.runId}. This approval applies
+              only to this child.
+            </p>
+          )}
           {approval.kind === "command" ? (
             <>
               <p className="mb-1 font-medium">Run this command in this chat&apos;s folder?</p>
@@ -2705,7 +2717,9 @@ function RunCard({
             </>
           ) : approval.kind === "git" ? (
             <>
-              <p className="mb-1 font-medium">{approval.summary}?</p>
+              <p className="mb-1 whitespace-pre-wrap break-words font-medium">
+                {approval.summary}?
+              </p>
               {approval.remote && (
                 <p className="mb-2 text-amber-700 dark:text-amber-400">
                   This goes to GitHub, outside this computer.
@@ -2727,12 +2741,13 @@ function RunCard({
               size="sm"
               aria-label="Allow once"
               onClick={() => {
-                onApprove(run.id, "yes");
+                onApprove(approval.child?.runId ?? run.id, "yes");
               }}
             >
               Allow once<Hint>Y</Hint>
             </Button>
             {approval.kind === "command" &&
+              !approval.child &&
               !approval.destructive &&
               run.inProject &&
               !run.approvalFlags?.length && (
@@ -2740,7 +2755,7 @@ function RunCard({
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    onApprove(run.id, "always");
+                    onApprove(approval.child?.runId ?? run.id, "always");
                   }}
                 >
                   Always for this project
@@ -2751,7 +2766,7 @@ function RunCard({
               size="sm"
               aria-label="Deny"
               onClick={() => {
-                onApprove(run.id, "no");
+                onApprove(approval.child?.runId ?? run.id, "no");
               }}
             >
               Deny<Hint>N</Hint>

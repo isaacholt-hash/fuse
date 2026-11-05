@@ -14,6 +14,7 @@ const SOURCE: Record<string, string> = {
   run_command: "a command's output",
   run_python: "a Python script's output",
   run_skill_script: "an explicitly approved skill script's output",
+  delegate_code: "approved child runs in separate worktrees",
   git_status: "git",
   git_diff: "git",
   git_log: "git",

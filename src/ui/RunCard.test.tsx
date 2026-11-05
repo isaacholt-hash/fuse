@@ -1,9 +1,43 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
 import { Messages } from "./Conversation";
-import type { RunView } from "./types";
+import type { ApprovalView, RunView } from "./types";
 
 afterEach(cleanup);
+
+test.each(["command", "network"] as const)(
+  "child %s approvals retain their exact identity and offer no lasting grants",
+  (kind) => {
+    const onApprove = vi.fn();
+    const child = { runId: "child-a", parentId: "r1", branch: "fuse/child/child-a" };
+    const approval: ApprovalView =
+      kind === "command"
+        ? { kind: "command", command: "recorded-command", destructive: null, child }
+        : { kind: "network", command: "recorded-command", child };
+    show(
+      {
+        ...base,
+        approval,
+        inProject: true,
+      },
+      onApprove,
+    );
+    expect(
+      screen.getByText(
+        /This approval applies only to this child|This change stays separate from the parent/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: /Always|Allow for this folder|Allow for this chat/,
+      }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Allow once" }));
+    expect(onApprove).toHaveBeenLastCalledWith("child-a", "yes");
+    fireEvent.keyDown(window, { key: "n" });
+    expect(onApprove).toHaveBeenLastCalledWith("child-a", "no");
+  },
+);
 
 const base: RunView = {
   id: "r1",

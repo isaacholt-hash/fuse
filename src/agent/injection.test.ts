@@ -61,6 +61,7 @@ test("reads and commands are checked; FUSE's own write results aren't", () => {
   expect(scansOutput("read_file")).toBe(true);
   expect(scansOutput("fetch_url")).toBe(true);
   expect(scansOutput("run_command")).toBe(true);
+  expect(scansOutput("delegate_code")).toBe(true);
   expect(scansOutput("some_mcp_tool")).toBe(true);
   expect(scansOutput("write_file")).toBe(false);
   expect(scansOutput("git_push")).toBe(false);
