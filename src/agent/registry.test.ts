@@ -14,6 +14,12 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "git_log",
     "fetch_url",
     "read_skill_file",
+    "read_memory",
+    "search_artifacts",
+    "read_artifact",
+    "propose_memory",
+    "create_artifact",
+    "update_artifact",
     "edit_file",
     "write_file",
     "delete_file",
@@ -35,6 +41,9 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "git_log",
     "fetch_url",
     "read_skill_file",
+    "read_memory",
+    "search_artifacts",
+    "read_artifact",
   ]);
   expect(names("work")).toEqual([
     "list_files",
@@ -43,6 +52,12 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "read_document",
     "fetch_url",
     "read_skill_file",
+    "read_memory",
+    "search_artifacts",
+    "read_artifact",
+    "propose_memory",
+    "create_artifact",
+    "update_artifact",
     "edit_file",
     "write_file",
     "delete_file",
@@ -60,6 +75,9 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "read_document",
     "fetch_url",
     "read_skill_file",
+    "read_memory",
+    "search_artifacts",
+    "read_artifact",
   ]);
 });
 
@@ -89,4 +107,17 @@ test("a project can switch tools off, but not the ones a run needs to find its w
   expect(work).not.toContain("write_document");
   expect(work).toContain("list_files");
   expect(work).toContain("read_file");
+});
+
+test("FUSE strict schemas require every field, with nullable optional context arguments", () => {
+  const walk = (schema: Record<string, unknown>) => {
+    if (schema.type === "object") {
+      const properties = schema.properties as Record<string, Record<string, unknown>>;
+      expect(schema.additionalProperties).toBe(false);
+      expect(new Set(schema.required as string[])).toEqual(new Set(Object.keys(properties)));
+      for (const value of Object.values(properties)) walk(value);
+    }
+    if (schema.items) walk(schema.items as Record<string, unknown>);
+  };
+  for (const tool of TOOLS) if (tool.spec.strict !== false) walk(tool.spec.schema);
 });

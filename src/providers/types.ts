@@ -186,6 +186,7 @@ export interface ProviderAdapter {
     model: string,
     signal?: AbortSignal,
     scope?: SendScope,
+    options?: { noRetry?: boolean },
   ): Promise<EmbedResult>;
 }
 
@@ -193,6 +194,8 @@ export interface EmbedResult {
   vectors: Float32Array[];
   /** Billed input tokens. */
   tokens: number;
+  /** False when the provider omitted a valid billing receipt. */
+  usageReported?: boolean;
   providerRequestId: string | null;
   attempts: number;
 }

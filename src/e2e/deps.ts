@@ -119,8 +119,48 @@ export function scriptedTurn(body: Body): Turn {
   }
   const last = body.messages.at(-1);
   const result = last ? blocks(last.content).find((b) => b.type === "tool_result") : undefined;
-  if (result) return { text: `Command result:\n\n${resultText(result)}` };
+  if (result) {
+    const raw = resultText(result);
+    if (raw.includes('tool="propose_memory"'))
+      return { text: "The Context brief is saved. Your memory suggestion is waiting for review." };
+    if (raw.includes('tool="search_artifacts"')) {
+      const value = JSON.parse(raw.slice(raw.indexOf("\n") + 1, raw.lastIndexOf("\n"))) as {
+        results: { versionId: string }[];
+      };
+      return {
+        text: `Found the saved Context brief by keyword. Source: this conversation. Version UUID: ${value.results[0]?.versionId ?? "not found"}.`,
+      };
+    }
+    return { text: `Command result:\n\n${raw}` };
+  }
   const lastAsked = askedIn(body);
+  // M17 context fixture: shared production handlers and real isolated SQLite; no provider call.
+  if (lastAsked?.includes("E2E context draft")) {
+    return {
+      text: "I will save the app draft and propose a preference for review.",
+      calls: [
+        {
+          name: "propose_memory",
+          input: { operation: "add", kind: "preference", text: "Prefers concise chapters" },
+        },
+        {
+          name: "create_artifact",
+          input: {
+            key: "context-brief",
+            title: "Context brief",
+            type: "markdown",
+            content: "# Quiet roads\n\nA short chapter about electric cars and careful journeys.",
+          },
+        },
+      ].filter((c) => body.tools?.some((t) => t.name === c.name)),
+    };
+  }
+  if (lastAsked?.includes("E2E context search"))
+    return {
+      calls: body.tools?.some((t) => t.name === "search_artifacts")
+        ? [{ name: "search_artifacts", input: { query: "electric", meaning: false } }]
+        : [],
+    };
   // M9 step 12: "E2E fetch" reads a public page through fetch_url.
   if (lastAsked?.includes("E2E fetch")) {
     if (!body.tools?.length) return { text: "1. Read the page." };

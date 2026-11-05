@@ -21,7 +21,7 @@ AR-07, AR-08, AG-01 completion, PM-04 P2 extension.
 
 ## Steps
 
-- [ ] **1. Scoped context tools.** Complete memory and artifact reads/mutations in the tool registry, retaining provenance/authority/review and versioning. Add artifact retrieval by meaning with keyword fallback, privacy filtering and source references.
+- [x] **1. Scoped context tools.** Complete memory and artifact reads/mutations in the tool registry, retaining provenance/authority/review and versioning. Add artifact retrieval by meaning with keyword fallback, privacy filtering and source references.
 - [ ] **2. Writing canvas.** Markdown sections, anchored comments and rewrite/shorten/expand actions. Show model changes as reviewed diffs and create a new version; protect against overwriting concurrent edits.
 - [ ] **3. Python artifacts.** Run an explicitly selected artifact version with selected inputs in an isolated scratch folder using existing approval/runtime/sandbox limits. Display output beside code and retain version/attempt provenance, desktop/HULK parity, tests and release evidence.
 
@@ -53,4 +53,15 @@ Recorded desktop/HULK fixtures and reviewed light/dark canvas/output screenshots
 ## Evidence
 
 Append PRs, exact checks/builds, screenshots and benchmark results as each step ships.
-No acceptance evidence has been recorded for this milestone yet.
+Step 1 implements six shared scoped tools, atomic reviewed memory proposals and UUID-pinned
+artifact versions. Meaning retrieval uses conservative pre-dispatch holds and one attempt,
+with visible keyword fallback; the shared assembler records recalled artifact sources. See
+[context-tools.md](../context-tools.md) for scope, limits, privacy and backup/export boundaries.
+
+The real native-storage browser fixture passes two scenarios (31.82 s) on schema 73, with one
+owner-reviewed conversation memory, two artifact versions, source UUIDs, five synthetic
+request receipts, no unknown billing, no runs and no folder grants. Light/dark screenshot
+review caught and fixed the existing version toolbar overflow; the fixture asserts the title
+and Close control remain visible. Native startup and final full checks are recorded below
+before merge. Live provider quality remains an owner-operated acceptance check; fixtures
+make no provider calls.

@@ -195,6 +195,16 @@ jobs:
           name: parallel-web-screenshots
           path: e2e/screenshots/parallel/
           if-no-files-found: ignore
+      - name: Scoped memory and artifact shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/context-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: context-web-screenshots
+          path: e2e/screenshots/context/
+          if-no-files-found: ignore
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome
@@ -311,6 +321,9 @@ jobs:
       - name: Windows native connector fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib connectors:: -- --test-threads=2"
+      - name: Windows scoped context and accounting fixtures
+        if: ${{ !cancelled() }}
+        run: pnpm exec vitest run src/context/access.test.ts src/context/tools.test.ts src/cost/embedding.test.ts src/agent/registry.test.ts src/chat/chatTools.test.ts
 
   # M8 step 14: the app driven like a person would use it, on Windows, with scripted models
   # (src/e2e/deps.ts) and no keys. e2e/README.md says how it works.

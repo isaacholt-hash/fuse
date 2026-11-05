@@ -56,6 +56,16 @@ export async function storageReport(
     "SELECT COUNT(DISTINCT sha256) AS n FROM files WHERE workspace_id = ? AND deleted_at IS NULL",
     [ws],
   );
+  const artifactCount = await n(
+    db,
+    "SELECT COUNT(*) AS n FROM artifact_vectors WHERE workspace_id = ?",
+    [ws],
+  );
+  const artifactBytes = await n(
+    db,
+    "SELECT SUM(LENGTH(vector)) AS n FROM artifact_vectors WHERE workspace_id = ?",
+    [ws],
+  );
   const chunks = await n(db, "SELECT COUNT(*) AS n FROM chunks WHERE workspace_id = ?", [ws]);
   const vectorBytes = await n(
     db,
@@ -110,9 +120,12 @@ export async function storageReport(
     {
       id: "vectors",
       label: "Search index (chunks and embeddings)",
-      bytes: vectorBytes + chunkBytes,
-      count: chunks,
-      cleanup: vectorBytes > 0 ? "Clear embeddings (rebuilt when a search needs them)" : null,
+      bytes: vectorBytes + chunkBytes + artifactBytes,
+      count: chunks + artifactCount,
+      cleanup:
+        vectorBytes + artifactBytes > 0
+          ? "Clear embeddings (rebuilt when a search needs them)"
+          : null,
     },
     {
       id: "backups",
@@ -166,10 +179,11 @@ export async function trimRequestLog(db: SqlDb, tenant: Tenant, now = Date.now()
 
 /** Embeddings go; the chunks stay and are embedded again when a search needs them. */
 export async function clearVectors(db: SqlDb, tenant: Tenant): Promise<number> {
-  const result = await db.execute(`DELETE FROM chunk_vectors WHERE workspace_id = ?`, [
-    tenant.workspaceId,
+  const result = await db.batch([
+    { sql: "DELETE FROM chunk_vectors WHERE workspace_id = ?", params: [tenant.workspaceId] },
+    { sql: "DELETE FROM artifact_vectors WHERE workspace_id = ?", params: [tenant.workspaceId] },
   ]);
-  return result.rowsAffected;
+  return result.reduce((sum, r) => sum + r.rowsAffected, 0);
 }
 
 /** Tool output of runs that ended a while ago is replaced by a note; the steps stay. */

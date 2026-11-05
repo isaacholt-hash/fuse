@@ -226,8 +226,8 @@ export function ArtifactPanel({
       className="flex w-[46%] max-w-[760px] min-w-[340px] shrink-0 flex-col border-l bg-background"
       aria-label={`Artifact: ${artifact.title}`}
     >
-      <div className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-        <span className="min-w-0 flex-1">
+      <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
+        <span className="min-w-0 flex-1 basis-[140px]">
           <span className="block truncate text-[13px] font-medium">{artifact.title}</span>
           <span className="block text-[10px] text-muted-foreground">
             {KIND[artifact.type]}
@@ -239,43 +239,6 @@ export function ArtifactPanel({
         </span>
         {versions && artifact.version !== null && draft === null && (
           <>
-            {versions.versions.length > 1 && (
-              <select
-                aria-label="Version"
-                className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
-                value={String(shown)}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  versions.onShow(v === latest ? null : v);
-                }}
-              >
-                {[...versions.versions].reverse().map((v) => (
-                  <option key={v.version} value={v.version}>
-                    v{v.version} · {v.by} · {v.when}
-                    {v.version === latest ? " (latest)" : ""}
-                  </option>
-                ))}
-              </select>
-            )}
-            {versions.versions.length > 1 && (
-              <select
-                aria-label="Compare with"
-                className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
-                value={versions.compareWith === null ? "" : String(versions.compareWith)}
-                onChange={(e) => {
-                  versions.onCompare(e.target.value === "" ? null : Number(e.target.value));
-                }}
-              >
-                <option value="">No diff</option>
-                {versions.versions
-                  .filter((v) => v.version !== shown)
-                  .map((v) => (
-                    <option key={v.version} value={v.version}>
-                      Diff with v{v.version}
-                    </option>
-                  ))}
-              </select>
-            )}
             {old && (
               <Button
                 variant="ghost"
@@ -425,6 +388,50 @@ export function ArtifactPanel({
           <X />
         </Button>
       </div>
+      {versions && artifact.version !== null && draft === null && versions.versions.length > 1 && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2"
+          aria-label="Artifact version history"
+        >
+          {versions.versions.length > 1 && (
+            <select
+              aria-label="Version"
+              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[11px]"
+              value={String(shown)}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                versions.onShow(v === latest ? null : v);
+              }}
+            >
+              {[...versions.versions].reverse().map((v) => (
+                <option key={v.version} value={v.version}>
+                  v{v.version} · {v.by} · {v.when}
+                  {v.version === latest ? " (latest)" : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          {versions.versions.length > 1 && (
+            <select
+              aria-label="Compare with"
+              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[11px]"
+              value={versions.compareWith === null ? "" : String(versions.compareWith)}
+              onChange={(e) => {
+                versions.onCompare(e.target.value === "" ? null : Number(e.target.value));
+              }}
+            >
+              <option value="">No diff</option>
+              {versions.versions
+                .filter((v) => v.version !== shown)
+                .map((v) => (
+                  <option key={v.version} value={v.version}>
+                    Diff with v{v.version}
+                  </option>
+                ))}
+            </select>
+          )}
+        </div>
+      )}
       {saved && (
         <p
           role="status"

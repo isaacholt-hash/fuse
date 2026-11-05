@@ -20,6 +20,7 @@ import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, setThreadProject } from "@/storage/threads";
 import type { WebApi } from "@/web/api";
 import { MAX_CHAT_TOOL_ROUNDS, sendMessage, type ChatDeps } from "./sendMessage";
+import { CONTEXT_READ_TOOLS, CONTEXT_WRITE_TOOLS } from "@/context/toolSpecs";
 import { DATA_RULE } from "@/agent/untrusted";
 
 const t = DEFAULT_TENANT;
@@ -139,7 +140,11 @@ test("a chat answer reads a page, then answers from it; each round is logged, th
   expect(r).toMatchObject({ status: "complete", costMicroUsd: 6_000 });
   expect(asked).toEqual(["https://docs.example.com/tides"]);
 
-  expect(options[0]?.tools?.map((x) => x.name)).toEqual(["fetch_url"]);
+  expect(options[0]?.tools?.map((x) => x.name)).toEqual([
+    "fetch_url",
+    ...CONTEXT_READ_TOOLS.map((t) => t.name),
+    ...CONTEXT_WRITE_TOOLS.map((t) => t.name),
+  ]);
   // The second request replays the tool turn and carries the page.
   const replay = histories[1]?.slice(-2);
   expect(replay?.[0]).toMatchObject({
@@ -177,7 +182,7 @@ test("after a few tool rounds the model must answer without tools", async () => 
   expect(options.at(-1)?.tools).toBeUndefined();
 });
 
-test("no tools for a model that doesn't take them, without a reader, in Local only, or switched off", async () => {
+test("context tools need no page reader; unavailable readers, disabled tools and local-only policies are respected", async () => {
   const offered = async (
     model: CatalogModel,
     web: WebApi | undefined,
@@ -191,14 +196,16 @@ test("no tools for a model that doesn't take them, without a reader, in Local on
     return options[0]?.tools;
   };
   expect(await offered(plain, pageWeb())).toBeUndefined();
-  expect(await offered(claude, undefined)).toBeUndefined();
+  expect((await offered(claude, undefined))?.map((t) => t.name)).toEqual(
+    [...CONTEXT_READ_TOOLS, ...CONTEXT_WRITE_TOOLS].map((t) => t.name),
+  );
   expect(
     await offered(claude, pageWeb(), async (db, threadId) => {
       const p = await createProject(db, t, "Lighthouse");
       await setThreadProject(db, t, threadId, p.id);
       await switchProjectTool(db, t, p.id, "fetch_url", false);
     }),
-  ).toBeUndefined();
+  ).toEqual([...CONTEXT_READ_TOOLS, ...CONTEXT_WRITE_TOOLS]);
   // Local only: the cloud model is refused before anything is sent.
   const { adapter, options } = scripted([{ text: "Hi." }]);
   const { db, deps } = setup(adapter, pageWeb());
@@ -315,6 +322,7 @@ test("M9 step 9: a project's read-only MCP tools are offered in chat; writes are
   await sendMessage(deps, { threadId: thread.id, model: claude, text: "When is high tide?" });
 
   expect(options[0]?.tools?.map((x) => [x.name, x.strict])).toEqual([
+    ...[...CONTEXT_READ_TOOLS, ...CONTEXT_WRITE_TOOLS].map((t) => [t.name, t.strict]),
     ["mcp__Notes__search", false],
   ]);
   expect(called).toEqual(['search {"q":"tide"}']);
@@ -322,4 +330,156 @@ test("M9 step 9: a project's read-only MCP tools are offered in chat; writes are
   const sent = histories[1]?.at(-1)?.toolResults?.[0]?.content ?? "";
   expect(sent).toContain('source="an MCP server"');
   expect(sent).toContain("High tide is at 6.");
+});
+
+test("Chat proposes scoped memory and creates an artifact through its shared context tools", async () => {
+  const { adapter, histories } = scripted([
+    {
+      text: "I will save a draft and suggest a preference.",
+      calls: [
+        {
+          id: "p",
+          name: "propose_memory",
+          input: { operation: "add", kind: "preference", text: "Prefers short chapters" },
+        },
+        {
+          id: "a",
+          name: "create_artifact",
+          input: {
+            key: "chapter",
+            title: "Chapter",
+            type: "markdown",
+            content: "# A quiet start\nThe road bends.",
+          },
+        },
+      ],
+    },
+    { text: "The draft is saved; the memory suggestion awaits your review." },
+  ]);
+  const { db, deps } = setup(adapter),
+    thread = await createThread(db, t);
+  const result = await sendMessage(deps, {
+    threadId: thread.id,
+    model: claude,
+    text: "Draft a chapter and remember my preference.",
+  });
+  expect(result.status).toBe("complete");
+  expect(await db.select("SELECT text,status,thread_id FROM memory_proposals")).toEqual([
+    { text: "Prefers short chapters", status: "pending", thread_id: thread.id },
+  ]);
+  expect(await db.select("SELECT COUNT(*) AS n FROM memories")).toEqual([{ n: 0 }]);
+  expect(await db.select("SELECT key FROM artifacts")).toEqual([{ key: "chapter" }]);
+  const results = histories[1]?.at(-1)?.toolResults;
+  expect(results).toHaveLength(2);
+  expect(results?.every((r) => !r.isError)).toBe(true);
+  expect(results?.[0]?.content).toContain('source="a memory suggestion awaiting owner review"');
+  expect(results?.[1]?.content).toContain('"versionId"');
+});
+
+test("a context tool rechecks project enablement changed during the streamed request", async () => {
+  const { adapter } = scripted([
+    { text: "Checking.", calls: [{ id: "read", name: "read_memory", input: {} }] },
+    { text: "The tool is disabled." },
+  ]);
+  const { db, deps } = setup(adapter),
+    p = await createProject(db, t, "Scope"),
+    thread = await createThread(db, t, "Chat", p.id);
+  const original = adapter.streamChat.bind(adapter);
+  adapter.streamChat = async function* (...args) {
+    await switchProjectTool(db, t, p.id, "read_memory", false);
+    yield* original(...args);
+  };
+  const result = await sendMessage(deps, {
+    threadId: thread.id,
+    model: claude,
+    text: "Recall my preferences.",
+  });
+  expect(result.status).toBe("complete");
+  expect(await db.select("SELECT outcome FROM context_tool_audit")).toEqual([
+    { outcome: "refused" },
+  ]);
+});
+
+test("artifact meaning retrieval is charged once in the ledger and included in answer/thread totals", async () => {
+  const { adapter } = scripted([
+    { text: "Ready." },
+    { text: "The electric cars guide is relevant." },
+  ]);
+  const { db, deps } = setup(adapter),
+    thread = await createThread(db, t);
+  const first = await sendMessage(deps, {
+    threadId: thread.id,
+    model: claude,
+    text: "Start a draft.",
+  });
+  const { contextTool } = await import("@/context/tools");
+  await contextTool(
+    deps,
+    {
+      threadId: thread.id,
+      projectId: null,
+      runId: null,
+      messageId: null,
+      provider: "anthropic",
+      model: claude.id,
+      callKey: "seed-artifact",
+    },
+    {
+      id: "create",
+      name: "create_artifact",
+      input: {
+        key: "guide",
+        title: "Cars",
+        type: "markdown",
+        content: "A guide to electric cars.",
+      },
+    },
+  );
+  const embedModel = {
+    provider: "openai" as const,
+    id: "recorded-embed",
+    dimensions: 2,
+    maxInputTokens: 1000,
+    inputPrice: 1,
+    verifiedOn: "2026-11-05",
+    sourceUrl: "https://example.invalid/recorded",
+  };
+  const embed = vi.fn<NonNullable<ProviderAdapter["embed"]>>((texts) =>
+    Promise.resolve({
+      vectors: texts.map(() => Float32Array.of(1, 0)),
+      tokens: 10,
+      usageReported: true,
+      attempts: 1,
+      providerRequestId: "recorded-embed",
+    }),
+  );
+  const openai: ProviderAdapter = {
+    provider: "openai",
+    listModels: () => Promise.resolve([]),
+    streamChat() {
+      throw new Error("Embedding only");
+    },
+    embed,
+  };
+  const second = await sendMessage(
+    { ...deps, adapterFor: (p) => (p === "openai" ? openai : adapter) },
+    {
+      threadId: thread.id,
+      model: claude,
+      text: "Find the electric cars guide.",
+      embedding: embedModel,
+    },
+  );
+  expect(second.costMicroUsd).toBe(3010);
+  expect(embed).toHaveBeenCalledTimes(1);
+  const requests = await listRecentRequests(db, t);
+  expect(requests.filter((r) => r.purpose === "embed")).toHaveLength(1);
+  expect(requests.reduce((sum, r) => sum + r.usage.costMicroUsd, 0)).toBe(
+    first.costMicroUsd + second.costMicroUsd,
+  );
+  const { getThread } = await import("@/storage/threads");
+  expect((await getThread(db, t, thread.id))?.costMicroUsd).toBe(6010);
+  expect(
+    requests.filter((r) => r.purpose === "chat").every((r) => r.usage.costMicroUsd === 3000),
+  ).toBe(true);
 });

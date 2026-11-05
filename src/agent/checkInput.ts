@@ -3,7 +3,7 @@
  * tools as its grammar budget allows (providers/anthropic/adapter.ts), so a call to one of the
  * rest can come back loose: this turns a bad one into an error the model can fix, not a crash.
  * Covers what FUSE's schemas use: type (or a type list), properties, required,
- * additionalProperties: false, bounded arrays/strings, items and enum.
+ * additionalProperties: false, bounded arrays/strings, numeric minimums, items and enum.
  */
 export function checkInput(schema: Record<string, unknown>, input: unknown): string | null {
   return check(schema, input, "input");
@@ -38,6 +38,8 @@ function check(schema: Record<string, unknown>, v: unknown, at: string): string 
   if (Array.isArray(schema.enum) && !schema.enum.includes(v)) {
     return `${at} should be one of ${schema.enum.map((e) => JSON.stringify(e)).join(", ")}.`;
   }
+  if (typeof v === "number" && typeof schema.minimum === "number" && v < schema.minimum)
+    return `${at} must be at least ${String(schema.minimum)}.`;
   if (typeof v === "string") {
     const length = Array.from(v).length; // JSON Schema counts Unicode code points.
     if (typeof schema.minLength === "number" && length < schema.minLength)

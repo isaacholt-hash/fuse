@@ -5,6 +5,12 @@
 
 /** Where each tool's output comes from, as the label says it. */
 const SOURCE: Record<string, string> = {
+  read_memory: "scoped saved memory with provenance",
+  propose_memory: "a memory suggestion awaiting owner review",
+  search_artifacts: "scoped app-managed artifacts",
+  read_artifact: "an app-managed artifact version",
+  create_artifact: "a new app-managed artifact version",
+  update_artifact: "a new app-managed artifact version",
   fetch_url: "a web page",
   list_files: "the user's folders",
   read_file: "a file in the user's folders",

@@ -108,7 +108,15 @@ test("normal Chat pins by name, supplies supporting data without a web adapter a
   });
   expect(result.status).toBe("complete");
   expect(s.seen).toHaveLength(2);
-  expect(s.seen[0]?.options.tools?.map((t) => t.name)).toEqual(["read_skill_file"]);
+  expect(s.seen[0]?.options.tools?.map((t) => t.name)).toEqual([
+    "read_skill_file",
+    "read_memory",
+    "search_artifacts",
+    "read_artifact",
+    "propose_memory",
+    "create_artifact",
+    "update_artifact",
+  ]);
   expect(s.seen[0]?.options.system).toContain("Write a concise recorded summary.");
   expect(s.seen[1]?.history.at(-1)?.toolResults?.[0]?.content).toContain("Reference marker.");
   const question = (await listMessages(s.db, tenant, s.thread.id)).find((m) => m.role === "user");

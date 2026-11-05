@@ -12,7 +12,9 @@ import type {
 } from "@/providers/types";
 import type { RepoApi } from "@/repo/api";
 import { DEFAULT_TENANT } from "@/storage/defaults";
-import { addDecision } from "@/storage/memories";
+import { createThread, setThreadMemory } from "@/storage/threads";
+import { setEgressRule } from "@/storage/egress";
+import { addDecision, addMemory } from "@/storage/memories";
 import { createProject, setProjectRepo } from "@/storage/projects";
 import { listRecentRequests } from "@/storage/requestLog";
 import { getRun, listSteps } from "@/storage/runs";
@@ -276,4 +278,39 @@ test("the project's decisions and constraints go with every turn", async () => {
   await start();
   expect(sent[0]?.options.system).toContain("Decision: Tides in metres Reason: UK charts");
   expect(sent[0]?.options.system).toContain("<coding_agent>");
+});
+
+test("Code uses scoped memory source policy and respects its conversation memory switch", async () => {
+  const { db, deps, project, sent } = await setup([
+    { text: "Read only." },
+    { text: "Read only again." },
+  ]);
+  const sourceProject = await createProject(db, t, "Confidential source"),
+    source = await createThread(db, t, "Origin", sourceProject.id);
+  await addMemory(db, t, {
+    text: "Private source decision",
+    kind: "decision",
+    projectId: null,
+    sourceThreadId: source.id,
+  });
+  await addMemory(db, t, {
+    text: "Current project decision",
+    kind: "decision",
+    projectId: project.id,
+  });
+  await setEgressRule(db, t, sourceProject.id, "anthropic", false);
+  const thread = await createThread(db, t, "Code", project.id);
+  const input = {
+    projectId: project.id,
+    threadId: thread.id,
+    messageId: null,
+    task: "Read only",
+    model,
+  };
+  await startRun(deps, input);
+  expect(sent[0]?.options.system).toContain("Current project decision");
+  expect(sent[0]?.options.system).not.toContain("Private source decision");
+  await setThreadMemory(db, t, thread.id, false);
+  await startRun(deps, input);
+  expect(sent.at(-1)?.options.system).not.toContain("Current project decision");
 });

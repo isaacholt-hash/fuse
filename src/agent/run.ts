@@ -1,3 +1,5 @@
+import { contextTool } from "@/context/tools";
+import { CONTEXT_TOOL_NAMES, contextInput } from "@/context/toolSpecs";
 import { RUN_SKILL_TOOL, selectedSkillScript, type SkillScriptApproval } from "@/skills/scripts";
 import { childTasks, DELEGATE_CODE_TOOL } from "@/parallel/tool";
 import type { ChildPreparation } from "@/parallel/types";
@@ -36,7 +38,7 @@ import type { ChatMessage, NativeTurn, StreamDone, ToolCall, ToolResult } from "
 import type { RepoApi } from "@/repo/api";
 import { loadRepoInstructions } from "@/repo/instructions";
 import { getGlobalInstructions } from "@/storage/instructions";
-import { listMemories } from "@/storage/memories";
+import { scopedMemories } from "@/context/memoryTools";
 import { allowCommand, getProject, listAllowedCommands } from "@/storage/projects";
 import { trackedChat, noBill } from "@/cost/dispatch";
 import {
@@ -437,9 +439,16 @@ async function systemFor(deps: RunDeps, run: Run, steps: RunStep[]): Promise<str
   );
   // Decisions, constraints and open tasks always go (PM-15, PM-16), as in chat.
   const where = { projectId: run.projectId, threadId: run.threadId };
-  const memories = (await listMemories(db, tenant)).filter(
-    (m) => m.status === "active" && m.maySend && inScope(m, where),
-  );
+  const contextThread = run.threadId ? await getThread(db, tenant, run.threadId) : null;
+  const provider = deps.catalog.models.find(
+    (m) => m.id === run.model && m.provider === run.provider,
+  )?.provider;
+  const memories =
+    provider && (!contextThread || (contextThread.memoryOn && !contextThread.incognito))
+      ? (await scopedMemories(deps, { ...where, provider })).filter(
+          (m) => m.status === "active" && m.maySend && inScope(m, where),
+        )
+      : [];
   const open = (m: (typeof memories)[number]) =>
     m.kind === "task" && (m.taskStatus === "open" || m.taskStatus === "doing");
   const guide = [
@@ -669,6 +678,15 @@ async function workTurns(
         offered.add(name);
     }
 
+    const contextThread = run.threadId ? await getThread(db, tenant, run.threadId) : null;
+    for (const name of CONTEXT_TOOL_NAMES) {
+      if (
+        !contextThread ||
+        contextThread.incognito ||
+        (!contextThread.memoryOn && (name === "read_memory" || name === "propose_memory"))
+      )
+        offered.add(name);
+    }
     const started = (deps.now ?? Date.now)();
     let text = "";
     const calls: ToolCall[] = [];
@@ -1349,7 +1367,12 @@ async function handleCall(
     return { output: "Error: this run is read-only.", isError: true };
   }
   // A call to a tool Claude got without strict can come back loose (providers/anthropic/adapter.ts).
-  const bad = tool ? checkInput(tool.spec.schema, call.input) : null;
+  const bad = tool
+    ? checkInput(
+        tool.spec.schema,
+        CONTEXT_TOOL_NAMES.has(call.name) ? contextInput(call.name, call.input) : call.input,
+      )
+    : null;
   if (bad)
     return {
       output: `Error: ${bad} Call ${call.name} again with input that fits its schema.`,
@@ -1357,6 +1380,30 @@ async function handleCall(
     };
   const isEdit = EDIT_TOOL_NAMES.has(call.name);
   const isGit = GIT_READ_NAMES.has(call.name) || GIT_WRITE_TOOLS.some((t) => t.name === call.name);
+  if (CONTEXT_TOOL_NAMES.has(call.name)) {
+    if (!run.threadId)
+      return { output: "Context tools require this run's conversation.", isError: true };
+    return contextTool(
+      deps,
+      {
+        threadId: run.threadId,
+        projectId: run.projectId,
+        runId: run.id,
+        messageId: run.messageId,
+        provider:
+          run.provider === "openai"
+            ? "openai"
+            : run.provider === "anthropic"
+              ? "anthropic"
+              : "local",
+        model: run.model,
+        callKey: `${run.id}:${call.id}`,
+      },
+      call,
+      deps.catalog.embeddingModels[0] ?? null,
+      input.signal,
+    );
+  }
   if (call.name === DELEGATE_CODE_TOOL.name) return delegateCode(deps, run, call, input);
   if (call.name === COMMAND_TOOL.name) return runCommand(deps, run, call, input);
   if (call.name === FETCH_URL_TOOL.name) return runFetch(deps, run, call, input);
