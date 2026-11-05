@@ -46,7 +46,7 @@ jobs:
           pnpm build
           pnpm build:runner
           if grep -rq fuse-e2e-scripted-build dist; then echo "The test build's code is in the release bundle"; exit 1; fi
-          if grep -rqE 'research-fixture.example|FUSE_RESEARCH_CRASH_FIXTURE|FUSE_REVIEW_FIXTURE|review-fixture-runner' dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
+          if grep -rqE 'research-fixture.example|FUSE_RESEARCH_CRASH_FIXTURE|FUSE_REVIEW_FIXTURE|review-fixture-runner|FUSE_SKILL_SCRIPT_FIXTURE|skill-script-fixture-runner' dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
 
   rust:
     name: Rust fmt, clippy, test
@@ -163,6 +163,15 @@ jobs:
         env:
           FUSE_WEB_BROWSER: google-chrome
         run: bash scripts/review-web.sh
+      - name: Approved skill scripts shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/skill-script-web.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: skill-script-web-screenshots
+          path: e2e/screenshots/skill-scripts/
+          if-no-files-found: error
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome
@@ -252,6 +261,9 @@ jobs:
       - name: Windows pinned code review fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib code_review:: -- --test-threads=2"
+      - name: Windows skill script integrity and replay fixtures
+        if: ${{ !cancelled() }}
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --lib skill_scripts:: -- --test-threads=2"
       - name: Windows native connector fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib connectors:: -- --test-threads=2"

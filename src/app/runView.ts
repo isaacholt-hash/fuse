@@ -25,6 +25,8 @@ export function toolLabel(name: string, input: Record<string, unknown>): string 
       return `Ran ${str(input.command)}`;
     case "fetch_url":
       return `Read ${str(input.url)}`;
+    case "run_skill_script":
+      return `Ran skill script ${typeof input.path === "string" ? input.path : ""}`;
     case "run_python":
       return "Ran a Python script";
     case "git_status":
@@ -125,7 +127,13 @@ export function approvalView(req: ApprovalRequest): ApprovalView {
     };
   }
   if (req.kind === "python") {
-    return { kind: "python", script: req.script, keep: req.keep, network: req.network };
+    return {
+      kind: "python",
+      script: req.script,
+      keep: req.keep,
+      network: req.network,
+      ...(req.skill ? { skill: req.skill } : {}),
+    };
   }
   return req.kind === "command"
     ? {
@@ -275,7 +283,9 @@ export function runView(
         kind: "tool",
         label: toolLabel(s.call.name, s.call.input),
         error: s.isError ? firstLine(s.output) : null,
-        ...(s.call.name === "run_command" || s.call.name === "run_python"
+        ...(s.call.name === "run_command" ||
+        s.call.name === "run_python" ||
+        s.call.name === "run_skill_script"
           ? { output: s.output }
           : {}),
       });

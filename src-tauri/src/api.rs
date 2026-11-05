@@ -73,6 +73,7 @@ pub const WEB_COMMANDS: &[&str] = &[
     "repo_move",
     "repo_exec",
     "python_run",
+    "skill_python_run",
     "repo_exec_stop",
     "sandbox_status",
     "repo_git",
@@ -451,6 +452,11 @@ pub async fn dispatch(
             let sink = typed(sinks, &on_event);
             json(exec::python_run(ctx, folder_id, script, timeout_secs, network, sink).await)
         }
+        "skill_python_run" => {
+            args!(name,args,request:crate::skill_scripts::ScriptRequest,on_event:ChannelArg);
+            let sink = typed(sinks, &on_event);
+            json(crate::skill_scripts::run(ctx, request, sink).await)
+        }
         "repo_exec_stop" => {
             args!(name, args, id: u32);
             json(blocking(ctx, move |c| exec::repo_exec_stop(c, id)).await)
@@ -707,10 +713,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 104 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 105 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            104
+            105
         );
     }
 

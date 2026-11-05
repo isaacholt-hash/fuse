@@ -23,7 +23,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 
 - [x] **1. Structured review.** Review pinned local changes, branches and GitHub PRs using the M15 reader. Findings carry severity, verified path/line and evidence. Reviewing edits no files and posts no comments.
 - [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
-- [ ] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
+- [x] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
 - [ ] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
 - [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
 
@@ -189,3 +189,105 @@ Fresh native startup/captures passed in both themes; all fourteen current images
 [deletion review](../screenshots/m16/skills-web-delete-review-light.png).
 Every browser state has committed light/dark captures. Windows and current-head CI evidence
 will be recorded with the PR; no live provider-backed or owner acceptance is inferred.
+
+
+Step 2 shipped in [PR #307](https://github.com/isaacholt-hash/fuse/pull/307), merged as
+`63085c9c552c2c23e1c9501d1f50dbcffc0336e9` at 2026-11-05T15:01:55Z. All five gates and
+JSON gate passed on `530170226c32a5150e78f52511ff24c52b2ba943` in
+[CI 42048782269](https://github.com/isaacholt-hash/fuse/actions/runs/42048782269).
+Windows skills passed 30/30, native sync 31/31, atomic files 9/9, code review 4/4 and
+connectors 41/41. Windows click-through: 16 passed, 20 explicitly skipped; shared skills web
+passed separately. Preserved benchmarks: dictation 31/31; sync 16/16 at schema 69 (25,583 ms);
+research eight Linux/HULK (21,575 ms), six Windows (15,599 ms), two Linux-only cases skipped
+on Windows. Local checks passed 1,179 tests with 21 skips; Rust default 217, server 231.
+All fourteen `skills-*` desktop/web captures were reviewed. The Windows research capture
+labelled light actually retained a dark frame, so it is not evidence for both Windows themes;
+M19 retains this visual verification gap.
+[v0.1.225](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.225) was published at
+2026-11-05T15:12:37Z by
+[release 42050815835](https://github.com/isaacholt-hash/fuse/actions/runs/42050815835).
+All eleven assets and seven updater entries match their published signature files.
+
+Step 3 adds the `run_skill_script` command through existing Code/Work approvals and Python
+result handling, including explicitly approved output destinations and undo. A narrow native command verifies pinned package bytes and scopes, atomically
+claims dispatch, then executes only the selected script with bounded literal arguments.
+Linux bubblewrap receives no host folders or network and refuses subprocess creation;
+Windows uses an invocation-specific AppContainer and direct executable launch, with a bounded
+job. Private scratch and package copies are removed after use, with expired crash cleanup.
+Generic inline Python remains Work-only. Schema 70 classifies content-free dispatch claims
+as owner-local, portable-export excluded, delete-all included and inert in encrypted backups.
+A package deleted during approval stops execution and pauses context assembly before any
+new model request. No dependencies, production runtime installation, credentials, account
+sign-in, deployment or existing grants change. See [skills.md](../skills.md) for exact limits,
+output handling and recovery. Final verification and release evidence follow in this PR.
+
+Step 3 local verification: `VITEST_MAX_WORKERS=2 pnpm check` passed 1,189 tests, with 21
+explicit skips across 213 files (264.74 s), including lint, typecheck and secret scan.
+The final focused suite passed 55/55 (17.18 s), covering selectors, approvals, denied/stopped
+execution, package deletion during approval, resource prerequisites, registry and activity.
+Default Rust passed 222/222 (253.05 s); both all-target clippy configurations and formatting
+passed. Server-feature full-suite results follow below.
+
+The final isolated browser test passed (36.28 s): one denied script and one exact approved
+native execution; one completed dispatch claim; zero project changes; eight synthetic
+accounted requests; zero unresolved billing and zero live provider calls. Its actual system
+Python runs through native validation and isolation on a throwaway background owner. The
+host folder remains empty and scratch is removed. Fixture iterations exposed missing staged
+synthesis replies and asynchronous request completion; these were fixed without weakening
+billing or execution assertions. Native desktop startup and approval cards were captured
+using an isolated database/keyring and synthetic runtime availability, without approving
+or running a script on the desktop. Real isolation is covered separately by native and web
+tests. Eight final captures were reviewed:
+
+- [Native approval, light](../screenshots/m16/scripts-native-approval-light.png) and
+  [dark](../screenshots/m16/scripts-native-approval-dark.png).
+- [Web approval, light](../screenshots/m16/scripts-web-approval-light.png) and
+  [dark](../screenshots/m16/scripts-web-approval-dark.png).
+- [Web completion, light](../screenshots/m16/scripts-web-completed-light.png) and
+  [dark](../screenshots/m16/scripts-web-completed-dark.png).
+- [Mobile completion, light](../screenshots/m16/scripts-web-mobile-completed-light.png) and
+  [dark](../screenshots/m16/scripts-web-mobile-completed-dark.png).
+
+[Recorded counters](../screenshots/m16/scripts-web-result.json) identify the fixture boundary.
+Windows native isolation, current-commit CI and release evidence follow after verification.
+Existing crowded mobile composer controls remain an M19 integrated layout check; the new
+script card/result remains within the viewport. Released runtime/provider owner acceptance
+is separate and remains pending.
+
+
+Output delivery also reuses the existing explicit `keep` path: approved source/destination
+mappings save only successful bounded outputs into existing granted folders, with binary
+undo. The interpreter gains no folder access. Stop, resource failure or changed execution
+scope suppresses saves. Selector coverage rejects traversal, absolute/duplicate destinations
+and excessive mappings; a run-level test saves bytes and undoes them, and a cancellation
+regression retains the original file. Final checks after this addition follow below.
+Server-feature Rust passed 236/236 (287.60 s), preserving all existing benchmarks. A final
+native sibling-module import check verifies supporting Python files beside the selected
+entry, followed by relevant clippy/checks on the final code.
+
+Final shared verification passes after output-save and database-driven Stop coverage:
+`VITEST_MAX_WORKERS=2 pnpm check`: 1,192 passed, 21 skipped; 203 files passed, ten skipped
+(247.16 s). Lint, typecheck, formatting and secret scan passed. A prior full run under native
+build/screenshot load passed 1,191 tests and hit the existing one-second sign-in timeout;
+its assertion was retained and the isolated full rerun passed. Focused verification passed
+68/68 (11.83 s). Native final isolation/integrity/claim tests passed 5/5 in each build
+(default 2.66 s; server 2.11 s), including sibling-module imports and denied executable
+replacement, with both all-target clippy configurations clean. The existing HULK benchmark
+passed 5/5 (14.69 s). No real provider calls or production state were used.
+
+Final production web/runner builds pass and contain no scripted fixture markers. The latest
+server binary passes the complete shared web scenario 2/2 (41.76 s). Alongside the no-save
+scenario, a second approved invocation saves exactly `kept-result.txt` with bytes `42`
+through FUSE's existing write path; UI Undo removes it and restores the empty granted folder.
+Across all three requests (one denied, two approved): two completed native claims, one
+recorded file change subsequently undone, twelve synthetic accounted requests and zero
+unresolved billing. Scratch is empty after completion. These are fixture costs, not provider
+charges. The final output approval/source/destination and saved-file captures were reviewed:
+[approval light](../screenshots/m16/scripts-web-output-approval-light.png),
+[approval dark](../screenshots/m16/scripts-web-output-approval-dark.png),
+[saved output light](../screenshots/m16/scripts-web-saved-output-light.png),
+[saved output dark](../screenshots/m16/scripts-web-saved-output-dark.png).
+[Save/undo counters](../screenshots/m16/scripts-web-saved-output-result.json) distinguish the
+recorded change from net filesystem changes. The final native dark capture was refreshed after
+all source/build changes and reviewed, avoiding development hot-reload affecting the evidence.
+All twelve final native/web captures show their labelled themes and were reviewed.

@@ -51,7 +51,21 @@ export interface WindowsSandboxApi {
   reset(): Promise<number>;
 }
 
+export interface SkillScriptRequest {
+  runId: string;
+  modelStepId: string;
+  callId: string;
+  versionId: string;
+  path: string;
+  packageSha256: string;
+  args: string[];
+  timeoutSecs: number;
+}
 export interface ExecApi {
+  skillPython?(
+    request: SkillScriptRequest,
+    opts: { signal?: AbortSignal; onOutput?: (soFar: string) => void },
+  ): Promise<PythonResult>;
   run(
     folderId: string,
     command: string,
@@ -109,6 +123,35 @@ export const tauriExec: ExecApi = {
         command,
         timeoutSecs: timeoutSecs ?? null,
         sandbox: sandbox ?? null,
+        onEvent: channel,
+      })
+        .then((id) => {
+          const stop = () => void invoke("repo_exec_stop", { id });
+          if (signal?.aborted) stop();
+          else signal?.addEventListener("abort", stop, { once: true });
+        })
+        .catch(reject);
+    }),
+  skillPython: (request, { signal, onOutput }) =>
+    new Promise<PythonResult>((resolve, reject) => {
+      let output = "";
+      let files: PythonResult["files"] = [];
+      let skipped: string[] = [];
+      const channel = new Channel<ExecMsg>();
+      channel.onmessage = (m) => {
+        if (m.type === "out") {
+          output += m.text;
+          onOutput?.(output);
+        } else if (m.type === "files") {
+          files = m.files.map((f) => ({ path: f.path, bytes: new Uint8Array(f.bytes) }));
+          skipped = m.skipped;
+        } else if (m.type === "done") {
+          const { type: _type, ...rest } = m;
+          resolve({ output, ...rest, files, skipped });
+        } else reject(new Error(m.message));
+      };
+      invoke<number>("skill_python_run", {
+        request,
         onEvent: channel,
       })
         .then((id) => {

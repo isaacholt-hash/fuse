@@ -1,6 +1,10 @@
 // @vitest-environment node
 // M9 step 6 (AG-03): run_python in Work runs. A fake exec stands in for Rust's sandboxed Python
 // (src-tauri/src/exec.rs tests run the real one in bubblewrap).
+import { zipSync, strToU8 } from "fflate";
+import { importSkill, deleteSkill } from "@/skills/storage";
+import { readSkillPackage } from "@/skills/package";
+import { setRunStatus } from "@/storage/runs";
 import { parseCatalog, type CatalogModel } from "@/catalog/catalog";
 import { memoryFilesApi } from "@/files/api";
 import type { ProviderAdapter, StreamEvent, ToolCall, ToolSpec } from "@/providers/types";
@@ -119,15 +123,51 @@ async function setup(opts: {
   ready?: boolean;
   sandbox?: SandboxKind;
   kind?: "work" | "code";
+  skill?: boolean;
+  keepOutput?: boolean;
+  stopDuringScript?: boolean;
+  invalidate?: "delete" | "stop";
+  mode?: "plan" | "auto_edit";
 }) {
   const db = openTestDb();
   const project = await createProject(db, t, "Sales");
   await setProjectRepo(db, t, project.id, { root: "/repo", readSecrets: false });
   const repo = bytesRepo({ "reports/summary.csv": new TextEncoder().encode("old\n") });
+  const skillRan: unknown[] = [];
+  const imported = opts.skill
+    ? await importSkill(db, t, {
+        name: "calculate",
+        projectId: project.id,
+        localOnly: true,
+        package: await readSkillPackage(
+          "script.zip",
+          zipSync({
+            "SKILL.md": strToU8("Run when asked."),
+            "calculate.py": strToU8("print(42)"),
+            "data.txt": strToU8("support"),
+          }),
+        ),
+      })
+    : null;
   const ran: { script: string; network: boolean | undefined }[] = [];
   const exec: ExecApi = {
     run: () => Promise.reject(new Error("unused")),
     sandboxKind: () => Promise.resolve(opts.sandbox ?? "bubblewrap"),
+    skillPython: async (request) => {
+      await Promise.resolve();
+      skillRan.push(request);
+      if (opts.stopDuringScript) await setRunStatus(db, t, request.runId, "stopped");
+      return {
+        output: "42\n",
+        exitCode: opts.stopDuringScript ? null : 0,
+        timedOut: false,
+        stopped: opts.stopDuringScript ?? false,
+        truncated: false,
+        elapsedMs: 1,
+        files: [{ path: "result.txt", bytes: CSV }],
+        skipped: [],
+      };
+    },
     python: (_folder, script, o): Promise<PythonResult> => {
       ran.push({ script, network: o.network });
       return Promise.resolve({
@@ -145,7 +185,18 @@ async function setup(opts: {
       });
     },
   };
-  const { adapter, tools } = scripted([[pythonCall], []]);
+  const skillCall: ToolCall = {
+    id: "skill-call",
+    name: "run_skill_script",
+    input: {
+      version_id: imported?.versionId ?? "none",
+      path: "calculate.py",
+      args: ["literal; $(no shell)"],
+      timeout_seconds: 30,
+      keep: opts.keepOutput ? [{ from: "result.txt", to: "reports/summary.csv" }] : null,
+    },
+  };
+  const { adapter, tools } = scripted([[opts.skill ? skillCall : pythonCall], []]);
   const asked: ApprovalRequest[] = [];
   const deps: RunDeps = {
     db,
@@ -156,21 +207,25 @@ async function setup(opts: {
     exec,
     files: memoryFilesApi(),
     pythonReady: () => Promise.resolve(opts.ready ?? true),
-    approve: (req) => {
+    approve: async (req) => {
       asked.push(req);
-      return Promise.resolve(opts.answer ?? "yes");
+      if (opts.invalidate === "delete" && imported) await deleteSkill(db, t, imported.skillId);
+      if (opts.invalidate === "stop") await setRunStatus(db, t, req.runId, "stopped");
+      return opts.answer ?? "yes";
     },
   };
   const r = await startRun(deps, {
     projectId: project.id,
     threadId: null,
     messageId: null,
-    task: "Total the sales and chart them",
+    task: imported
+      ? `/skill calculate@${imported.versionId}\nTotal the sales and chart them`
+      : "Total the sales and chart them",
     model,
-    mode: "auto_edit",
+    mode: opts.mode ?? "auto_edit",
     kind: opts.kind ?? "work",
   });
-  return { db, deps, repo, ran, asked, tools, r };
+  return { db, deps, repo, ran, asked, tools, r, skillRan, imported };
 }
 
 test("run_python asks with the script, runs, shows its chart and saves what it keeps, with undo", async () => {
@@ -241,4 +296,75 @@ test("F7: Python's own startup line in the Windows sandbox is left out; the scri
   expect(withoutStartupNoise("total 42\nFailed to find real location of x\n")).toBe(
     "total 42\nFailed to find real location of x\n",
   );
+});
+
+test("Code skill execution uses the exact approval and native provenance, without generic Python or folder writes", async () => {
+  const { asked, tools, skillRan, ran, repo, db, r, imported } = await setup({
+    kind: "code",
+    skill: true,
+  });
+  expect(asked).toHaveLength(1);
+  const approval = asked[0];
+  if (approval?.kind !== "python") throw new Error("Expected Python approval");
+  expect(approval.skill?.versionId).toBe(imported?.versionId);
+  expect(approval.skill?.assets).toHaveLength(3);
+  expect(approval.network).toBe(false);
+  expect(approval.keep).toEqual([]);
+  expect(approval.script).toBe("print(42)");
+  expect(skillRan).toHaveLength(1);
+  expect(ran).toHaveLength(0);
+  expect(skillRan[0]).toMatchObject({
+    runId: r.id,
+    callId: "skill-call",
+    versionId: imported?.versionId,
+    path: "calculate.py",
+    args: ["literal; $(no shell)"],
+    timeoutSecs: 30,
+  });
+  expect(tools[0]?.map((t) => t.name)).toContain("run_skill_script");
+  expect(tools[0]?.map((t) => t.name)).not.toContain("run_python");
+  expect(repo.files.size).toBe(1);
+  expect(await listChanges(db, t, r.id)).toHaveLength(0);
+  expect((await listSteps(db, t, r.id)).find((s) => s.kind === "tool")?.output).toContain(
+    "SHA-256",
+  );
+});
+test.each([
+  { answer: "no" as const },
+  { ready: false },
+  { sandbox: "none" as const },
+  { mode: "plan" as const },
+  { invalidate: "delete" as const },
+  { invalidate: "stop" as const },
+])("skill scripts fail closed for approval or execution-state changes %j", async (options) => {
+  const { skillRan, ran } = await setup({ kind: "code", skill: true, ...options });
+  expect(skillRan).toEqual([]);
+  expect(ran).toEqual([]);
+});
+
+test("approved skill output uses existing bounded writes and undo, without granting the interpreter folder access", async () => {
+  const { db, deps, repo, asked, r } = await setup({ kind: "code", skill: true, keepOutput: true });
+  const req = asked[0];
+  if (req?.kind !== "python") throw new Error("Expected explicit output approval");
+  expect(req.keep).toEqual(["reports/summary.csv"]);
+  expect(req.skill?.outputs).toEqual([{ from: "result.txt", to: "reports/summary.csv" }]);
+  const changes = await listChanges(db, t, r.id);
+  expect(changes).toHaveLength(1);
+  expect(repo.files.get("reports/summary.csv")).toEqual(CSV);
+  const change = changes[0];
+  if (!change) throw new Error("Missing saved output");
+  await undoChange(deps, change.id);
+  expect(new TextDecoder().decode(repo.files.get("reports/summary.csv"))).toBe("old\n");
+});
+
+test("Stop during a skill script does not install even explicitly requested partial outputs", async () => {
+  const { db, repo, r } = await setup({
+    kind: "code",
+    skill: true,
+    keepOutput: true,
+    stopDuringScript: true,
+  });
+  expect(r.status).toBe("stopped");
+  expect(new TextDecoder().decode(repo.files.get("reports/summary.csv"))).toBe("old\n");
+  expect(await listChanges(db, t, r.id)).toHaveLength(0);
 });

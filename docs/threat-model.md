@@ -355,4 +355,20 @@ cannot confer permissions or execute on import, sync, restore or history load. I
 remain below app/privacy rules, custom instructions and current user directions. Support reads
 are bounded, hash-checked and wrapped as data; missing, deleted or altered versions stop use.
 App-managed package records may sync/export; source machine paths and execution grants do not.
-Script execution is the separate M16.3 sandbox/approval step, never implied by these imports.
+Script execution uses the M16.3 sandbox/approval boundary below; imports never imply permission to execute.
+
+M16.3 adds explicit script execution for invoked immutable packages. Approval identifies the
+version, source, hashes, literal arguments, package inputs and limits. Rust revalidates bytes,
+project/thread scope, mode, tool policy and execution ownership before atomically claiming
+dispatch. Duplicate or interrupted dispatch IDs cannot replay. The OS sandbox receives private
+copies of package assets and writable scratch, with no project-folder mounts or network.
+Linux additionally refuses process creation and namespace/syscall-filter bypass operations;
+Windows uses one fresh AppContainer per invocation and a single-process memory-bounded job.
+No existing folder permissions are inherited. Source/results remain untrusted tool data.
+
+The scratch guard is monitored rather than a disk quota, so brief overshoot is possible.
+Packages can consume resources within the stated limits and print the selected package data
+back to the model. Explicit invocation/approval remains the disclosure boundary; integrity
+hashes identify the version, not its author or correctness. Crash remnants are removed after
+expiry, and historical encrypted backups retain their separate retention policy. Native
+sandbox tests and the isolated server fixture do not establish released owner acceptance.

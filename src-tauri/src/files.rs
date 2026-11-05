@@ -160,6 +160,13 @@ pub(crate) fn file_get(ctx: &Ctx, sha256: String) -> Result<Vec<u8>, String> {
 
 /// Deletes every stored attachment (delete-all); returns how many.
 pub(crate) fn file_wipe(ctx: &Ctx) -> Result<usize, String> {
+    // Delete-all also ends active output producers. Their RAII guards remove private scratch.
+    if let Ok(mut jobs) = ctx.execs.running.lock() {
+        for (_, stop) in jobs.drain() {
+            let _ = stop.send(());
+        }
+    }
+    crate::skill_scripts::cleanup(&ctx.data_dir);
     wipe(&ctx.data_dir)
 }
 

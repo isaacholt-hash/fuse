@@ -1,3 +1,5 @@
+import { RUN_SKILL_TOOL, selectedSkillScript, type SkillScriptApproval } from "@/skills/scripts";
+import type { PythonResult } from "@/repo/exec";
 // Coding runs (M6 step 5, CA-07 part 1, CA-04 Plan only, CA-09): a task in a project's linked
 // repository, worked through by one model with read-only tools. Each model turn and tool call is
 // a step with its cost; the run pauses at its cost cap and asks before going on. Every call goes
@@ -233,7 +235,13 @@ export type ApprovalAsk =
   /** M9 step 4: a page address that may carry content out; it asks before it's read. */
   | { kind: "fetch"; url: string; why: string }
   /** M9 step 6: a Python script, and the files it will save into the folder. */
-  | { kind: "python"; script: string; keep: string[]; network: boolean }
+  | {
+      kind: "python";
+      script: string;
+      keep: string[];
+      network: boolean;
+      skill?: SkillScriptApproval;
+    }
   /** M9 step 9: an MCP tool that changes something, with what it's given. */
   | { kind: "mcp"; server: string; tool: string; input: string; destructive: boolean }
   /** WF-06: a whole reorganisation; the answer may keep only some moves. */
@@ -537,6 +545,8 @@ async function workTurns(
       await setRunStatus(db, tenant, runId, "stopped", stopNote());
       break;
     }
+    // An owner-local Stop or pause can arrive through the database before its signal.
+    if (run.status !== "running") break;
     if (run.spentMicroUsd >= run.capMicroUsd) {
       await setRunStatus(
         db,
@@ -576,7 +586,19 @@ async function workTurns(
       break;
     }
     const steps = await listSteps(db, tenant, runId);
-    const system = await systemFor(deps, run, steps);
+    let system: string | undefined;
+    try {
+      system = await systemFor(deps, run, steps);
+    } catch (e) {
+      await setRunStatus(
+        db,
+        tenant,
+        runId,
+        "paused",
+        `Context unavailable: ${e instanceof Error ? e.message : String(e)} Review the selected context before continuing.`,
+      );
+      break;
+    }
     const summaryOf = (r: Run) =>
       r.summary !== null && r.summaryUpto !== null
         ? { text: r.summary, upto: r.summaryUpto }
@@ -613,6 +635,8 @@ async function workTurns(
     const offered = new Set(off);
     if (!deps.web || policy.mode === "local_only") offered.add(FETCH_URL_TOOL.name);
     if (!skillCommands(run.task).length) offered.add(READ_SKILL_TOOL.name);
+    if (!skillCommands(run.task).length || !(await skillPythonUsable(deps)))
+      offered.add(RUN_SKILL_TOOL.name);
     if (!(await pythonUsable(deps, run))) offered.add(RUN_PYTHON_TOOL.name);
 
     const started = (deps.now ?? Date.now)();
@@ -1003,60 +1027,191 @@ async function runPython(
         void progress(deps, run.id, input, `python\n${soFar.slice(-4000)}`);
       },
     });
-    const images: { mime: string; bytes: Uint8Array }[] = [];
-    const listed: string[] = [];
-    for (const f of result.files) {
-      const mime = IMAGE_MIME[f.path.split(".").pop()?.toLowerCase() ?? ""];
-      const shown = mime !== undefined && f.bytes.length <= MAX_IMAGE_BYTES;
-      if (shown) images.push({ mime, bytes: f.bytes });
-      listed.push(`${f.path} (${kb(f.bytes.length)}${shown ? ", shown" : ""})`);
+    return await finishPython(deps, result, keep, timeoutSecs, network);
+  } catch (e) {
+    return { output: `Error: ${e instanceof Error ? e.message : String(e)}`, isError: true };
+  }
+}
+
+async function finishPython(
+  deps: RunDeps,
+  result: PythonResult,
+  keep: { from: string; to: string }[],
+  timeoutSecs: number,
+  network: boolean,
+): Promise<CallOutcome> {
+  const images: { mime: string; bytes: Uint8Array }[] = [];
+  const listed: string[] = [];
+  for (const f of result.files) {
+    const mime = IMAGE_MIME[f.path.split(".").pop()?.toLowerCase() ?? ""];
+    const shown = mime !== undefined && f.bytes.length <= MAX_IMAGE_BYTES;
+    if (shown) images.push({ mime, bytes: f.bytes });
+    listed.push(`${f.path} (${kb(f.bytes.length)}${shown ? ", shown" : ""})`);
+  }
+  for (const s of result.skipped) listed.push(`${s} (too big to bring back)`);
+  const changes: FileChange[] = [];
+  const saved: string[] = [];
+  for (const k of keep) {
+    const f = result.files.find((x) => x.path === k.from);
+    if (!f) {
+      saved.push(`${k.from}: not in FUSE_OUT, so nothing was saved to ${k.to}`);
+      continue;
     }
-    for (const s of result.skipped) listed.push(`${s} (too big to bring back)`);
-    const changes: FileChange[] = [];
-    const saved: string[] = [];
-    for (const k of keep) {
-      const f = result.files.find((x) => x.path === k.from);
-      if (!f) {
-        saved.push(`${k.from}: not in FUSE_OUT, so nothing was saved to ${k.to}`);
-        continue;
-      }
-      if (!deps.repo.writeBytes) {
-        saved.push(`${k.to}: files can't be saved here`);
-        continue;
-      }
-      const before = deps.repo.readBytes
-        ? await deps.repo.readBytes(HERE, k.to).catch(() => null)
-        : null;
-      try {
-        const path = await deps.repo.writeBytes(HERE, k.to, f.bytes);
-        changes.push({
-          path,
-          fromPath: null,
-          before: asText(before),
-          after: asText(f.bytes),
-          binary: { before, after: f.bytes },
-        });
-        saved.push(`${before ? "Replaced" : "Created"} ${path} (${kb(f.bytes.length)})`);
-      } catch (e) {
-        saved.push(`${k.to}: ${e instanceof Error ? e.message : String(e)}`);
-      }
+    if (!deps.repo.writeBytes) {
+      saved.push(`${k.to}: files can't be saved here`);
+      continue;
     }
-    const lines = [
-      commandOutput(
-        "python script.py",
-        { ...result, output: withoutStartupNoise(result.output) },
-        timeoutSecs,
-      ),
-      `[sandboxed, network ${network ? "on" : "off"}]`,
-      listed.length ? `Files it made in FUSE_OUT: ${listed.join(", ")}` : "It made no files.",
-      ...saved,
-    ];
+    const before = deps.repo.readBytes
+      ? await deps.repo.readBytes(HERE, k.to).catch(() => null)
+      : null;
+    try {
+      const path = await deps.repo.writeBytes(HERE, k.to, f.bytes);
+      changes.push({
+        path,
+        fromPath: null,
+        before: asText(before),
+        after: asText(f.bytes),
+        binary: { before, after: f.bytes },
+      });
+      saved.push(`${before ? "Replaced" : "Created"} ${path} (${kb(f.bytes.length)})`);
+    } catch (e) {
+      saved.push(`${k.to}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  const lines = [
+    commandOutput(
+      "python script.py",
+      { ...result, output: withoutStartupNoise(result.output) },
+      timeoutSecs,
+    ),
+    `[sandboxed, network ${network ? "on" : "off"}]`,
+    listed.length ? `Files it made in FUSE_OUT: ${listed.join(", ")}` : "It made no files.",
+    ...saved,
+  ];
+  return {
+    output: lines.join("\n"),
+    isError: result.timedOut || result.stopped || result.exitCode !== 0,
+    approval: "you",
+    ...(changes.length ? { changes } : {}),
+    ...(images.length ? { images } : {}),
+  };
+}
+async function skillPythonUsable(deps: RunDeps): Promise<boolean> {
+  if (!deps.exec?.skillPython || !deps.pythonReady || !deps.approve) return false;
+  const kind = await deps.exec.sandboxKind?.();
+  return (
+    (kind === "bubblewrap" || kind === "app_container") &&
+    (await deps.pythonReady().catch(() => false))
+  );
+}
+async function runSkillScript(
+  deps: RunDeps,
+  run: Run,
+  call: ToolCall,
+  input: Pick<RunInput, "signal" | "onProgress">,
+): Promise<CallOutcome> {
+  try {
+    if (
+      !deps.exec?.skillPython ||
+      !(await skillPythonUsable(deps)) ||
+      run.review ||
+      run.readOnly ||
+      run.mode === "plan"
+    )
+      throw new Error(
+        "Skill scripts require an execution owner, enabled sandbox, installed Python and explicit approval.",
+      );
+    const selected = await selectedSkillScript(
+      deps.db,
+      deps.tenant,
+      run.projectId,
+      run.task,
+      call.input,
+    );
+    const answer = await ask(
+      deps,
+      run,
+      {
+        kind: "python",
+        script: selected.script,
+        keep: selected.keep.map((k) => k.to),
+        network: false,
+        skill: selected.approval,
+      },
+      input,
+    );
+    if (answer === "stopped") return STOPPED;
+    if (answer === "no")
+      return { output: "The user declined the skill script.", isError: true, approval: "denied" };
+    const current = await getRun(deps.db, deps.tenant, run.id);
+    const thread = run.threadId ? await getThread(deps.db, deps.tenant, run.threadId) : null;
+    if (
+      !current ||
+      current.status !== "running" ||
+      current.readOnly ||
+      current.review ||
+      current.mode === "plan" ||
+      current.projectId !== run.projectId ||
+      (run.threadId && (!thread || thread.projectId !== run.projectId)) ||
+      (await projectToolsOff(deps.db, deps.tenant, run.projectId)).has(RUN_SKILL_TOOL.name)
+    )
+      throw new Error("The run's execution or project scope changed during approval.");
+    const checked = await selectedSkillScript(
+      deps.db,
+      deps.tenant,
+      run.projectId,
+      run.task,
+      call.input,
+    );
+    if (JSON.stringify(checked) !== JSON.stringify(selected))
+      throw new Error("The approved package changed.");
+    const model = (await listSteps(deps.db, deps.tenant, run.id)).findLast(
+      (s) => s.kind === "model",
+    );
+    if (!model) throw new Error("Missing script dispatch provenance.");
+    const a = checked.approval;
+    const result = await deps.exec.skillPython(
+      {
+        runId: run.id,
+        modelStepId: model.id,
+        callId: call.id,
+        versionId: a.versionId,
+        path: a.path,
+        packageSha256: a.packageSha256,
+        args: a.args,
+        timeoutSecs: a.timeoutSecs,
+      },
+      {
+        ...(input.signal ? { signal: input.signal } : {}),
+        onOutput: (text) => {
+          void progress(deps, run.id, input, `Skill ${a.name}: ${text.slice(-4000)}`);
+        },
+      },
+    );
+    // Cancellation or a changed execution scope must not install output bytes.
+    const after = await getRun(deps.db, deps.tenant, run.id);
+    const liveThread = run.threadId ? await getThread(deps.db, deps.tenant, run.threadId) : null;
+    const maySave =
+      !result.stopped &&
+      !result.timedOut &&
+      result.exitCode === 0 &&
+      after?.status === "running" &&
+      !after.readOnly &&
+      !after.review &&
+      after.mode !== "plan" &&
+      (!run.projectId || (await getProject(deps.db, deps.tenant, run.projectId)) !== null) &&
+      !(await projectToolsOff(deps.db, deps.tenant, run.projectId)).has(RUN_SKILL_TOOL.name) &&
+      after.projectId === run.projectId &&
+      (!run.threadId || liveThread?.projectId === run.projectId);
+    const out = await finishPython(deps, result, maySave ? checked.keep : [], a.timeoutSecs, false);
+    if (!maySave && checked.keep.length) {
+      out.isError = true;
+      out.output +=
+        "\nRequested output files were not saved because execution failed, stopped or its scope changed.";
+    }
     return {
-      output: lines.join("\n"),
-      isError: result.timedOut || result.stopped || result.exitCode !== 0,
-      approval: "you",
-      ...(changes.length ? { changes } : {}),
-      ...(images.length ? { images } : {}),
+      ...out,
+      output: `Skill ${a.name}@${a.versionId}, ${a.path}, SHA-256 ${a.scriptSha256}\n${out.output}`,
     };
   } catch (e) {
     return { output: `Error: ${e instanceof Error ? e.message : String(e)}`, isError: true };
@@ -1172,6 +1327,7 @@ async function handleCall(
       return { output: "The skill invocation's conversation scope changed.", isError: true };
     return readSkillFile(deps.db, deps.tenant, run.projectId, run.task, call.input);
   }
+  if (call.name === RUN_SKILL_TOOL.name) return runSkillScript(deps, run, call, input);
   if (call.name === RUN_PYTHON_TOOL.name) return runPython(deps, run, call, input);
   if (call.name === ORGANISE_TOOL.name) return runOrganise(deps, run, call, input);
   if (isGit) return runGit(deps, run, call, input);

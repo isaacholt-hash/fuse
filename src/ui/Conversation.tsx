@@ -2637,15 +2637,59 @@ function RunCard({
             </>
           ) : approval.kind === "python" ? (
             <>
-              <p className="mb-1 font-medium">Run this Python script?</p>
+              <p className="mb-1 font-medium break-all">
+                {approval.skill
+                  ? `Run ${approval.skill.name} / ${approval.skill.path}?`
+                  : "Run this Python script?"}
+              </p>
+              {approval.skill && (
+                <div className="mb-2 text-muted-foreground break-all">
+                  <p>
+                    Version {approval.skill.versionId} · {approval.skill.timeoutSecs}s limit · 512
+                    MiB memory
+                  </p>
+                  <p>Script SHA-256: {approval.skill.scriptSha256}</p>
+                  <p>Package SHA-256: {approval.skill.packageSha256}</p>
+                  <p>Arguments: {JSON.stringify(approval.skill.args)}</p>
+                  {approval.skill.outputs.length > 0 && (
+                    <div>
+                      Save after successful execution:
+                      {approval.skill.outputs.map((o) => (
+                        <p key={o.to}>
+                          {o.from} → {o.to}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <details>
+                    <summary>Read-only package files ({approval.skill.assets.length})</summary>
+                    {approval.skill.assets.map((a) => (
+                      <p key={a.path}>
+                        {a.path} ({a.bytes} bytes) · {a.sha256}
+                      </p>
+                    ))}
+                  </details>
+                </div>
+              )}
               <pre className="mb-2 max-h-60 overflow-auto rounded bg-background px-2 py-1 font-mono text-[11px] whitespace-pre">
                 {approval.script}
               </pre>
               <p className="mb-2 text-muted-foreground">
-                It runs in the sandbox in this chat&apos;s folder: it can read the files but not
-                change them, and {approval.network ? "it can use the network" : "it has no network"}
-                .
-                {approval.keep.length > 0 &&
+                {approval.skill ? (
+                  approval.keep.length ? (
+                    "It runs in private scratch storage, reads only package assets, and has no project-folder or network access. FUSE saves only the output destinations shown above, with undo."
+                  ) : (
+                    "It runs in private scratch storage, reads only package assets, and has no project-folder or network access. No output files are saved to your folders."
+                  )
+                ) : (
+                  <>
+                    It runs in the sandbox in this chat&apos;s folder: it can read the files but not
+                    change them, and{" "}
+                    {approval.network ? "it can use the network" : "it has no network"}.
+                  </>
+                )}
+                {!approval.skill &&
+                  approval.keep.length > 0 &&
                   ` Then it saves ${approval.keep.join(", ")} into the folder, which you can undo.`}
               </p>
             </>

@@ -53,7 +53,7 @@ complete when a dedicated flow remains missing. `MM-12` is Nice but required her
 | AG-11 built-in connectors | [M15 build](milestones/M15-connectors.md): native accounts, Microsoft/GitHub readers and shared setup/fixtures; released owner acceptance in M19. OneDrive/Outlook Mail/Calendar and GitHub replace Google examples |
 | CA-10 structured code review | [M16.1 build](milestones/M16-coding-completion.md): pinned local/GitHub source and evidence-checked findings; released owner acceptance in M19 |
 | CA-11 sandboxed commands | M8; complete, preserve |
-| CA-12 skills | [M16.2 packages build](milestones/M16-coding-completion.md): named, pinned instruction/support-file imports; scripts in M16.3 |
+| CA-12 skills | [M16.2–3 build](milestones/M16-coding-completion.md): named, pinned packages and explicitly approved isolated Python scripts |
 | CA-14 parallel Code worktrees | M16.4–5; combined cap and review before integration |
 | CA-15 HULK background/handover | M10 and fresh live acceptance; complete |
 | WF-01–WF-08 Work in folders | M8/M9 recorded/live/PC evidence; complete, preserve |
