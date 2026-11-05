@@ -75,7 +75,7 @@ export function mcpServerProblem(s: NewMcpServer): string | null {
 export async function listMcpServers(db: SqlDb, tenant: Tenant): Promise<McpServer[]> {
   const rows = await db.select<Row>(
     `SELECT id, name, transport, command, args, url, env_names, network FROM mcp_servers
-     WHERE workspace_id = ? AND deleted_at IS NULL ORDER BY name COLLATE NOCASE, created_at`,
+     WHERE workspace_id = ? AND deleted_at IS NULL AND builtin_kind IS NULL ORDER BY name COLLATE NOCASE, created_at`,
     [tenant.workspaceId],
   );
   return rows.map(toServer);

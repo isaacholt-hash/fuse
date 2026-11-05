@@ -281,3 +281,16 @@ execution; continuation can skip an ambiguous search while exposing its missing 
 Recorded native-process tests hard-exit the isolated fixture runner after dispatch, restart it
 through the existing server supervisor and verify no automatic replay. The crash marker lives
 only in the separate synthetic runner entrypoint; release entrypoints never import it.
+
+### Native connector authorization (M15.1)
+
+The authorized desktop or trusted HULK owns its connector token. UI commands cannot retrieve
+access/refresh/device credentials; only the public user verification code/address and bounded
+account identity are returned. Provider origins are fixed, redirects disabled and OAuth bodies
+bounded. Error descriptions are discarded, including hostile token echoes. Device polling is
+serialized with cancellation, reconfiguration and refresh. Grants are bound to exact public
+registration settings; changing settings revokes local project enablement and old local tokens.
+A sign-in grants no project tools. Generic MCP servers cannot turn into built-in participants
+through an imported command or remote URL. No built-in participant launches a shell/server.
+Provider authorization and installed repository scopes are owner responsibilities; local
+Disconnect cannot revoke an authorization at Microsoft/GitHub or erase prior retrieved text.

@@ -76,6 +76,11 @@ pub const WEB_COMMANDS: &[&str] = &[
     "repo_exec_stop",
     "sandbox_status",
     "repo_git",
+    "connector_configure",
+    "connector_status",
+    "connector_begin",
+    "connector_poll",
+    "connector_disconnect",
     "mcp_check",
     "mcp_stop",
     "mcp_tools",
@@ -446,6 +451,26 @@ pub async fn dispatch(
         "sandbox_status" => json(blocking(ctx, |_| Ok(exec::sandbox_status())).await),
 
         // MCP servers (mcp.rs)
+        "connector_configure" => {
+            args!(name, args, registration: crate::connectors::Registration);
+            json(crate::connectors::configure(ctx, registration).await)
+        }
+        "connector_status" => {
+            args!(name, args, id: String);
+            json(crate::connectors::account_status(ctx, id).await)
+        }
+        "connector_begin" => {
+            args!(name, args, id: String);
+            json(crate::connectors::begin(ctx, id).await)
+        }
+        "connector_poll" => {
+            args!(name, args, id: String, flow_id: String);
+            json(crate::connectors::poll(ctx, id, flow_id).await)
+        }
+        "connector_disconnect" => {
+            args!(name, args, id: String);
+            json(crate::connectors::disconnect(ctx, id).await)
+        }
         "mcp_check" => {
             args!(name, args, server_id: String);
             json(mcp::mcp_check(ctx, server_id).await)
@@ -468,7 +493,7 @@ pub async fn dispatch(
         }
         "mcp_signed_in" => {
             args!(name, args, server_id: String);
-            json(blocking(ctx, move |c| mcp::mcp_signed_in(c, server_id)).await)
+            json(mcp::mcp_signed_in(ctx, server_id).await)
         }
 
         // The Python runtime (python_runtime.rs)
@@ -661,10 +686,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 96 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 101 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            96
+            101
         );
     }
 

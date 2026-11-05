@@ -43,6 +43,7 @@ export const DELETE_ORDER = [
   "network_grants",
   "project_tools_off",
   "project_mcp_servers",
+  "connector_accounts",
   "mcp_servers",
   "response_cache",
   "chunk_vectors",
