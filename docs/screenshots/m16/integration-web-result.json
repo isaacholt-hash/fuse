@@ -1,0 +1,31 @@
+{
+  "syntheticModel": true,
+  "actualNativeWorktrees": true,
+  "executionOwner": "runner",
+  "callerNavigatedAway": true,
+  "liveProviderCalls": 0,
+  "integrated": true,
+  "pushed": false,
+  "parentUnchanged": true,
+  "actualSpend": 2880,
+  "changes": 2,
+  "children": 2,
+  "complete": 2,
+  "requests": 16,
+  "rootChanges": 0,
+  "rootSpend": 2880,
+  "roots": 2,
+  "unknown": 0,
+  "integrationBranch": "fuse/integration/47e06f4f-fdd9-4634-a8eb-1cb91db789c1",
+  "integrationCommit": "da10615b2680de41a36bdd5a1c6f9c1d6a3a8df8",
+  "approvedChildCommits": [
+    "f9f1a7b517fb2491cabe3b60ee030b8d05984612"
+  ],
+  "committedChildren": 2,
+  "conflictPreserved": true,
+  "staleParentRefused": true,
+  "cancelCreatesNoCommit": true,
+  "acknowledgementRecoveredFromJournal": true,
+  "parentIndexUnchanged": true,
+  "automaticProviderRequestsAfterReview": 0
+}

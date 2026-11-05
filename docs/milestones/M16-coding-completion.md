@@ -25,7 +25,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 - [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
 - [x] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
 - [x] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
-- [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
+- [x] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
 
 ## Behavior and boundaries
 
@@ -533,3 +533,23 @@ Fresh native startup and the child review dialog were exercised in both themes u
 throwaway repositories, private databases/keyrings and synthetic model replies. Reviewed
 captures are in `docs/screenshots/m16/integration-native-*.png`. These checks do not establish
 live provider quality or released owner acceptance.
+
+Final step-5 validation passes Clippy for both feature sets/all targets, formatting for the
+main and Windows helper crates, 238 desktop Rust tests (426.42 s) and 252 server Rust tests
+(477.67 s). Fresh production desktop/web/runner builds pass and exclude fixture markers.
+The recorded parallel benchmark passes 15 native cases, 49 shared cases and three browser
+scenarios (59.08 s), taking 110,082 ms total at schema 72 / catalog price version 2026-10-27.
+Its 16 synthetic requests total 2,880 micro-dollars, exactly matching the sum of root totals,
+with no unknown billing. Both children commit after review; one exact selected child is
+integrated after conflict and stale-parent refusals. The original dirty file, index and HEAD
+remain unchanged. Cancellation creates no commit; an interrupted acknowledgement is
+confirmed from the durable journal. Review/integration adds no provider request or push.
+
+The preserved HULK benchmark passes 5/5 (13.47 s). All 24 final browser captures, including
+mobile layouts and light/dark review, conflict, stale-input, recovered-acknowledgement and
+completion states, were reviewed alongside the native captures. Evidence is in
+`docs/screenshots/m16/integration-*`. The local recorded benchmark identifies implementation
+commit `85e2f14b9177ca488ad9dbedebed7276a658768e`; its dirty flag reflects the pending
+README/CLAUDE milestone transition. These final evidence/documentation changes require the
+current-head CI run, including Windows and the preserved encrypted-sync benchmark, before
+merge. No live owner acceptance or installation was performed.
