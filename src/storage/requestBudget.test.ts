@@ -15,7 +15,7 @@ import {
 } from "./requestBudget";
 import type { RequestLogEntry } from "./requestLog";
 import { createThread, setThreadProject } from "./threads";
-import { spentSince } from "./budgets";
+import { addBudget, allowBudgetUntil, spentSince } from "./budgets";
 
 async function setup() {
   const db = openTestDb();
@@ -205,4 +205,53 @@ test("cost attribution still follows a moved chat, with direct project scope onl
   await setThreadProject(db, tenant, thread.id, null);
   expect(await spentSince(db, tenant, 0, original.id)).toBe(0);
   expect(await spentSince(db, tenant, 0, moved.id)).toBe(0);
+});
+
+test("global budgets reserve atomically across runs and native audio; unknown holds survive a new period", async () => {
+  const { db, hold } = await setup();
+  const budget = await addBudget(db, tenant, {
+    projectId: null,
+    period: "day",
+    limitMicro: 1000,
+    hardStop: true,
+  });
+  const make = (id: string): Reservation => ({ ...hold(id, 600), runId: null });
+  const answers = await Promise.all([
+    reserveRequest(db, tenant, make("research")),
+    reserveRequest(db, tenant, { ...make("audio"), purpose: "transcribe" }),
+  ]);
+  expect(answers).toEqual([true, false]);
+  expect(await dispatchRequest(db, tenant, "research")).toBe(true);
+  await settleRequest(db, tenant, "research", receipt("unknown", 100));
+  await db.execute("UPDATE request_reservations SET created_at=1");
+  expect(await reserveRequest(db, tenant, { ...make("later"), boundMicroUsd: 401 })).toBe(false);
+  expect(await reserveRequest(db, tenant, { ...make("fits"), boundMicroUsd: 400 })).toBe(true);
+  await db.execute("UPDATE budgets SET limit_micro_usd=999 WHERE id=?", [budget]);
+  expect(await dispatchRequest(db, tenant, "fits")).toBe(false);
+  await allowBudgetUntil(db, tenant, budget, Date.now() + 60_000);
+  expect(await dispatchRequest(db, tenant, "fits")).toBe(true);
+});
+
+test("project budgets recheck a moved Chat at dispatch without consuming another project's allowance", async () => {
+  const { db, hold } = await setup();
+  const first = await createProject(db, tenant, "First");
+  const second = await createProject(db, tenant, "Second");
+  const thread = await createThread(db, tenant, "Chat", first.id);
+  await addBudget(db, tenant, {
+    projectId: second.id,
+    period: "month",
+    limitMicro: 100,
+    hardStop: true,
+  });
+  expect(
+    await reserveRequest(db, tenant, {
+      ...hold("moving", 700),
+      threadId: thread.id,
+      projectId: first.id,
+    }),
+  ).toBe(true);
+  await setThreadProject(db, tenant, thread.id, second.id);
+  expect(await dispatchRequest(db, tenant, "moving")).toBe(false);
+  await setThreadProject(db, tenant, thread.id, first.id);
+  expect(await dispatchRequest(db, tenant, "moving")).toBe(true);
 });

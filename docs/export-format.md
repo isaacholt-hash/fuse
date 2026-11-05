@@ -98,3 +98,10 @@ How records are written:
 ## Compatibility
 
 Readers should ignore unknown tables and columns. A new version number means the layout changed, not that columns were added; columns are added freely within a version.
+
+
+M14 schema-65 `research_state` and `research_operations` are owner-local execution journals,
+excluded from this portable export. Finished research reports are Markdown artifact versions
+and assistant messages and use the existing export format. Restoring those records never
+executes research. Source evidence remains in the owner's run history; run steps retain the
+existing export exclusion. Encrypted database backups preserve local journals separately.

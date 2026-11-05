@@ -197,8 +197,9 @@ test.each([true, false])(
   "search receipt settles only reported tool costs; reported=%s",
   async (reported) => {
     const { deps, context, db, run } = await setup(100_000_000);
+    const searchModel = { ...fixtureModel, provider: "openai" as const };
     const adapter: ProviderAdapter = {
-      provider: "anthropic",
+      provider: "openai",
       listModels: () => Promise.resolve([]),
       async *streamChat(_messages, _model, options) {
         expect(options).toMatchObject({ noRetry: true, searchBounds: { maxUses: 2 } });
@@ -225,7 +226,7 @@ test.each([true, false])(
       trackedChat(
         deps,
         adapter,
-        fixtureModel,
+        searchModel,
         [],
         { webSearch: true, searchBounds: { maxUses: 2 } },
         context,
@@ -241,12 +242,12 @@ test.each([true, false])(
       reported
         ? 0
         : requestBound(
-            fixtureModel,
+            searchModel,
             [],
             {
               webSearch: true,
               searchBounds: { maxUses: 2 },
-              maxOutputTokens: Math.min(fixtureModel.maxOutput, 4000),
+              maxOutputTokens: Math.min(searchModel.maxOutput, 4000),
             },
             defaultCatalog.toolPrices,
           ),
@@ -254,3 +255,23 @@ test.each([true, false])(
     expect((await getRun(db, tenant, run.id))?.spentMicroUsd).toBe(reported ? 20_000 : 0);
   },
 );
+
+test("undocumented hosted-search inference limits fail closed before dispatch", async () => {
+  const { deps, context, db } = await setup(100_000_000);
+  let sent = false;
+  const adapter: ProviderAdapter = {
+    provider: "anthropic",
+    listModels: () => Promise.resolve([]),
+    async *streamChat() {
+      sent = true;
+      await Promise.resolve();
+      yield { type: "text", text: "must not dispatch" };
+    },
+  };
+  await expect(
+    read(trackedChat(deps, adapter, fixtureModel, [], { webSearch: true }, context)),
+  ).rejects.toThrow("conservative hosted-search cost bound");
+  expect(sent).toBe(false);
+  expect(await listRecentRequests(db, tenant)).toEqual([]);
+  expect(await db.select("SELECT id FROM request_reservations")).toEqual([]);
+});

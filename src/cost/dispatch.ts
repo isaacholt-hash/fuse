@@ -41,6 +41,11 @@ export function requestBound(
       m.attachments?.some((a) => a.kind !== "text") || m.toolResults?.some((t) => t.images?.length),
   );
   const uses = searchUses(options);
+  if (uses !== null && searchConfig.providers[model.provider].cost_bound === null)
+    throw new ProviderError(
+      "invalid_request",
+      "This provider does not document a conservative hosted-search cost bound. Choose an eligible search model; non-search planning and synthesis remain available.",
+    );
   const fee = uses === null ? 0 : searchFee(model, toolPrices);
   const input =
     uses !== null
@@ -109,10 +114,10 @@ export async function* trackedChat(
   messages: ChatMessage[],
   options: ChatOptions,
   context: Omit<Reservation, "id" | "boundMicroUsd" | "provider" | "model"> &
-    Pick<RequestLogEntry, "tier">,
+    Pick<RequestLogEntry, "tier"> & { attemptId?: string },
   signal?: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
-  const id = uuidv7();
+  const id = context.attemptId ?? uuidv7();
   // Keep a single tool turn bounded; long work uses the existing multi-turn loop.
   const bounded = {
     ...options,

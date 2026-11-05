@@ -245,3 +245,21 @@ per-request allowance, conservative token/tool reservations and unresolved billi
 counter is absent. Provider search can still see its submitted query and returned content;
 these bounds do not make external sources trustworthy. The dedicated restricted research
 executor and its public-page access are implemented separately in M14 step 2.
+
+
+### Restricted research execution (M14)
+
+The research executor has no repository, command, Python or MCP dependency. It receives only
+explicitly selected, currently permitted Chat context, native search and bounded public-page
+reads. Incognito input and local-only HULK context are excluded. Fresh provider policy and
+selected-content fingerprints are checked before each operation. Rust retains destination,
+redirect and egress checks. A headless HTML text reader never executes scripts or fetches
+markup resources. Hostile passages are flagged and excluded from model evidence.
+
+The model supplies source IDs and quoted passages rather than arbitrary citation targets.
+FUSE validates collected URLs/passages and a separate Best request reviews claim support;
+missing, duplicate and invalid reviews leave claims unverified. This does not establish a
+source's correctness. Reports retain limitations and disagreements when size limits require
+partial publication. Unknown billing and lost checkpoint acknowledgements never authorize a
+blind paid replay. A duplicated start request observes its original run. Local leases and
+journals are excluded from sync/export; their encrypted backups have independent retention.
