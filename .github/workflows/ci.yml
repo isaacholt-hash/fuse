@@ -321,9 +321,6 @@ jobs:
       - name: Windows native connector fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib connectors:: -- --test-threads=2"
-      - name: Windows scoped context and accounting fixtures
-        if: ${{ !cancelled() }}
-        run: pnpm exec vitest run src/context/access.test.ts src/context/tools.test.ts src/cost/embedding.test.ts src/agent/registry.test.ts src/chat/chatTools.test.ts
 
   # M8 step 14: the app driven like a person would use it, on Windows, with scripted models
   # (src/e2e/deps.ts) and no keys. e2e/README.md says how it works.
@@ -348,6 +345,8 @@ jobs:
         run: pnpm research:bench
       - name: Windows child execution and shared reservations
         run: pnpm exec vitest run src/parallel src/storage/requestBudget.test.ts
+      - name: Windows scoped context and accounting fixtures
+        run: pnpm exec vitest run src/context/access.test.ts src/context/tools.test.ts src/cost/embedding.test.ts src/agent/registry.test.ts src/chat/chatTools.test.ts
       - name: Windows skill packages and invocation
         run: pnpm exec vitest run src/skills
       - uses: actions/upload-artifact@v7
