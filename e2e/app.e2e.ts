@@ -282,8 +282,15 @@ test.skipIf(!PYTHON)(
 test("M13: dictation consent, editable transcript, cancellation and both themes", async () => {
   await app.run('localStorage.setItem("fuse.e2e.dictation", "yes");');
   await app.reload();
-  await app.chord("1");
-  await app.chord("n");
+  // Page.load can precede React/database hydration. Wait before navigating away from the
+  // prior Code session, then prove the fixture's empty-history baseline before dictating.
+  await app.find(composer);
+  await app.click('//*[@aria-label="Area"]//button[normalize-space()="Chat"]');
+  await app.find(
+    '//*[@aria-label="Area"]//button[@aria-pressed="true" and normalize-space()="Chat"]',
+  );
+  await app.click(button("New chat"));
+  await app.gone("//*[@data-answer]");
   await app.find(composer);
   await app.click('//button[@aria-label="Dictate"]');
   await app.find('//*[@role="dialog"]');
