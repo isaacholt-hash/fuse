@@ -553,3 +553,7 @@ commit `85e2f14b9177ca488ad9dbedebed7276a658768e`; its dirty flag reflects the p
 README/CLAUDE milestone transition. These final evidence/documentation changes require the
 current-head CI run, including Windows and the preserved encrypted-sync benchmark, before
 merge. No live owner acceptance or installation was performed.
+
+The first step-5 CI attempt (42108997647) stopped at Prettier on the two newly copied
+benchmark evidence JSON files. Their formatting is corrected without changing values or
+application behavior. A fresh full five-gate run on the corrected commit is required.

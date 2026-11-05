@@ -18,9 +18,7 @@
   "unknown": 0,
   "integrationBranch": "fuse/integration/47e06f4f-fdd9-4634-a8eb-1cb91db789c1",
   "integrationCommit": "da10615b2680de41a36bdd5a1c6f9c1d6a3a8df8",
-  "approvedChildCommits": [
-    "f9f1a7b517fb2491cabe3b60ee030b8d05984612"
-  ],
+  "approvedChildCommits": ["f9f1a7b517fb2491cabe3b60ee030b8d05984612"],
   "committedChildren": 2,
   "conflictPreserved": true,
   "staleParentRefused": true,
