@@ -23,7 +23,7 @@ AG-11 through AG-02; supports CA-10.
 
 - [x] **1. Native accounts and built-in MCP.** Add first-party MCP transport through the existing registry, owner-registered public application IDs, device authorization, native token storage and status-only UI responses.
 - [x] **2. Microsoft readers.** OneDrive list/search/read, Outlook Mail list/search/read and Outlook Calendar list/read for personal and work/school accounts, with delegated read scopes and explicit per-service consent.
-- [ ] **3. GitHub readers.** Repository, issue, PR and pinned diff readers through a read-only GitHub App. Expose source revision and verified path/line metadata for review.
+- [x] **3. GitHub readers.** Repository, issue, PR and pinned diff readers through a read-only GitHub App. Expose source revision and verified path/line metadata for review.
 - [ ] **4. Setup and verification.** Shared M12 Settings controls, project enablement, account expiry/disconnect/tenant errors, deterministic authorization and pagination fixtures, desktop/web parity, reviewed screenshots and exact registration instructions.
 
 ## Behavior and boundaries
@@ -147,4 +147,52 @@ Reviewed current native Settings startup and production web Settings in both the
 [web dark](../screenshots/m15/readers-web-dark.png).
 These verify the shared app's startup; this step adds reader/call handling. Shared sign-in and
 project controls and their interaction screenshots remain in step 4. Live owner accounts and
+provider-backed acceptance remain unperformed.
+
+
+Step 3 implements ten GitHub readers through the existing native MCP participant. Each read
+checks selected-installation read permissions and actual repository membership; public
+repository reachability cannot bypass selection. PR base/head and comparison merge-base
+commits are pinned. Diff hunk lines and file tree/blob identities provide source evidence;
+missing patches/API ceilings are explicitly partial. Native Git-tree walking refuses symlinks
+and submodules. No writes, clones, comments, execution, migration or dependency are added.
+Shared sign-in/project controls and released owner account acceptance remain in step 4.
+
+Current-commit verification and previous-step release evidence will follow after checks.
+
+
+Previous step: [PR #301](https://github.com/isaacholt-hash/fuse/pull/301) merged as
+`915dfa1a63f460fb2d151ad7d3432fcad04ac2c5` on 2026-11-05T10:56:35Z. All five gates and
+the JSON gate passed on `1889e5e1d11383ea9721aee7ad380acd7e3a1409` in
+[CI 42013764970](https://github.com/isaacholt-hash/fuse/actions/runs/42013764970). Reviewed
+Windows dictation Settings and both-theme research completion. Recorded dictation passed
+31/31; encrypted sync passed 16/16 at schema 67 in 21,506 ms; research passed eight Linux/HULK
+scenarios in 19,928 ms and six Windows scenarios in 10,649 ms (two Linux-only cases explicitly
+skipped). [Release v0.1.221](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.221) was
+published 2026-11-05T11:06:07Z by
+[release workflow 42014855467](https://github.com/isaacholt-hash/fuse/actions/runs/42014855467).
+All eleven assets and seven signed updater entries matched the merged build. No deployment,
+account authorization or live provider acceptance was performed.
+
+Step 3 adds native connector fixture execution to the existing Windows compatibility gate;
+all five gate names and the existing HULK/encrypted-sync/research/dictation benchmarks are
+preserved. Real account authorization remains a separate owner action.
+
+
+Step 3 final local verification: `pnpm check` passed 1,106 tests across 191 files, with 21
+live/manual or opt-in cases in ten files explicitly skipped (245.41 s). Rust formatting and
+both default/server all-target clippy checks passed. Default Rust passed 201/201 (208.49 s)
+and server Rust 215/215 (245.52 s), including all thirteen new GitHub scenarios and the
+existing native authorization/Microsoft readers. A test-only lock held across an await was
+fixed before restarting the full verification; no assertion was weakened. Production web
+and runner builds passed. The preserved HULK benchmark passed 5/5 (12.43 s), and production
+web click-through passed 10/10 (54.03 s). New native Windows fixture execution awaits CI.
+
+Reviewed current native Settings startup and production web Settings in both themes:
+[desktop light](../screenshots/m15/github-native-light.png),
+[desktop dark](../screenshots/m15/github-native-dark.png),
+[web light](../screenshots/m15/github-web-light.png),
+[web dark](../screenshots/m15/github-web-dark.png).
+These verify current shared startup; this step supplies the GitHub readers. Shared account
+controls and their interaction screenshots follow in step 4. Real account authorization and
 provider-backed acceptance remain unperformed.

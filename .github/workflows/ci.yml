@@ -219,6 +219,9 @@ jobs:
       - name: Windows atomic file installation
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib files:: -- --test-threads=1"
+      - name: Windows native connector fixtures
+        if: ${{ !cancelled() }}
+        run: "cargo test --manifest-path src-tauri/Cargo.toml --lib connectors:: -- --test-threads=2"
 
   # M8 step 14: the app driven like a person would use it, on Windows, with scripted models
   # (src/e2e/deps.ts) and no keys. e2e/README.md says how it works.

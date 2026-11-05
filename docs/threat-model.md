@@ -307,3 +307,15 @@ source script/macro. Archive/page/character bounds constrain decoding. Returned 
 selected images follow ordinary conversation privacy; transport URLs and native grants do not.
 A revoked token removes local project access; provider-side authorization remains under owner
 control. Recorded fixtures prove these boundaries separately from owner-operated live checks.
+
+### M15 GitHub read boundary
+
+First-party GitHub readers require an enabled local project and an allowed model recipient.
+Native code verifies that the App installation is restricted to selected repositories with
+only the intended read permissions, and that the requested repository belongs to the
+account/App intersection. Public reachability is insufficient. Fixed HTTPS GET endpoints
+never follow returned download links or issue write operations. Immutable commit/tree/blob
+selection prevents branch movement and symlink dereference from silently changing file
+evidence. Partial patches and API ceilings remain visible; a diff alone does not establish
+review completeness. Account data remains untrusted MCP data under existing injection and
+approval rules. Temporary pagination state has no portable storage or access-grant effect.

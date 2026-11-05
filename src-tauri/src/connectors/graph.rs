@@ -116,7 +116,7 @@ pub(super) async fn permitted(
     service: &str,
 ) -> Result<(), String> {
     if !r.services.iter().any(|s| s == service) {
-        return Err("Enable and authorize this Microsoft service first.".into());
+        return Err("Enable and authorize this connector service first.".into());
     }
     let pool = ctx.db.pool()?;
     let (project_id, scope) = if let Some(thread_id) = c

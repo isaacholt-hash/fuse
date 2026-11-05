@@ -2,6 +2,7 @@
 //! grants live only in the existing native secret store. No OAuth response is logged or
 //! forwarded to a webview. Device codes exist only in this installation's process memory.
 use crate::ctx::Ctx;
+mod github;
 mod graph;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -166,6 +167,7 @@ struct Grant {
 pub struct Accounts {
     flows: Mutex<HashMap<String, Flow>>,
     cursors: Mutex<HashMap<String, graph::Cursor>>,
+    github_cursors: Mutex<HashMap<String, github::Cursor>>,
 }
 #[derive(Serialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -377,6 +379,7 @@ pub(crate) async fn configure(
     ctx.keys.store.delete(&secret_id(&r.id)?)?;
     flows.remove(&r.id);
     graph::clear(ctx, &r.id).await;
+    github::clear(ctx, &r.id).await;
     let pool = ctx.db.pool()?;
     let mut tx = pool
         .begin()
@@ -660,6 +663,7 @@ pub(crate) async fn disconnect(ctx: &Ctx, id: String) -> Result<AccountStatus, S
     let r = registration(ctx, &id).await?;
     flows.remove(&id);
     graph::clear(ctx, &id).await;
+    github::clear(ctx, &id).await;
     ctx.keys.store.delete(&secret_id(&id)?)?;
     sqlx::query("DELETE FROM project_mcp_servers WHERE server_id=?")
         .bind(&id)
@@ -670,7 +674,6 @@ pub(crate) async fn disconnect(ctx: &Ctx, id: String) -> Result<AccountStatus, S
     Ok(status("signed_out"))
 }
 /// For native readers only; never exported as a command. Refresh is serialized with sign-out.
-#[allow(dead_code)] // M15.2 readers consume this native-only transport.
 pub(crate) async fn access_token(ctx: &Ctx, id: &str) -> Result<String, String> {
     access_using(ctx, id, None).await
 }
@@ -725,7 +728,7 @@ async fn access_using(
     Ok(grant.access)
 }
 /// In-process MCP transport: same health/tool/result contract as stdio/HTTP, no downloaded
-/// server, shell or generic network tunnel. Reader methods arrive in M15.2 and M15.3.
+/// server, shell or generic network tunnel. Both providers use the existing MCP approvals.
 pub(crate) async fn builtin(ctx: &Ctx, id: &str) -> Result<bool, String> {
     sqlx::query_scalar::<_,i64>("SELECT COUNT(*) FROM mcp_servers WHERE id=? AND builtin_kind IS NOT NULL AND deleted_at IS NULL").bind(id).fetch_one(&ctx.db.pool()?).await.map(|n| n>0).map_err(|_| "Couldn't read connector settings.".into())
 }
@@ -735,10 +738,9 @@ pub(crate) async fn health(ctx: &Ctx, id: &str) -> Result<crate::mcp::McpHealth,
         server_name: format!("FUSE {}", r.kind.as_str()),
         server_version: env!("CARGO_PKG_VERSION").into(),
         protocol: crate::mcp::PROTOCOL.into(),
-        tools: if r.kind == Kind::Microsoft {
-            graph::tools(&r)
-        } else {
-            vec![]
+        tools: match r.kind {
+            Kind::Microsoft => graph::tools(&r),
+            Kind::Github => github::tools(),
         },
     })
 }
@@ -754,7 +756,7 @@ pub(crate) async fn call(
         .ok_or("Built-in readers require an enabled project and a chosen model provider.")?;
     match r.kind {
         Kind::Microsoft => graph::call(ctx, &r, name, arguments, &context).await,
-        Kind::Github => Err("GitHub readers are not available in this build.".into()),
+        Kind::Github => github::call(ctx, &r, name, arguments, &context).await,
     }
 }
 
