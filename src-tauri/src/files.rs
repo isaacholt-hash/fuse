@@ -183,7 +183,7 @@ pub(crate) fn file_wipe(ctx: &Ctx) -> Result<usize, String> {
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
     crate::skill_scripts::cleanup(&ctx.data_dir);
-    crate::code_worktrees::wipe_worktrees(&ctx.data_dir)?;
+    crate::code_worktrees::integration::wipe(&ctx.data_dir)?;
     wipe(&ctx.data_dir)
 }
 

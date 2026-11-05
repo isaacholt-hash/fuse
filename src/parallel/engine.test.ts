@@ -400,3 +400,95 @@ test("child commands require their own approvals despite existing project grants
   ]);
   expect(await f.db.select("SELECT id FROM network_grants")).toEqual([]);
 });
+
+test("children persist plans on the inherited planning model and charge planning/synthesis once against the shared cap", async () => {
+  const f = await fixture();
+  const originalGit = f.deps.git;
+  const original = originalGit?.prepareChildren?.bind(originalGit);
+  if (!original || !originalGit) throw new Error("Missing fixture preparation");
+  f.deps.git = {
+    ...originalGit,
+    run: originalGit.run.bind(originalGit),
+    prepareChildren: async (request) => {
+      const children = await original(request);
+      for (const child of children)
+        await f.db.execute("UPDATE runs SET planner=? WHERE id=?", [
+          `${model.provider}/${model.id}`,
+          child.id,
+        ]);
+      return children;
+    },
+  };
+  const baseAdapter = f.deps.adapterFor;
+  const plans: { model: string; tools: number }[] = [];
+  f.deps.adapterFor = (provider) => {
+    const adapter = baseAdapter(provider);
+    return {
+      ...adapter,
+      async *streamChat(history, selected, request, signal): AsyncGenerator<StreamEvent> {
+        const planning = request.system?.includes("<coding_plan>") ?? false;
+        let synthesis = false;
+        try {
+          const value: unknown = JSON.parse(history[0]?.content ?? "");
+          synthesis = Boolean(
+            value &&
+            typeof value === "object" &&
+            "task" in value &&
+            typeof value.task === "string" &&
+            value.task.startsWith("Child task ") &&
+            "evidence" in value,
+          );
+        } catch {
+          /* Plain task. */
+        }
+        if (!planning && !synthesis) {
+          yield* adapter.streamChat(history, selected, request, signal);
+          return;
+        }
+        if (planning) plans.push({ model: selected, tools: request.tools?.length ?? 0 });
+        yield {
+          type: "text",
+          text: planning
+            ? "1. Inspect this child task. 2. Make the isolated edit. 3. Verify it."
+            : "The child result stays in its worktree.",
+        };
+        yield {
+          type: "done",
+          usage: {
+            inputTokens: 10,
+            outputTokens: 10,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            reasoningTokens: 0,
+            webSearchCalls: 0,
+          },
+          usageReported: true,
+          stopReason: "end_turn",
+          providerRequestId: null,
+          attempts: 1,
+          turn: { provider, model: selected, items: [] },
+        };
+      },
+    };
+  };
+  const parent = await f.start();
+  expect(parent.status).toBe("done");
+  expect(plans).toEqual([
+    { model: model.id, tools: 0 },
+    { model: model.id, tools: 0 },
+  ]);
+  for (const id of f.prepared)
+    expect(await getRun(f.db, tenant, id)).toMatchObject({
+      plan: "1. Inspect this child task. 2. Make the isolated edit. 3. Verify it.",
+      planner: `${model.provider}/${model.id}`,
+    });
+  const totals = await f.db.select<{ total: number; requests: number }>(
+    "SELECT SUM(cost_micro_usd) AS total,COUNT(*) AS requests FROM request_log",
+  );
+  expect(totals[0]?.requests).toBe(10);
+  expect(parent.spentMicroUsd).toBe(totals[0]?.total);
+  expect(await f.db.select("SELECT id FROM request_reservations WHERE state!='settled'")).toEqual(
+    [],
+  );
+  expect(f.writes).toHaveLength(2);
+});

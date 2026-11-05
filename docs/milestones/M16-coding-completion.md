@@ -25,7 +25,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 - [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
 - [x] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
 - [x] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
-- [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
+- [x] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
 
 ## Behavior and boundaries
 
@@ -484,3 +484,82 @@ probe records only the selected OS names, private temporary names, COMSPEC/PROMP
 current-drive entry; the synthetic inherited sentinel is absent. Parent/sibling file denial,
 separate writable worktrees, path authority and retained failures all pass. This is real
 Windows execution evidence; the screenshot-only follow-up still needs its own full CI gate.
+
+Step 4 shipped in [PR #310](https://github.com/isaacholt-hash/fuse/pull/310), merged
+2026-11-05T19:49:06Z as `b497bc09130a1a87c84c9e121eff12a10e56a3e0`. All five gates passed
+on `68e149ced8c1d1681bb1361100b6aa0dad9daab7` in
+[CI 42095349281](https://github.com/isaacholt-hash/fuse/actions/runs/42095349281), followed by
+the JSON gate, CLEAN merge state and no unresolved reviews/comments. Current CI passes:
+1,218 shared tests (21 skips), 245 server Rust tests, eight Windows native child tests,
+32 sync compatibility, nine atomic installation, four review, three script, 41 connector
+and 12 sandbox cases. Windows click-through passes 16 with 24 explicit skips; current
+research setup/completion and dictation images were reviewed in both themes after fixing
+the capture race. All eight current parallel web images were reviewed, including mobile.
+
+Preserved CI benchmarks: HULK 5/5 (11.84 s); encrypted sync 16 scenarios at schema 71
+(33,884 ms); research eight Linux/HULK scenarios (20,060 ms), six Windows scenarios
+(14,208 ms) with two Linux-only server skips. Real parallel web verification passes 2/2
+(17.99 s): 14 synthetic requests, 2,400 micro-dollars, exact root/ledger agreement, two
+separate child changes, no unknown billing, unchanged parent and no integration/push.
+Normal [release 42097508738](https://github.com/isaacholt-hash/fuse/actions/runs/42097508738)
+is building; publication and actual assets must be verified before step 5 ships.
+
+Step 5 integration uses a new reviewed integration branch/worktree. Its commit joins the
+selected exact child commits on the pinned parent base. The approval names those revisions;
+changed inputs and conflicting files pause. The original folder, its index and dirty files
+stay intact. The resulting branch can be reviewed and used through the existing Code/Git
+workflow; creating it never pushes or publishes a PR. Failed worktrees and claims remain
+available for diagnosis, with no automatic execution or integration replay after restart.
+
+Step 4 normal release [v0.1.227](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.227)
+was published 2026-11-05T19:59:06Z by release 42097508738. Its exact source commit, eleven
+nonempty assets and seven updater entries matched their published signature files. No
+installation, production deployment, enrollment or owner acceptance was performed.
+
+Step 5 adds child plans/progress/cost and explicit native commit/integration review. Schema 72
+stores owner-local review snapshots and mutation journals, excluded from sync and portable
+export; backup/deletion classifications are explicit. Application-authored commits use raw
+objects, fixed Git arguments and compare-and-swap refs, with no hooks or checkout filters.
+Reviews pin parent revision/fingerprint/index, child revision and file bytes. Unsupported
+links, secret paths, oversized/binary changes, conflicts and stale inputs fail closed.
+Lost caller responses are recovered from the retained owner journal without replaying work.
+Global deletion refuses an active reviewed mutation and removes only app-owned worktree bytes.
+
+The complete application check passes 1,229 tests in 211 files, with 21 existing opt-in/live
+cases skipped in ten files (254.92 s); lint, formatting, type checking and secret scan pass.
+The focused shared suite passes 49 tests, including combined reservations, scoped Stop,
+inherited Best planning, explicit review/selection and actionable native refusal messages.
+Fresh native startup and the child review dialog were exercised in both themes using only
+throwaway repositories, private databases/keyrings and synthetic model replies. Reviewed
+captures are in `docs/screenshots/m16/integration-native-*.png`. These checks do not establish
+live provider quality or released owner acceptance.
+
+Final step-5 validation passes Clippy for both feature sets/all targets, formatting for the
+main and Windows helper crates, 238 desktop Rust tests (426.42 s) and 252 server Rust tests
+(477.67 s). Fresh production desktop/web/runner builds pass and exclude fixture markers.
+The recorded parallel benchmark passes 15 native cases, 49 shared cases and three browser
+scenarios (59.08 s), taking 110,082 ms total at schema 72 / catalog price version 2026-10-27.
+Its 16 synthetic requests total 2,880 micro-dollars, exactly matching the sum of root totals,
+with no unknown billing. Both children commit after review; one exact selected child is
+integrated after conflict and stale-parent refusals. The original dirty file, index and HEAD
+remain unchanged. Cancellation creates no commit; an interrupted acknowledgement is
+confirmed from the durable journal. Review/integration adds no provider request or push.
+
+The preserved HULK benchmark passes 5/5 (13.47 s). All 24 final browser captures, including
+mobile layouts and light/dark review, conflict, stale-input, recovered-acknowledgement and
+completion states, were reviewed alongside the native captures. Evidence is in
+`docs/screenshots/m16/integration-*`. The local recorded benchmark identifies implementation
+commit `85e2f14b9177ca488ad9dbedebed7276a658768e`; its dirty flag reflects the pending
+README/CLAUDE milestone transition. These final evidence/documentation changes require the
+current-head CI run, including Windows and the preserved encrypted-sync benchmark, before
+merge. No live owner acceptance or installation was performed.
+
+The first step-5 CI attempt (42108997647) stopped at Prettier on the two newly copied
+benchmark evidence JSON files. Their formatting is corrected without changing values or
+application behavior. A fresh full five-gate run on the corrected commit is required.
+
+The corrected-evidence CI run (42109627249) passes shared checks, full Rust checks, HULK
+benchmarks and Windows click-through. Windows runs all 15 child worktree tests successfully,
+but its separate all-target sandbox-helper Clippy check rejects the new file-link helper's
+placement after the test module. The helper is moved before tests without changing its body.
+Its earlier failure remains recorded; all five gates must pass again on the corrected head.

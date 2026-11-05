@@ -28,5 +28,5 @@ assert (repo/'notes.txt').read_text()=='uncommitted parent\n'
 assert not (repo/'result.txt').exists()
 assert subprocess.check_output(['git','-C',str(repo),'status','--porcelain=v1'],text=True).strip()=='M notes.txt'
 assert subprocess.check_output(['git','-C',str(repo),'rev-list','--count','HEAD'],text=True).strip()=='1'
-print('Parent retains its exact dirty file and original commit; child worktrees remain separate.')
+print('Parent retains its exact dirty file, index and original commit; reviewed integration uses a separate branch/worktree.')
 VERIFY

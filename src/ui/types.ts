@@ -148,6 +148,7 @@ export interface MessageView {
 /** A coding run shown on its answer (M6 step 5b). */
 export interface RunView {
   id: string;
+  parallel?: import("@/parallel/types").ParallelView;
   readOnly?: boolean;
   /** WF-01: "Coding run" or "Work run". */
   title: string;

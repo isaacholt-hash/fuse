@@ -381,6 +381,14 @@ export function historyFromSteps(
         content: s.text,
         ...(s.native ? { native: s.native } : {}),
       });
+    } else if (
+      s.call.name === "commit_reviewed_child" ||
+      s.call.name === "integrate_reviewed_children"
+    ) {
+      // These are explicit UI approvals, never model tool calls. Preserve their audit as
+      // data without manufacturing an unmatched provider tool-result message on Continue.
+      flush();
+      history.push({ role: "user", content: asData(s.call.name, s.output) });
     } else {
       // M9 step 3: marked as data from where it came from, on every turn it's sent.
       results.push({
@@ -1769,18 +1777,39 @@ async function executeChild(
       ...(deps.git ? { git: deps.git } : {}),
     };
     const scoped = await forRun({ ...deps, ...raw, rawExecution: raw }, childId);
-    await work(scoped, childId, {
-      signal: controller.signal,
-      onProgress: (p) => {
-        input.dog?.progress();
-        void progress(
-          deps,
-          parentId,
-          input,
-          `Child ${childId}: ${p.run.status}${p.streaming ? `\n${p.streaming.slice(-2000)}` : ""}`,
-        ).catch(() => {});
+    const childRun = await getRun(db, tenant, childId);
+    if (!childRun) throw new Error("The child was deleted before planning.");
+    let plan: ((signal: AbortSignal) => Promise<void>) | undefined;
+    if (childRun.planner && !childRun.plan) {
+      const [provider, ...parts] = childRun.planner.split("/");
+      const planner = findModel(
+        deps.catalog,
+        provider as CatalogModel["provider"],
+        parts.join("/"),
+      );
+      if (!planner || planner.provider === "local")
+        throw new Error(
+          "The approved child planning model is unavailable. Its worktree is retained without dispatch.",
+        );
+      plan = (signal) => writePlan(scoped, childRun, planner, signal);
+    }
+    await work(
+      scoped,
+      childId,
+      {
+        signal: controller.signal,
+        onProgress: (p) => {
+          input.dog?.progress();
+          void progress(
+            deps,
+            parentId,
+            input,
+            `Child ${childId}: ${p.run.status}${p.streaming ? `\n${p.streaming.slice(-2000)}` : ""}`,
+          ).catch(() => {});
+        },
       },
-    });
+      plan,
+    );
   } catch (error) {
     if ((await getRun(db, tenant, childId))?.status === "running")
       await setRunStatus(

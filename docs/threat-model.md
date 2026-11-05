@@ -385,7 +385,26 @@ Durable parent/tool revocation is polled natively. Resource monitoring bounds gr
 possible transient overshoot, as documented in [parallel-code.md](parallel-code.md).
 
 Child results remain untrusted tool data and pass injection checks. Children cannot recursively
-delegate or use Git tools; committing/integrating requires the next step's explicit parent
+delegate or use Git tools; committing/integrating requires the explicit parent
 review controls. Dispatch claims, paths, active execution and permissions never replicate.
 Stop/restart retains evidence and unknown billing instead of replaying paid work. App-managed
 worktree deletion cannot erase parent repository objects, independent backups or external copies.
+
+
+### M16 reviewed child commits and integration
+
+Only the execution owner can review/commit retained child bytes. Native controls verify the
+recorded worktree location, Git pointer hash, branch identity and common repository before
+using child Git metadata. Bounded no-follow file reads refuse hard links and reparse points.
+Reviews pin parent revision/fingerprint/index and exact child bytes; stale input invalidates
+approval. Raw objects, fixed argument lists, disabled hooks/signing and compare-and-swap refs
+avoid repository programs. Application authorship is disclosed before approval.
+
+Integration writes a fresh branch/worktree with pinned commit parents. The original folder
+and index remain unchanged. Conflicting/colliding paths pause with all evidence retained.
+Durable mutation claims prevent concurrent duplicate work; interrupted acknowledgements are
+never blindly replayed. Owner approval/recovery is explicit. Global wipe serializes against
+active reviewed mutations and can require a retry after they stop. Local snapshots/claims
+never replicate or become portable grants; inert backups and retained Git objects have the
+separate documented retention boundaries. No model can invoke these owner UI actions as a
+new tool or acquire additional command/network permissions.

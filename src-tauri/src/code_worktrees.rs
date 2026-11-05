@@ -10,7 +10,9 @@ use std::{
     process::Stdio,
     time::{Duration, Instant},
 };
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+pub(crate) mod integration;
 
 const FILE_BYTES: usize = 16 * 1024 * 1024;
 const TOTAL_BYTES: usize = 128 * 1024 * 1024;
@@ -98,6 +100,15 @@ fn linklike(path: &Path) -> bool {
 /// Never inherit Git override environment, use hooks, lazily fetch, invoke a pager or consult
 /// an external filesystem monitor. Object reads are bounded and use resolved hashes only.
 async fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>, String> {
+    git_io(root, args, limit, None).await
+}
+
+async fn git_io(
+    root: &Path,
+    args: &[&str],
+    limit: usize,
+    input: Option<&[u8]>,
+) -> Result<Vec<u8>, String> {
     let mut cmd = tokio::process::Command::new("git");
     // A fresh nonexistent directory cannot contain repository-supplied hooks on either OS.
     let hooks = format!(
@@ -106,28 +117,43 @@ async fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>, String
             .join(format!("fuse-no-hooks-{}", id()?))
             .display()
     );
-    cmd.args([
-        "--no-optional-locks",
-        "--no-replace-objects",
-        "-c",
-        "core.fsmonitor=false",
-        "-c",
-        &hooks,
-        "-c",
-        "core.pager=",
-        "-c",
-        "protocol.allow=never",
-        "-c",
-        "submodule.recurse=false",
-    ])
-    .args(args)
-    .current_dir(root)
-    .stdin(Stdio::null())
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .env("GIT_TERMINAL_PROMPT", "0")
-    .env("GIT_NO_LAZY_FETCH", "1")
-    .kill_on_drop(true);
+    let mut work_tree = std::ffi::OsString::from("--work-tree=");
+    work_tree.push(root);
+    cmd.arg(work_tree)
+        .args([
+            "--no-optional-locks",
+            "--no-replace-objects",
+            "-c",
+            "core.fsmonitor=false",
+            "-c",
+            &hooks,
+            "-c",
+            "core.pager=",
+            "-c",
+            "protocol.allow=never",
+            "-c",
+            "submodule.recurse=false",
+            "-c",
+            "commit.gpgSign=false",
+            "-c",
+            "extensions.worktreeConfig=false",
+        ])
+        .args(args)
+        .current_dir(root)
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .env("GIT_NO_LAZY_FETCH", "1")
+        .env("GIT_AUTHOR_NAME", "FUSE")
+        .env("GIT_AUTHOR_EMAIL", "fuse@local")
+        .env("GIT_COMMITTER_NAME", "FUSE")
+        .env("GIT_COMMITTER_EMAIL", "fuse@local")
+        .kill_on_drop(true);
     for key in [
         "FUSE_OPENAI_API_KEY",
         "FUSE_ANTHROPIC_API_KEY",
@@ -142,6 +168,9 @@ async fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>, String
         "GIT_CONFIG_PARAMETERS",
         "GIT_CONFIG",
         "GIT_EXTERNAL_DIFF",
+        "GIT_AUTHOR_DATE",
+        "GIT_COMMITTER_DATE",
+        "GIT_COMMON_DIR",
     ] {
         cmd.env_remove(key);
     }
@@ -153,6 +182,17 @@ async fn git(root: &Path, args: &[&str], limit: usize) -> Result<Vec<u8>, String
     let out = child.stdout.take().ok_or("Git stdout is unavailable.")?;
     let err = child.stderr.take().ok_or("Git stderr is unavailable.")?;
     tokio::time::timeout(Duration::from_secs(15), async {
+        if let Some(input) = input {
+            let mut stdin = child.stdin.take().ok_or("Git input is unavailable.")?;
+            stdin
+                .write_all(input)
+                .await
+                .map_err(|_| "Git refused the reviewed input.")?;
+            stdin
+                .shutdown()
+                .await
+                .map_err(|_| "Couldn't finish Git input.")?;
+        }
         let (mut output, mut errors) = (Vec::new(), Vec::new());
         let mut out = out.take((limit + 1) as u64);
         let mut err = err.take(8193);
@@ -184,11 +224,24 @@ async fn parent(
     ctx: &Ctx,
     parent_id: &str,
 ) -> Result<(serde_json::Value, PathBuf, String), String> {
+    parent_scope(ctx, parent_id, true).await
+}
+
+async fn parent_scope(
+    ctx: &Ctx,
+    parent_id: &str,
+    executing: bool,
+) -> Result<(serde_json::Value, PathBuf, String), String> {
     if crate::exec::sandbox_kind() == crate::exec::SandboxKind::None {
         return Err("Parallel Code requires the existing OS command sandbox to be enabled.".into());
     }
+    let eligible = if executing {
+        ELIGIBLE.to_owned()
+    } else {
+        ELIGIBLE.replace("r.status='running'", "r.status!='running'")
+    };
     let sql = format!(
-        "SELECT r.*,f.path AS folder_path,f.id AS folder_id FROM runs r JOIN run_folders rf ON rf.run_id=r.id AND rf.workspace_id=r.workspace_id AND rf.user_id=r.user_id AND rf.ordinal=0 JOIN folders f ON f.id=rf.folder_id AND f.workspace_id=r.workspace_id AND f.user_id=r.user_id WHERE r.id=? AND r.workspace_id=? AND r.user_id=? AND {ELIGIBLE}"
+        "SELECT r.*,f.path AS folder_path,f.id AS folder_id FROM runs r JOIN run_folders rf ON rf.run_id=r.id AND rf.workspace_id=r.workspace_id AND rf.user_id=r.user_id AND rf.ordinal=0 JOIN folders f ON f.id=rf.folder_id AND f.workspace_id=r.workspace_id AND f.user_id=r.user_id WHERE r.id=? AND r.workspace_id=? AND r.user_id=? AND {eligible}"
     );
     let rows = db::select(
         &ctx.db.pool()?,
@@ -209,6 +262,7 @@ async fn parent(
     .map_err(|_| "The parent repository is missing.")?;
     #[cfg(windows)]
     let root = git_path(root)?;
+    integration::validate_parent_git_root(&root)?;
     let folder = row["folder_id"]
         .as_str()
         .ok_or("Missing parent folder identity.")?
@@ -217,8 +271,12 @@ async fn parent(
 }
 pub async fn base(ctx: &Ctx, parent_id: String) -> Result<Base, String> {
     let (_, root, folder_id) = parent(ctx, &parent_id).await?;
+    read_base(&root, folder_id).await
+}
+
+async fn read_base(root: &Path, folder_id: String) -> Result<Base, String> {
     let commit =
-        String::from_utf8(git(&root, &["rev-parse", "--verify", "HEAD^{commit}"], 128).await?)
+        String::from_utf8(git(root, &["rev-parse", "--verify", "HEAD^{commit}"], 128).await?)
             .map_err(|_| "Invalid Git revision.")?
             .trim()
             .to_owned();
@@ -228,7 +286,7 @@ pub async fn base(ctx: &Ctx, parent_id: String) -> Result<Base, String> {
     // `status` may execute clean filters. List names without conversion and fingerprint only
     // metadata, including tracked deletions. Never read secret-looking working-tree bytes.
     let names = git(
-        &root,
+        root,
         &[
             "ls-files",
             "-z",
@@ -975,6 +1033,395 @@ mod tests {
             std::fs::remove_dir_all(self.dir).unwrap();
         }
     }
+    impl Fixture {
+        async fn finish_children(&self) -> Vec<Child> {
+            let children = prepare(&self.ctx, self.request().await).await.unwrap();
+            self.assert_ready().await;
+            let pool = self.ctx.db.pool().unwrap();
+            for sql in [
+                "UPDATE runs SET status='done' WHERE parent_run_id='parent'",
+                "UPDATE code_children SET state='complete'",
+                "UPDATE runs SET status='done' WHERE id='parent'",
+            ] {
+                db::execute(&pool, sql, &[]).await.unwrap();
+            }
+            children
+        }
+        async fn child_path(&self, id: &str) -> PathBuf {
+            let row = db::select(
+                &self.ctx.db.pool().unwrap(),
+                "SELECT path FROM code_children WHERE child_id=?",
+                &[json!(id)],
+            )
+            .await
+            .unwrap();
+            PathBuf::from(row[0]["path"].as_str().unwrap())
+        }
+    }
+
+    #[tokio::test]
+    async fn reviewed_integration_joins_exact_children_in_a_new_worktree_and_preserves_dirty_parent()
+     {
+        use integration::*;
+        let f = Fixture::new().await;
+        std::fs::write(f.root.join("notes.txt"), "unrelated dirty parent\n").unwrap();
+        let head = f.git(&["rev-parse", "HEAD"]);
+        let index = std::fs::read(f.root.join(".git/index")).unwrap();
+        let children = f.finish_children().await;
+        f.git(&["config", "filter.fixture.clean", "exit 91"]);
+        f.git(&["config", "filter.fixture.smudge", "exit 92"]);
+        let mut pins = Vec::new();
+        for (n, child) in children.iter().enumerate() {
+            let path = f.child_path(&child.id).await;
+            std::fs::write(
+                path.join(format!("child-{n}.txt")),
+                format!("reviewed child {n}\n"),
+            )
+            .unwrap();
+            let snapshot = review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap();
+            assert_eq!(snapshot.files.len(), 1);
+            let committed = apply(&f.ctx, snapshot.id.clone()).await.unwrap();
+            let duplicate = apply(&f.ctx, snapshot.id.clone()).await.unwrap();
+            assert_eq!(duplicate.commit, committed.commit);
+            pins.push(CommitPin {
+                child_id: child.id.clone(),
+                commit: committed.commit,
+            });
+        }
+        let snapshot = plan(&f.ctx, "parent".into(), pins.clone()).await.unwrap();
+        assert_eq!(snapshot.files.len(), 2);
+        let integrated = apply(&f.ctx, snapshot.id.clone()).await.unwrap();
+        assert_eq!(
+            apply(&f.ctx, snapshot.id).await.unwrap().commit,
+            integrated.commit
+        );
+        assert!(integrated.branch.starts_with("fuse/integration/"));
+        for (n, _) in children.iter().enumerate() {
+            assert_eq!(
+                std::fs::read_to_string(Path::new(&integrated.path).join(format!("child-{n}.txt")))
+                    .unwrap(),
+                format!("reviewed child {n}\n")
+            );
+        }
+        assert_eq!(
+            std::fs::read_to_string(f.root.join("notes.txt")).unwrap(),
+            "unrelated dirty parent\n"
+        );
+        assert_eq!(std::fs::read(f.root.join(".git/index")).unwrap(), index);
+        assert_eq!(f.git(&["rev-parse", "HEAD"]), head);
+        let parents = f.git(&["show", "-s", "--format=%P", &integrated.commit]);
+        assert!(
+            parents
+                .split_whitespace()
+                .eq(std::iter::once(head.as_str()).chain(pins.iter().map(|p| p.commit.as_str())))
+        );
+        assert_eq!(
+            f.git(&["show", "-s", "--format=%an <%ae>", &integrated.commit]),
+            "FUSE <fuse@local>"
+        );
+        assert_eq!(
+            f.rows("SELECT COUNT(*) AS n FROM run_steps WHERE approval='you'")
+                .await[0]["n"],
+            3
+        );
+        assert!(
+            !Path::new(&integrated.path)
+                .join("credentials.json")
+                .exists()
+        );
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn reviewed_child_staleness_parent_changes_and_conflicts_pause_without_losing_work() {
+        use integration::*;
+        let f = Fixture::new().await;
+        let children = f.finish_children().await;
+        let mut pins = Vec::new();
+        for (n, child) in children.iter().enumerate() {
+            let path = f.child_path(&child.id).await;
+            std::fs::write(path.join("shared.txt"), format!("version {n}\n")).unwrap();
+            let snapshot = review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap();
+            if n == 0 {
+                std::fs::write(path.join("shared.txt"), "changed after review\n").unwrap();
+                assert!(
+                    apply(&f.ctx, snapshot.id)
+                        .await
+                        .unwrap_err()
+                        .contains("changed")
+                );
+            }
+            let snapshot = review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap();
+            let committed = apply(&f.ctx, snapshot.id).await.unwrap();
+            pins.push(CommitPin {
+                child_id: child.id.clone(),
+                commit: committed.commit,
+            });
+        }
+        assert!(
+            plan(&f.ctx, "parent".into(), pins.clone())
+                .await
+                .unwrap_err()
+                .contains("conflicting")
+        );
+        let one = plan(&f.ctx, "parent".into(), vec![pins[0].clone()])
+            .await
+            .unwrap();
+        std::fs::write(f.root.join("notes.txt"), "parent edited after review\n").unwrap();
+        assert!(
+            apply(&f.ctx, one.id)
+                .await
+                .unwrap_err()
+                .contains("parent changed")
+        );
+        for child in children {
+            assert!(f.child_path(&child.id).await.join("shared.txt").exists());
+        }
+        assert!(
+            f.git(&[
+                "for-each-ref",
+                "--format=%(refname)",
+                "refs/heads/fuse/integration/"
+            ])
+            .is_empty()
+        );
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn reviewed_child_rejects_tampered_pointers_secret_files_hardlinks_and_foreign_owners() {
+        use integration::*;
+        let f = Fixture::new().await;
+        let children = f.finish_children().await;
+        let child = &children[0];
+        let path = f.child_path(&child.id).await;
+        let pointer = std::fs::read(path.join(".git")).unwrap();
+        std::fs::write(path.join(".git"), "gitdir: elsewhere\n").unwrap();
+        assert!(
+            review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap_err()
+                .contains("pointer changed")
+        );
+        std::fs::write(path.join(".git"), pointer).unwrap();
+        std::fs::write(path.join("credentials.json"), "synthetic private data\n").unwrap();
+        assert!(
+            review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap_err()
+                .contains("secret-looking")
+        );
+        std::fs::remove_file(path.join("credentials.json")).unwrap();
+        let external = f.dir.join("private-fixture.txt");
+        std::fs::write(&external, "synthetic host sentinel\n").unwrap();
+        std::fs::hard_link(&external, path.join("linked.txt")).unwrap();
+        assert!(
+            review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .unwrap_err()
+                .contains("hard-link")
+        );
+        std::fs::remove_file(path.join("linked.txt")).unwrap();
+        std::fs::write(path.join("approved.txt"), "reviewable\n").unwrap();
+        let snapshot = review(&f.ctx, "parent".into(), child.id.clone())
+            .await
+            .unwrap();
+        db::execute(
+            &f.ctx.db.pool().unwrap(),
+            "UPDATE runs SET sync_owner='another-owner' WHERE id='parent'",
+            &[],
+        )
+        .await
+        .unwrap();
+        assert!(apply(&f.ctx, snapshot.id).await.is_err());
+        assert!(
+            review(&f.ctx, "parent".into(), child.id.clone())
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            std::fs::read_to_string(external).unwrap(),
+            "synthetic host sentinel\n"
+        );
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn parallel_authority_requires_the_selected_repository_root_and_ignores_worktree_redirection()
+     {
+        let f = Fixture::new().await;
+        let sub = f.root.join("selected-subfolder");
+        std::fs::create_dir_all(&sub).unwrap();
+        db::execute(
+            &f.ctx.db.pool().unwrap(),
+            "UPDATE folders SET path=? WHERE id='parent-folder'",
+            &[json!(sub)],
+        )
+        .await
+        .unwrap();
+        assert!(
+            base(&f.ctx, "parent".into())
+                .await
+                .unwrap_err()
+                .contains("repository root")
+        );
+        assert!(
+            f.rows("SELECT child_id FROM code_children")
+                .await
+                .is_empty()
+        );
+        db::execute(
+            &f.ctx.db.pool().unwrap(),
+            "UPDATE folders SET path=? WHERE id='parent-folder'",
+            &[json!(f.root)],
+        )
+        .await
+        .unwrap();
+        let outside = f.dir.join("outside-grant");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("private.txt"), "ungranted synthetic content\n").unwrap();
+        f.git(&["config", "core.worktree", outside.to_str().unwrap()]);
+        let children = f.finish_children().await;
+        let path = f.child_path(&children[0].id).await;
+        assert_eq!(
+            std::fs::read_to_string(path.join("notes.txt")).unwrap(),
+            "committed base\n"
+        );
+        assert!(!path.join("private.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(outside.join("private.txt")).unwrap(),
+            "ungranted synthetic content\n"
+        );
+        // A linked worktree is also an explicit repository root and pins its back-pointer.
+        integration::validate_parent_git_root(&path).unwrap();
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn reviewed_commit_finishes_on_owner_after_caller_disconnection_without_replay() {
+        use integration::*;
+        let f = Fixture::new().await;
+        let children = f.finish_children().await;
+        let child = &children[0];
+        let path = f.child_path(&child.id).await;
+        std::fs::write(path.join("retained.txt"), "owner continues\n").unwrap();
+        let snapshot = review(&f.ctx, "parent".into(), child.id.clone())
+            .await
+            .unwrap();
+        let gate = test_mutation_guard().await;
+        let owner = f.ctx.sync_view().unwrap();
+        let token = snapshot.id.clone();
+        let caller = tokio::spawn(async move { apply(&owner, token).await });
+        // Hold the actual mutation behind its owner lock while its response waiter starts.
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert!(!caller.is_finished());
+        caller.abort();
+        assert!(caller.await.unwrap_err().is_cancelled());
+        drop(gate);
+        let mut complete = false;
+        for _ in 0..100 {
+            let rows = db::select(
+                &f.ctx.db.pool().unwrap(),
+                "SELECT state FROM code_child_reviews WHERE id=?",
+                &[json!(snapshot.id)],
+            )
+            .await
+            .unwrap();
+            if rows[0]["state"] == "committed" {
+                complete = true;
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(
+            complete,
+            "The owner must finish without its original caller."
+        );
+        let recorded = apply(&f.ctx, snapshot.id).await.unwrap();
+        assert_eq!(
+            f.git(&["rev-parse", &format!("fuse/child/{}", child.id)]),
+            recorded.commit
+        );
+        assert_eq!(
+            f.git(&[
+                "rev-list",
+                "--count",
+                &format!("HEAD..fuse/child/{}", child.id)
+            ]),
+            "1"
+        );
+        assert_eq!(
+            f.rows("SELECT COUNT(*) AS n FROM run_steps WHERE tool_name='commit_reviewed_child'")
+                .await[0]["n"],
+            1
+        );
+        assert!(f.rows("SELECT id FROM request_log").await.is_empty());
+        f.close().await;
+    }
+
+    #[tokio::test]
+    async fn reviewed_child_crash_claims_never_replay_and_duplicate_approval_commits_once() {
+        use integration::*;
+        let f = Fixture::new().await;
+        let children = f.finish_children().await;
+        let child = &children[0];
+        let path = f.child_path(&child.id).await;
+        std::fs::write(path.join("safe.txt"), "retained\n").unwrap();
+        let lost = review(&f.ctx, "parent".into(), child.id.clone())
+            .await
+            .unwrap();
+        db::execute(
+            &f.ctx.db.pool().unwrap(),
+            "UPDATE code_child_reviews SET state='working' WHERE id=?",
+            &[json!(lost.id)],
+        )
+        .await
+        .unwrap();
+        assert!(
+            apply(&f.ctx, lost.id.clone())
+                .await
+                .unwrap_err()
+                .contains("already attempted")
+        );
+        assert!(
+            attempts(&f.ctx, "parent".into())
+                .await
+                .unwrap()
+                .iter()
+                .any(|a| a.state == "working")
+        );
+        discard(&f.ctx, "parent".into(), lost.id).await.unwrap();
+        assert_eq!(
+            std::fs::read_to_string(path.join("safe.txt")).unwrap(),
+            "retained\n"
+        );
+        let fresh = review(&f.ctx, "parent".into(), child.id.clone())
+            .await
+            .unwrap();
+        let (a, b) = tokio::join!(apply(&f.ctx, fresh.id.clone()), apply(&f.ctx, fresh.id));
+        assert_eq!(a.unwrap().commit, b.unwrap().commit);
+        assert_eq!(
+            f.rows("SELECT COUNT(*) AS n FROM run_steps WHERE tool_name='commit_reviewed_child'")
+                .await[0]["n"],
+            1
+        );
+        assert_eq!(
+            f.git(&[
+                "rev-list",
+                "--count",
+                &format!("HEAD..fuse/child/{}", child.id)
+            ]),
+            "1"
+        );
+        f.close().await;
+    }
+
     #[tokio::test]
     async fn raw_worktrees_preserve_dirty_parent_exclude_secrets_and_never_run_filters_or_hooks() {
         let f = Fixture::new().await;

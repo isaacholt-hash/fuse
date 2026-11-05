@@ -176,10 +176,19 @@ jobs:
           name: skill-script-web-screenshots
           path: e2e/screenshots/skill-scripts/
           if-no-files-found: error
-      - name: Isolated child runs shared web verification
+      - name: Recorded parallel Code benchmark
         env:
           FUSE_WEB_BROWSER: google-chrome
-        run: bash scripts/parallel-web.sh
+        run: bash scripts/parallel-benchmark.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: parallel-benchmark
+          path: |
+            src-tauri/target/parallel-benchmark.json
+            src-tauri/target/parallel-native-benchmark.log
+            src-tauri/target/parallel-shared-benchmark.json
+          if-no-files-found: error
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

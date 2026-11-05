@@ -489,3 +489,21 @@ for isolation, limits, failed evidence and repository-object retention. The exis
 reservation ledger now reserves atomically against root-plus-child exposure. Settlement records
 one receipt, updates the child total and aggregates the root total once; root totals are not extra
 ledger spend. No provider aggregate or worktree operation creates a cost receipt.
+
+
+## M16 reviewed child integration (schema 72)
+
+`code_child_reviews` holds owner-local immutable review tokens, bounded before/after text,
+parent revision/fingerprint/index hash, exact child revisions and attempt results. A unique
+partial index permits one `working` mutation per parent. Persist candidate identity before
+Git writes; only a transactionally acknowledged result becomes `committed`/`complete`.
+Interrupted claims remain inert until explicit owner review/release. Duplicates of completed
+approvals return recorded results rather than repeating Git operations.
+
+No column is portable: the whole table is excluded from sync and structured exports. Run
+foreign keys cascade on deletion; global deletion includes reviews before child claims.
+Encrypted full-database backups retain inert evidence, excluding worktree bytes. Successful
+operations append redacted, no-cost owner-approved entries to existing portable run steps.
+Their hashes/branches describe retained history without granting filesystem authority or
+creating provider tool-result messages on Continue. Integration branches/worktrees combine
+approved child commits without touching the linked original folder or index.

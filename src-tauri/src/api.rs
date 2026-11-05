@@ -80,6 +80,11 @@ pub const WEB_COMMANDS: &[&str] = &[
     "repo_review_snapshot",
     "code_worktree_base",
     "code_worktree_prepare",
+    "code_child_review",
+    "code_child_integration_plan",
+    "code_child_apply",
+    "code_child_attempts",
+    "code_child_discard",
     "connector_configure",
     "connector_status",
     "connector_begin",
@@ -435,6 +440,27 @@ pub async fn dispatch(
             json(crate::code_worktrees::prepare(ctx, request).await)
         }
 
+        "code_child_review" => {
+            args!(name,args,parent_id:String,child_id:String);
+            json(crate::code_worktrees::integration::review(ctx, parent_id, child_id).await)
+        }
+        "code_child_integration_plan" => {
+            args!(name,args,parent_id:String,commits:Vec<crate::code_worktrees::integration::CommitPin>);
+            json(crate::code_worktrees::integration::plan(ctx, parent_id, commits).await)
+        }
+        "code_child_apply" => {
+            args!(name,args,token:String);
+            json(crate::code_worktrees::integration::apply(ctx, token).await)
+        }
+        "code_child_attempts" => {
+            args!(name,args,parent_id:String);
+            json(crate::code_worktrees::integration::attempts(ctx, parent_id).await)
+        }
+        "code_child_discard" => {
+            args!(name,args,parent_id:String,token:String);
+            json(crate::code_worktrees::integration::discard(ctx, parent_id, token).await)
+        }
+
         // Commands and Python (exec.rs)
         "repo_exec" => {
             args!(
@@ -723,10 +749,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 107 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 112 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            107
+            112
         );
     }
 

@@ -1421,6 +1421,7 @@
     "connector_accounts": "Owner-registered connector applications and service consent; installation-local, excluded from portable export; native credentials are never in SQLite",
     "review_state": "Pinned repository bytes, review checkpoint and lease; execution-owner only; excluded from portable sync/export; encrypted full-database backups retain it without replay.",
     "review_operations": "Owner-local paid-attempt journal and transient source analysis; never synced/exported or automatically replayed after restore.",
+    "code_child_reviews": "Owner-local immutable review tokens, repository snapshots and integration claims. Excluded from sync/portable export; cascade on run deletion/global deletion; encrypted backups retain inert evidence without replay or grants.",
     "code_children": "Owner-local child worktrees and dispatch claims; no portable export or sync. Delete with runs/global deletion. Encrypted backups retain inert records, never execution or folder authority."
   },
   "internalTables": [
