@@ -69,15 +69,14 @@ fn fail(_: sqlx::Error) -> String {
 }
 /// Git's command-line paths use ordinary local Windows spelling rather than Win32's
 /// verbatim prefix returned by canonicalize. Filesystem authority still uses resolved roots.
-fn git_path(path: PathBuf) -> PathBuf {
-    #[cfg(windows)]
-    {
-        fuse_sandbox_win::plain(&path)
+#[cfg(windows)]
+fn git_path(path: PathBuf) -> Result<PathBuf, String> {
+    let plain = fuse_sandbox_win::plain(&path);
+    let ambiguous = plain.components().any(|part| matches!(part, std::path::Component::Normal(name) if name.to_string_lossy().ends_with(['.', ' '])));
+    if ambiguous || std::fs::canonicalize(&plain).ok().as_ref() != Some(&path) {
+        return Err("This Windows path changes meaning when passed to Git. Choose a repository and app storage with ordinary local paths.".into());
     }
-    #[cfg(not(windows))]
-    {
-        path
-    }
+    Ok(plain)
 }
 fn linklike(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
@@ -202,14 +201,14 @@ async fn parent(
     )
     .await?;
     let row=rows.into_iter().next().ok_or("This owner cannot delegate that run. Use a writable, non-review Code run with a linked Git repository.")?;
-    let root = git_path(
-        std::fs::canonicalize(
-            row["folder_path"]
-                .as_str()
-                .ok_or("Missing parent folder.")?,
-        )
-        .map_err(|_| "The parent repository is missing.")?,
-    );
+    let root = std::fs::canonicalize(
+        row["folder_path"]
+            .as_str()
+            .ok_or("Missing parent folder.")?,
+    )
+    .map_err(|_| "The parent repository is missing.")?;
+    #[cfg(windows)]
+    let root = git_path(root)?;
     let folder = row["folder_id"]
         .as_str()
         .ok_or("Missing parent folder identity.")?
@@ -605,9 +604,10 @@ pub async fn prepare(ctx: &Ctx, request: Request) -> Result<Vec<Child>, String> 
         return Err("The child worktree store cannot be a link.".into());
     }
     std::fs::create_dir_all(&owner_dir).map_err(|_| "Couldn't create private child storage.")?;
-    let owner_dir = git_path(
-        std::fs::canonicalize(owner_dir).map_err(|_| "Couldn't resolve private child storage.")?,
-    );
+    let owner_dir =
+        std::fs::canonicalize(owner_dir).map_err(|_| "Couldn't resolve private child storage.")?;
+    #[cfg(windows)]
+    let owner_dir = git_path(owner_dir)?;
     let pool = ctx.db.pool()?;
     let mut tx = pool.begin().await.map_err(fail)?;
     // First write obtains SQLite's writer lock before counting children. Every child relation
@@ -829,6 +829,27 @@ pub(crate) fn cleanup_commands(data: &Path) {
 mod tests {
     use super::*;
     use crate::keys::{Keys, MemoryStore};
+    #[cfg(windows)]
+    #[test]
+    fn windows_git_spelling_cannot_change_the_resolved_directory() {
+        let dir = std::env::temp_dir().join(format!("fuse-child-path-{}", id().unwrap()));
+        std::fs::create_dir(&dir).unwrap();
+        let resolved = std::fs::canonicalize(&dir).unwrap();
+        assert_eq!(
+            git_path(resolved.clone()).unwrap(),
+            fuse_sandbox_win::plain(&resolved)
+        );
+        // Win32's ordinary spelling drops trailing dots. Both targets exist, so an
+        // accidental normalization could otherwise silently choose the wrong directory.
+        let ordinary = resolved.join("recorded");
+        let literal = resolved.join("recorded.");
+        std::fs::create_dir(&ordinary).unwrap();
+        std::fs::create_dir(&literal).unwrap();
+        assert!(git_path(std::fs::canonicalize(&literal).unwrap()).is_err());
+        std::fs::remove_dir(&literal).unwrap();
+        std::fs::remove_dir(&ordinary).unwrap();
+        std::fs::remove_dir(&resolved).unwrap();
+    }
     struct Fixture {
         dir: PathBuf,
         root: PathBuf,

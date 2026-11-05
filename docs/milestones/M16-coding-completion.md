@@ -428,3 +428,10 @@ Preparation assertions now require ready worktrees before later native probes, i
 concurrent/deletion cases. No assertion is skipped or weakened. Both local all-target clippy
 configurations and all eight Linux worktree tests pass after the change (12.77 s); a fresh
 Windows/current-head five-gate run remains required before merging.
+
+The Windows path adapter also verifies that ordinary spelling resolves back to exactly the
+same directory, refusing ambiguous trailing-dot/space components. A Windows regression creates
+two distinct directories whose ordinary spellings could alias, then requires refusal. This
+keeps the original folder authority intact while fixing command-line compatibility. Updated
+local default/server all-target lint checks and eight Linux worktree tests pass (12.32 s).
+The new Windows alias test and private-command probe require current-head CI verification.
