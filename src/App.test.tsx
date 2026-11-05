@@ -20,7 +20,7 @@ import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
 import { listRecentRequests } from "@/storage/requestLog";
 import { DbLockedError } from "@/storage/tauriDb";
 import { openTestDb } from "@/storage/testing/nodeDb";
-import { listThreads } from "@/storage/threads";
+import { createThread, listThreads } from "@/storage/threads";
 import { searchChats } from "@/storage/search";
 import { fakeKeysApi } from "@/test/fakeKeysApi";
 import { TITLE_SYSTEM } from "@/chat/title";
@@ -2373,6 +2373,70 @@ test("reopening the app reopens the last thread, with its messages and costs", a
   expect(
     screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
   ).toBeInTheDocument();
+});
+
+test("a slow startup restore cannot replace the user's newer Chat draft with an old Code session", async () => {
+  const db = openTestDb();
+  const old = await createThread(db, DEFAULT_TENANT, "Older Code session", null, false, "code");
+  localStorage.setItem("fuse.area", "code");
+  localStorage.setItem("fuse.lastThread.code", old.id);
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let waiting = false;
+  let finished = () => {};
+  const loaded = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  const wrapped: SqlDb = {
+    execute: (sql, params) => db.execute(sql, params),
+    batch: (statements) => db.batch(statements),
+    select: async <Row,>(sql: string, params?: SqlValue[]) => {
+      const rows = await db.select<Row>(sql, params);
+      if (params?.includes(old.id) && sql.includes("parent_id, role, content, status")) {
+        waiting = true;
+        await held;
+      }
+      if (params?.includes(old.id) && sql.includes("FROM artifacts a")) finished();
+      return rows;
+    },
+  };
+  const keys = fakeKeysApi();
+  keys.keys.set("anthropic", "fake-value-for-tests-0000");
+  const requests = vi.fn(() => answer("Unexpected request."));
+  render(
+    <App
+      openDb={() => Promise.resolve(wrapped)}
+      keysApi={keys.api}
+      catalog={catalog}
+      policy={policy}
+      adapterFor={() => ({
+        provider: "anthropic",
+        listModels: () => Promise.resolve([]),
+        streamChat: requests,
+      })}
+    />,
+  );
+  const user = userEvent.setup();
+  await waitFor(() => {
+    expect(waiting).toBe(true);
+  });
+  await user.keyboard("{Control>}1{/Control}");
+  await user.keyboard("{Control>}n{/Control}");
+  await screen.findByRole("heading", { name: "New chat" });
+  await user.type(await composer(), "Keep this newer draft.");
+  await act(async () => {
+    release();
+    await loaded;
+  });
+  expect(
+    within(screen.getByRole("group", { name: "Area" })).getByRole("button", { name: "Chat" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("heading", { name: "New chat" })).toBeInTheDocument();
+  expect(await composer()).toHaveValue("Keep this newer draft.");
+  expect(requests).not.toHaveBeenCalled();
+  expect(await db.select("SELECT id FROM runs")).toEqual([]);
 });
 
 test("a storage error is shown instead of failing silently", async () => {

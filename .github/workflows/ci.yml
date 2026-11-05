@@ -46,7 +46,7 @@ jobs:
           pnpm build
           pnpm build:runner
           if grep -rq fuse-e2e-scripted-build dist; then echo "The test build's code is in the release bundle"; exit 1; fi
-          if grep -rqE 'research-fixture.example|FUSE_RESEARCH_CRASH_FIXTURE|FUSE_REVIEW_FIXTURE|review-fixture-runner|FUSE_SKILL_SCRIPT_FIXTURE|skill-script-fixture-runner' dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
+          if grep -rqE 'research-fixture.example|FUSE_RESEARCH_CRASH_FIXTURE|FUSE_REVIEW_FIXTURE|review-fixture-runner|FUSE_SKILL_SCRIPT_FIXTURE|skill-script-fixture-runner|FUSE_PARALLEL_FIXTURE|parallel-fixture-runner' dist dist-runner; then echo "Synthetic research reached a release entrypoint"; exit 1; fi
 
   rust:
     name: Rust fmt, clippy, test
@@ -176,6 +176,16 @@ jobs:
           name: skill-script-web-screenshots
           path: e2e/screenshots/skill-scripts/
           if-no-files-found: error
+      - name: Isolated child runs shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/parallel-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: parallel-web-screenshots
+          path: e2e/screenshots/parallel/
+          if-no-files-found: ignore
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome
@@ -277,6 +287,18 @@ jobs:
       - name: Windows skill script integrity and replay fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib skill_scripts:: -- --test-threads=2"
+      - name: Windows isolated child worktree fixtures
+        if: ${{ !cancelled() }}
+        run: |
+          $env:FUSE_CHILD_PROBE = 'synthetic-should-not-reach-child'
+          cargo test --manifest-path src-tauri/Cargo.toml --lib code_worktrees:: -- --nocapture --test-threads=1 2>&1 | Tee-Object -FilePath child-worktrees.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-child-worktree-log
+          path: child-worktrees.log
+          if-no-files-found: error
       - name: Windows native connector fixtures
         if: ${{ !cancelled() }}
         run: "cargo test --manifest-path src-tauri/Cargo.toml --lib connectors:: -- --test-threads=2"
@@ -302,6 +324,8 @@ jobs:
           key: e2e
       - name: Windows research compatibility benchmark
         run: pnpm research:bench
+      - name: Windows child execution and shared reservations
+        run: pnpm exec vitest run src/parallel src/storage/requestBudget.test.ts
       - name: Windows skill packages and invocation
         run: pnpm exec vitest run src/skills
       - uses: actions/upload-artifact@v7

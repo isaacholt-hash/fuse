@@ -73,7 +73,7 @@ export function findInstructions(text: string): StepFlag[] {
  */
 export function scansOutput(tool: string): boolean {
   const kind = kindOf(tool);
-  return kind === undefined || kind === "read" || kind === "command";
+  return tool === "delegate_code" || kind === undefined || kind === "read" || kind === "command";
 }
 
 /** A query string longer than this is a lot to put in an address you read. */

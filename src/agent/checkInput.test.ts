@@ -49,6 +49,10 @@ test("every FUSE tool's schema is one the check understands", () => {
     "additionalProperties",
     "items",
     "enum",
+    "minItems",
+    "maxItems",
+    "minLength",
+    "maxLength",
   ]);
   const walk = (s: Record<string, unknown>, at: string) => {
     for (const k of Object.keys(s)) expect(known.has(k), `${at}: ${k}`).toBe(true);
@@ -62,4 +66,19 @@ test("every FUSE tool's schema is one the check understands", () => {
   for (const place of ["code", "work", "chat"] as const) {
     for (const t of toolsIn(place)) walk(t.schema, t.name);
   }
+});
+
+test("bounded task arrays reject oversized or empty loose calls, counting Unicode code points", () => {
+  const tasks = {
+    type: "array",
+    minItems: 1,
+    maxItems: 3,
+    items: { type: "string", minLength: 1, maxLength: 2 },
+  };
+  expect(checkInput(tasks, [])).toBe("input needs at least 1 items.");
+  expect(checkInput(tasks, ["a", "b", "c", "d"])).toBe("input exceeds 3 items.");
+  expect(checkInput(tasks, [""])).toBe("input[0] needs at least 1 characters.");
+  expect(checkInput(tasks, ["abc"])).toBe("input[0] exceeds 2 characters.");
+  expect(checkInput(tasks, ["😀語", "ab", "c"])).toBeNull();
+  expect(checkInput(tasks, ["😀語x"])).toBe("input[0] exceeds 2 characters.");
 });

@@ -157,6 +157,12 @@ pub(crate) async fn repo_git(
     program: String,
     args: Vec<String>,
 ) -> Result<GitResult, String> {
+    if crate::code_worktrees::folder_guard(&ctx.db.pool()?, &folder_id).await? {
+        return Err(
+            "Child Git operations require the parent's reviewed commit and integration controls."
+                .into(),
+        );
+    }
     let (root, _) = crate::repo::folder_root(&ctx.db.pool()?, &folder_id).await?;
     let root =
         std::fs::canonicalize(&root).map_err(|e| format!("The linked folder is missing: {e}"))?;

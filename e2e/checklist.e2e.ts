@@ -31,6 +31,18 @@ async function step(name: string, body: () => Promise<void>) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** WebView2 may capture the previous compositor frame immediately after a theme change. */
+async function themedShot(name: string, dark: boolean) {
+  const actual = await app.run<boolean>(`
+    document.documentElement.classList.toggle("dark", ${String(dark)});
+    await new Promise(resolve => setTimeout(resolve, 250));
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return document.documentElement.classList.contains("dark");
+  `);
+  expect(actual).toBe(dark);
+  await app.screenshot(join(SHOTS, `${name}-${dark ? "dark" : "light"}.png`));
+}
+
 /** The answers on screen, newest last. */
 const answers = () =>
   app.run<string[]>(
@@ -276,6 +288,9 @@ test("6. with a 1-minute idle limit, a stalled run stops and says why", async ()
   await step("watchdog", async () => {
     await newSession();
     await send("E2E stall");
+    // Native database writes can still be settling after the send. Observe the run itself
+    // before checking the sidebar; a missing run must never count as a watchdog success.
+    await app.find('//section[@aria-label="Coding run"]', 60_000);
     await app.find(dot("E2E stall", "Going"), 15_000);
     // The watchdog looks every 15 s, so it stops between 60 and 75 s without progress.
     await app.sees("Stopped: no progress for", 120_000);
@@ -283,7 +298,7 @@ test("6. with a 1-minute idle limit, a stalled run stops and says why", async ()
     // And the composer is ready again: it doesn't stay on "Generating response".
     await app.gone('//*[normalize-space()="Generating response"]');
   });
-}, 180_000);
+}, 240_000);
 
 test("7. the Scheduled page opens, and says why it's empty when not paired with HULK", async () => {
   await step("scheduled", async () => {
@@ -311,7 +326,11 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     await app.reload();
     await app.find(composer);
     await app.chord("1");
+    await app.find(
+      '//*[@aria-label="Area"]//button[@aria-pressed="true" and normalize-space()="Chat"]',
+    );
     await app.chord("n");
+    await app.find('//h1[normalize-space()="New chat"]');
     await app.type(composer, "Keep this editable research draft.");
     await app.click(button("Options"));
     await app.click('//button[@aria-label="Research"]');
@@ -326,10 +345,8 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
       '//textarea[@aria-label="Research scope"]',
       "Compare recorded tidal measurements and their limitations.",
     );
-    await app.run('document.documentElement.classList.remove("dark");');
-    await app.screenshot(join(SHOTS, "research-setup-light.png"));
-    await app.run('document.documentElement.classList.add("dark");');
-    await app.screenshot(join(SHOTS, "research-setup-dark.png"));
+    await themedShot("research-setup", false);
+    await themedShot("research-setup", true);
     await app.type('//input[@aria-label="Research spending cap (USD)"]', "5");
     await app.click(button("Start research"));
     await app.sees("Research complete.", 60000);
@@ -341,9 +358,8 @@ test("9. Research requires a cap and finishes in Chat without a folder or sendin
     expect(await app.run('return document.querySelector("textarea").value;')).toBe(
       "Keep this editable research draft.",
     );
-    await app.screenshot(join(SHOTS, "research-report-dark.png"));
-    await app.run('document.documentElement.classList.remove("dark");');
-    await app.screenshot(join(SHOTS, "research-report-light.png"));
+    await themedShot("research-report", true);
+    await themedShot("research-report", false);
     await app.run('localStorage.removeItem("fuse.e2e.research");');
   });
 }, 120000);

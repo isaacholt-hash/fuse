@@ -1,13 +1,20 @@
 import { isDesktop } from "@/platform/core";
 import { zipSync, strToU8 } from "fflate";
 import { recordedSkillAdapter } from "@/skills/testing/scripted";
+import { recordedParallelAdapter } from "@/parallel/testing/scripted";
 import { tauriExec } from "@/repo/exec";
 import { tauriPythonApi } from "@/python/runtime";
 import { importSkill } from "@/skills/storage";
 import { readSkillPackage } from "@/skills/package";
 import { scriptedResearchAdapter, scriptedResearchWeb } from "@/research/testing/scripted";
 import { scriptedConnectorsApi } from "@/connectors/testing/scripted";
-import { createProject, setProjectRepo } from "@/storage/projects";
+import {
+  createProject,
+  getProject,
+  setProjectRepo,
+  setProjectRunMode,
+  setProjectRunLimits,
+} from "@/storage/projects";
 import { createThread } from "@/storage/threads";
 import { recordedReviewAdapter } from "@/review/testing/scripted";
 import { tauriWebApi } from "@/web/api";
@@ -380,6 +387,31 @@ const openReviewSeed = () =>
     return db;
   })());
 let scriptSeed: Promise<SqlDb> | undefined;
+let parallelSeed: Promise<SqlDb> | undefined;
+const openParallelSeed = () =>
+  (parallelSeed ??= (async () => {
+    const db = await loggedDb();
+    const saved = localStorage.getItem("fuse.e2e.parallelProject");
+    if (saved && (await getProject(db, DEFAULT_TENANT, saved))) return db;
+    const project = await createProject(db, DEFAULT_TENANT, "Parallel fixture");
+    await setProjectRepo(db, DEFAULT_TENANT, project.id, { root: FOLDER, readSecrets: false });
+    await setProjectRunMode(db, DEFAULT_TENANT, project.id, "ask");
+    await setProjectRunLimits(db, DEFAULT_TENANT, project.id, { capMicroUsd: 5_000_000 });
+    localStorage.setItem("fuse.e2e.parallelProject", project.id);
+    if (isDesktop()) {
+      const thread = await createThread(
+        db,
+        DEFAULT_TENANT,
+        "Recorded parallel workspace",
+        project.id,
+        false,
+        "code",
+      );
+      localStorage.setItem("fuse.lastThread.code", thread.id);
+      localStorage.setItem("fuse.area", "code");
+    }
+    return db;
+  })());
 const openScriptSeed = () =>
   (scriptSeed ??= (async () => {
     const db = await loggedDb();
@@ -515,18 +547,21 @@ export function e2eDeps() {
     keysApi,
     updates,
     openDb:
-      import.meta.env.VITE_E2E_SKILL_SCRIPT === "1"
-        ? openScriptSeed
-        : import.meta.env.VITE_E2E_SKILLS_SEED === "1"
-          ? openSkillsSeed
-          : import.meta.env.VITE_E2E_REVIEW_SEED === "1"
-            ? openReviewSeed
-            : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
-              ? openConnectorSeed
-              : loggedDb,
+      import.meta.env.VITE_E2E_PARALLEL === "1"
+        ? openParallelSeed
+        : import.meta.env.VITE_E2E_SKILL_SCRIPT === "1"
+          ? openScriptSeed
+          : import.meta.env.VITE_E2E_SKILLS_SEED === "1"
+            ? openSkillsSeed
+            : import.meta.env.VITE_E2E_REVIEW_SEED === "1"
+              ? openReviewSeed
+              : import.meta.env.VITE_E2E_CONNECTORS_SEED === "1"
+                ? openConnectorSeed
+                : loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
       const base = p === "anthropic" ? anthropic : openai;
+      if (import.meta.env.VITE_E2E_PARALLEL === "1") return recordedParallelAdapter(p, base);
       if (import.meta.env.VITE_E2E_SKILL_SCRIPT === "1") return recordedSkillAdapter(p, base);
       if (import.meta.env.VITE_E2E_REVIEW_SEED === "1") return recordedReviewAdapter(p, base);
       return localStorage.getItem("fuse.e2e.research") === "yes"

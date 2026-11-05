@@ -78,6 +78,8 @@ pub const WEB_COMMANDS: &[&str] = &[
     "sandbox_status",
     "repo_git",
     "repo_review_snapshot",
+    "code_worktree_base",
+    "code_worktree_prepare",
     "connector_configure",
     "connector_status",
     "connector_begin",
@@ -424,6 +426,14 @@ pub async fn dispatch(
             args!(name, args, folder_id: String, selection: crate::code_review::Selection);
             json(crate::code_review::snapshot(ctx, folder_id, selection).await)
         }
+        "code_worktree_base" => {
+            args!(name,args,parent_id:String);
+            json(crate::code_worktrees::base(ctx, parent_id).await)
+        }
+        "code_worktree_prepare" => {
+            args!(name,args,request:crate::code_worktrees::Request);
+            json(crate::code_worktrees::prepare(ctx, request).await)
+        }
 
         // Commands and Python (exec.rs)
         "repo_exec" => {
@@ -713,10 +723,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 105 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 107 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            105
+            107
         );
     }
 

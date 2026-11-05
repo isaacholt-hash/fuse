@@ -57,3 +57,10 @@ pnpm tauri build --debug --no-bundle --config src-tauri/tauri.e2e.conf.json
 $env:FUSE_E2E_APP = "$PWD\src-tauri\target\debug\fuse.exe"
 pnpm e2e
 ```
+
+
+M16 child execution: `bash scripts/parallel-web.sh` exercises the shared UI against a native
+throwaway server, real Git worktrees and a background owner with synthetic models. It checks
+denial, separate child approvals, caller disconnection, exact ledger counters and preserved
+parent files/commit. Capture artifacts live in `e2e/screenshots/parallel/`; no provider key or
+production service is used. Production bundle checks exclude the separate fixture entry.

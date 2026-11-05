@@ -87,6 +87,85 @@ test("concurrent holds cannot oversubscribe a cap; dispatch and settlement are i
   expect((await runExposure(db, tenant, run.id)).held).toBe(900);
 });
 
+test("parallel children and parent atomically share exposure and settle actual spend once", async () => {
+  const { db, run, hold } = await setup();
+  const children = await Promise.all(
+    ["first", "second", "third"].map(async (task) => {
+      const child = await createRun(db, tenant, {
+        projectId: null,
+        threadId: null,
+        messageId: null,
+        task,
+        provider: "openai",
+        model: "fixture",
+        capMicroUsd: 1000,
+      });
+      await db.execute("UPDATE runs SET parent_run_id=? WHERE id=?", [run.id, child.id]);
+      return child;
+    }),
+  );
+  const reservations = children.map((child, i) => ({
+    ...hold(`child-${String(i)}`),
+    runId: child.id,
+  }));
+  expect(await Promise.all(reservations.map((r) => reserveRequest(db, tenant, r)))).toEqual([
+    true,
+    false,
+    false,
+  ]);
+  expect(await runExposure(db, tenant, run.id)).toEqual({ spent: 0, held: 700, cap: 1000 });
+  expect(await reserveRequest(db, tenant, hold("parent-too-large", 301))).toBe(false);
+  expect(await reserveRequest(db, tenant, hold("parent-fits", 300))).toBe(true);
+  expect(await dispatchRequest(db, tenant, "child-0")).toBe(true);
+  await settleRequest(db, tenant, "child-0", receipt());
+  await settleRequest(db, tenant, "child-0", receipt());
+  expect((await getRun(db, tenant, children[0]?.id ?? ""))?.spentMicroUsd).toBe(100);
+  expect((await getRun(db, tenant, run.id))?.spentMicroUsd).toBe(100);
+  expect(await runExposure(db, tenant, children[1]?.id ?? "")).toEqual({
+    spent: 100,
+    held: 300,
+    cap: 1000,
+  });
+  expect(await db.select("SELECT cost_micro_usd FROM request_log")).toEqual([
+    { cost_micro_usd: 100 },
+  ]);
+  await releaseRequest(db, tenant, "parent-fits");
+  expect(
+    await reserveRequest(db, tenant, {
+      ...reservations[1],
+      ...hold("unknown-child", 900),
+      runId: children[1]?.id ?? "",
+    }),
+  ).toBe(true);
+  expect(await dispatchRequest(db, tenant, "unknown-child")).toBe(true);
+  await settleRequest(db, tenant, "unknown-child", receipt("unknown", 0));
+  expect(await reserveRequest(db, tenant, hold("no-blind-retry", 1))).toBe(false);
+  expect(await runExposure(db, tenant, run.id)).toEqual({ spent: 100, held: 900, cap: 1000 });
+});
+
+test("parent control and ownership block child dispatch without releasing ambiguous billing", async () => {
+  const { db, run, hold } = await setup();
+  const child = await createRun(db, tenant, {
+    projectId: null,
+    threadId: null,
+    messageId: null,
+    task: "Child",
+    provider: "openai",
+    model: "fixture",
+    capMicroUsd: 1000,
+  });
+  await db.execute("UPDATE runs SET parent_run_id=? WHERE id=?", [run.id, child.id]);
+  expect(await reserveRequest(db, tenant, { ...hold("prepared"), runId: child.id })).toBe(true);
+  await db.execute("UPDATE runs SET status='stopped' WHERE id=?", [run.id]);
+  expect((await getRun(db, tenant, child.id))?.status).toBe("stopped");
+  expect(await dispatchRequest(db, tenant, "prepared")).toBe(false);
+  await db.execute("UPDATE runs SET status='running' WHERE id IN (?,?)", [run.id, child.id]);
+  await db.execute("UPDATE runs SET sync_owner='another-device' WHERE id=?", [run.id]);
+  expect(await dispatchRequest(db, tenant, "prepared")).toBe(false);
+  expect(await reserveRequest(db, tenant, { ...hold("foreign", 1), runId: child.id })).toBe(false);
+  expect(await runExposure(db, tenant, run.id)).toEqual({ spent: 0, held: 700, cap: 1000 });
+});
+
 test("unknown billing retains exposure, even after cancel; only undispatched work releases", async () => {
   const { db, run, hold } = await setup();
   await reserveRequest(db, tenant, hold("lost"));

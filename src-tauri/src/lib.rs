@@ -10,6 +10,7 @@ mod backup;
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod clone;
 mod code_review;
+mod code_worktrees;
 mod connectors;
 #[cfg(all(feature = "server", target_os = "linux"))]
 mod creds;
@@ -168,6 +169,8 @@ pub fn run() {
             exec::commands::sandbox_windows_reset,
             git::commands::repo_git,
             code_review::commands::repo_review_snapshot,
+            code_worktrees::commands::code_worktree_base,
+            code_worktrees::commands::code_worktree_prepare,
             local::commands::local_generate,
             local::commands::local_cancel,
             local::commands::local_unload,

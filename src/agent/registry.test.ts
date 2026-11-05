@@ -20,6 +20,7 @@ test("runs are offered the same tools, in the same order, in fixed order, includ
     "move_file",
     "run_command",
     "run_skill_script",
+    "delegate_code",
     "git_branch",
     "git_commit",
     "git_push",

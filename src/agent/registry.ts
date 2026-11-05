@@ -3,6 +3,7 @@
 // is the order a run's tools are sent in, fixed so the prompt cache holds.
 import type { ToolSpec } from "@/providers/types";
 import { RUN_SKILL_TOOL } from "@/skills/scripts";
+import { DELEGATE_CODE_TOOL } from "@/parallel/tool";
 import { READ_SKILL_TOOL } from "@/skills/invoke";
 import {
   COMMAND_TOOL,
@@ -55,6 +56,7 @@ export const TOOLS: readonly ToolEntry[] = [
   entry(ORGANISE_TOOL, "write", ["work"]),
   entry(COMMAND_TOOL, "command", BOTH),
   entry(RUN_SKILL_TOOL, "command", BOTH),
+  entry(DELEGATE_CODE_TOOL, "spend", ["code"]),
   entry(RUN_PYTHON_TOOL, "command", ["work"]),
   ...GIT_WRITE_TOOLS.map((t) =>
     entry(t, t.name === "git_push" || t.name === "open_pull_request" ? "send" : "write", ["code"]),

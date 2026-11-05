@@ -1,0 +1,19 @@
+{
+  "syntheticModel": true,
+  "actualNativeWorktrees": true,
+  "executionOwner": "runner",
+  "callerNavigatedAway": true,
+  "liveProviderCalls": 0,
+  "integrated": false,
+  "pushed": false,
+  "parentUnchanged": true,
+  "actualSpend": 2400,
+  "changes": 2,
+  "children": 2,
+  "complete": 2,
+  "requests": 14,
+  "rootChanges": 0,
+  "rootSpend": 2400,
+  "roots": 2,
+  "unknown": 0
+}

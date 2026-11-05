@@ -1,4 +1,6 @@
 import { DictationSettings } from "@/ui/Dictation";
+import { pendingApproval } from "@/parallel/approvals";
+import { useSeenResult } from "./useSeenResult";
 import { useAudioConsent, setAudioConsent, clearAudioConsent } from "@/dictation/consent";
 import { dictationApi, type DictationApi } from "@/dictation/client";
 import type { SyncApi } from "@/sync/api";
@@ -1357,6 +1359,7 @@ export function ChatApp({
   const appearance = useAppearance(zoom);
   const controllers = useRef(new Map<string, AbortController>());
   const selectedRef = useRef(selectedId);
+  const selectionChanged = useRef(false);
   useEffect(() => {
     selectedRef.current = selectedId;
   }, [selectedId]);
@@ -1715,7 +1718,7 @@ export function ChatApp({
         const { rows, all, attached, cited, used, upto, fromFiles, artifacts } = await loadThread(
           last.id,
         );
-        if (selectedRef.current !== null) return; // the user already moved on
+        if (selectedRef.current !== null || selectionChanged.current) return;
         // CH-10: what was open wins over the saved area (the fallback key knew no areas).
         setArea(areaOf(last.kind));
         setThreadArtifacts(artifacts);
@@ -1751,6 +1754,7 @@ export function ChatApp({
   }, [area]);
 
   const select = (id: string) => {
+    selectionChanged.current = true;
     // M10 step 12: a thread from the other area (search, the palette, Runs) brings its area along.
     const kind = threads.find((t) => t.id === id)?.kind;
     if (kind && areaOf(kind) !== area) setArea(areaOf(kind));
@@ -1845,6 +1849,7 @@ export function ChatApp({
   /** A new chat, optionally inside a project (starting on its default model, if it has one). */
   const newChat = useCallback(
     (projectId: string | null = null, incognito = false) => {
+      selectionChanged.current = true;
       setSelectedId(null);
       selectedRef.current = null;
       // A new draft starts empty (a handoff puts its brief in after this).
@@ -3911,7 +3916,7 @@ export function ChatApp({
       const r = threadRuns.get(v.id);
       if (r && r.run.kind !== "research") {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
-        const waiting = approvals.get(r.run.id);
+        const waiting = pendingApproval(approvals, r.run.id);
         if (waiting) {
           v.run.approval = approvalView(waiting.request);
           const flags = waiting.request.flags ?? [];
@@ -4134,7 +4139,10 @@ export function ChatApp({
   const cacheRate = cacheHitRate(messages);
   // M10 step 13: questions waiting (this app's runs, or every page's on the web), and how each
   // chat's handovers to HULK are going.
-  const waitingRuns = new Set(approvals.keys());
+  const waitingRuns = new Set([
+    ...approvals.keys(),
+    ...[...approvals.values()].flatMap((q) => (q.request.child ? [q.request.child.parentId] : [])),
+  ]);
   const hulkLooks = new Map<string, string[]>();
   for (const h of handovers) {
     const s = hulkStates.get(h.requestId);
@@ -4255,13 +4263,7 @@ export function ChatApp({
   // The open chat's result is seen as it arrives (Mark as unread, seenAt 0, is left alone).
   const openLatest = selectedId ? latestRuns.get(selectedId) : undefined;
   const openSeenAt = selectedId ? threads.find((t) => t.id === selectedId)?.seenAt : undefined;
-  useEffect(() => {
-    if (!selectedId || !openLatest || openLatest.status === "running") return;
-    if (openSeenAt === 0 || (openSeenAt ?? 0) >= openLatest.updatedAt) return;
-    markThreadSeen(db, tenant, selectedId)
-      .then(refreshThreads)
-      .catch(() => undefined);
-  }, [selectedId, openLatest, openSeenAt, db, tenant, refreshThreads]);
+  useSeenResult(db, tenant, selectedId, openLatest, openSeenAt, refreshThreads);
   const threadViews = threads
     .filter((t) => !t.incognito && inArea(t, area))
     .map((t) => ({
@@ -6545,7 +6547,7 @@ export function ChatApp({
                         onContinueRun={continueRunHere}
                         onStopRun={stopRun}
                         onApprove={(runId, answer) => {
-                          approvals.get(runId)?.answer(answer);
+                          pendingApproval(approvals, runId)?.answer(answer);
                         }}
                         onPreviewChange={(changeId) => {
                           previewChange(changeId).catch(report);

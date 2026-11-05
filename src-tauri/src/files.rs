@@ -166,7 +166,24 @@ pub(crate) fn file_wipe(ctx: &Ctx) -> Result<usize, String> {
             let _ = stop.send(());
         }
     }
+    let stopped = std::time::Instant::now();
+    loop {
+        let empty = ctx
+            .execs
+            .child_running
+            .lock()
+            .map_err(|_| "Couldn't confirm child commands stopped.")?
+            .is_empty();
+        if empty {
+            break;
+        }
+        if stopped.elapsed() > std::time::Duration::from_secs(3) {
+            return Err("Child commands are still stopping. Retry deletion to remove their private worktrees.".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     crate::skill_scripts::cleanup(&ctx.data_dir);
+    crate::code_worktrees::wipe_worktrees(&ctx.data_dir)?;
     wipe(&ctx.data_dir)
 }
 

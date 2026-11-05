@@ -3,7 +3,7 @@
  * tools as its grammar budget allows (providers/anthropic/adapter.ts), so a call to one of the
  * rest can come back loose: this turns a bad one into an error the model can fix, not a crash.
  * Covers what FUSE's schemas use: type (or a type list), properties, required,
- * additionalProperties: false, items and enum.
+ * additionalProperties: false, bounded arrays/strings, items and enum.
  */
 export function checkInput(schema: Record<string, unknown>, input: unknown): string | null {
   return check(schema, input, "input");
@@ -37,6 +37,19 @@ function check(schema: Record<string, unknown>, v: unknown, at: string): string 
   }
   if (Array.isArray(schema.enum) && !schema.enum.includes(v)) {
     return `${at} should be one of ${schema.enum.map((e) => JSON.stringify(e)).join(", ")}.`;
+  }
+  if (typeof v === "string") {
+    const length = Array.from(v).length; // JSON Schema counts Unicode code points.
+    if (typeof schema.minLength === "number" && length < schema.minLength)
+      return `${at} needs at least ${String(schema.minLength)} characters.`;
+    if (typeof schema.maxLength === "number" && length > schema.maxLength)
+      return `${at} exceeds ${String(schema.maxLength)} characters.`;
+  }
+  if (Array.isArray(v)) {
+    if (typeof schema.minItems === "number" && v.length < schema.minItems)
+      return `${at} needs at least ${String(schema.minItems)} items.`;
+    if (typeof schema.maxItems === "number" && v.length > schema.maxItems)
+      return `${at} exceeds ${String(schema.maxItems)} items.`;
   }
   if (Array.isArray(v) && schema.items && typeof schema.items === "object") {
     for (const [i, item] of v.entries()) {

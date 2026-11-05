@@ -24,7 +24,7 @@ CA-10, CA-12, CA-14; shared AG-04/05 and RT-14.
 - [x] **1. Structured review.** Review pinned local changes, branches and GitHub PRs using the M15 reader. Findings carry severity, verified path/line and evidence. Reviewing edits no files and posts no comments.
 - [x] **2. Named skills.** Import instruction packages and supporting files; invoke by a distinct named command, preserve provenance/version and reuse prompt/context assembly. Packages confer no permissions.
 - [x] **3. Skill scripts.** Run explicitly invoked package scripts only through the existing sandbox, permissions and approvals, with safe package paths and bounded outputs. No automatic execution on import.
-- [ ] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
+- [x] **4. Child execution.** Add parent/child runs with isolated worktrees, a single execution owner and atomic reservations against one combined cap. Stop propagates; no recursive delegation.
 - [ ] **5. Parallel controls and integration.** Show child plans/progress/cost and combined spend. Require approval for exact child commits before integration; changed parents/conflicts pause. Preserve failed-run evidence and finish benchmark/screenshots/documentation.
 
 ## Behavior and boundaries
@@ -327,3 +327,160 @@ removed. The three fixtures now use distinct ports, reject occupied endpoints, c
 own child during readiness and wait for bounded shutdown. Only each fixture's own PID is
 signalled; production services are untouched. The complete sequence and fresh CI are required
 before merging.
+
+
+Step 3 shipped in [PR #308](https://github.com/isaacholt-hash/fuse/pull/308), merged
+2026-11-05T17:02:17Z as `0a34c3f4886141a3ff36b934ce1c47a38a9cae54`. All five gates and the
+JSON gate passed on `98f92cdd9283ffa5f52c3a03f3b34b762beff0bb` in
+[CI 42068411542](https://github.com/isaacholt-hash/fuse/actions/runs/42068411542), with CLEAN
+merge status and no unresolved reviews/comments. Shared checks: 1,192 passed, 21 explicit
+skips (211.78 s); server Rust 236/236 (246.10 s). Windows sandbox 12/12, sync 31/31, atomic
+files 9/9, review 4/4, skill integrity/replay 3/3 and connectors 41/41. Windows click-through
+passed 16 with 22 explicit environment-only skips. Both Windows research themes and all ten
+new CI script captures were reviewed. Existing benchmarks passed: dictation 31; HULK five;
+sync 16 at schema 70 (40,186 ms); research eight Linux/HULK (22,352 ms), six Windows (14,952 ms)
+and two explicit Linux-only Windows skips. Native/background-owner script web passed 2/2
+(17.29 s). [v0.1.226](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.226) published
+2026-11-05T17:11:40Z from that merge via
+[release 42070618229](https://github.com/isaacholt-hash/fuse/actions/runs/42070618229).
+All eleven assets and seven updater entries matched published signature files. No deployment,
+installation or live activation occurred.
+
+Step 4 adds bounded, approval-gated child execution through the existing run engine, with
+native raw-object worktree preparation, owner-local claims, narrow OS command isolation and
+atomic root-cap reservations/receipts. Parent stop propagates; startup retains interrupted
+work and never replays it. Parent conversation cards present each exact child's approval.
+Children cannot inherit project command/network grants, recursively delegate or use Git.
+[parallel-code.md](../parallel-code.md) records limits, permission and retention boundaries.
+Schema 71 classifies portable parent links and local claims; no dependencies were added.
+Dedicated progress/review and approved integration remain step 5. Final verification follows.
+
+Step 4 native verification passes: default 231/231 (394.74 s), server 245/245 (450.71 s),
+including the preserved encrypted-sync benchmark. Both all-target clippy configurations and
+formatting pass. The native worktree suite passes 8/8 separately (12.52 s). Its fixed Git probes
+verify omitted secret-looking blobs, disabled filters/hooks, an unchanged dirty parent,
+concurrent preparation, durable Stop, bounded growth and safe global deletion. The new sync
+regression stages a completed child until its parent arrives, grants no folders or execution
+and withdraws both histories on project privacy changes. An initial fixture replay attempted
+to insert an already staged event ID; fixture delivery now tracks previously delivered IDs,
+matching transport deduplication without weakening the dependency/privacy assertions.
+
+Focused shared verification passed 44/44 (13.05 s), including actual child-specific command
+and network approvals, existing project-command grants, no lasting permission widening, shared
+reservations, unknown billing and interruption. UI clicks and keyboard answers retain the
+displayed child ID; stale sibling cards cannot answer the next child's question. Production
+UI and standalone runner builds pass and exclude all synthetic fixture markers. Final full
+application checks, native screenshots and updated browser counters follow below.
+
+The first full application run passed 1,212 tests with 21 explicit skips and failed the
+registry's schema-coverage assertion: the new bounded task schema used array/string length
+keywords outside the shared validator's supported subset. The validator now enforces those
+bounds, including Unicode code-point length, with rejection/acceptance coverage. The focused
+rerun passed 42/42 (5.43 s); the full check is rerun before shipping. The assertion remains intact.
+
+The final complete application check now passes: 1,214 tests, 21 explicit live/manual or
+opt-in skips across 216 files (253.86 s). Lint, formatting, type checking and the secret scan
+pass. Native Rust source is unchanged from the passing full suites. No dependencies were
+added and no existing test assertion was relaxed.
+
+Final production UI and runner builds pass after the validator fix, excluding every synthetic
+fixture marker. The final shared browser run passes 2/2 (43.46 s) against the rebuilt native
+server: two independently approved child file edits, two completed local claims and separate
+results after caller disconnection. Across the denied and approved proposals it records
+14 synthetic agent requests / 2,400 micro-dollars; root aggregates equal request-ledger spend,
+with no unknown billing. The parent retains its exact dirty file and original single commit.
+No integration, push or real provider call occurs. The preserved HULK benchmark passes 5/5
+(12.62 s). All eight final shared web captures were reviewed:
+
+- [Task approval light](../screenshots/m16/children-web-approval-light.png) and
+  [dark](../screenshots/m16/children-web-approval-dark.png).
+- [Individual child approval light](../screenshots/m16/children-web-child-approval-light.png) and
+  [dark](../screenshots/m16/children-web-child-approval-dark.png).
+- [Completed light](../screenshots/m16/children-web-completed-light.png) and
+  [dark](../screenshots/m16/children-web-completed-dark.png).
+- [Mobile completion light](../screenshots/m16/children-web-mobile-completed-light.png) and
+  [dark](../screenshots/m16/children-web-mobile-completed-dark.png).
+
+[Recorded counters](../screenshots/m16/children-web-result.json) state the fixture boundary.
+The 9.9.9 updater banner is fixture data, not the release identifier. Existing crowded mobile
+composer controls remain an M19 layout check; new approval/result content stays within the
+viewport. Native capture iterations correct click position and scroll the approval into view;
+only the final reviewed captures are used for acceptance below.
+
+Final native startup and task/base/cap approval captures were reviewed in both themes:
+[light](../screenshots/m16/children-native-approval-light.png) and
+[dark](../screenshots/m16/children-native-approval-dark.png). They use isolated databases,
+keyrings, a disposable Git repository and synthetic model replies, without approving child
+execution on the desktop. Real native worktrees and background execution are verified by the
+native and web fixtures separately. All ten final native/browser images are committed.
+Windows native execution and current-head CI remain required before merge. The normal release
+is verified after merging.
+
+The first CI head, `80b9fdabaf6b086bd4db0f681407a7b44f72cc42`, passed four gates in
+[CI 42085633545](https://github.com/isaacholt-hash/fuse/actions/runs/42085633545). The new Windows
+native worktree suite passed 3/7 and failed four cases during preparation, before file grants
+or commands. Its immediately retained `windows-child-worktree-log` prevents loss of evidence.
+Local Windows paths returned by canonicalization are now normalized through the existing
+Windows path adapter before passing them to Git; authority still uses resolved roots. Rust
+[documents this command-line interoperability boundary](https://doc.rust-lang.org/std/fs/fn.canonicalize.html).
+Fixed operation names improve diagnostics without exposing Git stderr or repository paths.
+Preparation assertions now require ready worktrees before later native probes, including the
+concurrent/deletion cases. No assertion is skipped or weakened. Both local all-target clippy
+configurations and all eight Linux worktree tests pass after the change (12.77 s); a fresh
+Windows/current-head five-gate run remains required before merging.
+
+The Windows path adapter also verifies that ordinary spelling resolves back to exactly the
+same directory, refusing ambiguous trailing-dot/space components. A Windows regression creates
+two distinct directories whose ordinary spellings could alias, then requires refusal. This
+keeps the original folder authority intact while fixing command-line compatibility. Updated
+local default/server all-target lint checks and eight Linux worktree tests pass (12.32 s).
+The new Windows alias test and private-command probe require current-head CI verification.
+
+The next Windows run verified preparation and path scope (7/8 native cases passed), including
+real worktrees, raw-object exclusion, retained failures and the alias regression. Its remaining
+private-command case rejected an environment variable name after launching the shell. The
+launcher still passes only six selected OS variables; the fixture now distinguishes known
+shell-created metadata/current-drive entries from inherited application variables, reports
+names without values, and CI supplies an ambient synthetic sentinel that must remain absent.
+The private-command probe must pass before merge; no production allowlist was expanded.
+
+The same run's Windows click-through trace retained database lock errors during overlapping
+read-watermark updates and a stale startup restore overriding a newly selected Chat draft.
+Automatic read marks now depend on scalar run revisions, compare their observed watermark,
+never regress it and preserve explicit unread marks. A future-dated result settles once.
+Startup restoration yields to explicit navigation, including a new draft whose selected ID
+is null. Three controlled deferred-write hook regressions plus a delayed startup/navigation
+regression pass. The checklist waits for the actual Code run before its Going dot and waits
+for Chat/new-draft transitions before research; watchdog and research assertions remain intact.
+No dependencies, permissions, migrations or portable-data classifications change in these fixes.
+Fresh complete application checks and native/web verification follow before the next CI head.
+
+The complete application rerun after the Windows UI fixes passes 1,218 tests in 207 files,
+with 21 existing opt-in/live cases skipped in ten files (251.61 s). Lint, formatting, type
+checking and the secret scan pass. The initial Windows failures and their screenshots/logs
+remain retained rather than replaced by the rerun. Native production behavior remains the
+verified path-scope fix; the changed Windows fixture reports names only and tests rejection
+of a synthetic inherited variable. Current-head Windows execution is still required.
+
+The final current-source production UI/runner builds pass and exclude fixture markers.
+Fresh native approval captures and all eight shared browser captures were reviewed in both
+themes and replaced in the committed evidence set. The real browser fixture passes 2/2
+(42.47 s): 14 synthetic requests, 2,400 micro-dollars, two independent changes, exact root/ledger
+agreement, no unknown billing and no integration or push. The parent retains its original
+dirty file and commit after caller disconnection. The preserved HULK benchmark passes 5/5
+(12.43 s). The next current-head CI run must verify all Windows fixes before merge.
+
+The following CI run passes the shared gate (1,218 tests, 21 skips), full Rust server
+suite and Windows click-through (16 passed, 24 explicit skips). Windows no longer shows the
+repeated SQLite lock errors, and the watchdog/research behavior passes. Screenshot review
+nevertheless caught a compositor race: a research image labelled light still showed dark.
+The checklist now waits for theme painting and asserts the requested theme before capture;
+this changes no application behavior. Its lint/type checks pass, and a fresh current-head
+five-gate run is required for the corrected Windows evidence.
+
+Windows native child verification now passes all 8/8 cases (56.99 s) in
+[CI 42093474233](https://github.com/isaacholt-hash/fuse/actions/runs/42093474233). Its redacted
+probe records only the selected OS names, private temporary names, COMSPEC/PROMPT and the
+current-drive entry; the synthetic inherited sentinel is absent. Parent/sibling file denial,
+separate writable worktrees, path authority and retained failures all pass. This is real
+Windows execution evidence; the screenshot-only follow-up still needs its own full CI gate.

@@ -1079,17 +1079,25 @@
         "updated_at",
         "started_at",
         "waited_ms",
-        "review_profile"
+        "review_profile",
+        "parent_run_id"
       ],
       "localColumns": ["sync_owner", "routing_stage"],
       "key": ["id"],
       "eligible": "(({a}.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id={a}.project_id AND p.workspace_id={a}.workspace_id AND p.privacy_mode!='local_only'))) AND ({a}.thread_id IS NULL OR EXISTS (SELECT 1 FROM threads t WHERE t.id={a}.thread_id AND t.workspace_id={a}.workspace_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only'))))",
       "ready": "{a}.status IN ('done','stopped','error')",
-      "dependencies": ["messages", "projects", "threads"],
+      "dependencies": ["messages", "projects", "threads", "runs"],
       "references": [
         {
           "column": "message_id",
           "table": "messages",
+          "target": "id",
+          "optional": true,
+          "ownership": true
+        },
+        {
+          "column": "parent_run_id",
+          "table": "runs",
           "target": "id",
           "optional": true,
           "ownership": true
@@ -1134,7 +1142,8 @@
         "updated_at": "INTEGER",
         "started_at": "INTEGER",
         "waited_ms": "INTEGER",
-        "review_profile": "INTEGER"
+        "review_profile": "INTEGER",
+        "parent_run_id": "TEXT"
       }
     },
     "run_steps": {
@@ -1411,7 +1420,8 @@
     "research_transfers": "Owner-local explicit HULK delivery intents and links. Never synced/exported or automatically replayed; source deletion cascades and privacy withdrawal purges pending snapshots.",
     "connector_accounts": "Owner-registered connector applications and service consent; installation-local, excluded from portable export; native credentials are never in SQLite",
     "review_state": "Pinned repository bytes, review checkpoint and lease; execution-owner only; excluded from portable sync/export; encrypted full-database backups retain it without replay.",
-    "review_operations": "Owner-local paid-attempt journal and transient source analysis; never synced/exported or automatically replayed after restore."
+    "review_operations": "Owner-local paid-attempt journal and transient source analysis; never synced/exported or automatically replayed after restore.",
+    "code_children": "Owner-local child worktrees and dispatch claims; no portable export or sync. Delete with runs/global deletion. Encrypted backups retain inert records, never execution or folder authority."
   },
   "internalTables": [
     "sync_state",
