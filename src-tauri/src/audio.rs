@@ -318,6 +318,15 @@ impl Audio {
             .join()
             .map_err(|_| "Recording stopped unexpectedly.")?
     }
+    /// Called from a blocking lifecycle task: signal teardown without waiting on CPAL.
+    pub fn cancel_all(&self) {
+        if let Ok(mut current) = self.0.lock()
+            && let Some(session) = current.take()
+        {
+            let _ = session.control.send(Control::Cancel);
+            // Dropping the handle detaches; the worker owns and wipes the sample buffer.
+        }
+    }
     pub fn cancel(&self, id: &str) -> Result<(), String> {
         let Ok(s) = self.take(id) else {
             return Ok(());
@@ -387,6 +396,29 @@ mod tests {
             wav_duration(&wav(&b.samples, b.rate).unwrap()).unwrap(),
             MAX_MS
         );
+    }
+    #[test]
+    fn lifecycle_cancellation_signals_worker_and_forgets_session_without_a_microphone() {
+        let audio = Audio::default();
+        let (control, receive) = mpsc::channel();
+        let (stopped, observed) = mpsc::channel();
+        let buffer = Arc::new(Mutex::new(Buffer::default()));
+        let worker = std::thread::spawn(move || {
+            stopped
+                .send(matches!(receive.recv().unwrap(), Control::Cancel))
+                .unwrap();
+            Ok(Vec::new())
+        });
+        *audio.0.lock().unwrap() = Some(Session {
+            id: "fixture".into(),
+            control,
+            buffer,
+            worker,
+        });
+        audio.cancel_all();
+        assert!(audio.0.lock().unwrap().is_none());
+        assert!(observed.recv_timeout(Duration::from_secs(5)).unwrap());
+        audio.cancel_all();
     }
     #[test]
     fn consent_is_required_without_opening_a_microphone() {

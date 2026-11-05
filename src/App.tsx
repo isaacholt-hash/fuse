@@ -1,3 +1,4 @@
+import type { DictationApi } from "@/dictation/client";
 import { isDesktop } from "@/platform/core";
 import { nativeSyncApi, type SyncApi } from "@/sync/api";
 import { tauriLocalApi, type LocalApi } from "@/local/api";
@@ -118,6 +119,7 @@ interface Props {
   /** MCP servers' keychain values (M9 step 8). */
   mcp?: McpApi;
   quickCapture?: QuickCaptureApi;
+  dictation?: DictationApi;
   /** Sets the webview zoom for the text size (PL-10). */
   zoom?: ZoomApi;
   /** Windows Hello for the app lock (SE-03). */
@@ -161,6 +163,7 @@ export default function App({
   python = tauriPythonApi,
   mcp = webApp ? webMcp : tauriMcpApi,
   quickCapture = webApp ? undefined : tauriQuickCapture,
+  dictation,
   zoom = webApp ? undefined : tauriZoom,
   hello = webApp ? undefined : tauriHello,
   hulk = webApp ? undefined : tauriHulkApi,
@@ -354,6 +357,7 @@ export default function App({
       pythonApi={python}
       mcpApi={mcp}
       quickCapture={quickCapture}
+      {...(dictation ? { dictation } : {})}
       zoom={zoom}
       hello={hello}
       {...(hulk ? { hulk } : {})}

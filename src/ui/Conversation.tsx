@@ -1,4 +1,7 @@
 import { money, number } from "./format";
+import { speechPrice } from "@/cost/duration";
+import { DictationControls } from "./Dictation";
+import { useDictation, type DictationConfig } from "@/dictation/useDictation";
 import {
   ArrowDown,
   ArrowUp,
@@ -1144,6 +1147,7 @@ function MenuRow({
 }
 
 export function Composer({
+  dictation,
   model,
   models,
   streaming,
@@ -1191,6 +1195,7 @@ export function Composer({
   footnote,
   placeholder,
 }: {
+  dictation?: DictationConfig;
   model: ModelOption;
   models: ModelOption[];
   streaming: boolean;
@@ -1274,11 +1279,14 @@ export function Composer({
 }) {
   const active = usePanelActive();
   const [text, setText] = useState("");
+  const voice = useDictation(dictation, active && !streaming, (transcript) => {
+    setText((draft) => `${draft}${draft && !draft.endsWith("\n") ? "\n\n" : ""}${transcript}`);
+  });
   const [dragging, setDragging] = useState(false);
   const picker = useRef<HTMLInputElement>(null);
   const processing = attachments.some((a) => a.status === "processing");
   const ready = attachments.some((a) => a.status === "ready");
-  const canSend = (text.trim() !== "" || ready) && !processing && !blocked && !guide;
+  const canSend = (text.trim() !== "" || ready) && !processing && !blocked && !guide && !voice.busy;
   const addFiles = (list: FileList | null | undefined) => {
     const files = Array.from(list ?? []);
     if (files.length > 0) onAddFiles?.(files);
@@ -1660,7 +1668,7 @@ export function Composer({
               ))}
             </ul>
           )}
-          {missingKey ? (
+          {missingKey && (
             <button
               className="flex w-full items-center gap-2 px-1 py-3 text-left text-sm text-muted-foreground underline underline-offset-4"
               onClick={onSettings}
@@ -1668,7 +1676,8 @@ export function Composer({
               Add {/^[AEIOU]/.test(missingKey) ? "an" : "a"} {missingKey} key in Settings
               <CircleAlert className="size-3.5" />
             </button>
-          ) : (
+          )}
+          {(!missingKey || dictation?.reason === null) && (
             <textarea
               ref={field}
               aria-label="Message"
@@ -1723,6 +1732,13 @@ export function Composer({
                 </li>
               ))}
             </ul>
+          )}
+          {dictation && (voice.busy || voice.note) && (
+            <p role="status" className="px-1 pb-2 text-[11px] text-muted-foreground">
+              {voice.busy
+                ? `${voice.phase === "starting" ? "Opening microphone…" : voice.phase === "transcribing" ? "Transcribing…" : "Recording"} · ${String(Math.floor(voice.durationMs / 1000))}s / 120s · ≈ ${money(voice.estimateMicro)} · ${money(speechPrice.micro_usd_per_minute)}/min`
+                : voice.note}
+            </p>
           )}
           {blocked && (
             <p role="status" className="px-1 pb-1 text-[11px] text-destructive">
@@ -2027,6 +2043,7 @@ export function Composer({
                 </span>
               ))}
             </div>
+            {dictation && <DictationControls config={dictation} {...voice} />}
             {estimated !== null && (
               <Tip
                 label={

@@ -25,6 +25,13 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Recorded dictation regression benchmark
+        run: pnpm dictation:bench
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dictation-benchmark
+          path: src-tauri/target/dictation-benchmark.json
+          if-no-files-found: error
       - run: bash scripts/secret-scan.sh
       # M8 step 14: the click-through tests' scripted models must never reach a release build.
       - name: Release bundle has no test code
@@ -124,6 +131,16 @@ jobs:
           src-tauri/target/debug/fuse-server --port 4199 --home "$home" --ui dist-web --test-keys-in-memory > "$RUNNER_TEMP/web-server.log" 2>&1 &
           for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4199/api/auth/state > /dev/null && break; sleep 0.5; done
           pnpm exec vitest run --config e2e/vitest.config.ts e2e/web.e2e.ts
+      - name: Dictation web fixture
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/dictation-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dictation-web-screenshots
+          path: e2e/screenshots/dictation/
+          if-no-files-found: ignore
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:

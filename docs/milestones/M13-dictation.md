@@ -23,7 +23,7 @@ VI-01, CO-08; shared accounting and SE-10 foundations.
 
 - [x] **1. Shared accounting.** Add conservative request-cost reservations and atomic settlement against a run or parent cap, actual-attempt identities, explicit unresolved billing, duration pricing and sanitized audit records. Preserve integer micro-dollars and current rollups. Reserve before dispatch; do not retry an ambiguously billed request automatically.
 - [x] **2. Capture and transcription.** Native Rust capture with pinned `cpal = 0.18.2`, browser microphone capture, and typed bounded Rust binary/multipart transport using the existing OpenAI connection. Two-minute / 20 MiB limits, cancellation and microphone teardown. Raw audio stays transient. Credential values never return from Rust.
-- [ ] **3. Controls and release.** Push-to-talk plus accessible start/stop in the composer and existing quick-capture flow. Explicit cloud-audio consent, duration/cost display, editable transcript insertion preserving the draft, never automatic send. Settings use M12 search/direct-link metadata. Recorded regression benchmark, desktop/web screenshots and release documentation.
+- [x] **3. Controls and release.** Push-to-talk plus accessible start/stop in the composer and existing quick-capture flow. Explicit cloud-audio consent, duration/cost display, editable transcript insertion preserving the draft, never automatic send. Settings use M12 search/direct-link metadata. Recorded regression benchmark, desktop/web screenshots and release documentation.
 
 ## Behavior and boundaries
 
@@ -145,3 +145,61 @@ verification; the recording UI is step 3. The native updater banner is the scrip
 fixture. No physical microphone, provider request, Windows installer or live deployment was
 used locally. Windows compatibility/click-through and all other current-commit CI gates are
 required before merging this step.
+
+
+Step 2 shipped in [PR #290](https://github.com/isaacholt-hash/fuse/pull/290), merged as
+`ff8da335bf81cb4d62aeb7fad02aa3725be27ce8` after all five gates passed on `5a1e777` in
+[CI 41962255756](https://github.com/isaacholt-hash/fuse/actions/runs/41962255756).
+Its normal [release workflow](https://github.com/isaacholt-hash/fuse/actions/runs/41964551540)
+published [v0.1.214](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.214) on
+2026-11-05 at 04:20:57 UTC from that exact merge. Linux/Windows builds and publication passed;
+installer/signature assets and the updater manifest's signed asset associations were verified.
+Nothing was deployed.
+
+Step 3 adds shared composer controls, push-to-talk and keyboard/click start/stop, bounded
+recording state and price, cancellation, and local audio-transfer consent. The same composer
+is used by quick capture. Consent explains trusted HULK's web role and never starts capture
+by itself. It is local to the installation/browser, with redacted policy audit events.
+Settings search/direct links include Dictation in General. Lock/unmount, hidden panels,
+changed project/area, page navigation and background tabs cancel audio. Native page/window
+handlers also release abandoned capture when JS cleanup is unavailable.
+
+A completed transcription appends once to the current draft, preserving text typed during
+upload and never calling Send. No run or permission is created. Incognito audio remains
+transient. Existing-thread speech fees join thread totals; draft-only fees remain attributed
+to the selected project/global scope without creating an empty conversation. Discarding a
+draft cannot remove incurred costs. Unknown billing stays visible and is never auto-retried.
+See [setup, updates and owner checks](../dictation.md).
+
+`pnpm dictation:bench` records the deterministic regression suite; CI uploads its JSON report.
+The separate web fixture and Windows click-through use synthetic capture and one synthetic
+receipt, without physical microphones or provider calls. Production browser verification
+remains separate, and release bundles exclude the scripted fixture. Actual microphone,
+provider charges and owner-operated quick capture are **pending**, not passed by fixtures.
+P2 acceptance remains open under [the completion contract](../P2-completion.md).
+
+
+Step-3 local evidence (2026-11-05): the recorded dictation regression benchmark passed all
+31 scenarios across eight files. Default Rust clippy and 169 tests passed; server clippy
+and 183 tests passed. The strengthened native lifecycle test additionally confirms that
+its worker actually receives cancellation. The preserved HULK benchmark passed 5/5 and
+encrypted sync passed 16/16 (schema 63, two replicas, one throwaway HULK, 30,507 ms).
+Production web click-through passed 10/10; the separate scripted dictation browser scenario
+passed with one synthetic 75-micro-dollar receipt and zero provider calls. These are fixtures,
+not real microphone or provider acceptance. [Recorded results](../screenshots/m13/controls-benchmark.json).
+
+Reviewed native [recording in light](../screenshots/m13/controls-native-recording-light.png)
+and [dark](../screenshots/m13/controls-native-recording-dark.png), plus editable transcripts in
+[light](../screenshots/m13/controls-native-transcript-light.png) and
+[dark](../screenshots/m13/controls-native-transcript-dark.png).
+Web [consent](../screenshots/m13/controls-web-consent-light.png),
+[recording](../screenshots/m13/controls-web-recording-dark.png) and Settings in
+[light](../screenshots/m13/controls-web-settings-light.png) and
+[dark](../screenshots/m13/controls-web-settings-dark.png) were reviewed. The 9.9.9 updater
+banner is scripted fixture data. Windows click-through and all five current-head CI gates
+remain mandatory for this PR; physical devices/provider charges stay owner-operated.
+
+`VITEST_MAX_WORKERS=2 pnpm check` passed on the completed source tree: 175 test files /
+1,020 tests passed; 13 live/manual tests skipped. Lint, typecheck and the secret scan passed.
+The focused dictation suite passed 31/31, and final clippy checks passed for default and
+server features. No new dependency, migration or production activation is part of step 3.

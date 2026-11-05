@@ -145,7 +145,10 @@ const SELECT_THREAD = `
          t.pinned_at, t.archived_at, t.stay_provider,
          (SELECT GROUP_CONCAT(g.tag, char(31)) FROM thread_tags g WHERE g.thread_id = t.id) AS tags,
          COALESCE((SELECT SUM(m.cost_micro_usd) FROM messages m
-                   WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0) AS cost_micro_usd
+                   WHERE m.thread_id = t.id AND m.deleted_at IS NULL), 0)
+         + COALESCE((SELECT SUM(r.cost_micro_usd) FROM request_log r
+                     WHERE r.thread_id = t.id AND r.workspace_id = t.workspace_id
+                       AND r.purpose = 'transcribe'), 0) AS cost_micro_usd
   FROM threads t`;
 
 export async function createThread(

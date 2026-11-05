@@ -1,3 +1,10 @@
+import { defaultCatalog } from "@/catalog/defaultCatalog";
+import { createOpenAIAdapter } from "@/providers/openai/adapter";
+import type { DictationApi } from "@/dictation/client";
+import { encodeRecording } from "@/dictation/wav";
+import { logRequest } from "@/storage/requestLog";
+import { EMPTY_USAGE } from "@/storage/usage";
+import { DEFAULT_TENANT } from "@/storage/defaults";
 // M8 step 14: what the click-through test build runs on (`vite build --mode e2e`, see
 // e2e/README.md) instead of the real providers, keychain, updater and folder picker. main.tsx
 // loads this only in that mode; CI checks a release bundle never contains E2E_MARK.
@@ -195,7 +202,9 @@ const scriptedFetch: FetchLike = async (url, init) => {
 const keysApi: KeysApi = {
   status: (p) =>
     Promise.resolve(
-      p === "anthropic" ? { saved: true, masked: "e2e…test" } : { saved: false, masked: null },
+      p === "anthropic" || localStorage.getItem("fuse.e2e.dictation") === "yes"
+        ? { saved: true, masked: "e2e…test" }
+        : { saved: false, masked: null },
     ),
   save: () => Promise.reject(new Error("Keys can't be saved in the test build.")),
   test: () => Promise.resolve({ status: "ok", httpStatus: 200, latencyMs: 1, requestId: null }),
@@ -289,19 +298,82 @@ async function loggedDb(): Promise<SqlDb> {
   };
 }
 
+// Explicit test-only opt-in; no microphone, provider endpoint or real secret is touched.
+const dictation: DictationApi = {
+  start: (_consent, signal) => {
+    if (signal.aborted) return Promise.reject(new DOMException("Cancelled", "AbortError"));
+    const at = performance.now();
+    return Promise.resolve({
+      status: () =>
+        Promise.resolve({
+          phase: "recording",
+          durationMs: Math.min(120000, Math.floor(performance.now() - at)),
+          bytes: 16044,
+        }),
+      stop: () => Promise.resolve(encodeRecording([new Float32Array(8000)], 8000)),
+      cancel: () => Promise.resolve(),
+    });
+  },
+  transcribe: async (bytes, scope, _consent, signal) => {
+    try {
+      if (signal.aborted) throw new DOMException("Cancelled", "AbortError");
+      const db = await openTauriDb();
+      const requestId = await logRequest(db, DEFAULT_TENANT, {
+        threadId: scope.startsWith("thread:") ? scope.slice(7) : null,
+        projectId: scope.startsWith("project:") ? scope.slice(8) : null,
+        messageId: null,
+        purpose: "transcribe",
+        provider: "openai",
+        model: "gpt-transcribe",
+        attempt: 1,
+        usage: { ...EMPTY_USAGE, costMicroUsd: 75 },
+        billingState: "reported",
+        audioDurationMs: 1000,
+        httpStatus: 200,
+        errorCode: null,
+        errorMessage: null,
+        providerRequestId: null,
+      });
+      return {
+        requestId,
+        text: "A dictated fixture, ready to edit.",
+        durationMs: 1000,
+        billingState: "reported",
+        costMicroUsd: 75,
+        boundMicroUsd: 75,
+      };
+    } finally {
+      bytes.fill(0);
+    }
+  },
+};
+
 export function e2eDeps() {
+  if (import.meta.env.VITE_E2E_DICTATION === "1") localStorage.setItem("fuse.e2e.dictation", "yes");
   // The test checks this before it clicks anything, so it never drives a real build.
   document.documentElement.dataset.build = E2E_MARK;
   const anthropic = logged(createAnthropicAdapter({ fetch: scriptedFetch }));
+  const openai = createOpenAIAdapter({
+    fetch: (_url, init) =>
+      init.method === "GET"
+        ? Promise.resolve(
+            Response.json({
+              data: defaultCatalog.models
+                .filter((m) => m.provider === "openai")
+                .map((m) => ({ id: m.id })),
+            }),
+          )
+        : Promise.reject(new Error("OpenAI model calls are disabled in the dictation fixture.")),
+  });
   return {
+    dictation,
     hulk,
     keysApi,
     updates,
     openDb: loggedDb,
     repo,
     adapterFor: (p: ProviderId): ProviderAdapter => {
-      if (p !== "anthropic") throw new Error(`${p} isn't scripted in the test build.`);
-      return anthropic;
+      return p === "anthropic" ? anthropic : openai;
     },
   };
 }

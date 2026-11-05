@@ -279,6 +279,7 @@ export function SettingsView({
   python,
   mcp,
   quickCapture,
+  dictation,
   notifications,
   data,
   appLock,
@@ -350,6 +351,7 @@ export function SettingsView({
   mcp?: ReactNode;
   /** Settings → Quick capture (CH-08). */
   quickCapture?: ReactNode;
+  dictation?: ReactNode;
   /** M10 step 21 (PL-07): sounds, system notifications, banners and quiet hours. */
   notifications?: ReactNode;
   /** Settings → Your data (SE-07). */
@@ -548,6 +550,7 @@ export function SettingsView({
     ),
     notifications,
     "quick-capture": quickCapture,
+    dictation,
     models,
     "model-defaults": modelDefaults,
     "routing-policy": routing,

@@ -1,3 +1,6 @@
+import { DictationSettings } from "@/ui/Dictation";
+import { useAudioConsent, setAudioConsent, clearAudioConsent } from "@/dictation/consent";
+import { dictationApi, type DictationApi } from "@/dictation/client";
 import type { SyncApi } from "@/sync/api";
 import { useSync } from "@/sync/useSync";
 import { SyncSection } from "@/ui/SyncSection";
@@ -597,6 +600,7 @@ export interface ChatAppProps {
   mcpApi?: McpApi;
   /** The global quick-capture shortcut (CH-08, PL-07). */
   quickCapture?: QuickCaptureApi;
+  dictation?: DictationApi;
   zoom?: ZoomApi;
   hello?: HelloApi;
   /** Starts the app over (after delete-all); a page reload by default. */
@@ -816,6 +820,7 @@ export function ChatApp({
   pythonApi,
   mcpApi,
   quickCapture,
+  dictation = dictationApi,
   zoom,
   hello,
   onRestart = () => {
@@ -829,6 +834,8 @@ export function ChatApp({
   undoMs = 8000,
   appBuild,
 }: ChatAppProps) {
+  const audioConsent = useAudioConsent();
+  const changeAudioConsent = (enabled: boolean) => setAudioConsent(db, tenant, enabled);
   const appUpdate = useUpdate(updates);
   // `at` is when the list was loaded: sidebar date groups are relative to it.
   const [{ threads, at }, setThreadList] = useState<{ threads: Thread[]; at: number }>({
@@ -5536,6 +5543,7 @@ export function ChatApp({
                     }}
                     onDeleteAll={async (removeKeys) => {
                       for (const c of controllers.current.values()) c.abort();
+                      clearAudioConsent();
                       await deleteAllData(db, tenant, filesApi);
                       if (removeKeys) {
                         for (const k of keys.keys) {
@@ -5559,6 +5567,13 @@ export function ChatApp({
                     setNotif(next);
                     setNotificationSettings(db, tenant, next).catch(report);
                   }}
+                />
+              }
+              dictation={
+                <DictationSettings
+                  enabled={audioConsent}
+                  onChange={changeAudioConsent}
+                  web={webApp}
                 />
               }
               quickCapture={
@@ -6421,6 +6436,28 @@ export function ChatApp({
                       />
                       <Composer
                         key={`composer-${selectedId ?? "new"}`}
+                        dictation={{
+                          api: dictation,
+                          scope: selectedId
+                            ? `thread:${selectedId}`
+                            : activeProjectId
+                              ? `project:${activeProjectId}`
+                              : "global",
+                          lifecycleKey: `${area}:${selectedId ?? "new"}:${activeProjectId ?? "global"}`,
+                          consent: audioConsent,
+                          reason:
+                            egressRefusal(egress, "openai", "chat") ??
+                            (!keyedProviders.includes("openai")
+                              ? "Connect OpenAI in Settings to use dictation."
+                              : stoppedProviders.includes("openai")
+                                ? "OpenAI has reached its spending limit."
+                                : null),
+                          web: webApp,
+                          onConsent: changeAudioConsent,
+                          onSettled: () => {
+                            void refreshThreads().catch(report);
+                          },
+                        }}
                         {...(area === "code" && selectedId === null
                           ? {
                               top: (
