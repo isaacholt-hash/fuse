@@ -557,3 +557,9 @@ merge. No live owner acceptance or installation was performed.
 The first step-5 CI attempt (42108997647) stopped at Prettier on the two newly copied
 benchmark evidence JSON files. Their formatting is corrected without changing values or
 application behavior. A fresh full five-gate run on the corrected commit is required.
+
+The corrected-evidence CI run (42109627249) passes shared checks, full Rust checks, HULK
+benchmarks and Windows click-through. Windows runs all 15 child worktree tests successfully,
+but its separate all-target sandbox-helper Clippy check rejects the new file-link helper's
+placement after the test module. The helper is moved before tests without changing its body.
+Its earlier failure remains recorded; all five gates must pass again on the corrected head.

@@ -781,6 +781,22 @@ fn pipe(sa: &SECURITY_ATTRIBUTES, fuse_writes: bool) -> io::Result<(Handle, Hand
     Ok((read, write))
 }
 
+/// Check an already opened file without following its name again. Review never accepts
+/// a hard link that could alias a file outside the selected worktree.
+pub fn single_link_file(file: &std::fs::File) -> io::Result<bool> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+    };
+    // SAFETY: this Win32 output structure permits zero initialization.
+    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+    // SAFETY: a live file handle and an initialized output structure.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(info.nNumberOfLinks == 1)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1246,20 +1262,4 @@ fn main() {
         assert!(!dir.join("after.txt").exists());
         assert!(grant(&dir).unwrap(), "grantable again after a revoke");
     }
-}
-
-/// Check an already opened file without following its name again. Review never accepts
-/// a hard link that could alias a file outside the selected worktree.
-pub fn single_link_file(file: &std::fs::File) -> io::Result<bool> {
-    use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Storage::FileSystem::{
-        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
-    };
-    // SAFETY: this Win32 output structure permits zero initialization.
-    let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
-    // SAFETY: a live file handle and an initialized output structure.
-    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(info.nNumberOfLinks == 1)
 }
