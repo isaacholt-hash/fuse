@@ -62,6 +62,7 @@ export const DELETE_ORDER = [
   "message_memories",
   "budget_events",
   "budgets",
+  "offline_queue",
   "artifact_runs",
   "artifact_comments",
   "artifact_proposals",

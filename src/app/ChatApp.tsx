@@ -434,6 +434,15 @@ import {
   type ArtifactRun,
 } from "@/storage/artifactRuns";
 import type { RunsProps } from "@/ui/ArtifactRuns";
+import { browserConnectivity, installationId, type Connectivity } from "@/offline/installation";
+import {
+  cancelQueued,
+  editQueued,
+  listQueue,
+  queueMessage,
+  type QueuedMessage,
+} from "@/storage/offlineQueue";
+import { QueuedMessages } from "@/ui/OfflineQueue";
 import type {
   CanvasProps,
   CanvasRange,
@@ -662,6 +671,8 @@ export interface ChatAppProps {
    * with their reason (PL-02), and folders are typed in rather than picked in a native dialog.
    */
   webApp?: boolean;
+  /** M18.1: whether this desktop is online; the browser's own signal by default. */
+  connectivity?: Connectivity;
   /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
   server?: ReactNode;
   /** M10 step 7 (desktop only): the link to FUSE on HULK, for handing runs over. */
@@ -880,6 +891,7 @@ export function ChatApp({
     window.location.reload();
   },
   webApp = false,
+  connectivity = browserConnectivity,
   server,
   hulk,
   notify,
@@ -1269,6 +1281,22 @@ export function ChatApp({
     for: string | null;
     prepend?: boolean;
   } | null>(null);
+  // M18.1: offline, a normal saved chat on this desktop can queue messages (PL-05).
+  const [online, setOnline] = useState(() => connectivity.online());
+  useEffect(() => connectivity.subscribe(setOnline), [connectivity]);
+  const [queue, setQueue] = useState<QueuedMessage[]>([]);
+  const loadQueue = (threadId: string | null) =>
+    threadId
+      ? listQueue(db, tenant, threadId).then((rows) => {
+          if (selectedRef.current === threadId) setQueue(rows);
+        })
+      : Promise.resolve().then(() => {
+          setQueue([]);
+        });
+  useEffect(() => {
+    loadQueue(selectedId).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- per open chat
+  }, [db, tenant, selectedId]);
   const putInComposer = (text: string, forId: string | null = selectedId) => {
     setQuote((q) => ({ text, key: (q?.key ?? 0) + 1, for: forId }));
   };
@@ -4693,6 +4721,35 @@ export function ChatApp({
     });
   })();
   const incognito = thread ? thread.incognito : draftIncognito;
+  // M18.1: queueing is explicit, offline, on the desktop, for normal saved Chat only.
+  const canQueue =
+    !online &&
+    !webApp &&
+    area === "chat" &&
+    !runKind &&
+    !incognito &&
+    compareKeys.length < 2 &&
+    attachments.pending.length === 0 &&
+    (!thread || thread.kind === "chat");
+  const queueFromComposer = (text: string, effort: EffortLevel | null) => {
+    void (async () => {
+      const threadId = await threadForSend(searchOn, text);
+      await queueMessage(db, tenant, { threadId, text, effort, origin: installationId() });
+      await loadQueue(threadId);
+    })().catch((e: unknown) => {
+      putInComposer(text);
+      report(e);
+    });
+  };
+  const offlineNote = online
+    ? null
+    : canQueue
+      ? "You're offline. Queue messages here; they send from this desktop, in order, when you're back online."
+      : webApp
+        ? "You're offline. FUSE on HULK can't be reached until you reconnect."
+        : incognito
+          ? "You're offline. Incognito chats can't queue messages, because nothing about them is kept."
+          : "You're offline. Messages won't reach a provider until you reconnect.";
   const projectViews: ProjectView[] = projects.map((p) => {
     const inside = threadViews.filter((t) => t.projectId === p.id);
     return {
@@ -7050,10 +7107,48 @@ export function ChatApp({
                               },
                             }
                           : {})}
+                        {...(canQueue
+                          ? {
+                              onQueue: (text: string, opts: { effort: EffortLevel | null }) => {
+                                queueFromComposer(text, opts.effort);
+                              },
+                            }
+                          : {})}
+                        {...(area === "chat" && queue.length > 0
+                          ? {
+                              top: (
+                                <QueuedMessages
+                                  items={queue.flatMap((q) =>
+                                    q.state === "sent" || q.state === "cancelled"
+                                      ? []
+                                      : [
+                                          {
+                                            id: q.id,
+                                            text: q.text,
+                                            state: q.state,
+                                            reason: q.reason,
+                                          },
+                                        ],
+                                  )}
+                                  onEdit={(id, text) => {
+                                    editQueued(db, tenant, id, text)
+                                      .then(() => loadQueue(selectedId))
+                                      .catch(report);
+                                  }}
+                                  onCancel={(id) => {
+                                    cancelQueued(db, tenant, id)
+                                      .then(() => loadQueue(selectedId))
+                                      .catch(report);
+                                  }}
+                                />
+                              ),
+                            }
+                          : {})}
                         status={
-                          trouble
+                          offlineNote ??
+                          (trouble
                             ? `${PROVIDER_NAMES[trouble.provider]} had trouble at ${new Date(trouble.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: answers move to the other provider while it lasts.`
-                            : null
+                            : null)
                         }
                         routing={{
                           selected:

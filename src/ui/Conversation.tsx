@@ -37,6 +37,7 @@ import {
   Trash2,
   Plus,
   SlidersHorizontal,
+  Clock,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -1166,6 +1167,7 @@ export function Composer({
   onPickerOpen,
   onSelectModel,
   onSend,
+  onQueue,
   effortFor,
   onStop,
   onSettings,
@@ -1221,6 +1223,8 @@ export function Composer({
   onSelectModel: (model: ModelOption) => void;
   /** `effort`: the level chosen on the dial for this one message (RT-08); null = routing's. */
   onSend: (content: string, opts?: { effort: EffortLevel | null }) => void;
+  /** M18.1: offline, Enter and the button queue the message on this desktop instead. */
+  onQueue?: (content: string, opts: { effort: EffortLevel | null }) => void;
   /** M10 step 22: what the dial shows for a draft: the usual level, the options, their cost. */
   effortFor?: (text: string) => EffortView | null;
   onStop: () => void;
@@ -1364,8 +1368,9 @@ export function Composer({
   };
   const comparing = (compare?.selected.length ?? 0) >= 2;
   const send = () => {
-    if (!canSend || streaming || missingKey) return;
-    onSend(text.trim(), { effort: effortChoice });
+    if (!canSend || streaming || (missingKey && !onQueue)) return;
+    if (onQueue) onQueue(text.trim(), { effort: effortChoice });
+    else onSend(text.trim(), { effort: effortChoice });
     setText("");
     setEffortChoice(null);
     field.current?.focus();
@@ -2170,15 +2175,21 @@ export function Composer({
                 </Button>
               </Tip>
             ) : (
-              <Tip label="Send · Enter. Shift+Enter for a new line">
+              <Tip
+                label={
+                  onQueue
+                    ? "Queue · Enter. Sends from this desktop when you're back online"
+                    : "Send · Enter. Shift+Enter for a new line"
+                }
+              >
                 <Button
                   size="icon"
                   className="shrink-0 rounded-md"
-                  aria-label="Send message (Enter)"
-                  disabled={Boolean(missingKey) || !canSend}
+                  aria-label={onQueue ? "Queue message (Enter)" : "Send message (Enter)"}
+                  disabled={(Boolean(missingKey) && !onQueue) || !canSend}
                   onClick={send}
                 >
-                  <ArrowUp className="size-4" />
+                  {onQueue ? <Clock className="size-4" /> : <ArrowUp className="size-4" />}
                 </Button>
               </Tip>
             )}

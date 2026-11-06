@@ -21,7 +21,7 @@ PL-05, CO-06, MM-12 dependency, SE-10 completion, CO-08.
 
 ## Steps
 
-- [ ] **1. Durable queue.** Explicit normal-Chat offline queue on its originating desktop, with edit/cancel/pending controls and persisted immutable dispatch identity. Incognito remains transient.
+- [x] **1. Durable queue.** Explicit normal-Chat offline queue on its originating desktop, with edit/cancel/pending controls and persisted immutable dispatch identity. Incognito remains transient.
 - [ ] **2. Reconnect and recovery.** Deliver serially per thread with notice, recheck context/policy/prices/budgets, require renewed approval for material changes and stop ambiguously dispatched requests without paid replay.
 - [ ] **3. Usage collection.** Usage CSV export/import plus native OpenAI usage/cost and current Anthropic Usage and Cost Analytics collectors, explicit separate native reporting credentials and sanitized status-only UI.
 - [ ] **4. Reconciliation and activity.** Compare matching UTC periods/provider scopes, show lag/unexplained differences without counting aggregates as new spend, and complete redacted tool/credential-use/policy export. Fixtures, screenshots and release documentation.
@@ -64,3 +64,15 @@ Owner operates live reporting setup; unavailable account permissions do not bloc
 
 Append PRs, exact checks/builds, screenshots and benchmark results as each step ships.
 No acceptance evidence has been recorded for this milestone yet.
+
+## Evidence
+
+Step 1 adds the explicit offline queue ([offline.md](../offline.md)) and schema 76
+(`offline_queue`, owner-local, installation-bound, immutable dispatch identity, eligibility
+and close triggers). The composer queues instead of sending only when offline on the
+desktop, for a saved non-incognito Chat with nothing attached. Edit and Cancel apply only
+while a message waits. Checks: `pnpm check`, Rust fmt/clippy/tests (migration upgrade
+tests), storage tests (eligibility, edit/cancel, block on delete/incognito, purge) and App
+tests (queue, edit, cancel, no provider call, survives restart; incognito refused; online
+sends as usual). The offline composer couldn't be screenshotted natively here (no network
+namespace permission), so its UI evidence is the App tests. Nothing is delivered yet: M18.2.

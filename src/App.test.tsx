@@ -11,6 +11,7 @@ import { memoryFilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { PythonApi, PythonRuntime } from "@/python/runtime";
+import type { Connectivity } from "@/offline/installation";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -166,7 +167,10 @@ function setup(
     undoMs,
     appBuild,
     python,
+    connectivity,
   }: {
+    /** M18.1: whether the app thinks it's online. */
+    connectivity?: Connectivity;
     /** M17.3: the Python runtime the app sees (the real one fails in tests). */
     python?: PythonApi;
     helloAvailable?: boolean;
@@ -318,6 +322,7 @@ function setup(
   render(
     <App
       {...(python ? { python } : {})}
+      {...(connectivity ? { connectivity } : {})}
       openDb={() => Promise.resolve(appDb)}
       connectors={scriptedConnectorsApi(() => Promise.resolve(appDb), DEFAULT_TENANT)}
       keysApi={keys.api}
@@ -4280,4 +4285,103 @@ test("M17.3: without Python the Run button explains what to install", async () =
   const panel = within(await screen.findByRole("complementary", { name: "Artifact: S" }));
   expect(panel.getByRole("button", { name: "Run script" })).toBeDisabled();
   expect(panel.getByText("Running scripts isn't available in this app.")).toBeInTheDocument();
+});
+
+/** M18.1: a connectivity switch the test controls. */
+function fakeConnectivity(initial: boolean) {
+  let online = initial;
+  const listeners = new Set<(on: boolean) => void>();
+  return {
+    online: () => online,
+    subscribe(on: (v: boolean) => void) {
+      listeners.add(on);
+      return () => listeners.delete(on);
+    },
+    set(v: boolean) {
+      online = v;
+      for (const l of listeners) l(v);
+    },
+  };
+}
+
+test("M18.1: offline, a chat queues messages explicitly; edit and cancel; nothing is sent; it persists", async () => {
+  const db = openTestDb();
+  const keys = fakeKeysApi();
+  keys.keys.set("anthropic", "fake-value-for-tests-0000");
+  let calls = 0;
+  const adapterFor = () =>
+    ({
+      provider: "anthropic",
+      listModels: () => Promise.resolve([]),
+      streamChat: () => {
+        calls++;
+        return answer("Should not happen.");
+      },
+    }) satisfies ProviderAdapter;
+  const net = fakeConnectivity(false);
+  const props = {
+    openDb: () => Promise.resolve(db),
+    keysApi: keys.api,
+    catalog,
+    policy,
+    adapterFor,
+    connectivity: net,
+  };
+  const first = render(<App {...props} />);
+  const user = userEvent.setup();
+  expect(await screen.findByText(/You're offline\. Queue messages here/)).toBeInTheDocument();
+  await user.type(await composer(), "Summarize the plan{Enter}");
+  const queued = within(await screen.findByRole("region", { name: "Queued messages" }));
+  expect(queued.getByText("Summarize the plan")).toBeInTheDocument();
+  await user.type(await composer(), "List the risks");
+  await user.click(screen.getByRole("button", { name: "Queue message (Enter)" }));
+  expect(
+    await queued.findByText(
+      "Queued (2) · sends from this desktop, in order, when you're back online",
+    ),
+  ).toBeInTheDocument();
+
+  await user.click(
+    queued.getAllByRole("button", { name: "Edit queued message" })[0] as HTMLElement,
+  );
+  const text = queued.getByLabelText("Queued message text");
+  await user.clear(text);
+  await user.type(text, "Summarize the plan in 3 bullets");
+  await user.click(queued.getByRole("button", { name: "Save" }));
+  expect(await queued.findByText("Summarize the plan in 3 bullets")).toBeInTheDocument();
+  await user.click(
+    queued.getAllByRole("button", { name: "Cancel queued message" })[1] as HTMLElement,
+  );
+  await waitFor(() => {
+    expect(queued.queryByText("List the risks")).toBeNull();
+  });
+  expect(calls).toBe(0);
+  const rows = await db.select<{ text: string; state: string; origin: string }>(
+    "SELECT text,state,origin FROM offline_queue ORDER BY created_at",
+  );
+  expect(rows.map((r) => [r.text, r.state])).toEqual([
+    ["Summarize the plan in 3 bullets", "queued"],
+    ["List the risks", "cancelled"],
+  ]);
+  expect(rows[0]?.origin).toBeTruthy();
+  first.unmount();
+
+  // Durable: the queue is there after a restart, and still nothing went out.
+  render(<App {...props} />);
+  const again = within(await screen.findByRole("region", { name: "Queued messages" }));
+  expect(again.getByText("Summarize the plan in 3 bullets")).toBeInTheDocument();
+  expect(calls).toBe(0);
+});
+
+test("M18.1: incognito can't queue; online, the composer sends as usual", async () => {
+  const net = fakeConnectivity(false);
+  const { user } = setup({}, undefined, undefined, { connectivity: net });
+  await user.click(await screen.findByRole("button", { name: /incognito/i }));
+  expect(await screen.findByText(/Incognito chats can't queue messages/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Queue message (Enter)" })).toBeNull();
+  net.set(true);
+  await waitFor(() => {
+    expect(screen.queryByText(/You're offline/)).toBeNull();
+  });
+  expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeInTheDocument();
 });

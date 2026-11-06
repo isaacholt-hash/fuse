@@ -49,7 +49,7 @@ describe.skipIf(!URL || !BROWSER)("Python artifact runs in the shared web app", 
     await app.click(button("Set passphrase"));
     await app.find(byLabel("Message"));
     expect(await query("SELECT MAX(version) AS version FROM _sqlx_migrations")).toEqual([
-      { version: 75 },
+      { version: 76 },
     ]);
     await app.click('//*[@aria-label="Area"]//button[normalize-space()="Chat"]');
     await app.click('//button[text()[normalize-space()="New chat"]]');
