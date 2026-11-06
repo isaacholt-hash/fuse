@@ -36,6 +36,8 @@ async function scan(page: Page, name: string, engine: string) {
     impact: v.impact,
     nodes: v.nodes.length,
     targets: v.nodes.slice(0, 5).map((n) => n.target.join(" ")),
+    // The measured colours and ratio, so a recorded finding can be checked without a rerun.
+    details: v.nodes.slice(0, 5).map((n) => n.any[0]?.message ?? n.failureSummary ?? ""),
   }));
   writeFileSync(join(SHOTS, `${engine}-${name}-axe.json`), JSON.stringify(summary, null, 1));
   expect(result.violations.filter((v) => v.impact === "critical")).toEqual([]);
@@ -60,6 +62,8 @@ test("chat, writing canvas, reports and narrow layout work and pass the accessib
   await page.evaluate(() => {
     document.documentElement.classList.add("dark");
   });
+  // Colours transition on a theme change; scan the settled theme, not a frame mid-fade.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
   const darkAxe = await scan(page, "chat-dark", browserName);
   await page.screenshot({ path: join(SHOTS, `${browserName}-chat-dark.png`) });
   await page.evaluate(() => {
@@ -90,12 +94,31 @@ test("chat, writing canvas, reports and narrow layout work and pass the accessib
     window.location.hash = "";
   });
   await page.setViewportSize({ width: 390, height: 844 });
+  // On a phone the open canvas takes the whole width; closing it gives the chat back.
+  const phonePanel = await panel.boundingBox();
+  expect(phonePanel?.width).toBeGreaterThanOrEqual(388);
+  await page.screenshot({ path: join(SHOTS, `${browserName}-narrow-canvas.png`) });
+  await panel.getByRole("button", { name: "Close artifact" }).click();
   await expect(page.getByRole("textbox", { name: "Message" })).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(1);
+  // Narrowing the window closes the sidebar, so the composer has the whole width (PL-01).
+  await expect(page.getByRole("complementary", { name: /sidebar$/ })).toHaveCount(0);
+  const composer = await page.getByRole("textbox", { name: "Message" }).boundingBox();
+  expect(composer).not.toBeNull();
+  expect((composer?.x ?? 0) + (composer?.width ?? 0)).toBeLessThanOrEqual(390);
+  expect(composer?.width ?? 0).toBeGreaterThan(300);
   await page.screenshot({ path: join(SHOTS, `${browserName}-narrow.png`) });
+  // Opened on a phone, it covers the conversation without squeezing it, and picking a chat closes it.
+  await page.getByRole("button", { name: "Show sidebar (Ctrl+B)" }).click();
+  await expect(page.getByRole("complementary", { name: /sidebar$/ })).toBeVisible();
+  const covered = await page.getByRole("textbox", { name: "Message" }).boundingBox();
+  expect(covered?.width).toBe(composer?.width);
+  await page.screenshot({ path: join(SHOTS, `${browserName}-narrow-sidebar.png`) });
+  await page.getByRole("button", { name: "New chat" }).first().click();
+  await expect(page.getByRole("complementary", { name: /sidebar$/ })).toHaveCount(0);
 
   writeFileSync(
     join(SHOTS, `${browserName}-result.json`),
