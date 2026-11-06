@@ -37,7 +37,7 @@ async function scan(page: Page, name: string, engine: string) {
     nodes: v.nodes.length,
     targets: v.nodes.slice(0, 5).map((n) => n.target.join(" ")),
     // The measured colours and ratio, so a recorded finding can be checked without a rerun.
-    details: v.nodes.slice(0, 5).map((n) => n.any[0]?.message ?? n.failureSummary ?? ""),
+    details: v.nodes.slice(0, 5).map((n) => n.failureSummary ?? ""),
   }));
   writeFileSync(join(SHOTS, `${engine}-${name}-axe.json`), JSON.stringify(summary, null, 1));
   expect(result.violations.filter((v) => v.impact === "critical")).toEqual([]);
