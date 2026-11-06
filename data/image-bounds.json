@@ -1,0 +1,18 @@
+{
+  "version": "2026-11-06",
+  "note": "Most input tokens one image can cost, for pre-dispatch cost reservations. PDFs and other media are not covered and still reserve the model's full context window.",
+  "providers": {
+    "anthropic": {
+      "max_tokens_per_image": 4784,
+      "basis": "High-resolution tier (Claude 4.7 and later): images larger than 2,576 px or 4,784 visual tokens are downscaled before processing.",
+      "verified_on": "2026-11-06",
+      "source_url": "https://platform.claude.com/docs/en/build-with-claude/vision"
+    },
+    "openai": {
+      "max_tokens_per_image": 6150,
+      "basis": "The adapter sends detail \"high\", which allows at most 2,500 patches; 2.46 is the highest documented per-model multiplier (gpt-6.1-sol and gpt-6-luna are not listed, so the highest is assumed).",
+      "verified_on": "2026-11-06",
+      "source_url": "https://developers.openai.com/api/docs/guides/images-vision"
+    }
+  }
+}

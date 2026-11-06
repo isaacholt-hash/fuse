@@ -315,6 +315,8 @@ Sources:
 
 **Images in tool results (M8 step 4, WF-03).** A `ToolResult` can carry `images` (base64). On Anthropic, the `tool_result` content becomes `[{type: "text"}, {type: "image", source: {type: "base64", media_type, data}}]`. On OpenAI, `function_call_output.output` becomes `[{type: "input_text"}, {type: "input_image", image_url: "data:…;base64,…"}]`. Without images, both stay plain strings as in M6. These shapes are covered by unit tests but not yet by recorded fixtures or the live APIs; `pnpm work:live` will check them.
 
+**Image cost bounds (2026-11-06).** Pre-dispatch reservations (`requestBound` in `src/cost/dispatch.ts`) count each image, attached or in a tool result, at the provider's documented per-image ceiling from `data/image-bounds.json`: 4,784 tokens on Anthropic's high-resolution tier, and 2,500 patches × 2.46 (the highest documented multiplier) = 6,150 on OpenAI at `detail: "high"`. Image bytes are left out of the text byte count. PDFs still reserve the full context window. Before this, any image reserved the whole 1M-token window, so a $1 Work run paused as soon as a script showed a chart (Windows PC test, issues #304–#313).
+
 ### M14 bounded search (verified 2026-11-05)
 
 `data/research.json` defines finite allowances: at most 12 search actions per request, with
