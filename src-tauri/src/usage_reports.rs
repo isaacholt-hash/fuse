@@ -13,7 +13,9 @@ use serde_json::Value;
 use crate::{ctx::Ctx, keys::Provider};
 
 /// fuse-server sets this at startup, so the background collector knows it runs on HULK.
+#[cfg_attr(test, allow(dead_code))]
 pub static ON_SERVER: AtomicBool = AtomicBool::new(false);
+#[cfg_attr(test, allow(dead_code))]
 static STARTED: AtomicBool = AtomicBool::new(false);
 
 const OPENAI: &str = "https://api.openai.com";
@@ -25,6 +27,7 @@ const DAY_MS: i64 = 86_400_000;
 const WINDOW_DAYS: i64 = 7;
 const MAX_PAGES: usize = 40;
 const MAX_BODY: usize = 4 * 1024 * 1024;
+#[cfg_attr(test, allow(dead_code))]
 const REFRESH: Duration = Duration::from_secs(6 * 3600);
 const TIMEOUT: Duration = Duration::from_secs(30);
 
@@ -585,6 +588,7 @@ pub(crate) fn key_remove(ctx: &Ctx, p: Provider) -> Result<bool, String> {
     Ok(false)
 }
 
+#[cfg_attr(test, allow(dead_code))]
 async fn setting(pool: &sqlx::SqlitePool, key: &str) -> Option<String> {
     sqlx::query_scalar("SELECT value FROM settings WHERE workspace_id=? AND user_id=? AND key=?")
         .bind(crate::sync::WORKSPACE)
@@ -598,6 +602,7 @@ async fn setting(pool: &sqlx::SqlitePool, key: &str) -> Option<String> {
 
 /// Whether this installation collects `p` now: the owner turned it on, a key is saved, and the
 /// desktop defers to HULK when the owner chose HULK as the collector.
+#[cfg_attr(test, allow(dead_code))]
 async fn due(ctx: &Ctx, p: Provider) -> bool {
     let Ok(pool) = ctx.db.pool() else {
         return false;
@@ -618,6 +623,7 @@ async fn due(ctx: &Ctx, p: Provider) -> bool {
 }
 
 /// Every six hours while the app runs, for each provider that is due.
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn start(ctx: &Ctx) -> Result<(), String> {
     if STARTED.swap(true, Ordering::SeqCst) {
         return Ok(());
