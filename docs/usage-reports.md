@@ -10,8 +10,8 @@ chat key for reports or a reporting key for chats.
 
 | Provider | Key | Where | Who can create it |
 | --- | --- | --- | --- |
-| OpenAI | Admin key (`sk-admin…`) | platform.openai.com → Settings → Organization → Admin keys | Organization owners |
-| Anthropic | Admin API key (`sk-ant-admin…`) | platform.claude.com → Settings → Admin keys | Organization admins (not individual accounts) |
+| OpenAI | Admin key (not a project key) | platform.openai.com → Settings → Organization → Admin keys | Organization owners |
+| Anthropic | Admin API key (not a workspace key) | platform.claude.com → Settings → Admin keys | Organization admins (not individual accounts) |
 
 Keys go into this device's secret store (or HULK's systemd-creds) and are shown only as
 saved or not saved.
