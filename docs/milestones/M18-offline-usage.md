@@ -24,7 +24,7 @@ PL-05, CO-06, MM-12 dependency, SE-10 completion, CO-08.
 - [x] **1. Durable queue.** Explicit normal-Chat offline queue on its originating desktop, with edit/cancel/pending controls and persisted immutable dispatch identity. Incognito remains transient.
 - [x] **2. Reconnect and recovery.** Deliver serially per thread with notice, recheck context/policy/prices/budgets, require renewed approval for material changes and stop ambiguously dispatched requests without paid replay.
 - [x] **3. Usage collection.** Usage CSV export/import plus native OpenAI usage/cost and current Anthropic Usage and Cost Analytics collectors, explicit separate native reporting credentials and sanitized status-only UI.
-- [ ] **4. Reconciliation and activity.** Compare matching UTC periods/provider scopes, show lag/unexplained differences without counting aggregates as new spend, and complete redacted tool/credential-use/policy export. Fixtures, screenshots and release documentation.
+- [x] **4. Reconciliation and activity.** Compare matching UTC periods/provider scopes, show lag/unexplained differences without counting aggregates as new spend, and complete redacted tool/credential-use/policy export. Fixtures, screenshots and release documentation.
 
 ## Behavior and boundaries
 
@@ -97,3 +97,15 @@ conversion, both providers' parsing, a local fixture server for pages, correctio
 headers and no chat-key use), storage and App tests, and `scripts/reports-web.sh` against
 the native server (schema 78, no key, a refused refresh with no request), with light and
 dark screenshots in `docs/screenshots/m18/`.
+
+Step 4 reconciles and completes the activity export ([usage-reports.md](../usage-reports.md)).
+`src/cost/reconcile.ts` compares FUSE's logged cost with reported cost per provider and UTC
+day: USD only (other currencies counted and left out), optional owner-chosen scopes, API
+over CSV for the same day, a cent-or-2% match tolerance, and "not final yet" for today and
+days past the provider's last refresh. Reports are never counted as spend.
+`src/data/activityExport.ts` replaces the M9 export with one redacted log of tool calls,
+credential use, policy changes, context-tool receipts and report runs. Checks: `pnpm check`,
+Rust fmt/clippy/tests, unit tests (statuses, scopes, currencies, redaction), an App test
+(Usage comparison, spend unchanged) and `scripts/reports-web.sh` (CSV import through
+Settings, the Usage comparison against the native server, light and dark screenshots in
+`docs/screenshots/m18/`).

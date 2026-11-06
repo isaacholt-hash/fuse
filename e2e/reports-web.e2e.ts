@@ -78,4 +78,32 @@ describe.skipIf(!URL || !BROWSER)("provider usage reports in the shared web app"
       await app.screenshot(join(SHOTS, `settings-${theme}.png`));
     }
   }, 120000);
+
+  test("an imported report CSV shows beside FUSE's costs on Usage, never as spend", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const csv = `source,date_utc,provider,kind,scope,key_id,model,line_item,currency,amount,input_tokens,output_tokens,cached_tokens,requests\ncsv,${today},openai,cost,proj_fuse,,,,usd,3.25,,,,\ncsv,${today},anthropic,cost,wrkspc_1,,,,usd,1.10,,,,\n`;
+    await app.run(
+      `const input=document.querySelector('input[aria-label="Import usage CSV"]');const files=new DataTransfer();files.items.add(new File([${JSON.stringify(csv)}],"report.csv",{type:'text/csv'}));input.files=files.files;input.dispatchEvent(new Event('change',{bubbles:true}));return true;`,
+    );
+    await app.sees("Imported 2 report rows.");
+    const spend = await invoke<{ body: { n: number | null }[] }>("db_select", {
+      sql: "SELECT SUM(cost_micro_usd) AS n FROM request_log",
+      params: [],
+    });
+    expect(spend.body[0]?.n ?? 0).toBe(0);
+    await app.run('window.location.hash = ""; return true;');
+    await app.click('//button[contains(normalize-space(),"Usage")]');
+    await app.find('//*[@aria-label="Provider reports"]');
+    await app.sees("$3.25 (CSV)");
+    await app.run(
+      'document.querySelector(\'[aria-label="Provider reports"]\').scrollIntoView({block:"center"}); return true;',
+    );
+    for (const theme of ["light", "dark"]) {
+      await app.run(
+        `document.documentElement.classList.toggle('dark',${theme === "dark" ? "true" : "false"});`,
+      );
+      await new Promise((r) => setTimeout(r, 200));
+      await app.screenshot(join(SHOTS, `usage-${theme}.png`));
+    }
+  }, 120000);
 });
