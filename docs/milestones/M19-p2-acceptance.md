@@ -21,7 +21,7 @@ All P2 Must/Should under approved boundaries.
 
 ## Steps
 
-- [ ] **1. Integrated acceptance.** Run deterministic integrated P2 scenarios, browser/Windows verification, upgrade/migration/backup/restore checks, performance/accessibility checks and resolve scoped failures. Preserve HULK and sync benchmark gates.
+- [x] **1. Integrated acceptance.** Run deterministic integrated P2 scenarios, browser/Windows verification, upgrade/migration/backup/restore checks, performance/accessibility checks and resolve scoped failures. Preserve HULK and sync benchmark gates.
 - [ ] **2. Release and owner acceptance.** Record actual merged PRs, release/build identifiers, reviewed screenshots, benchmark results and exact desktop/HULK update/setup instructions. Record owner dictation, research, connector and usage acceptance against released builds before closing P2.
 
 ## Behavior and boundaries
@@ -53,4 +53,29 @@ reconciliation. Only then mark P2 complete.
 ## Evidence
 
 Append PRs, exact checks/builds, screenshots and benchmark results as each step ships.
-No acceptance evidence has been recorded for this milestone yet.
+Step 1 (integrated acceptance):
+
+- **Browser engines.** `scripts/browsers-web.sh` runs the shared web app against the native
+  server in Chromium, Firefox and WebKit (Playwright 1.64.1, dev-only, approved by Isaac on
+  2026-11-06 with axe). Each engine signs in, gets a scripted Markdown document in the
+  writing canvas, opens Provider usage reports, and checks a 390px phone layout for sideways
+  scrolling. Local run on HULK: Chromium and Firefox passed. WebKit's system libraries need
+  `sudo` on HULK, so WebKit runs in CI only. Results and screenshots:
+  [chromium](../screenshots/m19/chromium-result.json),
+  [firefox](../screenshots/m19/firefox-result.json), `docs/screenshots/m19/`.
+  Native engines remain covered by their own gates: WebKitGTK (Linux desktop screenshot)
+  and WebView2/Edge (Windows click-through and the PC tests).
+- **Accessibility.** axe (`@axe-core/playwright` 4.14.0, WCAG 2 A/AA) scans chat (light and
+  dark), the canvas and settings; any critical violation fails. The first scan found two
+  serious issues, both fixed here: shortcut hints at 60% opacity (now the muted text
+  colour) and a labelled Research tasks list without a role (now a region). Current scans
+  report zero violations in both local engines.
+- **Performance.** Recorded per engine (fixture server, scripted replies): sign-in to a
+  ready composer about 1–4 s, and send to canvas ready about 0.3–2.2 s.
+- **Upgrade, backup and restore.** `src/data/p2Acceptance.test.ts` fills every P2 table,
+  exports, wipes and restores: portable comments and versions come back; proposals,
+  artifact runs, the offline queue and usage reports never do; delete-all leaves none. The
+  Rust upgrade tests (seeded databases through every migration) and the HULK and sync
+  benchmark gates are unchanged.
+- **Scoped failure fixed.** The parallel-Code web e2e raced the run card after navigation
+  (one CI failure on PR #322, green on rerun). It now waits for the card first.

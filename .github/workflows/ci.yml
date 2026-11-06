@@ -235,6 +235,17 @@ jobs:
           name: reports-web-screenshots
           path: e2e/screenshots/reports/
           if-no-files-found: ignore
+      # M19.1: the shared web app in Chromium, Firefox and WebKit, with an accessibility gate.
+      - name: Browser engines for the web matrix
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
+      - name: Web app in Chromium, Firefox and WebKit
+        run: bash scripts/browsers-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: browsers-web-screenshots
+          path: e2e/screenshots/browsers/
+          if-no-files-found: ignore
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome

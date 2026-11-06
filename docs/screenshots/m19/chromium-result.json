@@ -1,0 +1,14 @@
+{
+  "engine": "chromium",
+  "timings": {
+    "signInMs": 2747,
+    "answerToCanvasMs": 1762
+  },
+  "axe": {
+    "chat": [],
+    "chatDark": [],
+    "canvas": [],
+    "settings": []
+  },
+  "narrowOverflowPx": 0
+}
