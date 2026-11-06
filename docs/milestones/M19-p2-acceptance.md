@@ -59,7 +59,9 @@ Step 1 (integrated acceptance):
   server in Chromium, Firefox and WebKit (Playwright 1.64.1, dev-only, approved by Isaac on
   2026-11-06 with axe). Each engine signs in, gets a scripted Markdown document in the
   writing canvas, opens Provider usage reports, and checks a 390px phone layout for sideways
-  scrolling. Local run on HULK: Chromium and Firefox passed. WebKit's system libraries need
+  scrolling. WebKit won't keep a `Secure` cookie on plain `http://127.0.0.1`, so the
+  throwaway server uses `--test-plain-http-cookie` (accepted only with `FUSE_SERVER_TEST=1`;
+  real servers keep `Secure` behind HTTPS). Local run on HULK: Chromium and Firefox passed. WebKit's system libraries need
   `sudo` on HULK, so WebKit runs in CI only. Results and screenshots:
   [chromium](../screenshots/m19/chromium-result.json),
   [firefox](../screenshots/m19/firefox-result.json), `docs/screenshots/m19/`.

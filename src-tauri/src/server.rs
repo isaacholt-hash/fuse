@@ -45,6 +45,8 @@ pub struct Config {
     /// Tests only (M10 step 10): keys and the database key in memory, for the process's life,
     /// where systemd-creds can't be used (CI). Accepted only with `FUSE_SERVER_TEST=1`.
     pub test_keys_in_memory: bool,
+    /// Test only: the session cookie without `Secure`, for WebKit on plain http://127.0.0.1.
+    pub test_plain_http_cookie: bool,
 }
 
 /// Messages waiting for a page's WebSocket, created by whichever comes first: the socket or
@@ -157,9 +159,18 @@ fn session_cookie(headers: &HeaderMap) -> Option<&str> {
         .map(|(_, value)| value)
 }
 
+/// Test servers on plain http://127.0.0.1 only (`--test-plain-http-cookie`): WebKit won't
+/// keep a `Secure` cookie there. Real servers are reached over HTTPS (`tailscale serve`).
+static PLAIN_HTTP_COOKIE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 fn with_session(token: &str, body: Value) -> Response {
+    let secure = if PLAIN_HTTP_COOKIE.load(std::sync::atomic::Ordering::Relaxed) {
+        ""
+    } else {
+        " Secure;"
+    };
     let cookie = format!(
-        "{SESSION_COOKIE}={token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={}",
+        "{SESSION_COOKIE}={token}; HttpOnly;{secure} SameSite=Strict; Path=/; Max-Age={}",
         30 * 24 * 3600
     );
     ([(header::SET_COOKIE, cookie)], axum::Json(body)).into_response()
@@ -597,6 +608,7 @@ fn parse_args(mut args: impl Iterator<Item = String>, test_env: bool) -> Result<
         runner: None,
         node: PathBuf::from("node"),
         test_keys_in_memory: false,
+        test_plain_http_cookie: false,
     };
     while let Some(arg) = args.next() {
         let mut value = || args.next().ok_or(format!("{arg} needs a value"));
@@ -607,6 +619,12 @@ fn parse_args(mut args: impl Iterator<Item = String>, test_env: bool) -> Result<
             "--runner" => config.runner = Some(value()?.into()),
             "--node" => config.node = value()?.into(),
             "--test-keys-in-memory" if test_env => config.test_keys_in_memory = true,
+            "--test-plain-http-cookie" if test_env => config.test_plain_http_cookie = true,
+            "--test-plain-http-cookie" => {
+                return Err(format!(
+                    "--test-plain-http-cookie is for tests only: it drops Secure from the sign-in cookie, so it needs {TEST_ENV}=1 set too."
+                ));
+            }
             "--test-keys-in-memory" => {
                 return Err(format!(
                     "--test-keys-in-memory is for tests only: it keeps keys and the database key in memory, so it needs {TEST_ENV}=1 set too."
@@ -651,6 +669,12 @@ pub fn main() -> ExitCode {
 }
 
 async fn serve(config: Config) -> Result<(), String> {
+    if config.test_plain_http_cookie {
+        eprintln!(
+            "fuse-server: WARNING: TEST MODE (--test-plain-http-cookie): the sign-in cookie isn't marked Secure. Only for a throwaway server on 127.0.0.1."
+        );
+        PLAIN_HTTP_COOKIE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
     if config.test_keys_in_memory {
         eprintln!(
             "fuse-server: WARNING: TEST MODE (--test-keys-in-memory): keys and the database key are kept in memory only and are lost when this server stops. Never use it for real data."
@@ -1294,6 +1318,21 @@ mod tests {
         }
         assert!(parse_args(flag(), true).is_ok_and(|c| c.test_keys_in_memory));
         assert!(parse_args(std::iter::empty(), true).is_ok_and(|c| !c.test_keys_in_memory));
+    }
+
+    #[test]
+    fn plain_http_cookie_only_with_the_test_variable() {
+        let flag = || ["--test-plain-http-cookie"].map(String::from).into_iter();
+        assert!(parse_args(flag(), false).is_err_and(|e| e.contains("FUSE_SERVER_TEST=1")));
+        assert!(parse_args(flag(), true).is_ok_and(|c| c.test_plain_http_cookie));
+        assert!(parse_args(std::iter::empty(), true).is_ok_and(|c| !c.test_plain_http_cookie));
+        // Real servers keep the Secure cookie.
+        let cookie = with_session("t", json!({}));
+        let set = cookie.headers()[header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .to_owned();
+        assert!(set.contains("; Secure;"), "{set}");
     }
 
     #[test]

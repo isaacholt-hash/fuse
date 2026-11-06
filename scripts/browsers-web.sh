@@ -9,7 +9,7 @@ browsers_test_home="$(mktemp -d)"
 browsers_test_port="${FUSE_BROWSERS_PORT:-4222}"
 fixture_server_port_free "$browsers_test_port"
 FUSE_SERVER_TEST=1 "${FUSE_SERVER_BIN:-src-tauri/target/debug/fuse-server}" \
-  --port "$browsers_test_port" --home "$browsers_test_home" --ui src-tauri/target/browsers-web --test-keys-in-memory \
+  --port "$browsers_test_port" --home "$browsers_test_home" --ui src-tauri/target/browsers-web --test-keys-in-memory --test-plain-http-cookie \
   > e2e/screenshots/browsers/server.log 2>&1 &
 browsers_test_pid=$!
 trap 'fixture_server_cleanup "$browsers_test_pid"' EXIT
