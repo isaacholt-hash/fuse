@@ -560,3 +560,14 @@ claims it once (`running`) and finishes it (`complete`/`failed`), so a row never
 and nothing replays after a crash (stale rows show as `interrupted`). It is never synced or
 portably exported, deleted with its version, conversation and global deletion, and kept as
 inert data in encrypted backups.
+
+## M18.1 offline queue (schema 76)
+
+`offline_queue` holds messages the owner explicitly queued while this desktop was offline.
+`id` is the immutable dispatch identity from queueing to sending; `origin` is the
+installation identity, kept in the app's own storage rather than the database, so a
+restored or replicated database never matches it. Rows are `queued`, then `dispatching`,
+`sent`, `cancelled`, `blocked` or `unknown`. Only a saved, non-incognito Chat thread may
+queue (an insert trigger enforces it); deleting a chat or making it incognito blocks its
+waiting rows, and purging deletes them. The table is owner-local: never synced, portably
+exported or restored as work, and part of global deletion.

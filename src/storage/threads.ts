@@ -385,6 +385,8 @@ export async function purgeThread(
     [ws, id],
   );
   write(`DELETE FROM thread_folders WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
+  // M18.1: queued messages hold the owner's text; they go with the chat.
+  write(`DELETE FROM offline_queue WHERE workspace_id = ? AND thread_id = ?`, [ws, id]);
   // Memories scoped to this chat go (the scope is tied to thread_id); the rest are unlinked.
   write(
     `UPDATE memories SET superseded_by_id = NULL WHERE workspace_id = ? AND superseded_by_id IN (${ownMemories})`,

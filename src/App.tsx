@@ -4,6 +4,7 @@ import { isDesktop } from "@/platform/core";
 import { nativeSyncApi, type SyncApi } from "@/sync/api";
 import { tauriLocalApi, type LocalApi } from "@/local/api";
 import { tauriPythonApi, type PythonApi } from "@/python/runtime";
+import type { Connectivity } from "@/offline/installation";
 import { tauriMcpApi, type McpApi } from "@/mcp/api";
 import { createLocalAdapter } from "@/providers/local/adapter";
 import { tauriLocalBackend } from "@/providers/local/tauri";
@@ -87,6 +88,8 @@ interface Props {
    * It signs in first, and greys what only the desktop can do (PL-02).
    */
   webApp?: boolean;
+  /** M18.1: whether this desktop is online (the browser's signal by default); tests pass a fake. */
+  connectivity?: Connectivity;
   /** The web app's sign-in and devices (src/platform/auth.ts); tests pass a fake. */
   auth?: AuthApi;
   openDb?: () => Promise<SqlDb>;
@@ -140,6 +143,7 @@ interface Props {
 
 export default function App({
   webApp = false,
+  connectivity,
   sync = webApp || isDesktop() ? nativeSyncApi : undefined,
   auth = httpAuthApi,
   openDb = openTauriDb,
@@ -320,6 +324,7 @@ export default function App({
   return (
     <ChatApp
       webApp={webApp}
+      {...(connectivity ? { connectivity } : {})}
       syncApi={sync}
       {...(webApp
         ? {
