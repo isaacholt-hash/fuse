@@ -525,6 +525,50 @@ test("strict tools carry no keyword Claude's grammar rejects (minimum on integer
   expect(JSON.stringify(loose?.input_schema)).toContain('"minimum":0');
 });
 
+test("strict nullable enums go to Claude as anyOf of the typed enum and null", async () => {
+  const { anthropicTools, strictSchema } = await import("./adapter");
+  const { toolsIn } = await import("@/agent/registry");
+  const { CONTEXT_READ_TOOLS, CONTEXT_WRITE_TOOLS } = await import("@/context/toolSpecs");
+  const { DELEGATE_CODE_TOOL } = await import("@/parallel/tool");
+  // Claude rejected propose_memory's kind: "Enum value 'fact' does not match declared type".
+  const sets = [
+    ...(["code", "work", "chat"] as const).map((p) => toolsIn(p)),
+    [...CONTEXT_READ_TOOLS, ...CONTEXT_WRITE_TOOLS],
+    [DELEGATE_CODE_TOOL],
+  ];
+  const walk = (s: unknown): void => {
+    if (Array.isArray(s)) {
+      s.forEach(walk);
+      return;
+    }
+    if (!s || typeof s !== "object") return;
+    const o = s as Record<string, unknown>;
+    if (Array.isArray(o.enum)) {
+      expect(Array.isArray(o.type)).toBe(false);
+      for (const v of o.enum) expect(typeof v).toBe(o.type);
+    }
+    Object.values(o).forEach(walk);
+  };
+  for (const specs of sets) {
+    for (const t of anthropicTools(specs)) if (t.strict === true) walk(t.input_schema);
+  }
+  const memory = anthropicTools(CONTEXT_WRITE_TOOLS).find((t) => t.name === "propose_memory");
+  expect(memory?.strict).toBe(true);
+  const props = (memory?.input_schema as { properties: Record<string, unknown> }).properties;
+  expect(props.kind).toEqual({
+    anyOf: [
+      { type: "string", enum: ["fact", "preference", "person", "constraint", "task", "source"] },
+      { type: "null" },
+    ],
+  });
+  // A required enum is left alone; a description stays on top.
+  expect(strictSchema({ type: "string", enum: ["a"] })).toEqual({ type: "string", enum: ["a"] });
+  expect(strictSchema({ type: ["string", "null"], enum: ["a", null], description: "d" })).toEqual({
+    description: "d",
+    anyOf: [{ type: "string", enum: ["a"] }, { type: "null" }],
+  });
+});
+
 test("bounded basic search emits sources, queries and reported billable usage without code execution", async () => {
   const event = (type: string, rest: Record<string, unknown> = {}) =>
     `event: ${type}\ndata: ${JSON.stringify({ type, ...rest })}\n\n`;

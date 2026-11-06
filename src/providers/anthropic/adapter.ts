@@ -150,6 +150,25 @@ const STRICT_UNSUPPORTED = new Set([
 export function strictSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(strictSchema);
   if (!schema || typeof schema !== "object") return schema;
+  const src = schema as Record<string, unknown>;
+  // Claude's strict grammar checks each enum value against the whole type list and turns down
+  // `{type: ["string","null"], enum: ["fact", …, null]}` ("Enum value 'fact' does not match
+  // declared type"). A nullable enum goes out as anyOf of the typed enum and null instead.
+  if (Array.isArray(src.type) && src.type.includes("null") && Array.isArray(src.enum)) {
+    const { type, enum: values, description, ...rest } = src;
+    const types = (type as unknown[]).filter((t) => t !== "null");
+    return {
+      ...(description !== undefined ? { description } : {}),
+      anyOf: [
+        strictSchema({
+          ...rest,
+          type: types.length === 1 ? types[0] : types,
+          enum: (values as unknown[]).filter((v) => v !== null),
+        }),
+        { type: "null" },
+      ],
+    };
+  }
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
     if (STRICT_UNSUPPORTED.has(key)) continue;
