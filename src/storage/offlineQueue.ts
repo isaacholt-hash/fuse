@@ -9,6 +9,15 @@ import type { SqlDb } from "./sql";
 
 export type QueueState = "queued" | "dispatching" | "sent" | "cancelled" | "blocked" | "unknown";
 
+/** The route when queued: a change on reconnect needs renewed approval. */
+export interface RouteSnapshot {
+  provider: string;
+  model: string;
+  /** USD per million tokens. */
+  input: number;
+  output: number;
+}
+
 export interface QueuedMessage {
   /** The dispatch identity: fixed when queued, never reused. */
   id: string;
@@ -20,6 +29,7 @@ export interface QueuedMessage {
   reason: string | null;
   messageId: string | null;
   createdAt: number;
+  snapshot: RouteSnapshot | null;
 }
 
 const MAX_TEXT = 100_000;
@@ -34,6 +44,7 @@ interface Row {
   reason: string | null;
   message_id: string | null;
   created_at: number;
+  snapshot: string | null;
 }
 const fromRow = (r: Row): QueuedMessage => ({
   id: r.id,
@@ -45,6 +56,7 @@ const fromRow = (r: Row): QueuedMessage => ({
   reason: r.reason,
   messageId: r.message_id,
   createdAt: r.created_at,
+  snapshot: r.snapshot ? (JSON.parse(r.snapshot) as RouteSnapshot) : null,
 });
 
 function checkText(text: string): string {
@@ -58,15 +70,32 @@ function checkText(text: string): string {
 export async function queueMessage(
   db: SqlDb,
   t: Tenant,
-  p: { threadId: string; text: string; effort: string | null; origin: string },
+  p: {
+    threadId: string;
+    text: string;
+    effort: string | null;
+    origin: string;
+    snapshot?: RouteSnapshot | null;
+  },
 ): Promise<QueuedMessage> {
   const text = checkText(p.text);
   const now = Date.now();
   const id = uuidv7(now);
   await db.execute(
     `INSERT INTO offline_queue(id,workspace_id,user_id,thread_id,origin,text,effort,state,
-       created_at,updated_at) VALUES (?,?,?,?,?,?,?,'queued',?,?)`,
-    [id, t.workspaceId, t.userId, p.threadId, p.origin, text, p.effort, now, now],
+       snapshot,created_at,updated_at) VALUES (?,?,?,?,?,?,?,'queued',?,?,?)`,
+    [
+      id,
+      t.workspaceId,
+      t.userId,
+      p.threadId,
+      p.origin,
+      text,
+      p.effort,
+      p.snapshot ? JSON.stringify(p.snapshot) : null,
+      now,
+      now,
+    ],
   );
   return {
     id,
@@ -78,13 +107,14 @@ export async function queueMessage(
     reason: null,
     messageId: null,
     createdAt: now,
+    snapshot: p.snapshot ?? null,
   };
 }
 
 /** What still needs the owner: waiting, blocked or uncertain messages, oldest first. */
 export async function listQueue(db: SqlDb, t: Tenant, threadId?: string): Promise<QueuedMessage[]> {
   const rows = await db.select<Row>(
-    `SELECT id,thread_id,origin,text,effort,state,reason,message_id,created_at FROM offline_queue
+    `SELECT id,thread_id,origin,text,effort,state,reason,message_id,created_at,snapshot FROM offline_queue
      WHERE workspace_id=? AND user_id=? AND state IN ('queued','dispatching','blocked','unknown')
        ${threadId ? "AND thread_id=?" : ""}
      ORDER BY created_at,id`,
@@ -123,4 +153,63 @@ export async function queuedCounts(db: SqlDb, t: Tenant): Promise<Map<string, nu
     [t.workspaceId, t.userId],
   );
   return new Map(rows.map((r) => [r.thread_id, r.n]));
+}
+
+/**
+ * M18.2: claims a waiting message for dispatch, once, on the installation that queued it.
+ * Only after every send check passed; a second claim (or another installation) gets false.
+ */
+export async function claimQueued(
+  db: SqlDb,
+  t: Tenant,
+  id: string,
+  origin: string,
+): Promise<boolean> {
+  const result = await db.batch([
+    {
+      sql: `UPDATE offline_queue SET state='dispatching',updated_at=? WHERE workspace_id=? AND
+            user_id=? AND id=? AND origin=? AND state='queued'`,
+      params: [Date.now(), t.workspaceId, t.userId, id, origin],
+    },
+  ]);
+  return result[0]?.rowsAffected === 1;
+}
+
+/** The claimed message was handed to the provider path; its answer is in the chat. */
+export async function markSent(db: SqlDb, t: Tenant, id: string): Promise<void> {
+  await db.execute(
+    `UPDATE offline_queue SET state='sent',updated_at=? WHERE workspace_id=? AND user_id=?
+     AND id=? AND state='dispatching'`,
+    [Date.now(), t.workspaceId, t.userId, id],
+  );
+}
+
+/** Stops a waiting message until the owner chooses Send now (renewed approval) or Cancel. */
+export async function holdQueued(db: SqlDb, t: Tenant, id: string, reason: string): Promise<void> {
+  await db.execute(
+    `UPDATE offline_queue SET state='blocked',reason=?,updated_at=? WHERE workspace_id=?
+     AND user_id=? AND id=? AND state='queued'`,
+    [reason.slice(0, 500), Date.now(), t.workspaceId, t.userId, id],
+  );
+}
+
+/**
+ * At startup: a message left mid-dispatch may or may not have reached the provider. It is
+ * never sent again automatically; the owner checks the chat first.
+ */
+export async function interruptDispatching(db: SqlDb, t: Tenant, origin: string): Promise<number> {
+  const result = await db.batch([
+    {
+      sql: `UPDATE offline_queue SET state='unknown',reason=?,updated_at=? WHERE workspace_id=?
+            AND user_id=? AND origin=? AND state='dispatching'`,
+      params: [
+        "The app closed while sending; it may have reached the provider. Check the chat before sending it again.",
+        Date.now(),
+        t.workspaceId,
+        t.userId,
+        origin,
+      ],
+    },
+  ]);
+  return result[0]?.rowsAffected ?? 0;
 }

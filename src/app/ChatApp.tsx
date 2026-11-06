@@ -437,12 +437,27 @@ import type { RunsProps } from "@/ui/ArtifactRuns";
 import { browserConnectivity, installationId, type Connectivity } from "@/offline/installation";
 import {
   cancelQueued,
+  claimQueued,
   editQueued,
+  holdQueued,
+  interruptDispatching,
   listQueue,
+  markSent,
   queueMessage,
+  queuedCounts,
   type QueuedMessage,
+  type RouteSnapshot,
 } from "@/storage/offlineQueue";
-import { QueuedMessages } from "@/ui/OfflineQueue";
+import { QueuedMessages, type OtherQueue } from "@/ui/OfflineQueue";
+
+/** M18.2: how a queued message goes through `send` on reconnect. */
+interface QueueDelivery {
+  snapshot: RouteSnapshot | null;
+  /** Marks it dispatching, once; false means it's no longer this installation's to send. */
+  claim: () => Promise<boolean>;
+  /** Stops it for the owner's renewed approval. */
+  hold: (reason: string) => Promise<void>;
+}
 import type {
   CanvasProps,
   CanvasRange,
@@ -2570,6 +2585,11 @@ export function ChatApp({
     /** M10 step 22: the effort chosen on the dial for this message; null = routing's. */
     effort: EffortLevel | null = null,
     confirmed: { over?: boolean; big?: boolean; dropFiles?: boolean } = {},
+    /**
+     * M18.2: a queued message being delivered. Where an interactive send would ask, it holds
+     * for the owner's renewed approval instead; it is claimed only after every check passed.
+     */
+    delivery?: QueueDelivery,
   ) => {
     // What was put in the composer is in this message now: don't add it again on a remount.
     try {
@@ -2585,13 +2605,14 @@ export function ChatApp({
       runOnHulk(text);
       return;
     }
-    const ready = confirmed.dropFiles
-      ? []
-      : attachments.pending.flatMap((p) =>
-          p.status === "ready" && p.file
-            ? [{ ...p.file, ...(p.mode ? { mode: p.mode } : {}) }]
-            : [],
-        );
+    const ready =
+      confirmed.dropFiles || delivery
+        ? []
+        : attachments.pending.flatMap((p) =>
+            p.status === "ready" && p.file
+              ? [{ ...p.file, ...(p.mode ? { mode: p.mode } : {}) }]
+              : [],
+          );
     // LL-05: a large file is searched by its words on this computer, so no OpenAI key is needed.
     const search = searchOn;
     // LL-01: a sum, conversion or check is answered by a fixed rule before anything is routed
@@ -2607,6 +2628,7 @@ export function ChatApp({
         ? answerWithoutModel(text, Date.now())
         : null;
     if (fixed) {
+      if (delivery && !(await delivery.claim())) return;
       try {
         const threadId = await threadForSend(search);
         await sendWithoutModel(deps, { threadId, text, answer: fixed });
@@ -2620,6 +2642,12 @@ export function ChatApp({
     // CO-03 / RT-10: budgets past 80% lower Auto a tier; past 100% the send asks first.
     const gate = sendGate(await budgetStatesFor(budgets, activeProjectId));
     if (gate.over && !confirmed.over) {
+      if (delivery) {
+        await delivery.hold(
+          "A budget is over its limit now. Review it, then choose Send now to send anyway.",
+        );
+        return;
+      }
       setOverAsk({ state: gate.over, text, effort });
       return;
     }
@@ -2657,7 +2685,12 @@ export function ChatApp({
       checked,
       compareMode,
     );
-    if (!routedFirst) return;
+    if (!routedFirst) {
+      await delivery?.hold(
+        "This chat can't send right now: a key, spending limit or privacy rule stops it. Fix that, then choose Send now.",
+      );
+      return;
+    }
     const found = compareMode
       ? {
           ...routedFirst,
@@ -2684,8 +2717,27 @@ export function ChatApp({
     }
     // CO-05: a message that adds a lot (a long paste, big files) shows its cost first. The
     // history alone doesn't count: it's resent every turn and mostly read from cache.
+    const snap = delivery?.snapshot;
+    if (
+      snap &&
+      (snap.provider !== found.model.provider ||
+        snap.model !== found.model.id ||
+        snap.input !== found.model.price.input ||
+        snap.output !== found.model.price.output)
+    ) {
+      await delivery.hold(
+        `The model or its price changed since you queued this (was ${snap.model} at ${String(snap.input)}/${String(snap.output)} USD per million tokens, now ${found.model.displayName} at ${String(found.model.price.input)}/${String(found.model.price.output)}). Choose Send now to send it.`,
+      );
+      return;
+    }
     const added = classifyInput(text, ready, [], false).contextTokens ?? 0;
     if (added > BIG_REQUEST_TOKENS && !confirmed.big) {
+      if (delivery) {
+        await delivery.hold(
+          "This message adds a lot to the request. Choose Send now to see its cost and send it.",
+        );
+        return;
+      }
       const total = classifyInput(text, ready, messages, false).contextTokens ?? added;
       setBigAsk({
         text,
@@ -2710,7 +2762,8 @@ export function ChatApp({
           },
         }
       : found;
-    const sent = confirmed.dropFiles ? [] : attachments.take();
+    if (delivery && !(await delivery.claim())) return;
+    const sent = confirmed.dropFiles || delivery ? [] : attachments.take();
     // A one-message pin is used up by this send.
     setOneShot(null);
     setOnceArmed(false);
@@ -2723,7 +2776,7 @@ export function ChatApp({
       await stream(
         threadId,
         routed,
-        { kind: "send", text, files: sent, proposal: takeProposal() },
+        { kind: "send", text, files: sent, proposal: delivery ? null : takeProposal() },
         search,
         runKind
           ? {
@@ -4734,12 +4787,97 @@ export function ChatApp({
   const queueFromComposer = (text: string, effort: EffortLevel | null) => {
     void (async () => {
       const threadId = await threadForSend(searchOn, text);
-      await queueMessage(db, tenant, { threadId, text, effort, origin: installationId() });
+      // M18.2: the route it would take now; a different model or price later needs your OK.
+      const r = routeFor(text, [], messages, searchOn, false, undefined, undefined);
+      await queueMessage(db, tenant, {
+        threadId,
+        text,
+        effort,
+        origin: installationId(),
+        snapshot: r
+          ? {
+              provider: r.model.provider,
+              model: r.model.id,
+              input: r.model.price.input,
+              output: r.model.price.output,
+            }
+          : null,
+      });
       await loadQueue(threadId);
     })().catch((e: unknown) => {
       putInComposer(text);
       report(e);
     });
+  };
+  // M18.2: a message left mid-dispatch by a crash may have been sent: never replay it.
+  useEffect(() => {
+    interruptDispatching(db, tenant, installationId())
+      .then((n) => (n > 0 ? loadQueue(selectedRef.current) : undefined))
+      .catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per database
+  }, [db, tenant]);
+  const [otherQueues, setOtherQueues] = useState<OtherQueue[]>([]);
+  useEffect(() => {
+    queuedCounts(db, tenant)
+      .then((counts) => {
+        setOtherQueues(
+          [...counts].flatMap(([threadId, count]) => {
+            const t = threads.find((x) => x.id === threadId);
+            return threadId === selectedId || !t ? [] : [{ threadId, title: t.title, count }];
+          }),
+        );
+      })
+      .catch(report);
+  }, [db, tenant, selectedId, queue, online, threads]);
+  // M18.2: back online, this chat's queue goes out one message at a time, in order, through
+  // the same checks as an interactive send. A held or uncertain message stops the ones after it.
+  const delivering = useRef(false);
+  useEffect(() => {
+    if (!online || webApp || area !== "chat" || !selectedId || delivering.current) return;
+    if (streaming || overAsk || bigAsk) return;
+    const head = queue.find((q) => q.state !== "sent" && q.state !== "cancelled");
+    if (head?.state !== "queued" || head.origin !== installationId()) return;
+    delivering.current = true;
+    const threadId = selectedId;
+    const outcome = { claimed: false };
+    void (async () => {
+      // Read it again: what's sent is what's stored now, not what was on screen.
+      const fresh = (await listQueue(db, tenant, threadId)).find(
+        (q) => q.state !== "sent" && q.state !== "cancelled",
+      );
+      if (fresh?.id !== head.id || fresh.state !== "queued") return;
+      await send(
+        fresh.text,
+        fresh.effort as EffortLevel | null,
+        {},
+        {
+          snapshot: fresh.snapshot,
+          claim: async () => {
+            outcome.claimed = await claimQueued(db, tenant, fresh.id, installationId());
+            return outcome.claimed;
+          },
+          hold: (reason) => holdQueued(db, tenant, fresh.id, reason),
+        },
+      );
+      if (outcome.claimed) await markSent(db, tenant, fresh.id);
+      // Stopped before the provider for a reason it didn't name: wait for the owner.
+      else await holdQueued(db, tenant, fresh.id, "It couldn't be sent automatically.");
+    })()
+      .catch(report)
+      .finally(() => {
+        delivering.current = false;
+        loadQueue(threadId).catch(report);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs as the queue and state change
+  }, [online, selectedId, queue, streaming, overAsk, bigAsk, area]);
+  /** M18.2: the owner's renewed approval: an ordinary send, with its usual questions. */
+  const sendQueuedNow = (id: string) => {
+    const q = queue.find((x) => x.id === id);
+    if (!q || streaming) return;
+    cancelQueued(db, tenant, id)
+      .then(() => loadQueue(selectedId))
+      .then(() => send(q.text, q.effort as EffortLevel | null))
+      .catch(report);
   };
   const offlineNote = online
     ? null
@@ -7114,21 +7252,35 @@ export function ChatApp({
                               },
                             }
                           : {})}
-                        {...(area === "chat" && queue.length > 0
+                        {...(area === "chat" && (queue.length > 0 || otherQueues.length > 0)
                           ? {
                               top: (
                                 <QueuedMessages
+                                  online={online}
+                                  others={otherQueues}
+                                  onOpen={select}
+                                  onSendNow={sendQueuedNow}
                                   items={queue.flatMap((q) =>
                                     q.state === "sent" || q.state === "cancelled"
                                       ? []
-                                      : [
-                                          {
-                                            id: q.id,
-                                            text: q.text,
-                                            state: q.state,
-                                            reason: q.reason,
-                                          },
-                                        ],
+                                      : q.state === "queued" && q.origin !== installationId()
+                                        ? [
+                                            {
+                                              id: q.id,
+                                              text: q.text,
+                                              state: "blocked" as const,
+                                              reason:
+                                                "Queued on another installation or before a restore; it won't send by itself.",
+                                            },
+                                          ]
+                                        : [
+                                            {
+                                              id: q.id,
+                                              text: q.text,
+                                              state: q.state,
+                                              reason: q.reason,
+                                            },
+                                          ],
                                   )}
                                   onEdit={(id, text) => {
                                     editQueued(db, tenant, id, text)

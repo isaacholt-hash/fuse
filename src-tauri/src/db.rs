@@ -416,6 +416,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "offline_queue",
         sql: include_str!("../migrations/0076_offline_queue.sql"),
     },
+    MigrationFile {
+        version: 77,
+        description: "offline_queue_snapshot",
+        sql: include_str!("../migrations/0077_offline_queue_snapshot.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
