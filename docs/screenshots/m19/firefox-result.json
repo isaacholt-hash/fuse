@@ -1,14 +1,14 @@
 {
- "engine": "firefox",
- "timings": {
-  "signInMs": 1417,
-  "answerToCanvasMs": 950
- },
- "axe": {
-  "chat": [],
-  "chatDark": [],
-  "canvas": [],
-  "settings": []
- },
- "narrowOverflowPx": 0
+  "engine": "firefox",
+  "timings": {
+    "signInMs": 1417,
+    "answerToCanvasMs": 950
+  },
+  "axe": {
+    "chat": [],
+    "chatDark": [],
+    "canvas": [],
+    "settings": []
+  },
+  "narrowOverflowPx": 0
 }
