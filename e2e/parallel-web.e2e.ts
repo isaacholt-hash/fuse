@@ -182,12 +182,15 @@ describe.skipIf(!URL || !BROWSER)(
       expect(readFileSync(join(process.env.FUSE_PARALLEL_FOLDER ?? "", "notes.txt"), "utf8")).toBe(
         "uncommitted parent\n",
       );
+      // The run card renders after the answer settles; wait for it rather than racing it.
+      await app.find('//section[@aria-label="Coding run"]', 30_000);
       await app.run(
         "Array.from(document.querySelectorAll('section[aria-label=\"Coding run\"]')).at(-1).scrollIntoView({block:'center'});",
       );
       await themes("completed");
       await app.click(button("Collapse sidebar (Ctrl+B)"));
       await app.resize(390, 844);
+      await app.find('//section[@aria-label="Parallel tasks"]', 30_000);
       await app.run(
         "Array.from(document.querySelectorAll('section[aria-label=\"Parallel tasks\"]')).at(-1).scrollIntoView({block:'start'});",
       );

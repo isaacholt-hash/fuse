@@ -188,3 +188,16 @@ not the released application version. `VITEST_MAX_WORKERS=2 pnpm check` passed (
   uncommitted M17.2 files and finished in Claude Code at Isaac's request.
 - **M17.3:** Python artifact runs (schema 75); this PR. Evidence in
   [M17](milestones/M17-writing-artifacts.md).
+- **M17.3:** [PR #318](https://github.com/isaacholt-hash/fuse/pull/318), merge `716f072`,
+  release [v0.1.232](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.232).
+- **M18.1:** [PR #319](https://github.com/isaacholt-hash/fuse/pull/319), merge `d0da94b`,
+  release [v0.1.233](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.233).
+- **M18.2:** [PR #320](https://github.com/isaacholt-hash/fuse/pull/320), merge `348d8f7`,
+  release [v0.1.234](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.234).
+- **M18.3:** [PR #321](https://github.com/isaacholt-hash/fuse/pull/321), merge `b35de10`,
+  release [v0.1.235](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.235).
+- **M18.4:** [PR #322](https://github.com/isaacholt-hash/fuse/pull/322), merge `5d68d84`,
+  release v0.1.236 (publishing at the time of writing).
+- Earlier entries: #316 released as v0.1.230, #317 as v0.1.231.
+- **M19.1:** integrated acceptance; this PR. Remaining: owner acceptance on a released build,
+  [docs/p2-acceptance.md](p2-acceptance.md), recorded in M19 step 2. P2 is not closed until then.

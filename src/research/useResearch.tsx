@@ -538,7 +538,7 @@ export function useResearch(options: Options) {
       : null,
     busy: tasks.some((task) => !remoteFor(task) && task.status === "running"),
     progress: (
-      <div className="max-h-56 shrink-0 overflow-y-auto" aria-label="Research tasks">
+      <div role="region" className="max-h-56 shrink-0 overflow-y-auto" aria-label="Research tasks">
         {tasks.map((task) => (
           <ResearchTask
             key={task.id}

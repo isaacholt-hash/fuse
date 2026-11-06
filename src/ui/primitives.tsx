@@ -94,7 +94,7 @@ export function Greyed({ children }: { children: ReactNode }) {
 }
 export function Hint({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[10px] leading-none opacity-60">
+    <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
       {children}
     </kbd>
   );
