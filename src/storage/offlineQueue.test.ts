@@ -1,6 +1,16 @@
 // @vitest-environment node
 import { DEFAULT_TENANT as t } from "./defaults";
-import { cancelQueued, editQueued, listQueue, queueMessage, queuedCounts } from "./offlineQueue";
+import {
+  cancelQueued,
+  claimQueued,
+  editQueued,
+  holdQueued,
+  interruptDispatching,
+  listQueue,
+  markSent,
+  queueMessage,
+  queuedCounts,
+} from "./offlineQueue";
 import { openTestDb } from "./testing/nodeDb";
 import { createThread, purgeThread } from "./threads";
 
@@ -72,4 +82,50 @@ test("incognito, Code sessions and deleted chats can't queue; closing a chat blo
   expect((await listQueue(db, t, other.id))[0]?.state).toBe("blocked");
   await purgeThread(db, t, other.id);
   expect(await listQueue(db, t, other.id)).toEqual([]);
+});
+
+test("M18.2: one claim per message and installation; crash leaves it unknown, never replayed", async () => {
+  const db = openTestDb();
+  const thread = await createThread(db, t);
+  const snapshot = { provider: "anthropic", model: "m", input: 3, output: 15 };
+  const a = await queueMessage(db, t, {
+    threadId: thread.id,
+    text: "first",
+    effort: null,
+    origin,
+    snapshot,
+  });
+  const b = await queueMessage(db, t, {
+    threadId: thread.id,
+    text: "second",
+    effort: null,
+    origin,
+  });
+  expect((await listQueue(db, t))[0]?.snapshot).toEqual(snapshot);
+
+  // Another installation (or a restored copy) can't claim it.
+  expect(await claimQueued(db, t, a.id, "install-b")).toBe(false);
+  const [one, two] = await Promise.all([
+    claimQueued(db, t, a.id, origin),
+    claimQueued(db, t, a.id, origin),
+  ]);
+  expect([one, two].filter(Boolean)).toHaveLength(1);
+  await markSent(db, t, a.id);
+  expect((await listQueue(db, t)).map((q) => q.id)).toEqual([b.id]);
+
+  await holdQueued(db, t, b.id, "The price changed.");
+  expect((await listQueue(db, t))[0]).toMatchObject({
+    state: "blocked",
+    reason: "The price changed.",
+  });
+  expect(await claimQueued(db, t, b.id, origin)).toBe(false);
+
+  const c = await queueMessage(db, t, { threadId: thread.id, text: "third", effort: null, origin });
+  expect(await claimQueued(db, t, c.id, origin)).toBe(true);
+  // The app stops here. At the next start it is uncertain, not queued.
+  expect(await interruptDispatching(db, t, origin)).toBe(1);
+  const after = (await listQueue(db, t)).find((q) => q.id === c.id);
+  expect(after?.state).toBe("unknown");
+  expect(after?.reason).toMatch(/may have reached the provider/);
+  expect(await claimQueued(db, t, c.id, origin)).toBe(false);
 });

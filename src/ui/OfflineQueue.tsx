@@ -9,10 +9,17 @@ export interface QueuedView {
   reason: string | null;
 }
 
+/** Another chat with messages waiting to send, for the reconnect notice. */
+export interface OtherQueue {
+  threadId: string;
+  title: string;
+  count: number;
+}
+
 const STATE: Record<QueuedView["state"], string> = {
   queued: "Waiting",
   dispatching: "Sending…",
-  blocked: "Won't send",
+  blocked: "Needs you",
   unknown: "May have been sent",
 };
 
@@ -21,22 +28,36 @@ export function QueuedMessages({
   items,
   onEdit,
   onCancel,
+  onSendNow,
+  others = [],
+  onOpen,
+  online = false,
 }: {
   items: QueuedView[];
   onEdit: (id: string, text: string) => void;
   onCancel: (id: string) => void;
+  /** M18.2: the owner's renewed approval for a held or uncertain message. */
+  onSendNow?: (id: string) => void;
+  /** M18.2: other chats with waiting messages; they send when opened. */
+  others?: OtherQueue[];
+  onOpen?: (threadId: string) => void;
+  online?: boolean;
 }) {
   const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
-  if (items.length === 0) return null;
+  if (items.length === 0 && others.length === 0) return null;
   return (
     <section
       aria-label="Queued messages"
       className="mb-2 rounded-lg border border-dashed px-3 py-2 text-[12px]"
     >
-      <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-        <Clock className="size-3" />
-        Queued ({items.length}) · sends from this desktop, in order, when you&apos;re back online
-      </h3>
+      {items.length > 0 && (
+        <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <Clock className="size-3" />
+          {online
+            ? `Queued (${String(items.length)}) · back online: sending in order, with today's checks`
+            : `Queued (${String(items.length)}) · sends from this desktop, in order, when you're back online`}
+        </h3>
+      )}
       <ol className="flex flex-col gap-1.5">
         {items.map((q) =>
           editing?.id === q.id ? (
@@ -86,6 +107,18 @@ export function QueuedMessages({
                   {q.reason ? ` · ${q.reason}` : ""}
                 </span>
               </span>
+              {(q.state === "blocked" || q.state === "unknown") && onSendNow && online && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-[11px]"
+                  onClick={() => {
+                    onSendNow(q.id);
+                  }}
+                >
+                  Send now
+                </Button>
+              )}
               {q.state === "queued" && (
                 <Button
                   variant="ghost"
@@ -114,6 +147,23 @@ export function QueuedMessages({
           ),
         )}
       </ol>
+      {others.length > 0 && (
+        <p className="mt-1.5 text-[11px] text-muted-foreground" role="status">
+          Also waiting:{" "}
+          {others.map((o, i) => (
+            <span key={o.threadId}>
+              {i > 0 ? ", " : ""}
+              <button
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => onOpen?.(o.threadId)}
+              >
+                {o.title} ({o.count})
+              </button>
+            </span>
+          ))}
+          {online ? ". Each sends when you open its chat." : "."}
+        </p>
+      )}
     </section>
   );
 }

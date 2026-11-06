@@ -11,7 +11,7 @@ import { memoryFilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { PythonApi, PythonRuntime } from "@/python/runtime";
-import type { Connectivity } from "@/offline/installation";
+import { installationId, type Connectivity } from "@/offline/installation";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -4384,4 +4384,120 @@ test("M18.1: incognito can't queue; online, the composer sends as usual", async 
     expect(screen.queryByText(/You're offline/)).toBeNull();
   });
   expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeInTheDocument();
+});
+
+describe("M18.2 reconnect delivery", () => {
+  function app(db: SqlDb, reply: (text: string) => string = (t) => `Answer to ${t}`) {
+    const keys = fakeKeysApi();
+    keys.keys.set("anthropic", "fake-value-for-tests-0000");
+    const asked: string[] = [];
+    const adapterFor = () =>
+      ({
+        provider: "anthropic",
+        listModels: () => Promise.resolve([]),
+        streamChat: (h, _m, o) => {
+          if (o.system === TITLE_SYSTEM) return answer("");
+          const last = h.at(-1)?.content ?? "";
+          asked.push(last);
+          return answer(reply(last));
+        },
+      }) satisfies ProviderAdapter;
+    return {
+      props: { openDb: () => Promise.resolve(db), keysApi: keys.api, catalog, policy, adapterFor },
+      asked,
+    };
+  }
+
+  test("back online, queued messages send in order through the normal path", async () => {
+    const db = openTestDb();
+    const { props, asked } = app(db);
+    const net = fakeConnectivity(false);
+    render(<App {...props} connectivity={net} />);
+    const user = userEvent.setup();
+    await user.type(await composer(), "First question{Enter}");
+    await screen.findByRole("region", { name: "Queued messages" });
+    await user.type(await composer(), "Second question{Enter}");
+    await screen.findByText("Second question");
+    expect(asked).toEqual([]);
+
+    act(() => {
+      net.set(true);
+    });
+    expect(await screen.findByText("Answer to Second question")).toBeInTheDocument();
+    expect(asked).toEqual(["First question", "Second question"]);
+    await waitFor(() => {
+      expect(screen.queryByRole("region", { name: "Queued messages" })).toBeNull();
+    });
+    const rows = await db.select<{ state: string }>(
+      "SELECT state FROM offline_queue ORDER BY created_at",
+    );
+    expect(rows.map((r) => r.state)).toEqual(["sent", "sent"]);
+  });
+
+  test("a changed price holds the message and the ones after it until Send now", async () => {
+    const db = openTestDb();
+    const { props, asked } = app(db);
+    const net = fakeConnectivity(false);
+    render(<App {...props} connectivity={net} />);
+    const user = userEvent.setup();
+    await user.type(await composer(), "Pricey question{Enter}");
+    await user.type(await composer(), "Follow-up{Enter}");
+    await screen.findByText("Follow-up");
+    // The price it was queued at differs from today's.
+    await db.execute(
+      "UPDATE offline_queue SET snapshot=json_set(snapshot,'$.input',0.01) WHERE text='Pricey question'",
+    );
+    act(() => {
+      net.set(true);
+    });
+    const queued = within(await screen.findByRole("region", { name: "Queued messages" }));
+    expect(
+      await queued.findByText(/The model or its price changed since you queued this/),
+    ).toBeInTheDocument();
+    expect(asked).toEqual([]);
+    await user.click(queued.getByRole("button", { name: "Send now" }));
+    expect(await screen.findByText("Answer to Follow-up")).toBeInTheDocument();
+    expect(asked).toEqual(["Pricey question", "Follow-up"]);
+  });
+
+  test("a message left mid-dispatch is uncertain after a restart; another installation's never sends", async () => {
+    const db = openTestDb();
+    const thread = await createThread(db, DEFAULT_TENANT, "Queued chat");
+    const now = Date.now();
+    for (const [id, origin, state, text] of [
+      ["q-crash", "", "dispatching", "Maybe sent"],
+      ["q-other", "another-installation", "queued", "From elsewhere"],
+    ] as const) {
+      await db.execute(
+        "INSERT INTO offline_queue(id,workspace_id,user_id,thread_id,origin,text,state,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        [
+          id,
+          DEFAULT_TENANT.workspaceId,
+          DEFAULT_TENANT.userId,
+          thread.id,
+          origin || installationId(),
+          text,
+          state,
+          now,
+          now,
+        ],
+      );
+    }
+    const { props, asked } = app(db);
+    render(<App {...props} connectivity={fakeConnectivity(true)} />);
+    const user = userEvent.setup();
+    await user.click(
+      (await screen.findAllByRole("button", { name: /Queued chat/ }))[0] as HTMLElement,
+    );
+    const queued = within(await screen.findByRole("region", { name: "Queued messages" }));
+    expect(await queued.findByText(/may have reached the provider/)).toBeInTheDocument();
+    expect(
+      queued.getByText(/Queued on another installation or before a restore/),
+    ).toBeInTheDocument();
+    expect(asked).toEqual([]);
+    const [crash] = await db.select<{ state: string }>(
+      "SELECT state FROM offline_queue WHERE id='q-crash'",
+    );
+    expect(crash?.state).toBe("unknown");
+  });
 });

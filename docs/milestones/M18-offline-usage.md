@@ -22,7 +22,7 @@ PL-05, CO-06, MM-12 dependency, SE-10 completion, CO-08.
 ## Steps
 
 - [x] **1. Durable queue.** Explicit normal-Chat offline queue on its originating desktop, with edit/cancel/pending controls and persisted immutable dispatch identity. Incognito remains transient.
-- [ ] **2. Reconnect and recovery.** Deliver serially per thread with notice, recheck context/policy/prices/budgets, require renewed approval for material changes and stop ambiguously dispatched requests without paid replay.
+- [x] **2. Reconnect and recovery.** Deliver serially per thread with notice, recheck context/policy/prices/budgets, require renewed approval for material changes and stop ambiguously dispatched requests without paid replay.
 - [ ] **3. Usage collection.** Usage CSV export/import plus native OpenAI usage/cost and current Anthropic Usage and Cost Analytics collectors, explicit separate native reporting credentials and sanitized status-only UI.
 - [ ] **4. Reconciliation and activity.** Compare matching UTC periods/provider scopes, show lag/unexplained differences without counting aggregates as new spend, and complete redacted tool/credential-use/policy export. Fixtures, screenshots and release documentation.
 
@@ -76,3 +76,13 @@ tests), storage tests (eligibility, edit/cancel, block on delete/incognito, purg
 tests (queue, edit, cancel, no provider call, survives restart; incognito refused; online
 sends as usual). The offline composer couldn't be screenshotted natively here (no network
 namespace permission), so its UI evidence is the App tests. Nothing is delivered yet: M18.2.
+
+Step 2 delivers the queue on reconnect ([offline.md](../offline.md)). Schema 77 adds the
+queued route snapshot. Delivery runs through `send` with a delivery handle: every point
+that would ask interactively (budget over, large request) or refuse (routing, keys, spend
+caps, privacy) holds the message for Send now instead, and a different model or price than
+the snapshot does too. The row is claimed `queued`→`dispatching` only after every check,
+right before the provider path; a crash leaves it `unknown` at the next start and nothing
+replays. Rows from another installation or a restore never send by themselves. Checks:
+`pnpm check`, Rust fmt/clippy/tests, storage tests (single claim, hold, crash) and App tests
+(ordered delivery, price-change hold and Send now, crash and foreign rows not sent).
