@@ -61,7 +61,20 @@ export interface SkillScriptRequest {
   args: string[];
   timeoutSecs: number;
 }
+/** M17.3: runs an approved `artifact_runs` row (src-tauri/src/artifact_scripts.rs). */
+export interface ArtifactRunRequest {
+  runId: string;
+  versionId: string;
+  scriptSha256: string;
+  timeoutSecs?: number;
+}
+
 export interface ExecApi {
+  /** M17.3: one approved run of a Python artifact version, in the skill-script sandbox. */
+  artifactPython?(
+    request: ArtifactRunRequest,
+    opts: { signal?: AbortSignal; onOutput?: (soFar: string) => void },
+  ): Promise<PythonResult>;
   skillPython?(
     request: SkillScriptRequest,
     opts: { signal?: AbortSignal; onOutput?: (soFar: string) => void },
@@ -123,6 +136,40 @@ export const tauriExec: ExecApi = {
         command,
         timeoutSecs: timeoutSecs ?? null,
         sandbox: sandbox ?? null,
+        onEvent: channel,
+      })
+        .then((id) => {
+          const stop = () => void invoke("repo_exec_stop", { id });
+          if (signal?.aborted) stop();
+          else signal?.addEventListener("abort", stop, { once: true });
+        })
+        .catch(reject);
+    }),
+  artifactPython: (request, { signal, onOutput }) =>
+    new Promise<PythonResult>((resolve, reject) => {
+      let output = "";
+      let files: PythonResult["files"] = [];
+      let skipped: string[] = [];
+      const channel = new Channel<ExecMsg>();
+      channel.onmessage = (m) => {
+        if (m.type === "out") {
+          output += m.text;
+          onOutput?.(output);
+        } else if (m.type === "files") {
+          files = m.files.map((f) => ({ path: f.path, bytes: new Uint8Array(f.bytes) }));
+          skipped = m.skipped;
+        } else if (m.type === "done") {
+          const { type: _type, ...rest } = m;
+          resolve({ output, ...rest, files, skipped });
+        } else reject(new Error(m.message));
+      };
+      invoke<number>("artifact_python_run", {
+        request: {
+          runId: request.runId,
+          versionId: request.versionId,
+          scriptSha256: request.scriptSha256,
+          timeoutSecs: request.timeoutSecs ?? null,
+        },
         onEvent: channel,
       })
         .then((id) => {

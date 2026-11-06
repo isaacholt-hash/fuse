@@ -10,6 +10,7 @@ import { parsePolicy } from "@/routing/policy";
 import { memoryFilesApi } from "@/files/api";
 import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
+import type { PythonApi, PythonRuntime } from "@/python/runtime";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -164,7 +165,10 @@ function setup(
     wrapDb = (d) => d,
     undoMs,
     appBuild,
+    python,
   }: {
+    /** M17.3: the Python runtime the app sees (the real one fails in tests). */
+    python?: PythonApi;
     helloAvailable?: boolean;
     repo?: RepoApi;
     exec?: ExecApi;
@@ -313,6 +317,7 @@ function setup(
   };
   render(
     <App
+      {...(python ? { python } : {})}
       openDb={() => Promise.resolve(appDb)}
       connectors={scriptedConnectorsApi(() => Promise.resolve(appDb), DEFAULT_TENANT)}
       keysApi={keys.api}
@@ -4169,4 +4174,110 @@ test("M12: an answer continues and completes while Settings is open", async () =
   await screen.findByText("Working while Settings is open.");
   expect(signal?.aborted).toBe(false);
   expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
+});
+
+test("M17.3: a Python artifact version runs once after approval, with inputs, output and provenance", async () => {
+  let db: SqlDb | null = null;
+  const asked: { runId: string; versionId: string; scriptSha256: string }[] = [];
+  const exec: ExecApi = {
+    run: () => Promise.reject(new Error("not used")),
+    artifactPython: async (request, { onOutput }) => {
+      asked.push(request);
+      // What the native side does: claim the approved row once, then finish it.
+      await db?.execute(
+        "UPDATE artifact_runs SET state='running' WHERE id=? AND state='requested'",
+        [request.runId],
+      );
+      onOutput?.("total 30\n");
+      await db?.execute("UPDATE artifact_runs SET state='complete',exit_code=0 WHERE id=?", [
+        request.runId,
+      ]);
+      return {
+        output: "total 30\n",
+        exitCode: 0,
+        timedOut: false,
+        stopped: false,
+        truncated: false,
+        elapsedMs: 120,
+        files: [{ path: "summary.csv", bytes: new TextEncoder().encode("south,30") }],
+        skipped: [],
+      };
+    },
+  };
+  const ctx = setup(
+    {
+      anthropic: [
+        () =>
+          answer(
+            '<artifact id="sum" type="code" language="python" title="Sum">print("total", sum(int(l.split(",")[1]) for l in open("inputs/data.csv")))</artifact>',
+          ),
+      ],
+    },
+    undefined,
+    undefined,
+    {
+      exec,
+      python: {
+        status: () =>
+          Promise.resolve<PythonRuntime>({
+            python: "3.13.16",
+            release: "fixture",
+            packages: [],
+            sizeBytes: 1,
+            installedMs: 1,
+          }),
+        install: () => Promise.reject(new Error("not used")),
+        cancel: () => Promise.resolve(),
+        remove: () => Promise.resolve(),
+      },
+    },
+  );
+  db = ctx.db;
+  await ctx.user.type(await composer(), "Write a summing script{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Sum" }));
+  await ctx.user.click(panel.getByRole("button", { name: "Run script" }));
+  const approval = within(panel.getByRole("alertdialog", { name: "Run this Python script?" }));
+  expect(approval.getByText(/No network · up to 120 s/)).toBeInTheDocument();
+  expect(approval.getByText(/Version 1 · SHA-256/)).toBeInTheDocument();
+  await ctx.user.upload(
+    approval.getByLabelText("Input files"),
+    new File(["south,30"], "data.csv", { type: "text/csv" }),
+  );
+  await ctx.user.click(approval.getByRole("button", { name: "Allow once" }));
+
+  const output = within(await panel.findByRole("region", { name: "Run output" }));
+  expect(await output.findByText(/attempt 1 · Finished \(exit 0\)/)).toBeInTheDocument();
+  expect(output.getByText(/inputs: data.csv/)).toBeInTheDocument();
+  expect(output.getByLabelText("Printed output")).toHaveTextContent("total 30");
+  expect(output.getByText(/summary.csv/)).toBeInTheDocument();
+  expect(asked).toHaveLength(1);
+  const [row] = await ctx.db.select<{
+    attempt: number;
+    state: string;
+    inputs: string;
+    outputs: string;
+  }>("SELECT attempt,state,inputs,outputs FROM artifact_runs");
+  expect(row).toMatchObject({ attempt: 1, state: "complete" });
+  expect(JSON.parse(row?.inputs ?? "[]")).toMatchObject([{ name: "data.csv", bytes: 8 }]);
+  expect(JSON.parse(row?.outputs ?? "[]")).toMatchObject([{ path: "summary.csv", bytes: 8 }]);
+  expect(asked[0]?.scriptSha256).toHaveLength(64);
+});
+
+test("M17.3: without Python the Run button explains what to install", async () => {
+  const exec: ExecApi = { run: () => Promise.reject(new Error("not used")) };
+  const { user } = setup(
+    {
+      anthropic: [
+        () =>
+          answer('<artifact id="s" type="code" language="python" title="S">print(1)</artifact>'),
+      ],
+    },
+    undefined,
+    undefined,
+    { exec },
+  );
+  await user.type(await composer(), "Write a script{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: S" }));
+  expect(panel.getByRole("button", { name: "Run script" })).toBeDisabled();
+  expect(panel.getByText("Running scripts isn't available in this app.")).toBeInTheDocument();
 });

@@ -1,6 +1,7 @@
 // The command table fuse-server serves (M10); the desktop app doesn't use it.
 #[cfg_attr(not(all(feature = "server", target_os = "linux")), allow(dead_code))]
 mod api;
+mod artifact_scripts;
 mod audio;
 mod audit;
 #[cfg(all(feature = "server", target_os = "linux"))]
@@ -162,6 +163,7 @@ pub fn run() {
             exec::commands::repo_exec,
             exec::commands::python_run,
             skill_scripts::commands::skill_python_run,
+            artifact_scripts::commands::artifact_python_run,
             exec::commands::repo_exec_stop,
             exec::commands::sandbox_status,
             exec::commands::sandbox_windows_available,

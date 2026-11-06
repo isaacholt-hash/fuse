@@ -424,6 +424,16 @@ import {
   type ArtifactProposal,
 } from "@/storage/artifactCanvas";
 import { locateAnchor, rangeForSelection, textAnchor } from "@/artifacts/sections";
+import {
+  finishRun,
+  listRuns,
+  refuseRun,
+  requestRun,
+  runnable,
+  sha256Hex,
+  type ArtifactRun,
+} from "@/storage/artifactRuns";
+import type { RunsProps } from "@/ui/ArtifactRuns";
 import type {
   CanvasProps,
   CanvasRange,
@@ -4095,6 +4105,114 @@ export function ChatApp({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
   }, [db, tenant, openSaved?.id, openSaved?.version, openSaved?.type]);
   const latestVersion = versions.at(-1);
+  // M17.3: runs of the Python artifact version on screen.
+  const shownRow = versions.find((v) => v.id === shownVersionId) ?? latestVersion;
+  const isRunnable = openSaved !== undefined && runnable(openSaved);
+  const [artifactRunRows, setArtifactRunRows] = useState<ArtifactRun[]>([]);
+  const [runLive, setRunLive] = useState<string | null>(null);
+  const runStop = useRef<AbortController | null>(null);
+  const [shownSha, setShownSha] = useState("");
+  const loadRuns = (artifactId: string) =>
+    listRuns(db, tenant, artifactId).then(setArtifactRunRows);
+  useEffect(() => {
+    if (!openSaved || !isRunnable) {
+      setArtifactRunRows([]);
+      return;
+    }
+    loadRuns(openSaved.id).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
+  }, [db, tenant, openSaved?.id, openSaved?.version, isRunnable]);
+  useEffect(() => {
+    if (!shownRow || !isRunnable) return;
+    let live = true;
+    sha256Hex(shownRow.content).then((h) => {
+      if (live) setShownSha(h);
+    }, report);
+    return () => {
+      live = false;
+    };
+  }, [shownRow?.id, shownRow?.content, isRunnable]); // eslint-disable-line react-hooks/exhaustive-deps
+  const runArtifact = async (inputs: File[]) => {
+    const api = execApi;
+    if (!openSaved || !shownRow || !api?.artifactPython) return;
+    const artifact = openSaved;
+    const version = shownRow;
+    const scriptSha256 = await sha256Hex(version.content);
+    const stored = [];
+    for (const f of inputs) {
+      const put = await filesApi.put(new Uint8Array(await f.arrayBuffer()));
+      stored.push({ name: f.name, sha256: put.sha256, bytes: put.size });
+    }
+    const run = await requestRun(db, tenant, {
+      artifactId: artifact.id,
+      versionId: version.id,
+      scriptSha256,
+      inputs: stored,
+    });
+    await loadRuns(artifact.id);
+    const controller = new AbortController();
+    runStop.current = controller;
+    setRunLive("");
+    try {
+      const result = await api.artifactPython(
+        { runId: run.id, versionId: version.id, scriptSha256 },
+        {
+          signal: controller.signal,
+          onOutput: (soFar) => {
+            setRunLive(soFar);
+          },
+        },
+      );
+      const outputs = [];
+      for (const f of result.files) {
+        const put = await filesApi.put(f.bytes);
+        outputs.push({ path: f.path, sha256: put.sha256, bytes: put.size });
+      }
+      await finishRun(db, tenant, run.id, { ...result, outputs });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      await refuseRun(db, tenant, run.id, message);
+      await finishRun(db, tenant, run.id, {
+        output: message,
+        outputs: [],
+        exitCode: null,
+        timedOut: false,
+        stopped: controller.signal.aborted,
+        truncated: false,
+        elapsedMs: 0,
+      });
+    } finally {
+      runStop.current = null;
+      setRunLive(null);
+      await loadRuns(artifact.id);
+    }
+  };
+  const runs: RunsProps | undefined =
+    openSaved && shownRow && isRunnable
+      ? {
+          runs: artifactRunRows.map((r) => ({
+            ...r,
+            version: versions.find((v) => v.id === r.versionId)?.version ?? 0,
+          })),
+          version: shownRow.version,
+          scriptSha256: shownSha,
+          unavailable: !execApi?.artifactPython
+            ? "Running scripts isn't available in this app."
+            : pythonApi && pyRuntime === null
+              ? "Python isn't installed. Install it in Settings → Code & tools → Python for data work."
+              : null,
+          running: runLive !== null,
+          live: runLive ?? "",
+          onRun: (inputs) => {
+            runArtifact(inputs).catch(report);
+          },
+          onStop: () => {
+            runStop.current?.abort();
+          },
+          imageUrl: (sha) =>
+            filesApi.get(sha).then((b) => URL.createObjectURL(new Blob([b as BlobPart]))),
+        }
+      : undefined;
   /** M17.2: asks the model for a change that comes back as a proposal to review. */
   const proposeEdit = (range: CanvasRange, instruction: string) => {
     if (streaming || !openSaved || !latestVersion) return;
@@ -7092,6 +7210,7 @@ export function ChatApp({
                           showArtifact(null);
                         }}
                         {...(canvas ? { canvas } : {})}
+                        {...(runs ? { runs } : {})}
                         versions={{
                           versions: versions.map((v) => ({
                             version: v.version,

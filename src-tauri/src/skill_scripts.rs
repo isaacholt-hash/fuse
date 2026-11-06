@@ -43,12 +43,12 @@ struct Asset {
     sha256: String,
     base64: String,
 }
-struct Package {
-    files: Vec<(String, Vec<u8>)>,
-    script_sha256: String,
+pub(crate) struct Package {
+    pub files: Vec<(String, Vec<u8>)>,
+    pub script_sha256: String,
 }
 
-fn digest(bytes: &[u8]) -> String {
+pub(crate) fn digest(bytes: &[u8]) -> String {
     crate::sync::crypto::hex(&Sha256::digest(bytes))
 }
 
@@ -95,7 +95,7 @@ fn decode64(text: &str) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
-fn portable_path(path: &str) -> Result<(), String> {
+pub(crate) fn portable_path(path: &str) -> Result<(), String> {
     if path.is_empty()
         || path.len() > 240
         || !path.bytes().all(|b| (32..=126).contains(&b))
@@ -275,8 +275,8 @@ async fn prepare(ctx: &Ctx, r: &ScriptRequest) -> Result<(Package, String, Strin
     Ok((pkg, id, task.to_owned()))
 }
 
-struct Scratch {
-    path: PathBuf,
+pub(crate) struct Scratch {
+    pub(crate) path: PathBuf,
     #[cfg(windows)]
     container: fuse_sandbox_win::Container,
     #[cfg(windows)]
@@ -295,7 +295,7 @@ impl Drop for Scratch {
     }
 }
 
-fn create_scratch(
+pub(crate) fn create_scratch(
     data: &Path,
     id: &str,
     pkg: &Package,
@@ -464,7 +464,7 @@ if _libc.prctl(38,1,0,0,0)!=0 or _libc.prctl(22,2,ctypes.byref(_program),0,0)!=0
 }
 
 #[cfg(target_os = "linux")]
-fn command(python_root: &Path, work: &Path) -> Result<tokio::process::Command, String> {
+pub(crate) fn command(python_root: &Path, work: &Path) -> Result<tokio::process::Command, String> {
     let bwrap = exec::bwrap_path().ok_or("Bubblewrap is required for skill scripts.")?;
     let mut c = tokio::process::Command::new(bwrap);
     c.env_clear().env("PATH", "/usr/bin:/bin");
@@ -629,6 +629,47 @@ pub(crate) async fn run(
     let scratch = create_scratch(&ctx.data_dir, &claim, &pkg, &r.path, &r.args, &root)?;
     let pool = ctx.db.pool()?;
     claim_dispatch(ctx, &r, &pkg, &claim, &approved_task).await?;
+    let timeout = Duration::from_secs(r.timeout_secs.unwrap_or(MAX_SECONDS));
+    execute(
+        ctx,
+        Execution {
+            scratch,
+            root,
+            timeout,
+            pool,
+            finish: "UPDATE skill_script_claims SET state=?,exit_code=?,updated_at=? WHERE id=?",
+            claim,
+            label: "<skill scratch>",
+        },
+        on_event,
+    )
+}
+
+/// A prepared, claimed execution: its private scratch, the runtime and how to record the end.
+pub(crate) struct Execution {
+    pub scratch: Scratch,
+    pub root: PathBuf,
+    pub timeout: Duration,
+    pub pool: sqlx::SqlitePool,
+    /// `UPDATE … SET state=?,exit_code=?,updated_at=? WHERE id=?` for the claim row.
+    pub finish: &'static str,
+    pub claim: String,
+    /// Replaces the scratch path in error messages.
+    pub label: &'static str,
+}
+
+/// Runs a claimed execution in the OS sandbox; returns its stop id. Files, then Done, end the
+/// stream; the claim row is finished as `complete` or `failed` before they are sent.
+pub(crate) fn execute(ctx: &Ctx, e: Execution, on_event: Sink<ExecMsg>) -> Result<u32, String> {
+    let Execution {
+        scratch,
+        root,
+        timeout,
+        pool,
+        finish,
+        claim,
+        label,
+    } = e;
     let id = ctx.execs.next_id.fetch_add(1, Ordering::Relaxed);
     let (stop_tx, stop_rx) = oneshot::channel();
     ctx.execs
@@ -637,7 +678,6 @@ pub(crate) async fn run(
         .map_err(|_| "Couldn't register the script stop control.")?
         .insert(id, stop_tx);
     let running = ctx.execs.running.clone();
-    let timeout = Duration::from_secs(r.timeout_secs.unwrap_or(MAX_SECONDS));
     #[cfg(target_os = "linux")]
     let cmd = command(&root, &scratch.path)?;
     tokio::spawn(async move {
@@ -664,8 +704,7 @@ pub(crate) async fn run(
             ExecMsg::Error { message } => {
                 failed = true;
                 let _ = on_event.send(ExecMsg::Error {
-                    message: message
-                        .replace(scratch.path.to_string_lossy().as_ref(), "<skill scratch>"),
+                    message: message.replace(scratch.path.to_string_lossy().as_ref(), label),
                 });
             }
             other => {
@@ -773,15 +812,13 @@ pub(crate) async fn run(
         } else {
             "complete"
         };
-        let _ = sqlx::query(
-            "UPDATE skill_script_claims SET state=?,exit_code=?,updated_at=? WHERE id=?",
-        )
-        .bind(state)
-        .bind(code)
-        .bind(crate::sync::now())
-        .bind(&claim)
-        .execute(&pool)
-        .await;
+        let _ = sqlx::query(finish)
+            .bind(state)
+            .bind(code)
+            .bind(crate::sync::now())
+            .bind(&claim)
+            .execute(&pool)
+            .await;
         let _ = on_event.send(ExecMsg::Files { files, skipped });
         if let Some(msg) = done {
             let _ = on_event.send(msg);
