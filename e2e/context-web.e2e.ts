@@ -47,7 +47,7 @@ describe.skipIf(!URL || !BROWSER)("scoped context tools in the shared web app", 
       "fuse-e2e-scripted-build",
     );
     expect(await query("SELECT MAX(version) AS version FROM _sqlx_migrations")).toEqual([
-      { version: 74 },
+      { version: 75 },
     ]);
     // Assert the new columns/table from the actual native process, never a TS-only mock.
     expect(

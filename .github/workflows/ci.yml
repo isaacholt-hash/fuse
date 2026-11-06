@@ -215,6 +215,16 @@ jobs:
           name: canvas-web-screenshots
           path: e2e/screenshots/canvas/
           if-no-files-found: ignore
+      - name: Python artifact runs shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/artifact-run-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: artifact-run-web-screenshots
+          path: e2e/screenshots/artifact-runs/
+          if-no-files-found: ignore
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome

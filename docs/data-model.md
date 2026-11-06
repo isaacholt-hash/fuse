@@ -548,3 +548,15 @@ backups keep it as inert data.
 
 Owner edits pass the version they started from, so a save over a newer version is refused
 and the draft stays on screen.
+
+## M17.3 Python artifact runs (schema 75)
+
+`artifact_runs` is owner-local execution provenance. Each row is one approved attempt on one
+artifact version: attempt number (per version), the SHA-256 of the exact source the owner
+approved, the selected inputs (name, SHA-256, size), state, exit code, time-out/truncation,
+elapsed time, printed output (up to 1 MB) and output files (path, SHA-256, size; bytes in the
+local file store). The app writes the row as `requested`; the native `artifact_python_run`
+claims it once (`running`) and finishes it (`complete`/`failed`), so a row never runs twice
+and nothing replays after a crash (stale rows show as `interrupted`). It is never synced or
+portably exported, deleted with its version, conversation and global deletion, and kept as
+inert data in encrypted backups.

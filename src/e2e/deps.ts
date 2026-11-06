@@ -155,6 +155,12 @@ export function scriptedTurn(body: Body): Turn {
       ].filter((c) => body.tools?.some((t) => t.name === c.name)),
     };
   }
+  // M17.3 artifact-run fixture: a Python artifact that reads its input, probes isolation and
+  // writes an output file.
+  if (lastAsked?.includes("E2E artifact script"))
+    return {
+      text: '<artifact id="totals" type="code" language="python" title="Totals">\nimport os, socket\nrows = [l.strip().split(",") for l in open("inputs/data.csv") if l.strip()]\nprint("total", sum(int(r[1]) for r in rows))\ntry:\n    open("inputs/data.csv", "w")\n    print("input writable")\nexcept OSError:\n    print("input read-only")\ntry:\n    socket.create_connection(("1.1.1.1", 443), 0.5)\n    print("network on")\nexcept OSError:\n    print("network off")\nopen(os.path.join(os.environ["FUSE_OUT"], "summary.csv"), "w").write("regions,%d\\n" % len(rows))\n</artifact>\nThe script is ready.',
+    };
   // M17.2 canvas fixture: a document, then a reviewed Shorten proposal for its Risks section.
   const latest = body.messages
     .filter((m) => m.role === "user")

@@ -23,7 +23,7 @@ AR-07, AR-08, AG-01 completion, PM-04 P2 extension.
 
 - [x] **1. Scoped context tools.** Complete memory and artifact reads/mutations in the tool registry, retaining provenance/authority/review and versioning. Add artifact retrieval by meaning with keyword fallback, privacy filtering and source references.
 - [x] **2. Writing canvas.** Markdown sections, anchored comments and rewrite/shorten/expand actions. Show model changes as reviewed diffs and create a new version; protect against overwriting concurrent edits.
-- [ ] **3. Python artifacts.** Run an explicitly selected artifact version with selected inputs in an isolated scratch folder using existing approval/runtime/sandbox limits. Display output beside code and retain version/attempt provenance, desktop/HULK parity, tests and release evidence.
+- [x] **3. Python artifacts.** Run an explicitly selected artifact version with selected inputs in an isolated scratch folder using existing approval/runtime/sandbox limits. Display output beside code and retain version/attempt provenance, desktop/HULK parity, tests and release evidence.
 
 ## Behavior and boundaries
 
@@ -107,3 +107,17 @@ and `scripts/canvas-web.sh` against the native server (schema 74, comment → Sh
 [proposal](../screenshots/m17/canvas-proposal-dark.png),
 [accepted](../screenshots/m17/canvas-accepted-light.png). Started in a Codex worktree and
 finished here; the Codex worktree was left untouched.
+
+Step 3 adds Python artifact runs ([python-artifacts.md](../python-artifacts.md)). The native
+`artifact_python_run` reuses the skill-script sandbox executor (factored out of
+`skill_scripts::run`): private 0700 scratch, strict bubblewrap with seccomp (no network, no
+child processes) or AppContainer, 512 MiB, 120 s, and the existing output-file bounds. It
+reads the approved version and hash-checked inputs from the database and file store, never
+from the request, and claims the owner-local `artifact_runs` row exactly once (schema 75).
+Checks: `pnpm check`, Rust fmt/clippy/tests (including a real bubblewrap run with a
+read-only input and no network), and `scripts/artifact-run-web.sh` against the native server
+with a real sandboxed run, a second attempt and scratch cleanup
+([result](../screenshots/m17/run-result.json)). Reviewed screenshots:
+[approval](../screenshots/m17/run-approval-dark.png),
+[output](../screenshots/m17/run-output-light.png),
+[attempts](../screenshots/m17/run-attempts-light.png).

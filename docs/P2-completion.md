@@ -176,3 +176,15 @@ not the released application version. `VITEST_MAX_WORKERS=2 pnpm check` passed (
   [run 41992578860](https://github.com/isaacholt-hash/fuse/actions/runs/41992578860) at
   2026-11-05 08:20:44 UTC. Installers/seven signed updater entries verified. The final research
   benchmark and recovery assertions ship in M14.4; live owner acceptance remains M19 work.
+
+- **Windows PC test fix:** [PR #316](https://github.com/isaacholt-hash/fuse/pull/316), merge
+  `9a63f4d`. Image cost reservations used the full context window, so a $1 Work run paused
+  after a script's chart; images now reserve their documented per-image ceiling
+  (`data/image-bounds.json`). PC tests passed on `9a63f4d` for the first time since
+  2026-11-05 02:01 UTC; issues #304–#313 closed.
+- **M17.2:** [PR #317](https://github.com/isaacholt-hash/fuse/pull/317), merge `2ffbcec`.
+  Writing canvas with version-anchored comments and reviewed AI proposals (schema 74). All
+  five gates and the canvas web step passed before merge. Started from the Codex worktree's
+  uncommitted M17.2 files and finished in Claude Code at Isaac's request.
+- **M17.3:** Python artifact runs (schema 75); this PR. Evidence in
+  [M17](milestones/M17-writing-artifacts.md).

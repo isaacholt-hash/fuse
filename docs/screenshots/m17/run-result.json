@@ -1,0 +1,8 @@
+{
+  "schema": 75,
+  "attempts": [
+    [1, "complete"],
+    [2, "failed"]
+  ],
+  "printed": "total 42\ninput read-only\nnetwork off\n"
+}

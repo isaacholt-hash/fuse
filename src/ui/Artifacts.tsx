@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
 import { rangeForSelection } from "@/artifacts/sections";
 import { CanvasToolbar, CommentList, ProposalList, type CanvasProps } from "./WritingCanvas";
+import { RunApproval, RunButton, RunOutput, RunUnavailable, type RunsProps } from "./ArtifactRuns";
 
 export interface ArtifactView {
   key: string;
@@ -186,6 +187,7 @@ export function ArtifactPanel({
   onExport,
   onAllowCdn,
   canvas,
+  runs,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
@@ -198,6 +200,8 @@ export function ArtifactPanel({
   onAllowCdn?: (allow: boolean) => void;
   /** M17.2: the writing canvas for Markdown documents. */
   canvas?: CanvasProps;
+  /** M17.3: running a Python artifact version in the sandbox. */
+  runs?: RunsProps;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -217,6 +221,7 @@ export function ArtifactPanel({
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
   const [draftBase, setDraftBase] = useState<number | null>(null);
+  const [approving, setApproving] = useState(false);
   // AR-03: the text selected in the panel when "Ask AI" was opened, and the instruction.
   const [asking, setAsking] = useState<{ selection: string; instruction: string } | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -297,6 +302,14 @@ export function ArtifactPanel({
               </Button>
             )}
           </>
+        )}
+        {runs && artifact.version !== null && draft === null && (
+          <RunButton
+            runs={runs}
+            onAsk={() => {
+              setApproving(true);
+            }}
+          />
         )}
         <Button
           variant="ghost"
@@ -447,6 +460,22 @@ export function ArtifactPanel({
           )}
         </div>
       )}
+      {runs && artifact.version !== null && runs.unavailable && (
+        <RunUnavailable text={runs.unavailable} />
+      )}
+      {runs && approving && !runs.running && runs.unavailable === null && (
+        <RunApproval
+          version={runs.version}
+          scriptSha256={runs.scriptSha256}
+          onAllow={(inputs) => {
+            setApproving(false);
+            runs.onRun(inputs);
+          }}
+          onCancel={() => {
+            setApproving(false);
+          }}
+        />
+      )}
       {saved && (
         <p
           role="status"
@@ -554,7 +583,10 @@ export function ArtifactPanel({
             {showCanvas && <CommentList canvas={canvas} />}
           </>
         ) : (
-          <CodeBlock language={artifact.language || artifact.type} code={artifact.content} />
+          <>
+            <CodeBlock language={artifact.language || artifact.type} code={artifact.content} />
+            {runs && artifact.version !== null && <RunOutput runs={runs} />}
+          </>
         )}
       </div>
     </aside>
