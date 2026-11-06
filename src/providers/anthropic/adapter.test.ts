@@ -537,7 +537,10 @@ test("strict nullable enums go to Claude as anyOf of the typed enum and null", a
     [DELEGATE_CODE_TOOL],
   ];
   const walk = (s: unknown): void => {
-    if (Array.isArray(s)) return s.forEach(walk);
+    if (Array.isArray(s)) {
+      s.forEach(walk);
+      return;
+    }
     if (!s || typeof s !== "object") return;
     const o = s as Record<string, unknown>;
     if (Array.isArray(o.enum)) {
@@ -560,9 +563,10 @@ test("strict nullable enums go to Claude as anyOf of the typed enum and null", a
   });
   // A required enum is left alone; a description stays on top.
   expect(strictSchema({ type: "string", enum: ["a"] })).toEqual({ type: "string", enum: ["a"] });
-  expect(
-    strictSchema({ type: ["string", "null"], enum: ["a", null], description: "d" }),
-  ).toEqual({ description: "d", anyOf: [{ type: "string", enum: ["a"] }, { type: "null" }] });
+  expect(strictSchema({ type: ["string", "null"], enum: ["a", null], description: "d" })).toEqual({
+    description: "d",
+    anyOf: [{ type: "string", enum: ["a"] }, { type: "null" }],
+  });
 });
 
 test("bounded basic search emits sources, queries and reported billable usage without code execution", async () => {
