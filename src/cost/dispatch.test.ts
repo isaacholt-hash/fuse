@@ -8,7 +8,7 @@ import { createRun, getRun } from "@/storage/runs";
 import { listRecentRequests } from "@/storage/requestLog";
 import { runExposure } from "@/storage/requestBudget";
 import { openTestDb } from "@/storage/testing/nodeDb";
-import { requestBound, trackedChat } from "./dispatch";
+import { imageTokenBound, requestBound, trackedChat } from "./dispatch";
 
 const model = defaultCatalog.models.find((m) => m.provider === "anthropic");
 if (!model) throw new Error("Missing fixture model");
@@ -160,6 +160,59 @@ test("byte bounds include UTF-8 and cache-write rates; media falls back to full 
       options,
     ),
   ).toBeGreaterThan(requestBound(fixtureModel, [{ role: "user", content: "Hello" }], options));
+});
+
+test("images reserve their documented per-image ceiling, not the whole context window", () => {
+  const options = { maxOutputTokens: 4000 };
+  const big = "A".repeat(400_000); // A large chart's base64 is not counted byte for byte.
+  const toolImage = (n: number) =>
+    requestBound(
+      fixtureModel,
+      [
+        {
+          role: "user",
+          content: "",
+          toolResults: [
+            {
+              callId: "c1",
+              content: "Command result: total 42",
+              isError: false,
+              images: Array.from({ length: n }, () => ({ mime: "image/png", data: big })),
+            },
+          ],
+        },
+      ],
+      options,
+    );
+  const text = requestBound(
+    fixtureModel,
+    [
+      {
+        role: "user",
+        content: "",
+        toolResults: [{ callId: "c1", content: "Command result: total 42", isError: false }],
+      },
+    ],
+    options,
+  );
+  expect(toolImage(1)).toBeGreaterThan(text);
+  expect(Math.abs(toolImage(2) - 2 * toolImage(1) + text)).toBeLessThan(1_000);
+  // M9 step 6 on Windows: a $1 Work run with one chart must be able to continue.
+  expect(toolImage(1)).toBeLessThan(990_000);
+  const attached = requestBound(
+    fixtureModel,
+    [
+      {
+        role: "user",
+        content: "",
+        attachments: [{ kind: "image", mediaType: "image/png", data: big }],
+      },
+    ],
+    options,
+  );
+  expect(attached).toBeLessThan(990_000);
+  expect(imageTokenBound("anthropic")).toBe(4784);
+  expect(imageTokenBound("openai")).toBe(6150);
 });
 
 test("hosted search reserves all bounded iterations, long-context cache writes and tool fees", () => {

@@ -23,6 +23,7 @@ import type { SqlDb } from "@/storage/sql";
 import { EMPTY_USAGE } from "@/storage/usage";
 import { cost, priceToMicro } from "./cost";
 import { searchUses, searchConfig, reportedSearchCount } from "@/providers/search";
+import imageBounds from "../../data/image-bounds.json";
 
 /** UTF-8 byte upper bound for text, with framing headroom; opaque media uses the full window. */
 export function requestBound(
@@ -36,9 +37,14 @@ export function requestBound(
       throw new Error("Local models are restricted to housekeeping and cannot search.");
     return 0;
   }
-  const media = messages.some(
-    (m) =>
-      m.attachments?.some((a) => a.kind !== "text") || m.toolResults?.some((t) => t.images?.length),
+  // Images have a documented per-image token ceiling; PDFs (page text plus page images) do not.
+  const media = messages.some((m) => m.attachments?.some((a) => a.kind === "pdf"));
+  const images = messages.reduce(
+    (n, m) =>
+      n +
+      (m.attachments?.filter((a) => a.kind === "image").length ?? 0) +
+      (m.toolResults?.reduce((k, t) => k + (t.images?.length ?? 0), 0) ?? 0),
+    0,
   );
   const uses = searchUses(options);
   if (uses !== null && searchConfig.providers[model.provider].cost_bound === null)
@@ -57,8 +63,14 @@ export function requestBound(
         : Math.min(
             model.contextWindow,
             new TextEncoder().encode(
-              JSON.stringify({ messages, system: options.system, tools: options.tools }),
-            ).length + 8192,
+              JSON.stringify({
+                messages: messages.map(withoutImageData),
+                system: options.system,
+                tools: options.tools,
+              }),
+            ).length +
+              8192 +
+              images * imageTokenBound(model.provider),
           );
   const output = Math.min(model.maxOutput, options.maxOutputTokens ?? model.maxOutput);
   const prices = [model.price, ...(model.longContextPrice ? [model.longContextPrice] : [])];
@@ -78,6 +90,24 @@ export function requestBound(
     BigInt(uses ?? 0) * BigInt(fee);
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error("Request cost bound overflow.");
   return Number(value);
+}
+
+/** Most input tokens one image can cost on this provider (data/image-bounds.json). */
+export function imageTokenBound(provider: "anthropic" | "openai"): number {
+  const bound = imageBounds.providers[provider].max_tokens_per_image;
+  if (!Number.isSafeInteger(bound) || bound <= 0) throw new Error("Invalid image token bound.");
+  return bound;
+}
+
+/** The message with image bytes removed: images are reserved by imageTokenBound instead. */
+function withoutImageData(m: ChatMessage): ChatMessage {
+  return {
+    ...m,
+    attachments: m.attachments?.map((a) => (a.kind === "image" ? { ...a, data: "" } : a)),
+    toolResults: m.toolResults?.map((t) =>
+      t.images ? { ...t, images: t.images.map((i) => ({ ...i, data: "" })) } : t,
+    ),
+  };
 }
 
 function searchFee(model: CatalogModel, prices: readonly ToolPrice[]): number {
