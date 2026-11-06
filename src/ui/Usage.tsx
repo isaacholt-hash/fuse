@@ -2,6 +2,7 @@ import { ArrowLeft, BarChart3, PiggyBank, TrendingDown, TrendingUp } from "lucid
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import type { ReconcileDay, ReconcileView } from "@/cost/reconcile";
 import { money, number } from "./format";
 
 export type UsagePeriod = "day" | "week" | "month";
@@ -175,6 +176,7 @@ export function UsageScreen({
   onPeriod,
   onSubscription,
   onBack,
+  reconcile = null,
 }: {
   view: UsageScreenView | null;
   savings?: SavingsView | null;
@@ -183,6 +185,8 @@ export function UsageScreen({
   onPeriod: (period: UsagePeriod) => void;
   onSubscription?: (usd: number | null) => void;
   onBack: () => void;
+  /** M18.4: FUSE's costs beside the providers' reports, per UTC day. */
+  reconcile?: ReconcileView | null;
 }) {
   const period = PERIODS.find((p) => p.id === view?.period) ?? PERIODS[1];
   const change =
@@ -317,7 +321,75 @@ export function UsageScreen({
             </div>
           </>
         )}
+        {reconcile && <Reconciliation view={reconcile} />}
       </div>
     </main>
+  );
+}
+
+const STATUS: Record<ReconcileDay["status"], string> = {
+  match: "Matches",
+  provider_higher: "Provider higher",
+  fuse_higher: "FUSE higher",
+  lagging: "Report not final yet",
+  no_report: "No report",
+};
+const PROVIDER: Record<ReconcileDay["provider"], string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+const signed = (micro: number) =>
+  `${micro > 0 ? "+" : micro < 0 ? "−" : ""}${money(Math.abs(micro))}`;
+
+/** M18.4 (CO-06): a comparison only; a report never counts as spend. */
+function Reconciliation({ view }: { view: ReconcileView }) {
+  if (view.days.length === 0) return null;
+  const scoped = Object.entries(view.scopes)
+    .map(([p, s]) => `${PROVIDER[p as ReconcileDay["provider"]]}: ${s.join(", ")}`)
+    .join("; ");
+  return (
+    <section className="mt-10 border-t pt-6" aria-label="Provider reports">
+      <h2 className="mb-1 text-sm font-medium">Compared with provider reports</h2>
+      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+        FUSE&apos;s logged cost beside what each provider reports, per UTC day, in US dollars.
+        Provider higher usually means other use on the same account, project or key, or requests
+        FUSE didn&apos;t log. FUSE higher usually means credits, discounts or a report still
+        catching up. Reports can&apos;t be matched to single FUSE requests, and they never count as
+        spend.
+        {scoped ? ` Compared scopes: ${scoped}.` : " All scopes are compared."}
+        {view.otherCurrencyRows > 0
+          ? ` ${String(view.otherCurrencyRows)} report rows in other currencies aren't compared.`
+          : ""}
+      </p>
+      <table className="w-full text-[12px]">
+        <thead className="text-left text-[10px] text-muted-foreground">
+          <tr>
+            <th className="py-1 font-medium">Day (UTC)</th>
+            <th className="py-1 font-medium">Provider</th>
+            <th className="py-1 text-right font-medium">FUSE</th>
+            <th className="py-1 text-right font-medium">Reported</th>
+            <th className="py-1 text-right font-medium">Difference</th>
+            <th className="py-1 pl-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {view.days.map((d) => (
+            <tr key={`${d.provider}-${String(d.day)}`} className="border-t">
+              <td className="py-1.5">{new Date(d.day).toISOString().slice(0, 10)}</td>
+              <td className="py-1.5">{PROVIDER[d.provider]}</td>
+              <td className="py-1.5 text-right tabular-nums">{money(d.fuseMicro)}</td>
+              <td className="py-1.5 text-right tabular-nums">
+                {d.reportedMicro === null ? "—" : money(d.reportedMicro)}
+                {d.source === "csv" ? " (CSV)" : ""}
+              </td>
+              <td className="py-1.5 text-right tabular-nums">
+                {d.diffMicro === null ? "—" : signed(d.diffMicro)}
+              </td>
+              <td className="py-1.5 pl-3 text-muted-foreground">{STATUS[d.status]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

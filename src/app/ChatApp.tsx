@@ -182,7 +182,9 @@ import { HulkRuns, HulkSection } from "@/ui/Hulk";
 import { Undo } from "@/ui/Undo";
 import { undoLabel, usePendingDelete } from "./usePendingDelete";
 import { AgentAuditSection } from "@/ui/AgentAudit";
-import { approvalView, auditCsv, auditJson, auditRow, runView } from "./runView";
+import { approvalView, auditRow, runView } from "./runView";
+import { activityCsv, activityJson, collectActivity } from "@/data/activityExport";
+import { reconcileView, type ReconcileView } from "@/cost/reconcile";
 import { LARGE_TEXT_TOKENS, MAX_TEXT_TOKENS } from "@/files/documents";
 import { embeddingModel } from "@/knowledge/embed";
 import { imageTokens, type PreparedImage } from "@/files/images";
@@ -5106,7 +5108,10 @@ export function ChatApp({
     }, report);
     loadSavings(at).catch(report);
     loadEconomics(at).catch(report);
+    reconcileView(db, tenant, at).then(setReconciled, report);
   };
+  // M18.4: FUSE's costs beside provider reports (shown only when there are reports).
+  const [reconciled, setReconciled] = useState<ReconcileView | null>(null);
   // Screenshots can open on the dashboard (FUSE_VIEW=usage): load it once at start.
   useEffect(() => {
     if (import.meta.env.VITE_FUSE_VIEW !== "usage") return;
@@ -5879,6 +5884,11 @@ export function ChatApp({
           ) : view === "usage" ? (
             <UsageScreen
               view={usageView}
+              reconcile={
+                reconciled && reconciled.days.some((d) => d.reportedMicro !== null)
+                  ? reconciled
+                  : null
+              }
               savings={savings}
               economics={economicsView}
               onFreezeBaseline={() => {
@@ -6065,11 +6075,15 @@ export function ChatApp({
                       ? {
                           onExport: (format: "csv" | "json") => {
                             const day = new Date().toISOString().slice(0, 10);
-                            const text = format === "csv" ? auditCsv(audit) : auditJson(audit);
-                            exporter
-                              .save(
-                                `fuse-activity-${day}.${format}`,
-                                new TextEncoder().encode(text),
+                            // M18.4 (SE-10): the complete, redacted activity log.
+                            collectActivity(db, tenant)
+                              .then((entries) =>
+                                exporter.save(
+                                  `fuse-activity-${day}.${format}`,
+                                  new TextEncoder().encode(
+                                    format === "csv" ? activityCsv(entries) : activityJson(entries),
+                                  ),
+                                ),
                               )
                               .catch(report);
                           },

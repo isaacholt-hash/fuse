@@ -13,6 +13,7 @@ import type { ExecApi } from "@/repo/exec";
 import type { PythonApi, PythonRuntime } from "@/python/runtime";
 import { installationId, type Connectivity } from "@/offline/installation";
 import type { ReportsApi } from "@/reports/api";
+import { importUsageCsv } from "@/storage/usageReports";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -4566,4 +4567,28 @@ test("M18.3: provider reports are off until set up; keys stay hidden; status onl
   await user.upload(screen.getByLabelText("Import usage CSV"), csv);
   expect(await screen.findByText("Imported 1 report rows.")).toBeInTheDocument();
   expect(await db.select("SELECT COUNT(*) AS n FROM request_log")).toEqual([{ n: 0 }]);
+});
+
+test("M18.4: Usage compares FUSE's costs with provider reports without counting them as spend", async () => {
+  const { user, db } = setup({ anthropic: [() => answer("Hello.")] });
+  await user.type(await composer(), "Hi{Enter}");
+  await screen.findByText("Hello.");
+  const today = new Date().toISOString().slice(0, 10);
+  await importUsageCsv(
+    db,
+    DEFAULT_TENANT,
+    `source,date_utc,provider,kind,scope,key_id,model,line_item,currency,amount,input_tokens,output_tokens,cached_tokens,requests\ncsv,${today},anthropic,cost,,,,,usd,7.5,,,,`,
+  );
+  const [before] = await db.select<{ n: number }>(
+    "SELECT SUM(cost_micro_usd) AS n FROM request_log",
+  );
+  await user.click(screen.getByRole("button", { name: /^Usage/ }));
+  const section = within(await screen.findByRole("region", { name: "Provider reports" }));
+  expect(section.getByText("Compared with provider reports")).toBeInTheDocument();
+  expect(section.getByText(/\$7\.50 \(CSV\)/)).toBeInTheDocument();
+  // Today is never final, so a difference isn't called unexplained yet.
+  expect(section.getAllByText("Report not final yet").length).toBeGreaterThan(0);
+  expect(
+    await db.select<{ n: number }>("SELECT SUM(cost_micro_usd) AS n FROM request_log"),
+  ).toEqual([before]);
 });

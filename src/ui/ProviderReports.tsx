@@ -72,15 +72,19 @@ export function ProviderReports({
   const [collector, setCollector] = useState<"this" | "hulk">("this");
   const [runs, setRuns] = useState<ReportRunView[]>([]);
   const [draft, setDraft] = useState<Record<ReportProvider, string>>({ openai: "", anthropic: "" });
+  const [scope, setScope] = useState<Record<ReportProvider, string>>({ openai: "", anthropic: "" });
   const [busy, setBusy] = useState<ReportProvider | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const load = async () => {
-    const [o, a, c, r] = await Promise.all([
+    const [o, a, c, r, so, sa] = await Promise.all([
       getSetting(db, tenant, "usage_report.openai"),
       getSetting(db, tenant, "usage_report.anthropic"),
       getSetting(db, tenant, "usage_report.collector"),
       latestRuns(db, tenant),
+      getSetting(db, tenant, "usage_report.openai.scope"),
+      getSetting(db, tenant, "usage_report.anthropic.scope"),
     ]);
+    setScope({ openai: so ?? "", anthropic: sa ?? "" });
     setOn({ openai: o === "on", anthropic: a === "on" });
     setCollector(c === "hulk" ? "hulk" : "this");
     setRuns(r);
@@ -195,6 +199,26 @@ export function ProviderReports({
                   }}
                 />
                 Collect {p.name} reports every six hours
+              </label>
+              <label className="mt-2 block text-[11px] text-muted-foreground">
+                Compare only these {p.id === "openai" ? "projects" : "workspaces"} or key ids
+                (comma-separated; empty compares everything):
+                <input
+                  aria-label={`${p.name} compared scopes`}
+                  className="mt-1 block h-7 w-full rounded-md border border-input bg-background px-2 text-xs"
+                  value={scope[p.id]}
+                  onChange={(e) => {
+                    setScope((s) => ({ ...s, [p.id]: e.target.value }));
+                  }}
+                  onBlur={(e) => {
+                    const v = e.target.value
+                      .split(",")
+                      .map((x) => x.trim())
+                      .filter(Boolean)
+                      .join(",");
+                    act(null, () => setSetting(db, tenant, `usage_report.${p.id}.scope`, v));
+                  }}
+                />
               </label>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Button
