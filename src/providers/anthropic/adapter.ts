@@ -130,12 +130,49 @@ function anthropicContent(m: ChatMessage): string | Record<string, unknown>[] {
   ];
 }
 
+/**
+ * Keywords Claude's strict grammar can't compile; a strict schema carrying one is rejected
+ * ("For 'integer' type, property 'minimum' is not supported"). Strict tools are sent without
+ * them; the app still enforces them on the tool's input (agent/checkInput.ts and the handlers).
+ */
+const STRICT_UNSUPPORTED = new Set([
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "maxItems",
+]);
+
+/** A copy of a schema Claude can compile strict: unsupported keywords dropped, minItems kept to 0 or 1. */
+export function strictSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(strictSchema);
+  if (!schema || typeof schema !== "object") return schema;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema as Record<string, unknown>)) {
+    if (STRICT_UNSUPPORTED.has(key)) continue;
+    if (key === "minItems" && typeof value === "number" && value > 1) continue;
+    // Property names under `properties` are data, not keywords: recurse into each one's schema.
+    out[key] =
+      key === "properties" && value && typeof value === "object"
+        ? Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, strictSchema(v)]),
+          )
+        : key === "enum" || key === "required" || key === "const"
+          ? value
+          : strictSchema(value);
+  }
+  return out;
+}
+
 /** A tool sent to Claude: strict, so `input` always matches the schema (docs/providers.md, M6). */
 export function anthropicTool(t: ToolSpec, strict = t.strict !== false): Record<string, unknown> {
   return {
     name: t.name,
     description: t.description,
-    input_schema: t.schema,
+    input_schema: strict ? strictSchema(t.schema) : t.schema,
     ...(strict ? { strict: true } : {}),
   };
 }
