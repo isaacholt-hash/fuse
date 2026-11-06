@@ -1,7 +1,7 @@
 {
   "engine": "chromium",
   "timings": {
-    "signInMs": 1003,
+    "signInMs": 996,
     "answerToCanvasMs": 324
   },
   "axe": {

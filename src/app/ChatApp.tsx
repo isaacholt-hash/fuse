@@ -1430,12 +1430,22 @@ export function ChatApp({
   };
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
   // PL-01: below 800px the sidebar starts closed, and a window that shrinks past it closes it,
-  // so the conversation is never squeezed off a phone-width screen.
+  // so the conversation is never squeezed off a phone-width screen. Widening again brings back a
+  // sidebar that was closed only by narrowing; one you closed yourself stays closed.
+  const sidebarOpen = useRef(sidebar);
+  sidebarOpen.current = sidebar;
   useEffect(() => {
     let wide = window.innerWidth >= 800;
+    let closedByNarrowing = false;
     const onResize = () => {
       const now = window.innerWidth >= 800;
-      if (wide && !now) setSidebar(false);
+      if (wide && !now && sidebarOpen.current) {
+        closedByNarrowing = true;
+        setSidebar(false);
+      } else if (!wide && now && closedByNarrowing) {
+        closedByNarrowing = false;
+        setSidebar(true);
+      }
       wide = now;
     };
     window.addEventListener("resize", onResize);

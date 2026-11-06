@@ -119,6 +119,9 @@ test("chat, writing canvas, reports and narrow layout work and pass the accessib
   await page.screenshot({ path: join(SHOTS, `${browserName}-narrow-sidebar.png`) });
   await page.getByRole("button", { name: "New chat" }).first().click();
   await expect(page.getByRole("complementary", { name: /sidebar$/ })).toHaveCount(0);
+  // Widening again brings back the sidebar that narrowing closed (it was open at 1280).
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(page.getByRole("complementary", { name: /sidebar$/ })).toBeVisible();
 
   writeFileSync(
     join(SHOTS, `${browserName}-result.json`),
