@@ -473,6 +473,58 @@ test("M9: strict goes to the cheapest tools first, inside Claude's grammar budge
   expect(anthropicTools([loose])[0]).not.toHaveProperty("strict");
 });
 
+test("strict tools carry no keyword Claude's grammar rejects (minimum on integers, string lengths)", async () => {
+  const { anthropicTools, strictSchema } = await import("./adapter");
+  const { toolsIn } = await import("@/agent/registry");
+  const { CONTEXT_READ_TOOLS, CONTEXT_WRITE_TOOLS } = await import("@/context/toolSpecs");
+  const { DELEGATE_CODE_TOOL } = await import("@/parallel/tool");
+  const banned =
+    /"(minimum|maximum|exclusiveMinimum|exclusiveMaximum|multipleOf|minLength|maxLength|maxItems)":/;
+  const sets = [
+    ...(["code", "work", "chat"] as const).map((p) => toolsIn(p)),
+    [...CONTEXT_READ_TOOLS, ...CONTEXT_WRITE_TOOLS],
+    [DELEGATE_CODE_TOOL],
+  ];
+  for (const specs of sets) {
+    for (const t of anthropicTools(specs)) {
+      if (t.strict === true) expect(JSON.stringify(t.input_schema)).not.toMatch(banned);
+    }
+  }
+  // The read_artifact offset that Claude turned down keeps its type and nullability.
+  const read = anthropicTools(CONTEXT_READ_TOOLS).find((t) => t.name === "read_artifact");
+  expect(read?.strict).toBe(true);
+  expect(JSON.stringify(read?.input_schema)).toContain('"offset":{"type":["integer","null"]}');
+  // A property that happens to be named like a keyword is kept; minItems 1 is kept, 2 is not.
+  expect(
+    strictSchema({
+      type: "object",
+      properties: { minimum: { type: "integer", minimum: 0 } },
+      required: ["minimum"],
+      additionalProperties: false,
+    }),
+  ).toEqual({
+    type: "object",
+    properties: { minimum: { type: "integer" } },
+    required: ["minimum"],
+    additionalProperties: false,
+  });
+  expect(strictSchema({ type: "array", minItems: 1, items: { type: "string" } })).toHaveProperty(
+    "minItems",
+    1,
+  );
+  expect(strictSchema({ type: "array", minItems: 2 })).not.toHaveProperty("minItems");
+  // Loose tools keep their full schema; the app checks it.
+  const [loose] = anthropicTools([
+    {
+      name: "x",
+      description: "",
+      schema: { type: "object", properties: { n: { type: "integer", minimum: 0 } } },
+      strict: false,
+    },
+  ]);
+  expect(JSON.stringify(loose?.input_schema)).toContain('"minimum":0');
+});
+
 test("bounded basic search emits sources, queries and reported billable usage without code execution", async () => {
   const event = (type: string, rest: Record<string, unknown> = {}) =>
     `event: ${type}\ndata: ${JSON.stringify({ type, ...rest })}\n\n`;
