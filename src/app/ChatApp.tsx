@@ -449,6 +449,8 @@ import {
   type RouteSnapshot,
 } from "@/storage/offlineQueue";
 import { QueuedMessages, type OtherQueue } from "@/ui/OfflineQueue";
+import { ProviderReports } from "@/ui/ProviderReports";
+import type { ReportsApi } from "@/reports/api";
 
 /** M18.2: how a queued message goes through `send` on reconnect. */
 interface QueueDelivery {
@@ -688,6 +690,8 @@ export interface ChatAppProps {
   webApp?: boolean;
   /** M18.1: whether this desktop is online; the browser's own signal by default. */
   connectivity?: Connectivity;
+  /** M18.3: reporting keys and collection (native); absent where it can't run. */
+  reportsApi?: ReportsApi;
   /** Settings → FUSE on HULK: the server's version, devices and Sign out (web app only). */
   server?: ReactNode;
   /** M10 step 7 (desktop only): the link to FUSE on HULK, for handing runs over. */
@@ -907,6 +911,7 @@ export function ChatApp({
   },
   webApp = false,
   connectivity = browserConnectivity,
+  reportsApi,
   server,
   hulk,
   notify,
@@ -6407,6 +6412,15 @@ export function ChatApp({
                     />
                   )
                 )
+              }
+              providerReports={
+                <ProviderReports
+                  db={db}
+                  tenant={tenant}
+                  {...(reportsApi ? { api: reportsApi } : {})}
+                  {...(exporter ? { exporter } : {})}
+                  webApp={webApp}
+                />
               }
               keyCaps={
                 <KeyCapsSection

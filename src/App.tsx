@@ -5,6 +5,7 @@ import { nativeSyncApi, type SyncApi } from "@/sync/api";
 import { tauriLocalApi, type LocalApi } from "@/local/api";
 import { tauriPythonApi, type PythonApi } from "@/python/runtime";
 import type { Connectivity } from "@/offline/installation";
+import { tauriReportsApi, type ReportsApi } from "@/reports/api";
 import { tauriMcpApi, type McpApi } from "@/mcp/api";
 import { createLocalAdapter } from "@/providers/local/adapter";
 import { tauriLocalBackend } from "@/providers/local/tauri";
@@ -90,6 +91,8 @@ interface Props {
   webApp?: boolean;
   /** M18.1: whether this desktop is online (the browser's signal by default); tests pass a fake. */
   connectivity?: Connectivity;
+  /** M18.3: provider reporting keys and collection; tests pass a fake. */
+  reports?: ReportsApi;
   /** The web app's sign-in and devices (src/platform/auth.ts); tests pass a fake. */
   auth?: AuthApi;
   openDb?: () => Promise<SqlDb>;
@@ -144,6 +147,7 @@ interface Props {
 export default function App({
   webApp = false,
   connectivity,
+  reports = tauriReportsApi,
   sync = webApp || isDesktop() ? nativeSyncApi : undefined,
   auth = httpAuthApi,
   openDb = openTauriDb,
@@ -325,6 +329,7 @@ export default function App({
     <ChatApp
       webApp={webApp}
       {...(connectivity ? { connectivity } : {})}
+      reportsApi={reports}
       syncApi={sync}
       {...(webApp
         ? {

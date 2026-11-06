@@ -41,6 +41,7 @@ mod skill_scripts;
 mod sync;
 mod transcription;
 mod transport;
+mod usage_reports;
 mod web;
 
 /// fuse-server's entry point (src/bin/fuse-server.rs).
@@ -164,6 +165,10 @@ pub fn run() {
             exec::commands::python_run,
             skill_scripts::commands::skill_python_run,
             artifact_scripts::commands::artifact_python_run,
+            usage_reports::commands::report_key_status,
+            usage_reports::commands::report_key_save,
+            usage_reports::commands::report_key_delete,
+            usage_reports::commands::report_refresh,
             exec::commands::repo_exec_stop,
             exec::commands::sandbox_status,
             exec::commands::sandbox_windows_available,

@@ -571,3 +571,15 @@ restored or replicated database never matches it. Rows are `queued`, then `dispa
 queue (an insert trigger enforces it); deleting a chat or making it incognito blocks its
 waiting rows, and purging deletes them. The table is owner-local: never synced, portably
 exported or restored as work, and part of global deletion.
+
+## M18.3 provider usage reports (schema 78)
+
+`usage_report_rows` holds provider-reported daily aggregates: provider, kind (`cost` or
+`usage`), source (`api` or `csv`), UTC bucket, scope (OpenAI project or Anthropic
+workspace), API key id, model, line item, currency, amount in integer micro-units, and
+token and request counts. A unique key per provider, kind, source, bucket and scope makes a
+later report replace an earlier one. `usage_report_runs` records each collection's
+window, pages, rows, the provider's refresh time and a fixed message. Both are local to
+their collector (not synced or portably exported), included in the usage CSV, deleted by
+global deletion, and never written to `request_log`. Reporting keys live only in the secret
+store under `report:openai` and `report:anthropic`.

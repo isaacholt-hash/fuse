@@ -409,6 +409,36 @@ export const SETTINGS_SECTIONS = [
     ],
   },
   {
+    id: "provider-reports",
+    category: "costs-limits",
+    label: "Provider usage reports",
+    description: "Reporting keys, automatic collection and usage CSV export or import.",
+    aliases: ["usage report", "cost report", "admin key", "reconcile", "csv", "billing"],
+    controls: [
+      {
+        id: "provider-reports-openai",
+        label: "OpenAI admin key",
+        description: "The reporting key for OpenAI usage and cost reports.",
+        aliases: ["openai usage", "openai costs"],
+        selector: '[aria-label="OpenAI admin key"]',
+      },
+      {
+        id: "provider-reports-anthropic",
+        label: "Anthropic Admin API key",
+        description: "The reporting key for Anthropic usage and cost reports.",
+        aliases: ["claude usage", "anthropic costs"],
+        selector: '[aria-label="Anthropic Admin API key"]',
+      },
+      {
+        id: "provider-reports-csv",
+        label: "Usage CSV",
+        description: "Export FUSE's usage, or import a report CSV.",
+        aliases: ["export usage", "import usage"],
+        selector: '[aria-label="Import usage CSV"]',
+      },
+    ],
+  },
+  {
     id: "prices",
     category: "costs-limits",
     label: "Model prices",

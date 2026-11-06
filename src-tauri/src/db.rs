@@ -421,6 +421,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "offline_queue_snapshot",
         sql: include_str!("../migrations/0077_offline_queue_snapshot.sql"),
     },
+    MigrationFile {
+        version: 78,
+        description: "usage_reports",
+        sql: include_str!("../migrations/0078_usage_reports.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
@@ -862,6 +867,7 @@ pub(crate) async fn db_open(ctx: &Ctx) -> Result<OpenStatus, String> {
     #[cfg(not(test))]
     if matches!(status, OpenStatus::Ready) {
         crate::sync::worker::start(ctx)?;
+        crate::usage_reports::start(ctx)?;
     }
     Ok(status)
 }
@@ -876,6 +882,7 @@ pub(crate) async fn db_recover(ctx: &Ctx, key: String) -> Result<OpenStatus, Str
     #[cfg(not(test))]
     if matches!(status, OpenStatus::Ready) {
         crate::sync::worker::start(ctx)?;
+        crate::usage_reports::start(ctx)?;
     }
     Ok(status)
 }

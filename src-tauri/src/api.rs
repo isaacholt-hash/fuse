@@ -21,6 +21,10 @@ use crate::{
 /// Every command `dispatch` runs. Anything else is `unknown_command`.
 pub const WEB_COMMANDS: &[&str] = &[
     "key_status",
+    "report_key_status",
+    "report_key_save",
+    "report_key_delete",
+    "report_refresh",
     "key_save",
     "key_test",
     "key_delete",
@@ -277,6 +281,27 @@ pub async fn dispatch(
             json(crate::transcription::upload(ctx, body, &headers).await)
         }
         // Keys (keys.rs)
+        "report_key_status" => {
+            args!(name, args, provider: Provider);
+            json(blocking(ctx, move |c| crate::usage_reports::key_saved(c, provider)).await)
+        }
+        "report_key_save" => {
+            args!(name, args, provider: Provider, key: String);
+            json(
+                blocking(ctx, move |c| {
+                    crate::usage_reports::key_set(c, provider, key)
+                })
+                .await,
+            )
+        }
+        "report_key_delete" => {
+            args!(name, args, provider: Provider);
+            json(blocking(ctx, move |c| crate::usage_reports::key_remove(c, provider)).await)
+        }
+        "report_refresh" => {
+            args!(name, args, provider: Provider);
+            json(crate::usage_reports::collect(ctx, provider, None, crate::sync::now()).await)
+        }
         "key_status" => {
             args!(name, args, provider: Provider);
             json(blocking(ctx, move |c| keys::key_status(c, provider)).await)
@@ -755,10 +780,10 @@ mod tests {
         for d in DESKTOP_ONLY {
             assert!(!WEB_COMMANDS.contains(d), "{d}");
         }
-        // 113 commands in lib.rs: those the server runs too and those only the desktop has.
+        // 117 commands in lib.rs: those the server runs too and those only the desktop has.
         assert_eq!(
             WEB_COMMANDS.len() - SERVER_ONLY.len() + DESKTOP_ONLY.len(),
-            113
+            117
         );
     }
 

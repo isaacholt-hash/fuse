@@ -276,6 +276,7 @@ export function SettingsView({
   skills,
   modelDefaults,
   keyCaps,
+  providerReports,
   local,
   python,
   mcp,
@@ -346,6 +347,8 @@ export function SettingsView({
   modelDefaults?: ReactNode;
   /** Settings → Spend caps per key (MM-09). */
   keyCaps?: ReactNode;
+  /** M18.3: provider usage reports and the usage CSV. */
+  providerReports?: ReactNode;
   /** Settings → Local model (M7, LL-03). */
   local?: ReactNode;
   /** M9 step 5: the Python runtime for data work. */
@@ -565,6 +568,7 @@ export function SettingsView({
     skills,
     budgets,
     "key-caps": keyCaps,
+    "provider-reports": providerReports,
     prices,
     hulk,
     sandbox,

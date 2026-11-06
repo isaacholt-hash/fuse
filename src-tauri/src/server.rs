@@ -558,6 +558,8 @@ async fn audio_invoke(
 /// Builds the server's `Ctx` in `home`, with its keys in systemd-creds, or in memory for the
 /// test mode (`--test-keys-in-memory`).
 pub fn context(home: &FsPath, keys_in_memory: bool) -> Result<Ctx, String> {
+    // M18.3: HULK collects provider reports itself when the owner turned it on there.
+    crate::usage_reports::ON_SERVER.store(true, std::sync::atomic::Ordering::Relaxed);
     let store: Box<dyn SecretStore> = if keys_in_memory {
         Box::new(MemoryStore::default())
     } else {

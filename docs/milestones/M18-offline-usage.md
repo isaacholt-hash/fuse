@@ -23,7 +23,7 @@ PL-05, CO-06, MM-12 dependency, SE-10 completion, CO-08.
 
 - [x] **1. Durable queue.** Explicit normal-Chat offline queue on its originating desktop, with edit/cancel/pending controls and persisted immutable dispatch identity. Incognito remains transient.
 - [x] **2. Reconnect and recovery.** Deliver serially per thread with notice, recheck context/policy/prices/budgets, require renewed approval for material changes and stop ambiguously dispatched requests without paid replay.
-- [ ] **3. Usage collection.** Usage CSV export/import plus native OpenAI usage/cost and current Anthropic Usage and Cost Analytics collectors, explicit separate native reporting credentials and sanitized status-only UI.
+- [x] **3. Usage collection.** Usage CSV export/import plus native OpenAI usage/cost and current Anthropic Usage and Cost Analytics collectors, explicit separate native reporting credentials and sanitized status-only UI.
 - [ ] **4. Reconciliation and activity.** Compare matching UTC periods/provider scopes, show lag/unexplained differences without counting aggregates as new spend, and complete redacted tool/credential-use/policy export. Fixtures, screenshots and release documentation.
 
 ## Behavior and boundaries
@@ -86,3 +86,14 @@ right before the provider path; a crash leaves it `unknown` at the next start an
 replays. Rows from another installation or a restore never send by themselves. Checks:
 `pnpm check`, Rust fmt/clippy/tests, storage tests (single claim, hold, crash) and App tests
 (ordered delivery, price-change hold and Send now, crash and foreign rows not sent).
+
+Step 3 adds provider usage collection ([usage-reports.md](../usage-reports.md)), schema 78.
+`src-tauri/src/usage_reports.rs` reads only fixed report URLs with dedicated
+`report:<provider>` credentials, follows pagination, replaces the seven-day window on success,
+keeps the last good report on failure, and stores fixed messages only. A six-hourly loop
+runs where the owner chose (this computer or HULK). Settings shows status only, plus usage
+CSV export and import. Checks: `pnpm check`, Rust fmt/clippy/tests (date and amount
+conversion, both providers' parsing, a local fixture server for pages, corrections, 401/429,
+headers and no chat-key use), storage and App tests, and `scripts/reports-web.sh` against
+the native server (schema 78, no key, a refused refresh with no request), with light and
+dark screenshots in `docs/screenshots/m18/`.
