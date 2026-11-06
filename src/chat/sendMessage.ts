@@ -41,6 +41,8 @@ import {
 import { addCitations, addFileCitations } from "@/storage/citations";
 import { artifactsIn } from "@/artifacts/parse";
 import { saveArtifacts } from "@/storage/artifacts";
+import { artifactBasis } from "@/storage/artifactWrites";
+import { fillProposal } from "@/storage/artifactCanvas";
 import { recordInjected } from "@/storage/memories";
 import { filesForMessages, linkFiles, type FileMode } from "@/storage/files";
 import { logRequest } from "@/storage/requestLog";
@@ -133,6 +135,11 @@ export interface SendInput {
   fallback?: CatalogModel | null;
   /** MM-07: your defaults for the model that answers (max output, effort, a prompt prefix). */
   defaults?: (model: CatalogModel) => ModelDefaults;
+  /**
+   * M17.2: a writing-canvas request. The reply's artifact with this key fills the recorded
+   * proposal for review instead of becoming a new version.
+   */
+  artifactProposal?: { id: string; key: string };
 }
 
 export interface Source {
@@ -376,6 +383,9 @@ async function streamAnswer(
   let model = input.model;
   const now = deps.now ?? Date.now;
   const saveEvery = deps.saveEveryMs ?? 1000;
+  // M17.2: the artifact versions this answer starts from. A reply never overwrites a version
+  // saved while it was being written; it is kept as a proposal to review instead.
+  const basis = await artifactBasis(db, tenant, input.threadId);
   const assistantMessageId = await addMessage(db, tenant, {
     threadId: input.threadId,
     parentId: userMessageId,
@@ -934,8 +944,15 @@ async function streamAnswer(
   }
   // AR-01: finished artifacts in the answer are saved (a new version when the id repeats).
   const blocks = artifactsIn(answer);
-  if (blocks.length > 0)
-    await saveArtifacts(db, tenant, input.threadId, assistantMessageId, blocks);
+  const proposal = input.artifactProposal;
+  if (proposal) {
+    const candidate =
+      status === "complete" ? blocks.find((b) => b.key === proposal.key) : undefined;
+    await fillProposal(db, tenant, proposal.id, assistantMessageId, candidate?.content ?? null);
+  }
+  const saved = proposal ? blocks.filter((b) => b.key !== proposal.key) : blocks;
+  if (saved.length > 0)
+    await saveArtifacts(db, tenant, input.threadId, assistantMessageId, saved, basis);
 
   return {
     userMessageId,

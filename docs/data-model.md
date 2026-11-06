@@ -529,3 +529,22 @@ local, cascades with the conversation/run and participates in global deletion. I
 from portable content export; explicit redacted activity export is completed in M18. Backups
 retain inert evidence without replay. Existing portable artifact/version and memory tables
 continue to use their M11 registry classifications and logical replication triggers.
+
+## M17.2 writing canvas (schema 74)
+
+`artifact_comments` is portable. Each comment pins a passage to one artifact version UUID by
+character offsets plus the quoted text, with an optional `resolved_at`. It syncs with its
+artifact, exports in structured records and restores with it, and is deleted with its
+conversation. A newer version never moves a comment by itself: the canvas shows whether the
+passage is still exact, found once elsewhere (the owner may confirm the move), or missing.
+
+`artifact_proposals` is owner-local. It holds AI writing candidates (rewrite, shorten, expand,
+Ask AI) and replies that arrived after the owner saved a newer version. Each row names its
+base version, instruction, passage and candidate text, with state `requested`, `pending`,
+`accepted`, `discarded` or `interrupted`. Accepting inserts a new model version in one guarded
+batch that applies only while the base is still the latest version. It is never synced or
+portably exported; it is deleted with its conversation and global deletion, and encrypted
+backups keep it as inert data.
+
+Owner edits pass the version they started from, so a save over a newer version is refused
+and the draft stays on screen.

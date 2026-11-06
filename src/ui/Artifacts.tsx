@@ -14,6 +14,8 @@ import { useEffect, useRef, useState } from "react";
 import { asPage, mermaidSvg, reactPage, svgDataUrl, type PreviewApi } from "@/artifacts/preview";
 import { Button } from "@/components/ui/button";
 import { CodeBlock, Markdown } from "./Markdown";
+import { rangeForSelection } from "@/artifacts/sections";
+import { CanvasToolbar, CommentList, ProposalList, type CanvasProps } from "./WritingCanvas";
 
 export interface ArtifactView {
   key: string;
@@ -90,7 +92,8 @@ export interface VersionsProps {
   onShow: (version: number | null) => void;
   onCompare: (version: number | null) => void;
   onRestore: (version: number) => void;
-  onSaveEdit: (content: string) => void;
+  /** Saves an edit made from `base` (the version shown when editing began). */
+  onSaveEdit: (content: string, base: number | null) => void;
   /** AR-03: asks the model to change the selection (or the whole artifact when it's empty). */
   onAskEdit?: (selection: string, instruction: string) => void;
 }
@@ -182,6 +185,7 @@ export function ArtifactPanel({
   preview,
   onExport,
   onAllowCdn,
+  canvas,
 }: {
   artifact: ArtifactView;
   onClose: () => void;
@@ -192,6 +196,8 @@ export function ArtifactPanel({
   onExport?: (format: "file" | "docx" | "pdf") => Promise<string | null>;
   /** AR-05: lets this artifact's preview load the listed CDNs. */
   onAllowCdn?: (allow: boolean) => void;
+  /** M17.2: the writing canvas for Markdown documents. */
+  canvas?: CanvasProps;
 }) {
   const [exportOpen, setExportOpen] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
@@ -210,6 +216,7 @@ export function ArtifactPanel({
   const [tab, setTab] = useState<"preview" | "code">("preview");
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);
+  const [draftBase, setDraftBase] = useState<number | null>(null);
   // AR-03: the text selected in the panel when "Ask AI" was opened, and the instruction.
   const [asking, setAsking] = useState<{ selection: string; instruction: string } | null>(null);
   const body = useRef<HTMLDivElement>(null);
@@ -221,6 +228,13 @@ export function ArtifactPanel({
   const latest = versions?.versions.at(-1)?.version ?? artifact.version;
   const shown = versions?.shown ?? latest;
   const old = shown !== null && latest !== null && shown < latest;
+  const showCanvas =
+    canvas !== undefined &&
+    artifact.type === "markdown" &&
+    artifact.version !== null &&
+    !old &&
+    draft === null &&
+    !versions?.diff;
   return (
     <aside
       className="flex w-[46%] max-w-[760px] min-w-[340px] shrink-0 flex-col border-l bg-background"
@@ -276,6 +290,7 @@ export function ArtifactPanel({
                 aria-label="Edit artifact"
                 onClick={() => {
                   setDraft(artifact.content);
+                  setDraftBase(latest);
                 }}
               >
                 <Pencil />
@@ -483,6 +498,17 @@ export function ArtifactPanel({
           </div>
         </form>
       )}
+      {showCanvas && (
+        <CanvasToolbar
+          content={artifact.content}
+          canvas={canvas}
+          selection={() => {
+            const text = selectedText();
+            if (!text) return "none";
+            return rangeForSelection(artifact.content, text) ?? "ambiguous";
+          }}
+        />
+      )}
       <div ref={body} className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         {draft !== null && versions ? (
           <div className="flex h-full flex-col gap-2">
@@ -507,7 +533,7 @@ export function ArtifactPanel({
               <Button
                 size="sm"
                 onClick={() => {
-                  versions.onSaveEdit(draft);
+                  versions.onSaveEdit(draft, draftBase);
                   setDraft(null);
                 }}
               >
@@ -520,9 +546,13 @@ export function ArtifactPanel({
         ) : canPreview && preview && tab === "preview" && artifact.version !== null ? (
           <Preview artifact={artifact} api={preview} />
         ) : artifact.type === "markdown" ? (
-          <div className="text-[13px] leading-[1.85] text-foreground/85">
-            <Markdown content={artifact.content} />
-          </div>
+          <>
+            {showCanvas && <ProposalList canvas={canvas} />}
+            <div className="text-[13px] leading-[1.85] text-foreground/85">
+              <Markdown content={artifact.content} />
+            </div>
+            {showCanvas && <CommentList canvas={canvas} />}
+          </>
         ) : (
           <CodeBlock language={artifact.language || artifact.type} code={artifact.content} />
         )}

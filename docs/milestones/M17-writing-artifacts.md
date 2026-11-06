@@ -22,7 +22,7 @@ AR-07, AR-08, AG-01 completion, PM-04 P2 extension.
 ## Steps
 
 - [x] **1. Scoped context tools.** Complete memory and artifact reads/mutations in the tool registry, retaining provenance/authority/review and versioning. Add artifact retrieval by meaning with keyword fallback, privacy filtering and source references.
-- [ ] **2. Writing canvas.** Markdown sections, anchored comments and rewrite/shorten/expand actions. Show model changes as reviewed diffs and create a new version; protect against overwriting concurrent edits.
+- [x] **2. Writing canvas.** Markdown sections, anchored comments and rewrite/shorten/expand actions. Show model changes as reviewed diffs and create a new version; protect against overwriting concurrent edits.
 - [ ] **3. Python artifacts.** Run an explicitly selected artifact version with selected inputs in an isolated scratch folder using existing approval/runtime/sandbox limits. Display output beside code and retain version/attempt provenance, desktop/HULK parity, tests and release evidence.
 
 ## Behavior and boundaries
@@ -91,3 +91,19 @@ parallel benchmarks. It additionally runs the scoped context/accounting fixtures
 and retains the real-storage browser screenshots. Their current-head results are a merge
 gate in the PR. Live provider quality, microphone/connector/usage setup and production HULK
 updates remain owner actions. Step 2 is the writing canvas and reviewed section revisions.
+
+Step 2 adds the writing canvas ([writing-canvas.md](../writing-canvas.md)). Schema 74 adds
+portable version-anchored `artifact_comments` and owner-local `artifact_proposals`.
+Rewrite/Shorten/Expand and Ask AI on Markdown documents send an ordinary routed, costed
+message whose reply fills a proposal. It becomes a version only on owner acceptance, through
+a guarded batch that requires its base to still be the latest version. Stale proposals can be
+read and discarded but not accepted. Replies that started before an owner save become
+proposals instead of overwriting it. Owner edits carry their starting version and refuse to
+overwrite a newer one, keeping the draft. Comments never move silently: exact, review
+(owner-confirmed move) or missing. Checks: `pnpm check` (1,270 tests), Rust fmt/clippy/tests,
+and `scripts/canvas-web.sh` against the native server (schema 74, comment → Shorten proposal
+→ accept; [result](../screenshots/m17/canvas-result.json)). Reviewed light/dark screenshots:
+[document](../screenshots/m17/canvas-document-light.png),
+[proposal](../screenshots/m17/canvas-proposal-dark.png),
+[accepted](../screenshots/m17/canvas-accepted-light.png). Started in a Codex worktree and
+finished here; the Codex worktree was left untouched.

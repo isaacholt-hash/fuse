@@ -3,6 +3,12 @@ import { resolveArtifactId } from "@/sync/aliases";
 import type { ArtifactBlock, ArtifactType } from "@/artifacts/parse";
 import type { Tenant } from "./defaults";
 import { uuidv7 } from "./ids";
+import {
+  artifactBasis,
+  publicationWrites,
+  versionInsert,
+  type ArtifactBasis,
+} from "./artifactWrites";
 import type { SqlDb } from "./sql";
 
 export interface Artifact {
@@ -11,6 +17,8 @@ export interface Artifact {
   title: string;
   type: ArtifactType;
   language: string;
+  /** The authoritative latest UUID, separate from its displayed number. */
+  versionId: string;
   /** The latest version. */
   version: number;
   content: string;
@@ -42,13 +50,14 @@ export async function listArtifacts(
     title: string;
     type: ArtifactType;
     language: string;
+    version_id: string;
     version: number;
     content: string;
     source: Artifact["source"];
     updated_at: number;
     allow_cdn: number;
   }>(
-    `SELECT a.id, a.key, a.title, a.type, a.language, (SELECT COUNT(*) FROM artifact_versions n WHERE n.artifact_id=a.id) AS version, v.content, v.source, a.updated_at,
+    `SELECT a.id, a.key, a.title, a.type, a.language, v.id AS version_id, (SELECT COUNT(*) FROM artifact_versions n WHERE n.artifact_id=a.id) AS version, v.content, v.source, a.updated_at,
             a.allow_cdn
      FROM artifacts a
      JOIN artifact_versions v ON v.artifact_id = a.id
@@ -63,6 +72,7 @@ export async function listArtifacts(
     title: r.title,
     type: r.type,
     language: r.language,
+    versionId: r.version_id,
     version: r.version,
     content: r.content,
     source: r.source,
@@ -130,39 +140,32 @@ export async function addVersion(
   content: string,
   source: ArtifactVersion["source"],
   messageId: string | null = null,
+  expectedVersionId?: string,
 ): Promise<number> {
   artifactId = await resolveArtifactId(db, tenant, artifactId);
-  const latest = await db.select<{ version: number; content: string }>(
-    `SELECT version, content FROM artifact_versions WHERE workspace_id = ? AND artifact_id = ?
-     ORDER BY version DESC,id DESC LIMIT 1`,
-    [tenant.workspaceId, artifactId],
+  const [top] = await db.select<{ id: string; content: string }>(
+    `SELECT id,content FROM artifact_versions WHERE workspace_id=? AND user_id=? AND artifact_id=? ORDER BY version DESC,id DESC LIMIT 1`,
+    [tenant.workspaceId, tenant.userId, artifactId],
   );
-  const top = latest[0];
-  if (top && top.content === content) return versionCount(db, tenant, artifactId);
-  const now = Date.now();
-  const version = (top?.version ?? 0) + 1;
-  await db.execute(
-    `INSERT INTO artifact_versions (id, workspace_id, user_id, artifact_id, version, content,
-       source, message_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      uuidv7(now),
-      tenant.workspaceId,
-      tenant.userId,
-      artifactId,
-      version,
-      content,
-      source,
-      messageId,
-      now,
-      now,
-    ],
-  );
-  await db.execute(`UPDATE artifacts SET updated_at = ? WHERE workspace_id = ? AND id = ?`, [
-    now,
-    tenant.workspaceId,
-    artifactId,
+  const base = expectedVersionId ?? top?.id ?? null;
+  if (base !== top?.id)
+    throw new Error(
+      "The artifact changed. Your draft is preserved; compare it with the latest version.",
+    );
+  if (top.content === content) return versionCount(db, tenant, artifactId);
+  const now = Date.now(),
+    id = uuidv7();
+  const result = await db.batch([
+    versionInsert(tenant, { id, artifactId, baseId: base, content, source, messageId, now }),
+    {
+      sql: "UPDATE artifacts SET updated_at=? WHERE workspace_id=? AND user_id=? AND id=? AND EXISTS(SELECT 1 FROM artifact_versions WHERE id=?)",
+      params: [now, tenant.workspaceId, tenant.userId, artifactId, id],
+    },
   ]);
+  if (result[0]?.rowsAffected !== 1)
+    throw new Error(
+      "The artifact changed or was deleted. Your draft is preserved; refresh and compare before saving.",
+    );
   return versionCount(db, tenant, artifactId);
 }
 
@@ -173,42 +176,17 @@ export async function saveArtifacts(
   threadId: string,
   messageId: string,
   blocks: readonly ArtifactBlock[],
+  basis?: readonly ArtifactBasis[],
 ): Promise<void> {
-  for (const b of blocks) {
-    const found = await db.select<{ id: string }>(
-      `SELECT id FROM artifacts WHERE workspace_id = ? AND thread_id = ? AND key = ?`,
-      [tenant.workspaceId, threadId, b.key],
-    );
-    let id = found[0]?.id;
-    const now = Date.now();
-    if (id) {
-      await db.execute(
-        `UPDATE artifacts SET title = ?, type = ?, language = ?, deleted_at = NULL, updated_at = ?
-         WHERE workspace_id = ? AND id = ?`,
-        [b.title, b.type, b.language, now, tenant.workspaceId, id],
-      );
-    } else {
-      id = uuidv7(now);
-      await db.execute(
-        `INSERT INTO artifacts (id, workspace_id, user_id, thread_id, key, title, type, language,
-           created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          id,
-          tenant.workspaceId,
-          tenant.userId,
-          threadId,
-          b.key,
-          b.title,
-          b.type,
-          b.language,
-          now,
-          now,
-        ],
-      );
-    }
-    await addVersion(db, tenant, id, b.content, "model", messageId);
-  }
+  await db.batch(
+    publicationWrites(
+      tenant,
+      threadId,
+      messageId,
+      blocks,
+      basis ?? (await artifactBasis(db, tenant, threadId)),
+    ),
+  );
 }
 
 export interface ArtifactHit {

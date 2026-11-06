@@ -1165,13 +1165,68 @@ test("Ask AI to edit: the request routes like a message and the result shows as 
   await user.click(panel.getByRole("button", { name: "Ask AI to edit" }));
   await user.type(panel.getByLabelText("What should change"), "Make it warmer{Enter}");
 
-  expect(await panel.findByLabelText("Changes")).toHaveTextContent("−Hello world");
-  expect(panel.getByLabelText("Changes")).toHaveTextContent("+Hello there, friend");
-  expect(panel.getByText(/version 2/)).toBeInTheDocument();
+  // M17.2: a Markdown change comes back as a proposal; nothing changes until it's accepted.
+  const proposal = within(await panel.findByRole("region", { name: "Proposal: Make it warmer" }));
+  expect(await proposal.findByLabelText("Changes")).toHaveTextContent("−Hello world");
+  expect(proposal.getByLabelText("Changes")).toHaveTextContent("+Hello there, friend");
+  expect(panel.getByText(/version 1/)).toBeInTheDocument();
   const asked = calls.anthropic?.[1]?.at(-1)?.content ?? "";
   expect(asked).toContain('Edit the artifact "Note" (id note): Make it warmer');
   // Costed like any answer.
   expect(screen.getAllByRole("button", { name: /Cost breakdown/ })).toHaveLength(2);
+  await user.click(proposal.getByRole("button", { name: "Accept as new version" }));
+  expect(await panel.findByText(/version 2/)).toBeInTheDocument();
+  expect(panel.queryByRole("region", { name: /Proposal:/ })).toBeNull();
+  expect(panel.getByText("Hello there, friend")).toBeInTheDocument();
+});
+
+test("M17.2 canvas: section actions, comments and a stale proposal that can't overwrite", async () => {
+  const doc = (body: string) =>
+    `<artifact id="plan" type="markdown" title="Plan">\n${body}\n</artifact>\nDone.`;
+  const original = "# Plan\n\nShip it.\n\n## Risks\n\nConcurrent edits are risky.";
+  const { calls, user } = setup({
+    anthropic: [
+      () => answer(doc(original)),
+      () => answer(doc("# Plan\n\nShip it.\n\n## Risks\n\nEdits clash.")),
+    ],
+  });
+  await user.type(await composer(), "Write a plan{Enter}");
+  const panel = within(await screen.findByRole("complementary", { name: "Artifact: Plan" }));
+  const tools = within(panel.getByRole("group", { name: "Writing tools" }));
+  await user.selectOptions(tools.getByLabelText("Section"), "Risks");
+
+  // A comment on the chosen section.
+  await user.click(tools.getByRole("button", { name: "Comment" }));
+  await user.type(tools.getByLabelText("Comment text"), "Name the worst case{Enter}");
+  const comments = within(await panel.findByRole("region", { name: "Comments" }));
+  expect(comments.getByText("Name the worst case")).toBeInTheDocument();
+  expect(comments.getByText("Comments (1 open)")).toBeInTheDocument();
+  await user.click(comments.getByRole("button", { name: "Resolve" }));
+  expect(await comments.findByText("Comments (0 open)")).toBeInTheDocument();
+
+  // Shorten the section: the request quotes it and names the action.
+  await user.click(tools.getByRole("button", { name: "Shorten" }));
+  const proposal = within(await panel.findByRole("region", { name: /Proposal: Shorten/ }));
+  expect(await proposal.findByLabelText("Changes")).toHaveTextContent("+Edits clash.");
+  const asked = calls.anthropic?.[1]?.at(-1)?.content ?? "";
+  expect(asked).toContain("> ## Risks");
+  expect(asked).toContain('Shorten the "Risks" part');
+
+  // The owner edits first; the proposal is now stale and can only be discarded.
+  await user.click(panel.getByRole("button", { name: "Edit artifact" }));
+  await user.type(panel.getByLabelText("Artifact content"), " Mine.");
+  await user.click(panel.getByRole("button", { name: "Save as a new version" }));
+  expect(await panel.findByText(/version 2/)).toBeInTheDocument();
+  const stale = within(await panel.findByRole("region", { name: /Proposal: Shorten/ }));
+  expect(
+    await stale.findByText(/The document changed after this was proposed/),
+  ).toBeInTheDocument();
+  expect(stale.getByRole("button", { name: "Accept as new version" })).toBeDisabled();
+  await user.click(stale.getByRole("button", { name: "Discard" }));
+  await waitFor(() => {
+    expect(panel.queryByRole("region", { name: /Proposal:/ })).toBeNull();
+  });
+  expect(panel.getByText(/Concurrent edits are risky\. Mine\./)).toBeInTheDocument();
 });
 
 test("HTML and SVG artifacts preview live: HTML in a no-network sandbox, SVG as an image", async () => {
