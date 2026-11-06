@@ -408,6 +408,27 @@ import {
   searchArtifacts,
   type ArtifactHit,
 } from "@/storage/artifacts";
+import {
+  acceptProposal,
+  addComment,
+  deleteComment,
+  discardProposal,
+  interruptProposal,
+  listComments,
+  listProposals,
+  reattachComment,
+  requestProposal,
+  setCommentResolved,
+  writingInstruction,
+  type ArtifactComment,
+  type ArtifactProposal,
+} from "@/storage/artifactCanvas";
+import { locateAnchor, rangeForSelection, textAnchor } from "@/artifacts/sections";
+import type {
+  CanvasProps,
+  CanvasRange,
+  ProposalView as CanvasProposalView,
+} from "@/ui/WritingCanvas";
 import { diffLines } from "@/artifacts/diff";
 import { artifactsIn, splitAnswer } from "@/artifacts/parse";
 import {
@@ -888,6 +909,13 @@ export function ChatApp({
   const compareWith = versions.find((v) => v.id === compareWithId)?.version ?? null;
   // AR-03: after an AI edit lands, show it as a diff against the version it changed.
   const editFrom = useRef<{ key: string; versionId: string | null } | null>(null);
+  // M17.2: the writing proposal the next send fills, taken once by that send.
+  const nextProposal = useRef<{ id: string; key: string } | null>(null);
+  const takeProposal = () => {
+    const p = nextProposal.current;
+    nextProposal.current = null;
+    return p;
+  };
   // The last message the model gets as a summary rather than in full (PM-06), on this path.
   const [summaryUpto, setSummaryUpto] = useState<string | null>(null);
   // Files attached to the messages on screen, by message id.
@@ -2210,7 +2238,13 @@ export function ChatApp({
    * latest answer, a fresh answer to any question, or an edited question (CH-04).
    */
   type Job =
-    | { kind: "send"; text: string; files: FileRecord[] }
+    | {
+        kind: "send";
+        text: string;
+        files: FileRecord[];
+        /** M17.2: the reply's artifact fills this writing proposal for review. */
+        proposal?: { id: string; key: string } | null;
+      }
     | { kind: "retry"; questionId: string }
     | { kind: "escalate"; answerId: string }
     | { kind: "regenerate"; answerId: string; questionId: string }
@@ -2370,6 +2404,7 @@ export function ChatApp({
                 text: job.text,
                 fileIds: job.files.map((f) => f.id),
                 fileModes: Object.fromEntries(job.files.map((f) => [f.id, f.mode ?? "whole"])),
+                ...(job.proposal ? { artifactProposal: job.proposal } : {}),
               })
             : job.kind === "retry"
               ? retryLast(deps, input)
@@ -2650,7 +2685,7 @@ export function ChatApp({
       await stream(
         threadId,
         routed,
-        { kind: "send", text, files: sent },
+        { kind: "send", text, files: sent, proposal: takeProposal() },
         search,
         runKind
           ? {
@@ -4040,6 +4075,121 @@ export function ChatApp({
     listVersions(db, tenant, openSaved.id).then(setVersions, report);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
   }, [db, tenant, openSaved?.id, openSaved?.version]);
+  // M17.2: the open document's comments and AI proposals.
+  const [canvasData, setCanvasData] = useState<{
+    comments: ArtifactComment[];
+    proposals: ArtifactProposal[];
+  }>({ comments: [], proposals: [] });
+  const loadCanvas = (artifactId: string) =>
+    Promise.all([listComments(db, tenant, artifactId), listProposals(db, tenant, artifactId)]).then(
+      ([comments, proposals]) => {
+        setCanvasData({ comments, proposals });
+      },
+    );
+  useEffect(() => {
+    if (!openSaved || openSaved.type !== "markdown") {
+      setCanvasData({ comments: [], proposals: [] });
+      return;
+    }
+    loadCanvas(openSaved.id).catch(report);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when a new version lands
+  }, [db, tenant, openSaved?.id, openSaved?.version, openSaved?.type]);
+  const latestVersion = versions.at(-1);
+  /** M17.2: asks the model for a change that comes back as a proposal to review. */
+  const proposeEdit = (range: CanvasRange, instruction: string) => {
+    if (streaming || !openSaved || !latestVersion) return;
+    const artifact = openSaved;
+    const base = latestVersion;
+    void (async () => {
+      const id = await requestProposal(db, tenant, {
+        artifactId: artifact.id,
+        baseVersionId: base.id,
+        start: range.start,
+        end: range.end,
+        instruction,
+      });
+      nextProposal.current = { id, key: artifact.key };
+      await loadCanvas(artifact.id);
+      try {
+        await send(artifactEditRequest(artifact, range.quote, instruction));
+      } finally {
+        nextProposal.current = null;
+        // A send that never reached the model leaves nothing waiting.
+        await interruptProposal(db, tenant, id);
+        await loadCanvas(artifact.id);
+      }
+    })().catch(report);
+  };
+  const canvas: CanvasProps | undefined =
+    openSaved && latestVersion && openSaved.type === "markdown"
+      ? {
+          busy: streaming,
+          comments: canvasData.comments.map((c) => ({
+            id: c.id,
+            quote: c.quote,
+            body: c.body,
+            resolved: c.resolvedAt !== null,
+            place: locateAnchor(c, latestVersion.id, latestVersion.content).kind,
+          })),
+          proposals: canvasData.proposals.map((p) => {
+            const base = versions.find((v) => v.id === p.baseVersionId);
+            return {
+              id: p.id,
+              instruction: p.instruction,
+              state: p.state === "requested" && !streaming ? "interrupted" : p.state,
+              diff: p.content !== null && base ? diffLines(base.content, p.content) : null,
+              stale: p.state === "pending" && p.baseVersionId !== latestVersion.id,
+            } as CanvasProposalView;
+          }),
+          onAction: (action, range) => {
+            proposeEdit(range, writingInstruction(action, range.title));
+          },
+          onComment: (range, body) => {
+            addComment(
+              db,
+              tenant,
+              openSaved.id,
+              textAnchor(latestVersion.id, latestVersion.content, range.start, range.end),
+              body,
+            )
+              .then(() => loadCanvas(openSaved.id))
+              .catch(report);
+          },
+          onResolve: (id, resolved) => {
+            setCommentResolved(db, tenant, id, resolved)
+              .then(() => loadCanvas(openSaved.id))
+              .catch(report);
+          },
+          onDeleteComment: (id) => {
+            deleteComment(db, tenant, id)
+              .then(() => loadCanvas(openSaved.id))
+              .catch(report);
+          },
+          onReattach: (id) => {
+            const comment = canvasData.comments.find((c) => c.id === id);
+            if (!comment) return;
+            reattachComment(db, tenant, comment)
+              .then(() => loadCanvas(openSaved.id))
+              .catch(report);
+          },
+          onAccept: (id) => {
+            const threadId = selectedId;
+            acceptProposal(db, tenant, id)
+              .then(async () => {
+                setShownVersion(null);
+                setCompareWith(null);
+                if (threadId) await reload(threadId);
+                await loadCanvas(openSaved.id);
+              })
+              .catch(report);
+          },
+          onDiscard: (id) => {
+            discardProposal(db, tenant, id)
+              .then(() => loadCanvas(openSaved.id))
+              .catch(report);
+          },
+        }
+      : undefined;
   /** FK-10: shows an attached file in the side panel, optionally at a cited place. */
   const openFile = async (fileId: string, focus?: FileViewerView["focus"]) => {
     const file = await getFile(db, tenant, fileId);
@@ -4160,10 +4310,10 @@ export function ChatApp({
     return base ? diffLines(base.content, panelArtifact.content) : null;
   })();
   /** Restores a version or saves an edit: either way a new version on top (AR-02). */
-  const newVersion = (content: string, source: "user" | "restore") => {
+  const newVersion = (content: string, source: "user" | "restore", expected?: string) => {
     const threadId = selectedId;
     if (!openSaved || !threadId) return;
-    addVersion(db, tenant, openSaved.id, content, source)
+    addVersion(db, tenant, openSaved.id, content, source, null, expected)
       .then(() => {
         setShownVersion(null);
         setCompareWith(null);
@@ -6941,6 +7091,7 @@ export function ChatApp({
                         onClose={() => {
                           showArtifact(null);
                         }}
+                        {...(canvas ? { canvas } : {})}
                         versions={{
                           versions: versions.map((v) => ({
                             version: v.version,
@@ -6971,11 +7122,33 @@ export function ChatApp({
                             const old = versions.find((x) => x.version === v);
                             if (old) newVersion(old.content, "restore");
                           },
-                          onSaveEdit: (content) => {
-                            newVersion(content, "user");
+                          onSaveEdit: (content, base) => {
+                            newVersion(
+                              content,
+                              "user",
+                              versions.find((v) => v.version === base)?.id,
+                            );
                           },
                           onAskEdit: (selection, instruction) => {
                             if (!openSaved || streaming) return;
+                            if (canvas && latestVersion) {
+                              const range = selection
+                                ? rangeForSelection(latestVersion.content, selection)
+                                : {
+                                    start: 0,
+                                    end: latestVersion.content.length,
+                                    quote: "",
+                                    title: "",
+                                  };
+                              if (!range) {
+                                setProblem(
+                                  "That selection appears more than once or includes formatting. Select plain words, or ask about the whole document.",
+                                );
+                                return;
+                              }
+                              proposeEdit(range, instruction);
+                              return;
+                            }
                             editFrom.current = {
                               key: openSaved.key,
                               versionId: versions.at(-1)?.id ?? null,

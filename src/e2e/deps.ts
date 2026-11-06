@@ -155,6 +155,20 @@ export function scriptedTurn(body: Body): Turn {
       ].filter((c) => body.tools?.some((t) => t.name === c.name)),
     };
   }
+  // M17.2 canvas fixture: a document, then a reviewed Shorten proposal for its Risks section.
+  const latest = body.messages
+    .filter((m) => m.role === "user")
+    .flatMap((m) => blocks(m.content))
+    .map((b) => b.text ?? "")
+    .findLast((t) => t.trim() !== "");
+  if (latest?.includes('Edit the artifact "Canvas plan"'))
+    return {
+      text: '<artifact id="canvas-plan" type="markdown" title="Canvas plan">\n# Canvas plan\n\nShip the writing canvas.\n\n## Risks\n\nEdits can clash.\n</artifact>\nHere is the shorter Risks section.',
+    };
+  if (lastAsked?.includes("E2E canvas draft"))
+    return {
+      text: '<artifact id="canvas-plan" type="markdown" title="Canvas plan">\n# Canvas plan\n\nShip the writing canvas.\n\n## Risks\n\nTwo people can edit the same document at once, and a reply that started earlier could overwrite newer work.\n</artifact>\nThe plan is ready.',
+    };
   if (lastAsked?.includes("E2E context search"))
     return {
       calls: body.tools?.some((t) => t.name === "search_artifacts")

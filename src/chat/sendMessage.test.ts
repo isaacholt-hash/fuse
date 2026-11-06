@@ -11,6 +11,8 @@ import { ARTIFACT_GUIDE } from "@/artifacts/parse";
 import { DEFAULT_TENANT } from "@/storage/defaults";
 import { citationsForMessages } from "@/storage/citations";
 import { addFile } from "@/storage/files";
+import { addVersion, listArtifacts, listVersions } from "@/storage/artifacts";
+import { listProposals, requestProposal } from "@/storage/artifactCanvas";
 import { listMessages, listPath } from "@/storage/messages";
 import { listRecentRequests } from "@/storage/requestLog";
 import { countingDb } from "@/storage/testing/countWrites";
@@ -733,4 +735,53 @@ test("custom instructions go to every model as the system prompt, read fresh on 
   // Retry uses them too.
   await retryLast(deps, { threadId: thread.id, model: claude });
   expect(fakes.anthropic.options[1]?.system).toBe(system);
+});
+
+test("M17.2: a canvas request fills its proposal; a version saved mid-reply is never overwritten", async () => {
+  const doc = (body: string) =>
+    `<artifact id="plan" type="markdown" title="Plan">${body}</artifact>`;
+  let during: (() => Promise<void>) | null = null;
+  let reply = doc("# Plan\n\nFirst.\n");
+  const { db, deps } = setup({
+    anthropic: async function* () {
+      if (during) await during();
+      yield* answer(reply);
+    },
+  });
+  const thread = await createThread(db, t);
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "Write a plan" });
+  const [artifact] = await listArtifacts(db, t, thread.id);
+  if (!artifact) throw new Error("Missing fixture artifact");
+
+  // A Shorten request: the reply becomes a pending proposal, not a version.
+  const id = await requestProposal(db, t, {
+    artifactId: artifact.id,
+    baseVersionId: artifact.versionId,
+    start: 0,
+    end: 6,
+    instruction: "Shorten",
+  });
+  reply = doc("# Plan\n");
+  await sendMessage(deps, {
+    threadId: thread.id,
+    model: claude,
+    text: "Shorten the plan",
+    artifactProposal: { id, key: "plan" },
+  });
+  expect(await listVersions(db, t, artifact.id)).toHaveLength(1);
+  expect(await listProposals(db, t, artifact.id)).toMatchObject([
+    { id, state: "pending", content: "# Plan" },
+  ]);
+
+  // An ordinary reply that started before the owner's save is kept for review, not applied.
+  during = async () => {
+    await addVersion(db, t, artifact.id, "# Mine\n", "user");
+  };
+  reply = doc("# Theirs\n");
+  await sendMessage(deps, { threadId: thread.id, model: claude, text: "Rewrite the plan" });
+  expect((await listVersions(db, t, artifact.id)).map((v) => v.content)).toEqual([
+    "# Plan\n\nFirst.",
+    "# Mine\n",
+  ]);
+  expect((await listProposals(db, t, artifact.id)).map((p) => p.content)).toContain("# Theirs");
 });

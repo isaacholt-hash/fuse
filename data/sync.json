@@ -1386,6 +1386,57 @@
         "created_at": "INTEGER",
         "updated_at": "INTEGER"
       }
+    },
+    "artifact_comments": {
+      "columns": [
+        "id",
+        "workspace_id",
+        "user_id",
+        "artifact_id",
+        "version_id",
+        "anchor_start",
+        "anchor_end",
+        "quote",
+        "body",
+        "resolved_at",
+        "created_at",
+        "updated_at"
+      ],
+      "localColumns": [],
+      "key": ["id"],
+      "eligible": "EXISTS (SELECT 1 FROM artifacts a JOIN threads t ON t.id=a.thread_id WHERE a.id={a}.artifact_id AND t.incognito=0 AND t.local_only=0 AND (t.project_id IS NULL OR EXISTS (SELECT 1 FROM projects p WHERE p.id=t.project_id AND p.privacy_mode!='local_only')))",
+      "ready": "1",
+      "dependencies": ["artifacts", "artifact_versions"],
+      "types": {
+        "id": "TEXT",
+        "workspace_id": "TEXT",
+        "user_id": "TEXT",
+        "artifact_id": "TEXT",
+        "version_id": "TEXT",
+        "anchor_start": "INTEGER",
+        "anchor_end": "INTEGER",
+        "quote": "TEXT",
+        "body": "TEXT",
+        "resolved_at": "INTEGER",
+        "created_at": "INTEGER",
+        "updated_at": "INTEGER"
+      },
+      "references": [
+        {
+          "column": "artifact_id",
+          "table": "artifacts",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        },
+        {
+          "column": "version_id",
+          "table": "artifact_versions",
+          "target": "id",
+          "optional": false,
+          "ownership": true
+        }
+      ]
     }
   },
   "localTables": {
@@ -1424,7 +1475,8 @@
     "code_child_reviews": "Owner-local immutable review tokens, repository snapshots and integration claims. Excluded from sync/portable export; cascade on run deletion/global deletion; encrypted backups retain inert evidence without replay or grants.",
     "code_children": "Owner-local child worktrees and dispatch claims; no portable export or sync. Delete with runs/global deletion. Encrypted backups retain inert records, never execution or folder authority.",
     "artifact_vectors": "Derived artifact meaning index, bound to exact versions and content hashes. Never synced or portably exported; deleted with source versions/global deletion and cleared with embeddings. Encrypted backups may contain inert derived data; reads revalidate current source and policy.",
-    "context_tool_audit": "Content-free installation-local context-tool receipts and idempotence keys. Never synced or portably exported; explicit security/activity export only. Cascade with source conversation/global deletion; encrypted backups are inert and never replay an operation."
+    "context_tool_audit": "Content-free installation-local context-tool receipts and idempotence keys. Never synced or portably exported; explicit security/activity export only. Cascade with source conversation/global deletion; encrypted backups are inert and never replay an operation.",
+    "artifact_proposals": "Owner-local, inert writing candidates and concurrent publication evidence; no sync or portable export. Included in encrypted backups as inert data, purged with source/global deletion."
   },
   "internalTables": [
     "sync_state",

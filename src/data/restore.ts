@@ -203,6 +203,7 @@ export function onlyProject(parsed: ParsedExport, projectId: string): ParsedExpo
     memory_proposals: (p) => inProject(p) || threads.has(str(p.source_thread_id)),
     artifacts: (a) => artifacts.has(str(a.id)),
     artifact_versions: (v) => artifacts.has(str(v.artifact_id)),
+    artifact_comments: (c) => artifacts.has(str(c.artifact_id)),
     budgets: (b) => budgets.has(str(b.id)),
     budget_events: (e) => budgets.has(str(e.budget_id)),
     web_pages: (w) => fileIds.has(str(w.file_id)),

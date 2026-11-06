@@ -28,6 +28,7 @@ export const EXPORTED_TABLES = [
   "message_memories",
   "artifacts",
   "artifact_versions",
+  "artifact_comments",
   "user_instructions",
   "budgets",
   "budget_events",
@@ -149,6 +150,10 @@ function projectFilters(
     },
     artifacts: inThreads("thread_id"),
     artifact_versions: {
+      sql: `AND artifact_id IN (SELECT id FROM artifacts WHERE thread_id IN (${threads.sql}))`,
+      params: threads.params,
+    },
+    artifact_comments: {
       sql: `AND artifact_id IN (SELECT id FROM artifacts WHERE thread_id IN (${threads.sql}))`,
       params: threads.params,
     },
