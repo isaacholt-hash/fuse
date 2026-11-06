@@ -225,6 +225,16 @@ jobs:
           name: artifact-run-web-screenshots
           path: e2e/screenshots/artifact-runs/
           if-no-files-found: ignore
+      - name: Provider reports shared web verification
+        env:
+          FUSE_WEB_BROWSER: google-chrome
+        run: bash scripts/reports-web.sh
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports-web-screenshots
+          path: e2e/screenshots/reports/
+          if-no-files-found: ignore
       - name: Named skills shared web verification
         env:
           FUSE_WEB_BROWSER: google-chrome

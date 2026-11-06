@@ -12,6 +12,7 @@ import type { RepoApi } from "@/repo/api";
 import type { ExecApi } from "@/repo/exec";
 import type { PythonApi, PythonRuntime } from "@/python/runtime";
 import { installationId, type Connectivity } from "@/offline/installation";
+import type { ReportsApi } from "@/reports/api";
 import type { PreparedImage } from "@/files/images";
 import { ProviderError } from "@/providers/errors";
 import type { ChatMessage, ChatOptions, ProviderAdapter, StreamEvent } from "@/providers/types";
@@ -168,7 +169,10 @@ function setup(
     appBuild,
     python,
     connectivity,
+    reports,
   }: {
+    /** M18.3: provider reporting keys and collection. */
+    reports?: ReportsApi;
     /** M18.1: whether the app thinks it's online. */
     connectivity?: Connectivity;
     /** M17.3: the Python runtime the app sees (the real one fails in tests). */
@@ -323,6 +327,7 @@ function setup(
     <App
       {...(python ? { python } : {})}
       {...(connectivity ? { connectivity } : {})}
+      {...(reports ? { reports } : {})}
       openDb={() => Promise.resolve(appDb)}
       connectors={scriptedConnectorsApi(() => Promise.resolve(appDb), DEFAULT_TENANT)}
       keysApi={keys.api}
@@ -4500,4 +4505,65 @@ describe("M18.2 reconnect delivery", () => {
     );
     expect(crash?.state).toBe("unknown");
   });
+});
+
+test("M18.3: provider reports are off until set up; keys stay hidden; status only; CSV import", async () => {
+  const saved = new Map<string, string>();
+  const refreshed: string[] = [];
+  const reports: ReportsApi = {
+    keySaved: (p) => Promise.resolve(saved.has(p)),
+    saveKey: (p, key) => {
+      saved.set(p, key);
+      return Promise.resolve(true);
+    },
+    removeKey: (p) => {
+      saved.delete(p);
+      return Promise.resolve(false);
+    },
+    refresh: (p) => {
+      refreshed.push(p);
+      return Promise.resolve({
+        state: "auth",
+        pages: 0,
+        rows: 0,
+        windowStart: 0,
+        windowEnd: 1,
+        message: "The reporting key was refused. It needs organization admin access.",
+      });
+    },
+  };
+  window.history.replaceState(null, "", "#settings/costs-limits/provider-reports");
+  const { user, db } = setup({}, undefined, undefined, { reports });
+  const openai = within(await screen.findByRole("region", { name: "OpenAI reports" }));
+  expect(openai.getByText(/No reporting key/)).toBeInTheDocument();
+  expect(openai.getByRole("checkbox", { name: /Collect OpenAI reports/ })).toBeDisabled();
+  expect(openai.getByRole("button", { name: "Refresh now" })).toBeDisabled();
+
+  await user.type(openai.getByLabelText("OpenAI admin key"), "fake-admin-value-000000000001");
+  await user.click(openai.getByRole("button", { name: "Save" }));
+  expect(await openai.findByText("Reporting key saved.")).toBeInTheDocument();
+  expect(saved.get("openai")).toBe("fake-admin-value-000000000001");
+  expect(screen.queryByText(/fake-admin-value/)).toBeNull();
+  expect(openai.getByLabelText("OpenAI admin key")).toHaveValue("");
+
+  await user.click(openai.getByRole("checkbox", { name: /Collect OpenAI reports/ }));
+  await waitFor(async () => {
+    expect(await db.select("SELECT value FROM settings WHERE key='usage_report.openai'")).toEqual([
+      { value: "on" },
+    ]);
+  });
+  await user.click(openai.getByRole("button", { name: "Refresh now" }));
+  expect(await screen.findByText(/OpenAI: The reporting key was refused/)).toBeInTheDocument();
+  expect(refreshed).toEqual(["openai"]);
+
+  const csv = new File(
+    [
+      "source,date_utc,provider,kind,scope,key_id,model,line_item,currency,amount,input_tokens,output_tokens,cached_tokens,requests\ncsv,2026-11-05,anthropic,cost,wrkspc_1,,claude-sonnet-5-5,,usd,2.5,,,,\n",
+    ],
+    "anthropic.csv",
+    { type: "text/csv" },
+  );
+  await user.upload(screen.getByLabelText("Import usage CSV"), csv);
+  expect(await screen.findByText("Imported 1 report rows.")).toBeInTheDocument();
+  expect(await db.select("SELECT COUNT(*) AS n FROM request_log")).toEqual([{ n: 0 }]);
 });
