@@ -109,9 +109,10 @@ import { addressCarries, findInstructions, localFlags, scansOutput } from "./inj
 import { projectToolsOff } from "@/storage/projectTools";
 import { isSandboxed, type ExecApi } from "@/repo/exec";
 import type { GitApi } from "@/repo/git";
+import { DEFAULT_RUN_CAP_MICRO_USD, parseDefaultRunCap, RUN_CAP_SETTING } from "./runCap";
+import { getSetting } from "@/storage/settings";
 
-/** AG-05's default cap per run. */
-export const DEFAULT_RUN_CAP_MICRO_USD = 1_000_000;
+export { DEFAULT_RUN_CAP_MICRO_USD };
 /** A run that hasn't finished after this many model turns stops and says so. */
 export const MAX_TURNS = 60;
 
@@ -2050,8 +2051,9 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
   input = { ...input, task: await pinSkillText(base.db, base.tenant, input.projectId, input.task) };
   const folders = input.folders ?? (await foldersFor(base, input));
   if (folders.length === 0) throw new Error("Pick a folder for this chat first.");
-  // M10 step 11: the cap asked for, else the project's, else FUSE's default.
+  // M10 step 11: the cap asked for, else the project's, else FUSE's default (which may be off).
   const project = input.projectId ? await getProject(base.db, base.tenant, input.projectId) : null;
+  const asked = input.capMicroUsd ?? project?.runLimits.capMicroUsd ?? null;
   const run = await createRun(base.db, base.tenant, {
     projectId: input.projectId,
     threadId: input.threadId,
@@ -2059,7 +2061,8 @@ export async function startRun(base: RunDeps, input: RunInput): Promise<Run> {
     task: input.task,
     provider: input.model.provider,
     model: input.model.id,
-    capMicroUsd: input.capMicroUsd ?? project?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
+    capMicroUsd:
+      asked ?? parseDefaultRunCap(await getSetting(base.db, base.tenant, RUN_CAP_SETTING)),
     mode: input.mode ?? "plan",
     kind: input.kind ?? "code",
   });

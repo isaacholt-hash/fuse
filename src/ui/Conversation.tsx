@@ -463,6 +463,7 @@ export function Messages({
   onOpenFile,
   onOpenSource,
   onContinueRun,
+  onRemoveRunCap,
   onReviewChild,
   onIntegrateChildren,
   onStopChild,
@@ -488,7 +489,10 @@ export function Messages({
   onReviewChild?: (parentId: string, childId: string) => void;
   onIntegrateChildren?: (parentId: string) => void;
   onStopChild?: (childId: string) => void;
-  onContinueRun?: (runId: string, raise: boolean) => void;
+  /** `raise`: true adds $1 to its cost cap first, "uncap" takes the cap off (AG-05). */
+  onContinueRun?: (runId: string, raise: boolean | "uncap") => void;
+  /** AG-05: takes the cost cap off a run while it works. */
+  onRemoveRunCap?: (runId: string) => void;
   /** CA-02: puts one file a run changed back as it was. */
   onUndoChange?: (changeId: string) => void;
   /** CA-02: undoes everything a run changed. */
@@ -761,6 +765,7 @@ export function Messages({
                         run={message.run}
                         busy={busy}
                         {...(onContinueRun ? { onContinue: onContinueRun } : {})}
+                        {...(onRemoveRunCap ? { onRemoveCap: onRemoveRunCap } : {})}
                         {...(onStopRun ? { onStop: onStopRun } : {})}
                         {...(onUndoChange ? { onUndoChange } : {})}
                         {...(onUndoRun ? { onUndoRun } : {})}
@@ -2370,6 +2375,7 @@ function RunCard({
   run,
   busy,
   onContinue,
+  onRemoveCap,
   onStop,
   onUndoChange,
   onUndoRun,
@@ -2387,7 +2393,8 @@ function RunCard({
   /** WF-05: opens a changed file in the side panel. */
   onPreviewChange?: (changeId: string) => void;
   onApprove?: (runId: string, answer: "yes" | "always" | "no" | { keep: number[] }) => void;
-  onContinue?: (runId: string, raise: boolean) => void;
+  onContinue?: (runId: string, raise: boolean | "uncap") => void;
+  onRemoveCap?: (runId: string) => void;
   /** M10 step 11: stops this run; always offered while it works. */
   onStop?: (runId: string) => void;
   onUndoChange?: (changeId: string) => void;
@@ -2941,6 +2948,26 @@ function RunCard({
       {run.status === "done" && run.note && (
         <p className="mt-2 text-[11px] text-muted-foreground">{run.note}</p>
       )}
+      {/* AG-05: warned before the cap pauses it, with the cap one click from off. */}
+      {live && run.cap?.state === "near" && (
+        <div
+          role="status"
+          className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400"
+        >
+          <span>{run.cap.label}</span>
+          {onRemoveCap && (
+            <Button
+              variant="outline"
+              size="xs"
+              onClick={() => {
+                onRemoveCap(run.id);
+              }}
+            >
+              Remove cap
+            </Button>
+          )}
+        </div>
+      )}
       {(run.status === "paused" || run.status === "stopped") && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
           {run.note && <span className="text-muted-foreground">{run.note}</span>}
@@ -2953,7 +2980,21 @@ function RunCard({
                 onContinue(run.id, run.status === "paused");
               }}
             >
-              {run.status === "paused" ? "Continue (+$1.00)" : "Continue"}
+              {run.status === "paused" && run.cap?.state !== "off"
+                ? "Continue (+$1.00)"
+                : "Continue"}
+            </Button>
+          )}
+          {!run.readOnly && onContinue && run.cap?.state === "reached" && (
+            <Button
+              variant="outline"
+              size="xs"
+              disabled={busy}
+              onClick={() => {
+                onContinue(run.id, "uncap");
+              }}
+            >
+              Continue without cap
             </Button>
           )}
         </div>

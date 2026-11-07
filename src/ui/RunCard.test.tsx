@@ -236,3 +236,63 @@ test("synced history exposes no continue or approval controls", () => {
   expect(onApprove).not.toHaveBeenCalled();
   expect(onContinue).not.toHaveBeenCalled();
 });
+
+test("AG-05: near its cap a run says so and offers to remove the cap", () => {
+  const onRemoveCap = vi.fn();
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        onRemoveRunCap={onRemoveCap}
+        messages={[
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "complete",
+            run: {
+              ...base,
+              costLabel: "$0.85 of $1.00",
+              cap: { state: "near", label: "Near its cost cap: it pauses at $1.00." },
+            },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  expect(screen.getByText("Near its cost cap: it pauses at $1.00.")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Remove cap" }));
+  expect(onRemoveCap).toHaveBeenCalledWith("r1");
+});
+
+test("AG-05: paused at its cap, a run can go on without a cap", () => {
+  const onContinue = vi.fn();
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        onContinueRun={onContinue}
+        messages={[
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "complete",
+            run: {
+              ...base,
+              status: "paused",
+              note: "Paused at its cost cap. Continue to let it spend more.",
+              cap: { state: "reached", label: "" },
+            },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Continue (+$1.00)" }));
+  expect(onContinue).toHaveBeenLastCalledWith("r1", true);
+  fireEvent.click(screen.getByRole("button", { name: "Continue without cap" }));
+  expect(onContinue).toHaveBeenLastCalledWith("r1", "uncap");
+});

@@ -4,6 +4,77 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Money } from "./primitives";
+import { DEFAULT_RUN_CAP_MICRO_USD, isUncapped, NO_RUN_CAP_MICRO_USD } from "@/agent/runCap";
+
+/**
+ * Settings → Cost cap per run (AG-05): the cap new Code and Work runs start with, or none. A
+ * session or project can still set its own; runs warn at 80% of their cap.
+ */
+export function RunCapSection({
+  capMicroUsd,
+  onCap,
+}: {
+  capMicroUsd: number;
+  onCap: (capMicroUsd: number) => void;
+}) {
+  const off = isUncapped(capMicroUsd);
+  const [value, setValue] = useState(
+    ((off ? DEFAULT_RUN_CAP_MICRO_USD : capMicroUsd) / 1_000_000).toFixed(2),
+  );
+  const n = Number(value);
+  const valid = value.trim() !== "" && Number.isFinite(n) && n > 0;
+  const micro = valid ? Math.round(n * 1_000_000) : null;
+  return (
+    <section aria-label="Run cost cap">
+      <div className="mb-1 flex items-center gap-2">
+        <Gauge className="size-4 text-muted-foreground" />
+        <h2 className="text-sm font-medium">Cost cap per run</h2>
+      </div>
+      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+        Code and Work runs pause at this cap and ask before spending more. A run warns you at 80% of
+        it, with a button to remove it. Sessions and projects can set their own.
+      </p>
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            aria-label="Pause runs at a cost cap"
+            checked={!off}
+            onChange={(e) => {
+              onCap(e.target.checked ? (micro ?? DEFAULT_RUN_CAP_MICRO_USD) : NO_RUN_CAP_MICRO_USD);
+            }}
+          />
+          Pause runs at
+        </label>
+        <label className="flex items-center gap-1">
+          $
+          <Input
+            aria-label="Cost cap per run"
+            inputMode="decimal"
+            className="h-8 w-24 text-xs"
+            disabled={off}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value);
+            }}
+          />
+        </label>
+        <Button
+          size="sm"
+          disabled={off || micro === null || micro === capMicroUsd}
+          onClick={() => {
+            if (micro !== null) onCap(micro);
+          }}
+        >
+          Save
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          {off ? "Off: runs don't stop on cost." : null}
+        </span>
+      </div>
+    </section>
+  );
+}
 
 export interface KeyCapView {
   provider: ProviderId;
@@ -109,6 +180,20 @@ function CapRow({
         >
           Save
         </Button>
+        {(cap.daily !== null || cap.monthly !== null) && (
+          <Button
+            size="sm"
+            variant="outline"
+            aria-label={`Turn off ${cap.name} caps`}
+            onClick={() => {
+              setDaily("");
+              setMonthly("");
+              onSave(cap.provider, null, null);
+            }}
+          >
+            Turn off
+          </Button>
+        )}
       </div>
       {cap.stopped && (
         <p className="mt-2 flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400">

@@ -153,8 +153,13 @@ export interface RunView {
   /** WF-01: "Coding run" or "Work run". */
   title: string;
   status: "running" | "paused" | "done" | "stopped" | "error";
-  /** e.g. "$0.12 of $1.00". */
+  /** e.g. "$0.12 of $1.00", or "$0.12 · no cap". */
   costLabel: string;
+  /**
+   * AG-05: where the run stands against its cost cap. "near" while it runs past 80% of it (with
+   * the warning to show), "reached" when it paused there, "off" when it has none.
+   */
+  cap?: { state: "near" | "reached" | "off"; label: string };
   /**
    * M10 step 11: while it works, the moment its active time counts from (its leg's start plus
    * the time it waited for you), so the card can say "Running for 3 min"; null otherwise.

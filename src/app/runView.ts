@@ -2,6 +2,7 @@
 // turn's note, the cost against the cap. The last turn of a finished run is the answer itself.
 import { diffLines, diffStats } from "@/artifacts/diff";
 import { formatUsd } from "@/cost/cost";
+import { isUncapped, nearCap } from "@/agent/runCap";
 import type { Approval, AuditEntry, Run, RunChange, RunStep } from "@/storage/runs";
 import type { AuditRowView } from "@/ui/AgentAudit";
 import type { ApprovalRequest } from "@/agent/run";
@@ -318,7 +319,23 @@ export function runView(
     title: run.kind === "research" ? "Research" : run.kind === "work" ? "Work run" : "Coding run",
     ...(run.readOnly ? { readOnly: true } : {}),
     status: run.status,
-    costLabel: `${formatUsd(run.spentMicroUsd)} of ${formatUsd(run.capMicroUsd)}`,
+    costLabel: isUncapped(run.capMicroUsd)
+      ? `${formatUsd(run.spentMicroUsd)} · no cap`
+      : `${formatUsd(run.spentMicroUsd)} of ${formatUsd(run.capMicroUsd)}`,
+    ...(run.kind === "research"
+      ? {}
+      : isUncapped(run.capMicroUsd)
+        ? { cap: { state: "off" as const, label: "" } }
+        : run.status === "running" && nearCap(run.spentMicroUsd, run.capMicroUsd)
+          ? {
+              cap: {
+                state: "near" as const,
+                label: `Near its cost cap: it pauses at ${formatUsd(run.capMicroUsd)}.`,
+              },
+            }
+          : run.status === "paused" && run.spentMicroUsd >= run.capMicroUsd
+            ? { cap: { state: "reached" as const, label: "" } }
+            : {}),
     activeSince: run.status === "running" ? run.startedAt + run.waitedMs : null,
     note: run.note,
     steps: views,

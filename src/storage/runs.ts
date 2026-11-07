@@ -5,6 +5,7 @@ import { uuidv7 } from "./ids";
 import { interruptRequests } from "./requestBudget";
 import { interruptChildren } from "@/parallel/storage";
 import type { SqlDb } from "./sql";
+import { NO_RUN_CAP_MICRO_USD } from "@/agent/runCap";
 
 export type RunStatus = "running" | "paused" | "done" | "stopped" | "error";
 /** CA-04: read-only, ask before each edit and command (step 8), or edits go ahead. */
@@ -396,9 +397,9 @@ export async function raiseRunCap(
   if ((await getRun(db, tenant, id))?.parentRunId)
     throw new Error("Children share the parent's cap. Change it through the parent run.");
   await db.execute(
-    `UPDATE runs SET cap_micro_usd = cap_micro_usd + ?, updated_at = ?
+    `UPDATE runs SET cap_micro_usd = MIN(cap_micro_usd + ?, ?), updated_at = ?
      WHERE workspace_id = ? AND id = ?`,
-    [byMicroUsd, Date.now(), tenant.workspaceId, id],
+    [byMicroUsd, NO_RUN_CAP_MICRO_USD, Date.now(), tenant.workspaceId, id],
   );
 }
 
