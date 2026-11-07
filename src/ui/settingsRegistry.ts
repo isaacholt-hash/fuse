@@ -374,10 +374,24 @@ export const SETTINGS_SECTIONS = [
   {
     id: "key-caps",
     category: "costs-limits",
-    label: "Spend caps per key",
-    description: "Daily and monthly caps for provider keys.",
-    aliases: ["spending", "limit", "api budget"],
+    label: "Spend caps",
+    description: "The cost cap per run, and daily and monthly caps for provider keys.",
+    aliases: ["spending", "limit", "api budget", "run cap", "cost cap", "spend cap"],
     controls: [
+      {
+        id: "run-cost-cap",
+        label: "Cost cap per run",
+        description: "Where Code and Work runs pause on cost.",
+        aliases: ["run cap", "spend cap", "pause at"],
+        selector: '[aria-label="Cost cap per run"]',
+      },
+      {
+        id: "run-cost-cap-on",
+        label: "Pause runs at a cost cap",
+        description: "Turn the cost cap per run on or off.",
+        aliases: ["disable cap", "no cap", "turn off cap", "remove cap"],
+        selector: '[aria-label="Pause runs at a cost cap"]',
+      },
       {
         id: "openai-daily-cap",
         label: "OpenAI daily cap",

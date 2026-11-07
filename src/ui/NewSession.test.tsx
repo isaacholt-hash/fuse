@@ -117,3 +117,19 @@ test("Run settings without a folder: only the cap", () => {
   expect(screen.getByLabelText<HTMLInputElement>("Cost cap").value).toBe("2.50");
   expect(screen.queryByRole("button", { name: "Coding run" })).toBeNull();
 });
+
+test("AG-05: the cost cap turns off in one click, and back on to the default", () => {
+  const p = show();
+  fireEvent.click(screen.getByRole("button", { name: "Run settings" }));
+  fireEvent.click(screen.getByLabelText("No cost cap"));
+  expect(p.onCap).toHaveBeenLastCalledWith(2 ** 52);
+  cleanup();
+  const off = show({ capMicroUsd: 2 ** 52 });
+  expect(screen.getByRole("button", { name: "Run settings" }).textContent).toContain("no cap");
+  fireEvent.click(screen.getByRole("button", { name: "Run settings" }));
+  expect(screen.getByLabelText<HTMLInputElement>("Cost cap").disabled).toBe(true);
+  fireEvent.blur(screen.getByLabelText("Cost cap"));
+  expect(off.onCap).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByLabelText("No cost cap"));
+  expect(off.onCap).toHaveBeenLastCalledWith(null);
+});

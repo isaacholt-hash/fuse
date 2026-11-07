@@ -4,6 +4,7 @@ import { Popover } from "radix-ui";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { money } from "./format";
+import { DEFAULT_RUN_CAP_MICRO_USD, isUncapped, NO_RUN_CAP_MICRO_USD } from "@/agent/runCap";
 
 type Mode = "plan" | "ask" | "auto_edit";
 const MODE_NAMES: Record<Mode, string> = {
@@ -71,7 +72,8 @@ export function NewSessionBar({
   /** Saves what's typed in the cap: on blur, Enter, or when Run settings closes. */
   const commitCap = () => {
     const raw = capField.current?.value;
-    if (raw === undefined) return;
+    // With no cap, the field is off and holds nothing to save.
+    if (raw === undefined || capField.current?.disabled) return;
     const n = Number(raw);
     const micro =
       raw.trim() === "" || !Number.isFinite(n) || n <= 0 ? null : Math.round(n * 1_000_000);
@@ -86,9 +88,10 @@ export function NewSessionBar({
   const places = [local, hulk];
   const here = where === "hulk" ? hulk : local;
   const cap = capMicroUsd ?? defaultCapMicroUsd;
+  const uncapped = isUncapped(cap);
   const summary = [
     ...(run ? [run.kind === "work" ? "Work" : "Coding", MODE_NAMES[run.mode]] : []),
-    `cap ${money(cap)}`,
+    uncapped ? "no cap" : `cap ${money(cap)}`,
   ].join(" · ");
   return (
     <div
@@ -272,14 +275,37 @@ export function NewSessionBar({
                 step="0.01"
                 inputMode="decimal"
                 aria-label="Cost cap"
-                className="h-7 w-20 rounded-md border border-input bg-background px-2 text-right text-xs tabular-nums"
-                placeholder={(defaultCapMicroUsd / 1_000_000).toFixed(2)}
-                defaultValue={capMicroUsd === null ? "" : (capMicroUsd / 1_000_000).toFixed(2)}
+                disabled={uncapped}
+                className="h-7 w-20 rounded-md border border-input bg-background px-2 text-right text-xs tabular-nums disabled:opacity-50"
+                placeholder={
+                  isUncapped(defaultCapMicroUsd) ? "" : (defaultCapMicroUsd / 1_000_000).toFixed(2)
+                }
+                defaultValue={
+                  capMicroUsd === null || uncapped ? "" : (capMicroUsd / 1_000_000).toFixed(2)
+                }
                 key={`cap-${String(capMicroUsd)}`}
                 ref={capField}
                 onBlur={commitCap}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") commitCap();
+                }}
+              />
+            </label>
+            {/* AG-05: the cap is one click from off. */}
+            <label className="flex items-center gap-2 px-2 py-1">
+              <span className="flex-1 text-muted-foreground">No cost cap</span>
+              <input
+                type="checkbox"
+                aria-label="No cost cap"
+                checked={uncapped}
+                onChange={(e) => {
+                  onCap(
+                    e.target.checked
+                      ? NO_RUN_CAP_MICRO_USD
+                      : isUncapped(defaultCapMicroUsd)
+                        ? DEFAULT_RUN_CAP_MICRO_USD
+                        : null,
+                  );
                 }}
               />
             </label>

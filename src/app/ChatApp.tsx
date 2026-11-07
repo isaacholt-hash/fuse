@@ -142,6 +142,7 @@ import {
   runStatesForThread,
   runsForThread,
   latestRunByThread,
+  raiseRunCap,
   type AuditEntry,
   type LatestRun,
   type RecentRun,
@@ -564,7 +565,14 @@ import { EMPTY_HOME, homeView } from "./homeView";
 import { offersCodeHandoff, chatBrief, codeBrief } from "./handoff";
 import { AreaTabs } from "@/ui/AreaTabs";
 import { TagsDialog } from "@/ui/Tags";
-import { KeyCapsSection } from "@/ui/KeyCaps";
+import { KeyCapsSection, RunCapSection } from "@/ui/KeyCaps";
+import {
+  formatDefaultRunCap,
+  isUncapped,
+  NO_RUN_CAP_MICRO_USD,
+  parseDefaultRunCap,
+  RUN_CAP_SETTING,
+} from "@/agent/runCap";
 import {
   CAPS_SETTING,
   capState,
@@ -992,6 +1000,8 @@ export function ChatApp({
   // MM-09: spend caps per key, days they were raised for, and what each key spent.
   const [caps, setCaps] = useState<KeyCaps>({});
   const [raises, setRaises] = useState<CapRaises>({});
+  // AG-05: the cap new runs start with; NO_RUN_CAP_MICRO_USD when it's turned off.
+  const [defaultRunCap, setDefaultRunCap] = useState(DEFAULT_RUN_CAP_MICRO_USD);
   const [keySpend, setKeySpend] = useState<{
     day: Record<string, number>;
     month: Record<string, number>;
@@ -1669,6 +1679,9 @@ export function ChatApp({
     }, report);
     getSetting(db, tenant, DEFAULTS_SETTING).then((raw) => {
       setModelDefaults(parseDefaults(raw));
+    }, report);
+    getSetting(db, tenant, RUN_CAP_SETTING).then((raw) => {
+      setDefaultRunCap(parseDefaultRunCap(raw));
     }, report);
     Promise.all([
       getSetting(db, tenant, FETCHED_SETTING),
@@ -3367,7 +3380,7 @@ export function ChatApp({
   const sessionCap =
     (thread ? thread.session.capMicroUsd : draftCap) ??
     activeProject?.runLimits.capMicroUsd ??
-    DEFAULT_RUN_CAP_MICRO_USD;
+    defaultRunCap;
   /** M10 step 16: what the session's runs may do, shown in its composer and strip, and saved. */
   const setSessionMode = (m: RunMode) => {
     setCodeMode((all) => ({ ...all, [codeKey]: m }));
@@ -3384,19 +3397,30 @@ export function ChatApp({
       })
       .finally(() => void reload(threadId).catch(report));
   };
+  /** AG-05: takes the cap off a run while it works; it reads the cap again each turn. */
+  const removeRunCapHere = (runId: string) => {
+    raiseRunCap(db, tenant, runId, NO_RUN_CAP_MICRO_USD)
+      .then(() => (selectedId ? reload(selectedId) : undefined))
+      .catch((e: unknown) => {
+        setProblem(e instanceof Error ? e.message : String(e));
+      });
+  };
   /** M6: goes on with a paused or stopped run in the open chat. */
-  const continueRunHere = (runId: string, raise: boolean) => {
+  const continueRunHere = (runId: string, raise: boolean | "uncap") => {
     if (!repoApi || !selectedId) return;
+    // AG-05: "uncap" raises by the no-cap amount; the database stops it there.
+    const raiseBy =
+      raise === "uncap" ? NO_RUN_CAP_MICRO_USD : raise ? DEFAULT_RUN_CAP_MICRO_USD : undefined;
     if (webApp) {
       // M10 step 6: the runner picks it up; the poll below follows it.
-      askToContinue(db, tenant, runId, raise ? DEFAULT_RUN_CAP_MICRO_USD : undefined).catch(report);
+      askToContinue(db, tenant, runId, raiseBy).catch(report);
       return;
     }
     const threadId = selectedId;
     const controller = new AbortController();
     controllers.current.set(threadId, controller);
     continueChatRun(runDeps(repoApi), runId, {
-      ...(raise ? { raiseCapBy: DEFAULT_RUN_CAP_MICRO_USD } : {}),
+      ...(raiseBy ? { raiseCapBy: raiseBy } : {}),
       signal: controller.signal,
       onProgress: (answerId, p) => {
         setThreadRuns((m) => new Map(m).set(answerId, p));
@@ -3667,7 +3691,10 @@ export function ChatApp({
     threadId: selectedId,
     folders: chatFolders,
     web: webApp,
-    capMicroUsd: draftCap ?? activeProject?.runLimits.capMicroUsd ?? DEFAULT_RUN_CAP_MICRO_USD,
+    // A review has its own cap form; with run caps off it starts from AG-05's $1.
+    capMicroUsd: ((c) => (isUncapped(c) ? DEFAULT_RUN_CAP_MICRO_USD : c))(
+      draftCap ?? activeProject?.runLimits.capMicroUsd ?? defaultRunCap,
+    ),
     controllers: controllers.current,
     startOnServer,
     onSelect: select,
@@ -6484,33 +6511,44 @@ export function ChatApp({
                 />
               }
               keyCaps={
-                <KeyCapsSection
-                  caps={capStates.map((s) => ({
-                    provider: s.provider,
-                    name: providerName(s.provider),
-                    daily: s.cap.dailyMicro === undefined ? null : s.cap.dailyMicro / 1_000_000,
-                    monthly:
-                      s.cap.monthlyMicro === undefined ? null : s.cap.monthlyMicro / 1_000_000,
-                    spentToday: s.spentToday,
-                    spentMonth: s.spentMonth,
-                    stopped: s.raised ? null : s.over,
-                    raised: s.raised,
-                  }))}
-                  onSave={(provider, daily, monthly) => {
-                    const next: KeyCaps = {
-                      ...caps,
-                      [provider]: {
-                        ...(daily === null ? {} : { dailyMicro: Math.round(daily * 1_000_000) }),
-                        ...(monthly === null
-                          ? {}
-                          : { monthlyMicro: Math.round(monthly * 1_000_000) }),
-                      },
-                    };
-                    setCaps(next);
-                    setSetting(db, tenant, CAPS_SETTING, JSON.stringify(next)).catch(report);
-                  }}
-                  onRaise={raiseCap}
-                />
+                <div>
+                  <RunCapSection
+                    capMicroUsd={defaultRunCap}
+                    onCap={(micro) => {
+                      setDefaultRunCap(micro);
+                      setSetting(db, tenant, RUN_CAP_SETTING, formatDefaultRunCap(micro)).catch(
+                        report,
+                      );
+                    }}
+                  />
+                  <KeyCapsSection
+                    caps={capStates.map((s) => ({
+                      provider: s.provider,
+                      name: providerName(s.provider),
+                      daily: s.cap.dailyMicro === undefined ? null : s.cap.dailyMicro / 1_000_000,
+                      monthly:
+                        s.cap.monthlyMicro === undefined ? null : s.cap.monthlyMicro / 1_000_000,
+                      spentToday: s.spentToday,
+                      spentMonth: s.spentMonth,
+                      stopped: s.raised ? null : s.over,
+                      raised: s.raised,
+                    }))}
+                    onSave={(provider, daily, monthly) => {
+                      const next: KeyCaps = {
+                        ...caps,
+                        [provider]: {
+                          ...(daily === null ? {} : { dailyMicro: Math.round(daily * 1_000_000) }),
+                          ...(monthly === null
+                            ? {}
+                            : { monthlyMicro: Math.round(monthly * 1_000_000) }),
+                        },
+                      };
+                      setCaps(next);
+                      setSetting(db, tenant, CAPS_SETTING, JSON.stringify(next)).catch(report);
+                    }}
+                    onRaise={raiseCap}
+                  />
+                </div>
               }
               modelDefaults={
                 <ModelDefaultsSection
@@ -7121,6 +7159,7 @@ export function ChatApp({
                           openSource(chunkId).catch(report);
                         }}
                         onContinueRun={continueRunHere}
+                        onRemoveRunCap={removeRunCapHere}
                         {...(parallel.available
                           ? {
                               onReviewChild: parallel.review,
@@ -7248,8 +7287,7 @@ export function ChatApp({
                                   }}
                                   capMicroUsd={draftCap}
                                   defaultCapMicroUsd={
-                                    activeProject?.runLimits.capMicroUsd ??
-                                    DEFAULT_RUN_CAP_MICRO_USD
+                                    activeProject?.runLimits.capMicroUsd ?? defaultRunCap
                                   }
                                   onCap={setDraftCap}
                                   {...(runKind

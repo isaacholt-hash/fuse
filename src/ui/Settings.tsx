@@ -345,7 +345,7 @@ export function SettingsView({
   skills?: ReactNode;
   /** Settings → Model defaults (MM-07). */
   modelDefaults?: ReactNode;
-  /** Settings → Spend caps per key (MM-09). */
+  /** Settings → Spend caps: the cost cap per run (AG-05) and caps per key (MM-09). */
   keyCaps?: ReactNode;
   /** M18.3: provider usage reports and the usage CSV. */
   providerReports?: ReactNode;
