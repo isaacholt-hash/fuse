@@ -122,6 +122,11 @@ Step 2 (release record; owner acceptance pending):
   from an effect, one render after the alert, so a fast read saw an empty box. A mutation
   observer showed `""` then the draft before the fix, and the draft at the alert after it.
   The parallel-Code streaming flake is still open.
+- **Owner report, 2026-11-07: a long research prompt in Chat stopped with no answer.** Chat
+  allowed 3 tool rounds; page reads used them all, and the round without tools wasn't told
+  to answer, so the model could end with nothing written. FUSE then showed it as finished
+  with no notice. Fixed in `fix/chat-answer-after-tools`: 6 rounds, the last tool results
+  carry a note to answer now, and an empty answer gets a notice (`empty_answer`).
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
