@@ -6,10 +6,19 @@ below needs a key typed into chat; use the app's own settings.
 
 ## Builds
 
-Install the latest release (Windows or Linux) from
-https://github.com/isaacholt-hash/fuse/releases. The desktop updates itself. Update HULK
-after the desktop, using the steps in [hulk-server.md](hulk-server.md) (`scripts/deploy-server.sh`);
-nothing deploys HULK automatically.
+Use **v0.1.240** or later (Windows or Linux) from
+https://github.com/isaacholt-hash/fuse/releases. The desktop updates itself.
+
+Then update HULK; nothing deploys it automatically. HULK still serves `86ac0de`
+(2026-11-04), several schema versions behind, so sync is paused until it matches:
+
+```bash
+cd ~/fuse && git switch main && git pull && bash scripts/deploy-server.sh
+```
+
+Runs in progress are saved as stopped and Continue picks them up. Migrations are
+forward-only: don't point an older server build at the upgraded database (see
+[hulk-server.md](hulk-server.md)). Updating doesn't enroll, pair or change any grant.
 
 ## Checks
 
