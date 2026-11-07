@@ -19,7 +19,7 @@ import { listRecentRequests } from "@/storage/requestLog";
 import { openTestDb } from "@/storage/testing/nodeDb";
 import { createThread, setThreadProject } from "@/storage/threads";
 import type { WebApi } from "@/web/api";
-import { MAX_CHAT_TOOL_ROUNDS, sendMessage, type ChatDeps } from "./sendMessage";
+import { MAX_CHAT_TOOL_ROUNDS, TOOL_LIMIT_NOTE, sendMessage, type ChatDeps } from "./sendMessage";
 import { CONTEXT_READ_TOOLS, CONTEXT_WRITE_TOOLS } from "@/context/toolSpecs";
 import { DATA_RULE } from "@/agent/untrusted";
 
@@ -174,12 +174,36 @@ test("after a few tool rounds the model must answer without tools", async () => 
     text: `Reading ${String(i + 1)}.`,
     calls: [fetchCall(`https://example.com/${String(i)}`, `f${String(i)}`)],
   }));
-  const { adapter, options } = scripted([...many, { text: "Here's what I found." }]);
+  const {
+    adapter,
+    options,
+    histories: convos,
+  } = scripted([...many, { text: "Here's what I found." }]);
   const { db, deps } = setup(adapter, pageWeb());
   const thread = await createThread(db, t);
   await sendMessage(deps, { threadId: thread.id, model: claude, text: "Read a lot" });
   expect(options).toHaveLength(MAX_CHAT_TOOL_ROUNDS + 1);
   expect(options.at(-1)?.tools).toBeUndefined();
+  // The round without tools is told to answer now, so it doesn't stop with nothing written.
+  const sent = convos.at(-1)?.at(-1);
+  expect(sent?.toolResults?.length).toBe(1);
+  expect(sent?.content).toBe(TOOL_LIMIT_NOTE);
+  // Earlier rounds' results carry no such note.
+  expect(convos[1]?.at(-1)?.content).toBe("");
+});
+
+test("an answer that ends with nothing written says so instead of looking finished", async () => {
+  const { adapter } = scripted([
+    { text: "", calls: [fetchCall("https://example.com/a", "f1")] },
+    { text: "" },
+  ]);
+  const { db, deps } = setup(adapter, pageWeb());
+  const thread = await createThread(db, t);
+  const result = await sendMessage(deps, { threadId: thread.id, model: claude, text: "Research" });
+  expect(result.status).toBe("complete");
+  expect(result.notice).toMatch(/finished without writing an answer/);
+  const [, answer] = await listMessages(db, t, thread.id);
+  expect(answer).toMatchObject({ content: "", errorCode: "empty_answer" });
 });
 
 test("context tools need no page reader; unavailable readers, disabled tools and local-only policies are respected", async () => {

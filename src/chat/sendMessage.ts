@@ -88,7 +88,11 @@ export interface ChatDeps {
 }
 
 /** M9 step 2: tool rounds one chat answer may take before it must answer without tools. */
-export const MAX_CHAT_TOOL_ROUNDS = 3;
+export const MAX_CHAT_TOOL_ROUNDS = 6;
+
+/** Sent with the last tool results, so the round without tools answers instead of stopping. */
+export const TOOL_LIMIT_NOTE =
+  "FUSE won't run any more tools for this answer. Write your complete answer now from what you have gathered, and say what you couldn't check.";
 
 /** Two requests' usage added up: tokens and cost; latency and price version are the first's. */
 function addUsage(a: Usage, b: Usage): Usage {
@@ -786,7 +790,11 @@ async function streamAnswer(
         convo = [
           ...convo,
           { role: "assistant", content: roundText, ...(d.turn ? { native: d.turn } : {}) },
-          { role: "user", content: "", toolResults: results },
+          {
+            role: "user",
+            content: round + 1 >= MAX_CHAT_TOOL_ROUNDS ? TOOL_LIMIT_NOTE : "",
+            toolResults: results,
+          },
         ];
       }
     } catch (e) {
@@ -874,13 +882,17 @@ async function streamAnswer(
   const providerName = PROVIDER_NAMES[model.provider];
   const truncated = done !== null && LENGTH_LIMIT_STOPS.has(done.stopReason ?? "");
   const paused = done?.stopReason === "pause_turn";
+  // A clean stop with nothing written: say so rather than show a finished, empty answer.
+  const empty = done !== null && !truncated && !paused && answer.trim() === "";
   const limitNotice = truncated
     ? answer.trim() === ""
       ? "The model used its whole output limit thinking and gave no answer. Try again."
       : "The answer was cut off at the output limit."
     : paused
       ? "The search paused before the answer finished. Ask it to continue."
-      : null;
+      : empty
+        ? "The model finished without writing an answer. Try again, or try a stronger model."
+        : null;
   const failoverNotice = failedOver
     ? `${userMessage(failedOver.failure, PROVIDER_NAMES[failedOver.from.provider]).replace(/ Try again in a moment\.$/, "")} ${model.displayName} answered instead.`
     : null;
@@ -913,7 +925,15 @@ async function streamAnswer(
     content: answer,
     status,
     usage: answerUsage,
-    errorCode: failure ? failure.kind : truncated ? "length_limit" : paused ? "pause_turn" : null,
+    errorCode: failure
+      ? failure.kind
+      : truncated
+        ? "length_limit"
+        : paused
+          ? "pause_turn"
+          : empty
+            ? "empty_answer"
+            : null,
     errorMessage: message,
     requestId,
     reasoningSummary: reasoning.trim() || null,
@@ -926,6 +946,7 @@ async function streamAnswer(
     status === "complete" &&
     !truncated &&
     !paused &&
+    !empty &&
     !failedOver &&
     sources.length === 0 &&
     artifactsIn(answer).length === 0
