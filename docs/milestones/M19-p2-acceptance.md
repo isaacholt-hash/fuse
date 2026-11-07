@@ -81,3 +81,54 @@ Step 1 (integrated acceptance):
   benchmark gates are unchanged.
 - **Scoped failure fixed.** The parallel-Code web e2e raced the run card after navigation
   (one CI failure on PR #322, green on rerun). It now waits for the card first.
+
+Step 2 (release record; owner acceptance pending):
+
+- **Release.** [v0.1.240](https://github.com/isaacholt-hash/fuse/releases/tag/v0.1.240) from merge `a716d9e1a69d091e12fc1cbf638d017b51dda649` ([run 42319070000](https://github.com/isaacholt-hash/fuse/actions/runs/42319070000)),
+  published 2026-11-07 00:45:10 UTC with 11 assets: Windows NSIS `.exe` and MSI `.msi`, Linux AppImage, `.deb` and
+  `.rpm`, each with its updater `.sig`, plus `latest.json` (seven updater platforms, verified from the live feed). Database schema 78, sync protocol 1,
+  prices `2026-10-27`. Desktop and HULK must run this same build (see the update order in
+  [p2-acceptance.md](../p2-acceptance.md)).
+- **HULK.** Not deployed by the build. At the time of writing HULK serves `86ac0de`
+  (2026-11-04, PR #275), 105+ commits and several schema versions behind; sync pauses
+  until it's updated, keeping pending edits.
+- **Merged P2 PRs.** #286–#288, #290, #291, #294–#296, #298, #299, #301–#303, #305, #307,
+  #308, #310, #312, #314, #316–#326. Fixes found after the numbered steps:
+  [#323](https://github.com/isaacholt-hash/fuse/pull/323) and
+  [#325](https://github.com/isaacholt-hash/fuse/pull/325) (Claude refused strict tool
+  schemas: `minimum`, then a nullable enum; owner confirmed chats work on v0.1.239), and
+  [#326](https://github.com/isaacholt-hash/fuse/pull/326) (PL-01 phone width: the sidebar
+  and canvas squeezed the chat; found while reviewing the M19.1 screenshots).
+- **Accessibility, corrected.** M19.1 reported zero violations from local runs; its CI run
+  recorded 1–6 serious dark-mode contrast findings per engine. They were frames scanned
+  mid-transition; since #326 the scan waits for the theme to settle and all three engines
+  (Chromium, Firefox, WebKit in CI on `3172a94`) report zero violations on chat, dark chat,
+  canvas and settings.
+- **Browser timings (CI, `3172a94`).** Sign-in to composer: Chromium 1.6 s, Firefox 1.5 s,
+  WebKit 1.6 s. Send to canvas ready: 0.9 s, 1.0 s, 1.0 s. Overflow at 390px: 0.
+- **Benchmarks (CI on `09f0a0f`, same code as v0.1.239; no live provider calls).** Encrypted
+  sync (schema 78): initial union 13.3 s, full scenario 41.0 s. Research: 6 scenarios on
+  Linux and Windows (2 skipped there: they need the Linux fixture server), 8 on HULK, with
+  every scenario's assertions passing (cap and model-call limits block as designed).
+  Dictation: 31/31. Parallel
+  Code: 15 native and 49 shared, all passed. The HULK benchmark gate passed again on
+  `3172a94`.
+- **Screenshots.** `docs/screenshots/m19/`: each engine's chat (dark), canvas, reports,
+  390px chat, 390px sidebar and 390px canvas. WebKit's are from CI.
+- **CI flakes seen on #326.** Attempt 1: the named-skills web step (a draft came back
+  empty); attempt 2: the parallel-Code web step (a scripted reply stayed streaming). Both
+  passed locally and on attempt 3. Recorded, not fixed.
+
+| Check | Automated | Owner on a released build |
+| --- | --- | --- |
+| Claude chat (fixes #323/#325) | Fixture tests | Passed, v0.1.239, Windows, 2026-11-06 |
+| 1 Dictation | 31-test benchmark, web fixture | Pending |
+| 2 Deep research, capped | Recorded benchmark, 3 platforms | Pending |
+| 3 Microsoft and GitHub reads | Connector web fixture | Pending |
+| 4 Writing canvas | 3 engines + canvas web step | Pending |
+| 5 Python artifacts | Artifact-run web step | Pending |
+| 6 Offline queue | Unit and fixture tests | Pending |
+| 7 Usage reports | Reports web step | Pending |
+| HULK on this build | Not automatic | Pending (owner deploys) |
+
+P2 stays open until the owner rows read Passed (or Skipped, stated as such).
