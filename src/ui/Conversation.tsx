@@ -1323,10 +1323,12 @@ export function Composer({
   };
   const [search, setSearch] = useState("");
   const field = useRef<HTMLTextAreaElement>(null);
-  const inserted = useRef(0);
-  useEffect(() => {
-    if (!insert || insert.key === inserted.current) return;
-    inserted.current = insert.key;
+  // New text for the draft is applied while rendering, not from an effect, so it lands in the
+  // same frame as whatever put it there: a failed send's alert and its restored draft, or a
+  // "Transcript added" notice and the transcript, never show one without the other.
+  const [inserted, setInserted] = useState(0);
+  if (insert && insert.key !== inserted) {
+    setInserted(insert.key);
     setText((draft) =>
       insert.prepend
         ? draft.split("\n").includes(insert.text)
@@ -1336,8 +1338,14 @@ export function Composer({
           ? `${draft.trimEnd()}\n\n${insert.text}`
           : insert.text,
     );
+  }
+  // Focus is a DOM effect: once per newly applied insert, when this composer is the active one.
+  const focusedInsert = useRef(0);
+  useEffect(() => {
+    if (inserted === 0 || inserted === focusedInsert.current) return;
+    focusedInsert.current = inserted;
     if (active) field.current?.focus();
-  }, [insert, active]);
+  }, [inserted, active]);
   useEffect(() => {
     if (field.current) {
       field.current.style.height = "auto";
