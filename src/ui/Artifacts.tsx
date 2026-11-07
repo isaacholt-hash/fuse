@@ -242,7 +242,7 @@ export function ArtifactPanel({
     !versions?.diff;
   return (
     <aside
-      className="flex w-[46%] max-w-[760px] min-w-[340px] shrink-0 flex-col border-l bg-background"
+      className="flex w-[46%] max-w-[760px] min-w-[340px] shrink-0 flex-col border-l bg-background max-sm:absolute max-sm:inset-0 max-sm:z-20 max-sm:w-full max-sm:min-w-0 max-sm:max-w-none max-sm:border-l-0"
       aria-label={`Artifact: ${artifact.title}`}
     >
       <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">

@@ -1429,6 +1429,34 @@ export function ChatApp({
     navigateSettings(location);
   };
   const [sidebar, setSidebar] = useState(() => window.innerWidth >= 800);
+  // PL-01: below 800px the sidebar starts closed, and a window that shrinks past it closes it,
+  // so the conversation is never squeezed off a phone-width screen. Widening again brings back a
+  // sidebar that was closed only by narrowing; one you closed yourself stays closed.
+  const sidebarOpen = useRef(sidebar);
+  sidebarOpen.current = sidebar;
+  useEffect(() => {
+    let wide = window.innerWidth >= 800;
+    let closedByNarrowing = false;
+    const onResize = () => {
+      const now = window.innerWidth >= 800;
+      if (wide && !now && sidebarOpen.current) {
+        closedByNarrowing = true;
+        setSidebar(false);
+      } else if (!wide && now && closedByNarrowing) {
+        closedByNarrowing = false;
+        setSidebar(true);
+      }
+      wide = now;
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+    };
+  }, []);
+  /** On a phone the sidebar covers the conversation, so picking something in it closes it. */
+  const closeSidebarIfNarrow = () => {
+    if (window.innerWidth < 640) setSidebar(false);
+  };
   const [picker, setPicker] = useState(false);
   const [deleting, setDeleting] = useState<ThreadView | null>(null);
   const [tagging, setTagging] = useState<string | null>(null);
@@ -5802,39 +5830,58 @@ export function ChatApp({
         )}
         <div className="flex min-h-0 flex-1">
           {sidebar && view !== "settings" && (
-            <Sidebar
-              area={area}
-              onArea={switchArea}
-              threads={threadViews}
-              projects={projectViews}
-              selectedId={selectedId}
-              activeProjectId={activeProjectId}
-              onSelect={select}
-              onNew={newChat}
-              onNewProject={() => {
-                setProjectDialog("new");
-              }}
-              onNewInProject={newChat}
-              onEditProject={setProjectDialog}
-              onCollapse={() => {
+            // Below 640px the sidebar slides over the conversation instead of squeezing it.
+            <button
+              type="button"
+              aria-label="Close sidebar"
+              className="fixed inset-0 z-30 hidden bg-black/40 max-sm:block"
+              onClick={() => {
                 setSidebar(false);
               }}
-              onSettings={() => {
-                openSettings();
-              }}
-              onRename={rename}
-              onDelete={setDeleting}
-              onPin={togglePin}
-              onArchive={toggleArchive}
-              onMarkUnread={(t) => {
-                markThreadUnread(db, tenant, t.id).then(refreshThreads).catch(report);
-              }}
-              onSearch={() => {
-                setSearchOpen(true);
-              }}
-              onUsage={openUsage}
-              {...(area === "code" ? { onScheduled: openScheduled } : {})}
             />
+          )}
+          {sidebar && view !== "settings" && (
+            <div className="contents max-sm:fixed max-sm:inset-y-0 max-sm:left-0 max-sm:z-40 max-sm:block max-sm:shadow-xl">
+              <Sidebar
+                area={area}
+                onArea={switchArea}
+                threads={threadViews}
+                projects={projectViews}
+                selectedId={selectedId}
+                activeProjectId={activeProjectId}
+                onSelect={(t) => {
+                  closeSidebarIfNarrow();
+                  select(t);
+                }}
+                onNew={(...args: Parameters<typeof newChat>) => {
+                  closeSidebarIfNarrow();
+                  newChat(...args);
+                }}
+                onNewProject={() => {
+                  setProjectDialog("new");
+                }}
+                onNewInProject={newChat}
+                onEditProject={setProjectDialog}
+                onCollapse={() => {
+                  setSidebar(false);
+                }}
+                onSettings={() => {
+                  openSettings();
+                }}
+                onRename={rename}
+                onDelete={setDeleting}
+                onPin={togglePin}
+                onArchive={toggleArchive}
+                onMarkUnread={(t) => {
+                  markThreadUnread(db, tenant, t.id).then(refreshThreads).catch(report);
+                }}
+                onSearch={() => {
+                  setSearchOpen(true);
+                }}
+                onUsage={openUsage}
+                {...(area === "code" ? { onScheduled: openScheduled } : {})}
+              />
+            </div>
           )}
           {view === "scheduled" ? (
             <ScheduledScreen
@@ -7002,7 +7049,7 @@ export function ChatApp({
                       }}
                     />
                   )}
-                  <div className="flex min-h-0 flex-1">
+                  <div className="relative flex min-h-0 flex-1">
                     <div className="flex min-w-0 flex-1 flex-col">
                       {research.progress}
                       <Messages

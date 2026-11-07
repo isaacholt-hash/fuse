@@ -1,8 +1,8 @@
 {
   "engine": "chromium",
   "timings": {
-    "signInMs": 2747,
-    "answerToCanvasMs": 1762
+    "signInMs": 996,
+    "answerToCanvasMs": 324
   },
   "axe": {
     "chat": [],

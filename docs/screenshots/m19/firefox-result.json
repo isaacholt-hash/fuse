@@ -1,8 +1,8 @@
 {
   "engine": "firefox",
   "timings": {
-    "signInMs": 4005,
-    "answerToCanvasMs": 2187
+    "signInMs": 1380,
+    "answerToCanvasMs": 953
   },
   "axe": {
     "chat": [],
