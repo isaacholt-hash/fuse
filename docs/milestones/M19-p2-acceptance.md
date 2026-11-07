@@ -117,7 +117,11 @@ Step 2 (release record; owner acceptance pending):
   390px chat, 390px sidebar and 390px canvas. WebKit's are from CI.
 - **CI flakes seen on #326.** Attempt 1: the named-skills web step (a draft came back
   empty); attempt 2: the parallel-Code web step (a scripted reply stayed streaming). Both
-  passed locally and on attempt 3. Recorded, not fixed.
+  passed locally and on attempt 3. The named-skills one recurred on #327 and was a real
+  race, fixed in the follow-up composer PR: the composer applied restored or inserted text
+  from an effect, one render after the alert, so a fast read saw an empty box. A mutation
+  observer showed `""` then the draft before the fix, and the draft at the alert after it.
+  The parallel-Code streaming flake is still open.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
