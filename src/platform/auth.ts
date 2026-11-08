@@ -79,8 +79,10 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
   );
   const text = await res.text();
   let data: unknown = null;
+  let parsed = !text;
   try {
     data = text ? JSON.parse(text) : null;
+    parsed = true;
   } catch {
     // not JSON: a proxy's page, say
   }
@@ -91,11 +93,23 @@ async function call<T>(path: string, body?: unknown): Promise<T> {
         : `FUSE on HULK answered ${String(res.status)}.`;
     throw new AuthError(WORDS[said] ?? said, res.status);
   }
+  // A page instead of fuse-server's JSON (a proxy, or a dev server's fallback): say so, rather
+  // than handing callers something they'd read fields from.
+  if (!parsed) throw new AuthError(UNEXPECTED, res.status);
   return data as T;
 }
 
+const UNEXPECTED = "FUSE on HULK didn't answer as expected. Check the address and reload.";
+
+/** The sign-in state must be an object: an empty answer would otherwise crash the gate. */
+async function readState(): Promise<AuthState> {
+  const s = await call<AuthState | null>("/api/auth/state");
+  if (!s || typeof s !== "object") throw new AuthError(UNEXPECTED, 200);
+  return s;
+}
+
 export const httpAuthApi: AuthApi = {
-  state: () => call<AuthState>("/api/auth/state"),
+  state: readState,
   setUp: async (passphrase) => {
     await call("/api/auth/set-up", { passphrase });
   },
