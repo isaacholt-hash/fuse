@@ -255,7 +255,7 @@ export function ProjectDialog({
           </div>
           <textarea
             id={ids.instructions}
-            className="block min-h-28 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
+            className="block min-h-28 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm leading-6 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/30"
             maxLength={maxChars}
             placeholder="e.g. Budget is fixed. Prefer options a beginner can do. Quote prices in GBP."
             value={form.instructions}

@@ -44,7 +44,7 @@ export function CodeBlock({ language, code }: { language: string; code: string }
           {code.split("\n").map((line, i) => (
             <span key={i} className="block">
               <span
-                className="mr-5 inline-block w-6 text-right text-muted-foreground/50 select-none"
+                className="mr-5 inline-block w-6 text-right text-muted-foreground select-none"
                 aria-hidden="true"
               >
                 {i + 1}
