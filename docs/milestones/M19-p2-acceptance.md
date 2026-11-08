@@ -127,6 +127,10 @@ Step 2 (release record; owner acceptance pending):
   to answer, so the model could end with nothing written. FUSE then showed it as finished
   with no notice. Fixed in `fix/chat-answer-after-tools`: 6 rounds, the last tool results
   carry a note to answer now, and an empty answer gets a notice (`empty_answer`).
+- **Impeccable audit, 2026-11-08: 15/20, source only** (Tauri on Linux has no CDP, and the
+  browser build needs fuse-server). Fixes, one PR each:
+  - `fix/web-auth-non-json`: a page instead of fuse-server's JSON (a proxy, a dev server's
+    fallback) crashed the web sign-in gate on `null.signedIn`; it now shows the error screen.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
