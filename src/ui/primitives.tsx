@@ -86,7 +86,7 @@ export function Tier({
 /** PL-02: the reason beside a control that's greyed here (the web app on HULK, M10 step 5). */
 export function Greyed({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-5 text-muted-foreground">
+    <p className="mt-2 flex items-start gap-1.5 text-[12px] leading-5 text-muted-foreground">
       <Globe className="mt-0.5 size-3.5 shrink-0" aria-hidden />
       <span>{children}</span>
     </p>
@@ -94,7 +94,7 @@ export function Greyed({ children }: { children: ReactNode }) {
 }
 export function Hint({ children }: { children: ReactNode }) {
   return (
-    <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
+    <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[11px] leading-none text-muted-foreground">
       {children}
     </kbd>
   );
@@ -281,7 +281,7 @@ export function ThreadMenu({
           {targets.length > 0 && (
             <>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
-              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              <DropdownMenu.Label className="px-2 py-1 text-[12px] font-medium text-muted-foreground">
                 Move to
               </DropdownMenu.Label>
               {targets.map((p) => (
@@ -301,7 +301,7 @@ export function ThreadMenu({
           )}
           {onExport && (
             <>
-              <DropdownMenu.Label className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+              <DropdownMenu.Label className="px-2 py-1 text-[12px] font-medium text-muted-foreground">
                 Export
               </DropdownMenu.Label>
               <DropdownMenu.Item

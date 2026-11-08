@@ -68,7 +68,7 @@ function Backups({ api, restoreReason }: { api: BackupsApi; restoreReason?: stri
   return (
     <div className="mt-5" aria-label="Backups" role="group">
       <h3 className="mb-1 text-xs font-medium">Backups</h3>
-      <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-2 text-[12px] leading-5 text-muted-foreground">
         FUSE copies its encrypted database before every update. You can back up now, or go back to
         an earlier copy: FUSE restarts to restore it and keeps your current data as a backup, so a
         restore can be undone. Attached files aren&apos;t part of a backup; check them here.
@@ -102,7 +102,7 @@ function Backups({ api, restoreReason }: { api: BackupsApi; restoreReason?: stri
         </Button>
       </div>
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}
@@ -127,7 +127,7 @@ function Backups({ api, restoreReason }: { api: BackupsApi; restoreReason?: stri
           ))}
         </ul>
       ) : (
-        <p className="mt-2 text-[11px] text-muted-foreground">No backups yet.</p>
+        <p className="mt-2 text-[12px] text-muted-foreground">No backups yet.</p>
       )}
       {restoreReason && <Greyed>{restoreReason}</Greyed>}
       <Modal
@@ -213,7 +213,7 @@ function Restore({ api }: { api: RestoreApi }) {
   return (
     <div className="mt-5" role="group" aria-label="Restore from an export">
       <h3 className="mb-1 text-xs font-medium">Restore from an export</h3>
-      <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-2 text-[12px] leading-5 text-muted-foreground">
         Bring back a FUSE export, everything or one project. Records already here are kept as they
         are; only missing ones are added.
       </p>
@@ -239,7 +239,7 @@ function Restore({ api }: { api: RestoreApi }) {
         />
       </label>
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}
@@ -348,7 +348,7 @@ export function DataSection({
         <Database className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Your data</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Export everything FUSE keeps as one zip: all chats (with every branch) as JSON and as
         Markdown, memories, projects, artifacts with their versions, instructions, budgets, usage
         and your attached files. API keys are never included.
@@ -380,7 +380,7 @@ export function DataSection({
         Export everything…
       </Button>
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}

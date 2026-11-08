@@ -130,7 +130,22 @@ Step 2 (release record; owner acceptance pending):
 - **Impeccable audit, 2026-11-08: 15/20, source only** (Tauri on Linux has no CDP, and the
   browser build needs fuse-server). Fixes, one PR each:
   - `fix/web-auth-non-json`: a page instead of fuse-server's JSON (a proxy, a dev server's
-    fallback) crashed the web sign-in gate on `null.signedIn`; it now shows the error screen.
+    fallback) crashed the web sign-in gate on `null.signedIn`; it now shows the error screen
+    ([#331](https://github.com/isaacholt-hash/fuse/pull/331)).
+  - `fix/contrast-and-focus`: focus ring was copper at 50% (≈2.3:1), now full copper; code
+    line numbers and the composer placeholder were faded below 4.5:1, now muted (6.1)
+    ([#332](https://github.com/isaacholt-hash/fuse/pull/332)).
+  - `fix/status-tokens`: 47 raw amber/emerald classes became `--warning`, `--success`,
+    `--highlight` and their soft fills, all above 4.5:1, added to the spec's colour table
+    ([#333](https://github.com/isaacholt-hash/fuse/pull/333)).
+  - `fix/type-scale`: about 390 lines set sans text at 9–11 px, under the spec's 12 px
+    margin role; now 12 px, and mono key hints are the spec's 11 px.
+  - Not changed: the web app's text size stays greyed on purpose (browser zoom); the global
+    reduced-motion kill matches the spec; 24 px buttons meet WCAG 2.5.8.
+  - Re-audit after the fixes, source only: **18/20** (accessibility 4, performance 3,
+    theming 4, responsive 3, integrity 4). Detector source scan: no findings. Populated
+    threads and run cards at 12 px were not screenshotted (no seeded data); empty states
+    in Chat, Code, Settings, Usage and dark were.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

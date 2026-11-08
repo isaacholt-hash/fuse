@@ -49,7 +49,7 @@ export function ProjectPrivacySection({
         <ShieldCheck className="size-3.5 text-muted-foreground" />
         <h3 className="text-xs font-medium">Privacy</h3>
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">
+      <p className="mb-2 text-[12px] text-muted-foreground">
         Where this project&apos;s chats, memories, decisions and files may be sent. FUSE checks this
         before every request and never sends what it blocks.
       </p>
@@ -68,7 +68,7 @@ export function ProjectPrivacySection({
         ))}
       </select>
       {mode === "local_only" && (
-        <p className="mt-1 text-[10px] text-warning">
+        <p className="mt-1 text-[12px] text-warning">
           Chats here get no model answers: the local model only does housekeeping (titles,
           summaries, memory suggestions). Sums, conversions and checks are still answered.
         </p>

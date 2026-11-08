@@ -78,7 +78,7 @@ export function SkillsSection({
                 {where(s.projectId)} · {s.versions} version{s.versions === 1 ? "" : "s"}
                 {s.localOnly ? " · Excluded from sync here" : ""}
               </p>
-              <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+              <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
                 Version {s.versionId} · SHA-256 {s.sha256}
               </p>
               {deleting === s.id && (
@@ -253,7 +253,7 @@ export function SkillsSection({
             }}
           />
         </label>
-        <p className="text-[11px] leading-5 text-muted-foreground">
+        <p className="text-[12px] leading-5 text-muted-foreground">
           At most 64 entries, 256 KiB per file, 2 MiB total; SKILL.md at most 32 KiB. Links, unsafe
           paths and private file names are refused. Portable packages follow opt-in sync; grants
           remain local.
@@ -268,7 +268,7 @@ export function SkillsSection({
               {preview.assets.length === 1 ? "" : "s"} ·{" "}
               {preview.assets.reduce((n, a) => n + a.bytes, 0).toLocaleString()} bytes
             </p>
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px]">
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-[12px]">
               {preview.instructions}
             </pre>
             <ul className="max-h-32 overflow-auto text-muted-foreground">
@@ -278,7 +278,7 @@ export function SkillsSection({
                 </li>
               ))}
             </ul>
-            <p className="break-all font-mono text-[10px]">SHA-256 {preview.sha256}</p>
+            <p className="break-all font-mono text-[11px]">SHA-256 {preview.sha256}</p>
             <Button type="submit" size="sm" disabled={busy || !name}>
               {busy ? "Importing…" : target ? "Import new version" : "Import skill"}
             </Button>{" "}

@@ -123,7 +123,7 @@ export function ScheduledScreen({
           </div>
         )}
         {!editable && !unavailable && rows !== null && (
-          <p className="mt-4 text-[11px] text-muted-foreground">
+          <p className="mt-4 text-[12px] text-muted-foreground">
             These are HULK&apos;s. Add or change them in the web app on HULK.
           </p>
         )}
@@ -197,18 +197,18 @@ export function ScheduledScreen({
                         <span className="flex items-center gap-2">
                           <span className="truncate text-sm font-medium">{s.name}</span>
                           <span
-                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] ${CHIP[status].className}`}
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[12px] ${CHIP[status].className}`}
                           >
                             {CHIP[status].label}
                           </span>
                         </span>
-                        <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                        <span className="mt-0.5 block text-[12px] text-muted-foreground">
                           {projectName} · {describeRepeat(s)} · on HULK
                           {s.enabled && s.nextAt !== null && <> · next {when(s.nextAt)}</>}
                         </span>
                         {last && (
                           <span
-                            className={`mt-0.5 block text-[11px] ${last.failed ? "text-destructive" : "text-muted-foreground"}`}
+                            className={`mt-0.5 block text-[12px] ${last.failed ? "text-destructive" : "text-muted-foreground"}`}
                           >
                             {last.text}
                             {lastCostMicro !== null && (
@@ -225,7 +225,7 @@ export function ScheduledScreen({
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 text-[11px]"
+                            className="h-6 text-[12px]"
                             aria-label={`Open the last session of ${s.name}`}
                             onClick={() => {
                               if (s.lastThreadId) onOpenChat(s.lastThreadId);
@@ -238,7 +238,7 @@ export function ScheduledScreen({
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="h-6 text-[11px]"
+                            className="h-6 text-[12px]"
                             aria-expanded={shownRuns === s.id}
                             onClick={() => {
                               setShownRuns(shownRuns === s.id ? null : s.id);
@@ -252,7 +252,7 @@ export function ScheduledScreen({
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 text-[11px]"
+                              className="h-6 text-[12px]"
                               aria-label={`${s.enabled ? "Pause" : "Resume"} ${s.name}`}
                               onClick={() => {
                                 onToggle(s.id, !s.enabled);
@@ -263,7 +263,7 @@ export function ScheduledScreen({
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 text-[11px]"
+                              className="h-6 text-[12px]"
                               aria-label={`Edit ${s.name}`}
                               onClick={() => {
                                 setEditing({ id: s.id, projectId: s.projectId, draft: draftOf(s) });
@@ -274,7 +274,7 @@ export function ScheduledScreen({
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="h-6 text-[11px] text-destructive"
+                              className="h-6 text-[12px] text-destructive"
                               aria-label={`Delete ${s.name}`}
                               onClick={() => {
                                 setDeleting(s);
@@ -292,7 +292,7 @@ export function ScheduledScreen({
                           <li key={r.threadId}>
                             <button
                               type="button"
-                              className="text-[11px] underline underline-offset-2 hover:text-foreground"
+                              className="text-[12px] underline underline-offset-2 hover:text-foreground"
                               onClick={() => {
                                 onOpenChat(r.threadId);
                               }}

@@ -43,20 +43,20 @@ export function Storage({ api }: { api: StorageApi }) {
         <HardDrive className="size-3.5 text-muted-foreground" />
         <h3 className="text-xs font-medium">Storage</h3>
       </div>
-      <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-2 text-[12px] leading-5 text-muted-foreground">
         What FUSE keeps on this computer. A clean-up never touches your chats or what they cost.
       </p>
-      {rows === null && !error && <p className="text-[11px] text-muted-foreground">Measuring…</p>}
+      {rows === null && !error && <p className="text-[12px] text-muted-foreground">Measuring…</p>}
       {rows && (
         <table className="w-full max-w-xl text-xs">
           <tbody>
             {rows.map((r) => (
               <tr key={r.id} className="border-t">
                 <td className="py-1.5 pr-3">{r.label}</td>
-                <td className="py-1.5 pr-3 text-right tabular-nums text-[11px] text-muted-foreground whitespace-nowrap">
+                <td className="py-1.5 pr-3 text-right tabular-nums text-[12px] text-muted-foreground whitespace-nowrap">
                   {r.bytes !== null ? formatBytes(r.bytes) : ""}
                 </td>
-                <td className="py-1.5 pr-3 text-right tabular-nums text-[11px] text-muted-foreground whitespace-nowrap">
+                <td className="py-1.5 pr-3 text-right tabular-nums text-[12px] text-muted-foreground whitespace-nowrap">
                   {r.count.toLocaleString("en-US")} {r.id === "attachments" ? "files" : "rows"}
                 </td>
                 <td className="py-1.5 text-right">
@@ -64,7 +64,7 @@ export function Storage({ api }: { api: StorageApi }) {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-6 text-[11px]"
+                      className="h-6 text-[12px]"
                       disabled={busy !== null}
                       title={r.cleanup}
                       onClick={() => {
@@ -94,12 +94,12 @@ export function Storage({ api }: { api: StorageApi }) {
         </table>
       )}
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}
       {error && (
-        <p role="alert" className="mt-2 text-[11px] text-destructive">
+        <p role="alert" className="mt-2 text-[12px] text-destructive">
           {error}
         </p>
       )}

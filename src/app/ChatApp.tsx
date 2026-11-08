@@ -6930,7 +6930,7 @@ export function ChatApp({
                     </div>
                     {incognito ? (
                       <span
-                        className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[10px] text-muted-foreground"
+                        className="flex items-center gap-1.5 rounded-full border border-dashed px-2.5 py-1 text-[12px] text-muted-foreground"
                         aria-label="Incognito chat"
                       >
                         <EyeOff className="size-3" />
@@ -7033,7 +7033,7 @@ export function ChatApp({
                     <div
                       role="group"
                       aria-label="Handoff"
-                      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-1 text-[11px] text-muted-foreground"
+                      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b px-6 py-1 text-[12px] text-muted-foreground"
                     >
                       <ArrowRightLeft className="size-3" />
                       {handedFrom && (
@@ -7222,7 +7222,7 @@ export function ChatApp({
                       {incognito && (
                         <p
                           role="note"
-                          className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[10px] text-muted-foreground"
+                          className="mx-auto mb-1 flex max-w-[716px] items-center gap-1.5 px-9 text-[12px] text-muted-foreground"
                         >
                           <EyeOff className="size-3" />
                           Incognito: this chat isn&apos;t saved or searchable and doesn&apos;t use

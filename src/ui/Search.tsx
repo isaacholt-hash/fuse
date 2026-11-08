@@ -142,11 +142,11 @@ export function SearchDialog({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2 text-xs font-medium">
                   <span className="truncate">{hit.threadTitle}</span>
-                  <span className="shrink-0 text-[10px] font-normal text-muted-foreground">
+                  <span className="shrink-0 text-[12px] font-normal text-muted-foreground">
                     {hit.kind} · {hit.date}
                   </span>
                 </span>
-                <span className="mt-0.5 line-clamp-2 block text-[11px] leading-4 text-muted-foreground">
+                <span className="mt-0.5 line-clamp-2 block text-[12px] leading-4 text-muted-foreground">
                   <Highlighted text={hit.snippet} />
                 </span>
               </span>

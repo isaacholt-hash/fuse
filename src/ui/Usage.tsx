@@ -57,7 +57,7 @@ function EconomicsCard({
     <section className="mt-6 rounded-xl border p-5 text-xs" aria-label="Cost per successful task">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[12px] text-muted-foreground">
             Cost per successful task · last {e.days} days
           </p>
           <p className="mt-1 tabular-nums text-2xl font-semibold tracking-tight">
@@ -70,17 +70,17 @@ function EconomicsCard({
           </Button>
         )}
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">
+      <p className="mt-2 text-[12px] text-muted-foreground">
         {number(e.succeeded)} of {number(e.tasks)} task{e.tasks === 1 ? "" : "s"} succeeded
         <span className="mx-1 opacity-40">·</span>
         {number(e.cloudCallsAvoided)} cloud call{e.cloudCallsAvoided === 1 ? "" : "s"} avoided
       </p>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-[12px] text-muted-foreground">
         {e.baseline
           ? `Baseline ${money(e.baseline.perSuccess)}, frozen ${new Date(e.baseline.at).toLocaleDateString()}${e.change === null ? "" : ` · ${e.change > 0 ? "+" : ""}${String(e.change)}%`}`
           : "No baseline yet: it's frozen from your cloud-only use once a task has succeeded."}
       </p>
-      <p className="mt-2 text-[10px] text-muted-foreground">
+      <p className="mt-2 text-[12px] text-muted-foreground">
         A task is one question with all its answers, retries and re-runs. It succeeds when its last
         answer finished, wasn't marked bad and the question wasn't edited. All API spend,
         housekeeping included, is divided by those.
@@ -104,7 +104,7 @@ function SavingsCard({
     <div className="flex items-baseline justify-between gap-3 border-t py-2 first:border-t-0">
       <span>
         {label}
-        {note && <span className="block text-[10px] text-muted-foreground">{note}</span>}
+        {note && <span className="block text-[12px] text-muted-foreground">{note}</span>}
       </span>
       <span className="tabular-nums">{value}</span>
     </div>
@@ -133,7 +133,7 @@ function SavingsCard({
       <div className="flex items-baseline justify-between gap-3 border-t py-2">
         <label htmlFor="subscription" className="flex-1">
           Your subscriptions (a month)
-          <span className="block text-[10px] text-muted-foreground">
+          <span className="block text-[12px] text-muted-foreground">
             {vsSubs === null
               ? "What you paid for ChatGPT, Claude and the like"
               : vsSubs >= 0
@@ -210,7 +210,7 @@ export function UsageScreen({
       <div className="mx-auto max-w-[760px] px-8 py-9">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+            <p className="mb-2 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
               <BarChart3 className="size-3" />
               Usage
             </p>
@@ -237,11 +237,11 @@ export function UsageScreen({
         ) : (
           <>
             <section className="mt-8 rounded-xl border p-5" aria-label="Total">
-              <p className="text-[11px] text-muted-foreground">Spent · {period?.label}</p>
+              <p className="text-[12px] text-muted-foreground">Spent · {period?.label}</p>
               <p className="mt-1 tabular-nums text-3xl font-semibold tracking-tight">
                 {money(view.total)}
               </p>
-              <p className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <p className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
                 {change === null ? (
                   `${money(view.previous)} ${period?.previous ?? ""}`
                 ) : (
@@ -274,7 +274,7 @@ export function UsageScreen({
                   />
                 ))}
               </div>
-              <div className="mt-1 flex justify-between tabular-nums text-[9px] text-muted-foreground">
+              <div className="mt-1 flex justify-between tabular-nums text-[12px] text-muted-foreground">
                 <span>{view.bars[0]?.label}</span>
                 <span>{view.bars.at(-1)?.label}</span>
               </div>
@@ -292,11 +292,11 @@ export function UsageScreen({
                 >
                   <h2 className="mb-3 text-xs font-medium">By {s.title}</h2>
                   {s.rows.length === 0 ? (
-                    <p className="text-[11px] text-muted-foreground">Nothing yet.</p>
+                    <p className="text-[12px] text-muted-foreground">Nothing yet.</p>
                   ) : (
                     <ul className="space-y-2">
                       {s.rows.map((r) => (
-                        <li key={r.label} className="text-[11px]">
+                        <li key={r.label} className="text-[12px]">
                           <div className="flex justify-between gap-3">
                             <span className="truncate">{r.label}</span>
                             <span className="tabular-nums">{money(r.micro)}</span>
@@ -309,7 +309,7 @@ export function UsageScreen({
                               }}
                             />
                           </div>
-                          <p className="mt-0.5 text-[10px] text-muted-foreground">
+                          <p className="mt-0.5 text-[12px] text-muted-foreground">
                             {number(r.calls)} call{r.calls === 1 ? "" : "s"}
                           </p>
                         </li>
@@ -350,7 +350,7 @@ function Reconciliation({ view }: { view: ReconcileView }) {
   return (
     <section className="mt-10 border-t pt-6" aria-label="Provider reports">
       <h2 className="mb-1 text-sm font-medium">Compared with provider reports</h2>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         FUSE&apos;s logged cost beside what each provider reports, per UTC day, in US dollars.
         Provider higher usually means other use on the same account, project or key, or requests
         FUSE didn&apos;t log. FUSE higher usually means credits, discounts or a report still
@@ -362,7 +362,7 @@ function Reconciliation({ view }: { view: ReconcileView }) {
           : ""}
       </p>
       <table className="w-full text-[12px]">
-        <thead className="text-left text-[10px] text-muted-foreground">
+        <thead className="text-left text-[12px] text-muted-foreground">
           <tr>
             <th className="py-1 font-medium">Day (UTC)</th>
             <th className="py-1 font-medium">Provider</th>

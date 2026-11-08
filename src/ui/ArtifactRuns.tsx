@@ -95,7 +95,7 @@ export function RunApproval({
           type="file"
           multiple
           aria-label="Input files"
-          className="mt-1 block text-[11px]"
+          className="mt-1 block text-[12px]"
           onChange={(e) => {
             setInputs([...(e.target.files ?? [])]);
           }}
@@ -156,11 +156,11 @@ export function RunOutput({ runs }: { runs: RunsProps }) {
   return (
     <section className="mt-4 border-t pt-3" aria-label="Run output">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="text-[11px] font-medium text-muted-foreground">Output</h3>
+        <h3 className="text-[12px] font-medium text-muted-foreground">Output</h3>
         {runs.runs.length > 1 && (
           <select
             aria-label="Attempt"
-            className="h-7 rounded-md border border-input bg-background px-1.5 text-[11px]"
+            className="h-7 rounded-md border border-input bg-background px-1.5 text-[12px]"
             value={shown?.id ?? ""}
             onChange={(e) => {
               setPicked(e.target.value);
@@ -174,14 +174,14 @@ export function RunOutput({ runs }: { runs: RunsProps }) {
           </select>
         )}
         {runs.running && (
-          <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={runs.onStop}>
+          <Button variant="ghost" size="sm" className="h-7 text-[12px]" onClick={runs.onStop}>
             <Square className="size-3" />
             Stop
           </Button>
         )}
       </div>
       {shown && (
-        <p className="mb-1 text-[11px] text-muted-foreground" role="status">
+        <p className="mb-1 text-[12px] text-muted-foreground" role="status">
           Version {shown.version} · attempt {shown.attempt} · {stateText(shown)}
           {shown.elapsedMs !== null ? ` · ${(shown.elapsedMs / 1000).toFixed(1)} s` : ""}
           {shown.inputs.length > 0
@@ -198,7 +198,7 @@ export function RunOutput({ runs }: { runs: RunsProps }) {
           "(no output)"}
       </pre>
       {shown?.truncated && (
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-[12px] text-muted-foreground">
           Output went past 1 MB; the rest wasn't kept.
         </p>
       )}
@@ -208,12 +208,12 @@ export function RunOutput({ runs }: { runs: RunsProps }) {
             /\.(png|jpe?g)$/i.test(f.path) && runs.imageUrl ? (
               <figure key={f.path}>
                 <OutputImage file={f} imageUrl={runs.imageUrl} />
-                <figcaption className="text-[11px] text-muted-foreground">
+                <figcaption className="text-[12px] text-muted-foreground">
                   {f.path} ({size(f.bytes)})
                 </figcaption>
               </figure>
             ) : (
-              <p key={f.path} className="text-[11px] text-muted-foreground">
+              <p key={f.path} className="text-[12px] text-muted-foreground">
                 {f.path} ({size(f.bytes)})
               </p>
             ),
@@ -246,7 +246,7 @@ export function RunUnavailable({ text, onClose }: { text: string; onClose?: () =
   return (
     <p
       role="status"
-      className="flex items-center gap-2 border-b px-4 py-1.5 text-[11px] text-muted-foreground"
+      className="flex items-center gap-2 border-b px-4 py-1.5 text-[12px] text-muted-foreground"
     >
       <span className="flex-1">{text}</span>
       {onClose && (

@@ -82,7 +82,7 @@ export function PricesSection({
         <Tags className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Prices</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         US dollars per million tokens, used for every cost FUSE shows. Price list {version}; the
         oldest price was checked {oldestDays} days ago.
         {oldestDays > staleDays && " Prices change often, so check for new ones."}
@@ -117,7 +117,7 @@ export function PricesSection({
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-[12px] text-muted-foreground">
             Prices you edited yourself stay as they are.
           </p>
           <div className="mt-2 flex gap-2">
@@ -148,11 +148,11 @@ export function PricesSection({
         </div>
       )}
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}
-      <table className="mt-4 w-full text-left text-[11px]">
+      <table className="mt-4 w-full text-left text-[12px]">
         <thead className="text-muted-foreground">
           <tr>
             <th className="py-1 font-normal">Model</th>
@@ -175,7 +175,7 @@ export function PricesSection({
                     <Input
                       aria-label={`${r.name} ${f.label.toLowerCase()} price`}
                       inputMode="decimal"
-                      className="h-7 text-right text-[11px]"
+                      className="h-7 text-right text-[12px]"
                       value={fields[f.key]}
                       onChange={(e) => {
                         setFields((v) => ({ ...v, [f.key]: e.target.value }));

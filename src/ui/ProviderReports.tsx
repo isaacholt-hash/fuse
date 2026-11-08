@@ -126,7 +126,7 @@ export function ProviderReports({
         <FileBarChart className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Provider usage reports</h2>
       </div>
-      <p className="text-[11px] leading-5 text-muted-foreground">
+      <p className="text-[12px] leading-5 text-muted-foreground">
         Compare FUSE&apos;s own costs with what each provider reports. It&apos;s off until you add a
         reporting key here. Reporting keys are separate from chat keys, need organization admin
         access, stay in this {webApp ? "server's" : "computer's"} secret store and are only used to
@@ -144,7 +144,7 @@ export function ProviderReports({
           return (
             <section key={p.id} aria-label={`${p.name} reports`} className="rounded-lg border p-3">
               <h4 className="mb-1 font-medium">{p.name}</h4>
-              <p className="mb-2 text-[11px] text-muted-foreground">
+              <p className="mb-2 text-[12px] text-muted-foreground">
                 {saved[p.id]
                   ? "Reporting key saved."
                   : `No reporting key. Create one at ${p.where}.`}
@@ -200,7 +200,7 @@ export function ProviderReports({
                 />
                 Collect {p.name} reports every six hours
               </label>
-              <label className="mt-2 block text-[11px] text-muted-foreground">
+              <label className="mt-2 block text-[12px] text-muted-foreground">
                 Compare only these {p.id === "openai" ? "projects" : "workspaces"} or key ids
                 (comma-separated; empty compares everything):
                 <input
@@ -224,7 +224,7 @@ export function ProviderReports({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-[12px]"
                   disabled={!saved[p.id] || busy !== null}
                   onClick={() => {
                     act(p.id, async () => {
@@ -238,7 +238,7 @@ export function ProviderReports({
                   <RefreshCw className={`size-3 ${busy === p.id ? "animate-spin" : ""}`} />
                   Refresh now
                 </Button>
-                <span className="text-[11px] text-muted-foreground" role="status">
+                <span className="text-[12px] text-muted-foreground" role="status">
                   {run
                     ? `${STATE[run.state]} · ${when(run.at)} · ${String(run.rows)} rows${run.source === "csv" ? " (CSV)" : ""}${run.message && run.state !== "ok" ? ` · ${run.message}` : ""}`
                     : "Not collected yet."}
@@ -295,7 +295,7 @@ export function ProviderReports({
             type="file"
             accept=".csv,text/csv"
             aria-label="Import usage CSV"
-            className="text-[11px]"
+            className="text-[12px]"
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";

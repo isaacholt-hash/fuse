@@ -53,13 +53,13 @@ export function HulkSection({
         <Server className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">HULK</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         FUSE on HULK runs Code runs with this computer closed. Pair once, then &quot;Run on
         HULK&quot; in a project&apos;s Code composer hands a run over: HULK works on its own branch
         and asks before pushing it.
       </p>
       {status === null ? (
-        <p className="text-[11px] text-muted-foreground">Checking…</p>
+        <p className="text-[12px] text-muted-foreground">Checking…</p>
       ) : status.paired ? (
         <div className="space-y-2">
           <p className="flex flex-wrap items-center gap-x-2 text-xs">
@@ -77,7 +77,7 @@ export function HulkSection({
             </button>
           </p>
           {/* M10 F2: which build each side runs, and the reason when they don't match. */}
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[12px] text-muted-foreground">
             {status.server
               ? `HULK: built from ${status.server.builtFrom} on ${status.server.builtOn}. `
               : "HULK couldn't be reached just now. "}
@@ -101,7 +101,7 @@ export function HulkSection({
           >
             Unpair
           </Button>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[12px] text-muted-foreground">
             Unpairing forgets this computer&apos;s token. Revoke the device in HULK&apos;s Settings
             → Devices too.
           </p>
@@ -166,7 +166,7 @@ export function HulkSection({
         </form>
       )}
       {said && (
-        <p role="alert" className="mt-2 text-[11px] text-destructive">
+        <p role="alert" className="mt-2 text-[12px] text-destructive">
           {said}
         </p>
       )}

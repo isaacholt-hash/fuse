@@ -69,12 +69,12 @@ export function SyncSection({
         <RefreshCw className="size-4 text-muted-foreground" />
         Sync
       </h2>
-      <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
         Opt in to encrypted sync with HULK. HULK is trusted and can read synced content for its web
         app and runner. Browsers use HULK’s database. Pairing alone never uploads this desktop’s
         history.
       </p>
-      <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+      <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
         Incognito content, local-only projects and records kept on this device stay here.
         Credentials, repositories, folder access and machine permissions stay on each machine.
         Opening history grants no new access or run execution.
@@ -214,7 +214,7 @@ export function SyncSection({
               Pair this desktop in Settings → HULK first, then explicitly enable sync here.
             </p>
           )}
-          <p className="mt-2 text-[11px] text-muted-foreground">
+          <p className="mt-2 text-[12px] text-muted-foreground">
             Disabling sync stops transfers and preserves local data. It does not delete everywhere.
             Pending changes wait for explicit re-enrollment.
           </p>
@@ -231,7 +231,7 @@ export function SyncSection({
                       {device.id === status.deviceId ? " · this installation" : ""}
                       {device.revokedAt ? " · revoked" : ""}
                     </span>
-                    <span className="font-mono text-[10px] text-muted-foreground">
+                    <span className="font-mono text-[11px] text-muted-foreground">
                       {device.id.slice(0, 12)}
                     </span>
                     {host && onRevoke && device.authId && !device.revokedAt && (
@@ -252,7 +252,7 @@ export function SyncSection({
               <h3 data-settings-control="sync-recovery" className="mt-5 text-xs font-medium">
                 Recovery
               </h3>
-              <p className="mt-1 text-[11px] leading-5 text-muted-foreground">
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
                 Keep the separate sync recovery code safely away from this computer. Recovery also
                 requires signing in to HULK. Without surviving keys or this code, encrypted sync
                 data cannot be recovered. The database recovery key is separate.
@@ -411,7 +411,7 @@ export function SyncSection({
                         Alternatives: {version.alternatives}
                       </p>
                     )}
-                    <p className="mt-2 break-all text-[10px] text-muted-foreground">
+                    <p className="mt-2 break-all text-[12px] text-muted-foreground">
                       {version.kind} · {version.deviceId} ·{" "}
                       {new Date(version.createdAt).toLocaleString()} ·{" "}
                       {version.extractionMethod ?? "manual"}

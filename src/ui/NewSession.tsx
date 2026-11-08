@@ -169,7 +169,7 @@ export function NewSessionBar({
                       {where === p.id && <Check className="size-3.5" aria-hidden />}
                     </button>
                     {why !== null && (
-                      <p className="px-2 pb-1.5 pl-[30px] text-[11px] leading-snug text-muted-foreground">
+                      <p className="px-2 pb-1.5 pl-[30px] text-[12px] leading-snug text-muted-foreground">
                         <span>{why}</span>
                         {p.id === "hulk" && onOpenHulkSettings && /^Pair/.test(why) && (
                           <>
@@ -223,7 +223,7 @@ export function NewSessionBar({
           >
             {run && (
               <>
-                <p className="px-2 pt-1 text-[11px] text-muted-foreground">Kind</p>
+                <p className="px-2 pt-1 text-[12px] text-muted-foreground">Kind</p>
                 <div role="group" aria-label="Kind" className="flex gap-1 px-1">
                   {(["code", "work"] as const).map((k) => (
                     <Button
@@ -323,7 +323,7 @@ export function NewSessionBar({
               </label>
             )}
             {!run && (
-              <p className="px-2 pb-1 text-[11px] leading-snug text-muted-foreground">
+              <p className="px-2 pb-1 text-[12px] leading-snug text-muted-foreground">
                 Kind and permissions appear once the session has a folder.
               </p>
             )}

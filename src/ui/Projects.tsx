@@ -79,39 +79,39 @@ export function KnowledgeSection({
           Add files
         </Button>
       </div>
-      <p className="mb-2 text-[10px] leading-4 text-muted-foreground">
+      <p className="mb-2 text-[12px] leading-4 text-muted-foreground">
         Text, Markdown, Word, CSV and code. Indexed once, then every chat in this project gets the
         parts that match each question (about 3,000 tokens) instead of whole files. Documents in the
         project&apos;s folders are added here too, and kept in step when they change.
       </p>
       {error && (
-        <p role="alert" className="mb-2 text-[11px] text-destructive">
+        <p role="alert" className="mb-2 text-[12px] text-destructive">
           {error}
         </p>
       )}
       {files.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No files yet.</p>
+        <p className="text-[12px] text-muted-foreground">No files yet.</p>
       ) : (
         <ul className="space-y-1.5">
           {files.map((f) => (
             <li
               key={f.id}
-              className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]"
+              className="flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[12px]"
             >
               <FileText className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{f.name}</span>
-                <span className="block tabular-nums text-[10px] text-muted-foreground">
+                <span className="block tabular-nums text-[12px] text-muted-foreground">
                   ~{number(f.tokens)} tokens · {money(f.wholeMicro)} a message if sent whole
                 </span>
               </span>
               <span
-                className={`shrink-0 text-[10px] ${f.ready ? "text-muted-foreground" : "text-warning"}`}
+                className={`shrink-0 text-[12px] ${f.ready ? "text-muted-foreground" : "text-warning"}`}
               >
                 {f.maySend ? f.status : "Kept on this computer"}
               </span>
               {onMaySend && (
-                <label className="flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground">
+                <label className="flex shrink-0 items-center gap-1 text-[12px] text-muted-foreground">
                   <input
                     type="checkbox"
                     aria-label={`Keep ${f.name} on this computer`}
@@ -125,7 +125,7 @@ export function KnowledgeSection({
               )}
               {f.folder ? (
                 <span
-                  className="shrink-0 text-[10px] text-muted-foreground"
+                  className="shrink-0 text-[12px] text-muted-foreground"
                   title={`Kept in step with ${f.folder}: change or delete the file there.`}
                 >
                   In folder
@@ -249,7 +249,7 @@ export function ProjectDialog({
             <label htmlFor={ids.instructions} className="text-xs font-medium">
               Project instructions
             </label>
-            <span className="tabular-nums text-[10px] text-muted-foreground">
+            <span className="tabular-nums text-[12px] text-muted-foreground">
               {number(form.instructions.length)} / {number(maxChars)}
             </span>
           </div>
@@ -263,7 +263,7 @@ export function ProjectDialog({
               setForm((f) => ({ ...f, instructions: e.target.value }));
             }}
           />
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[12px] text-muted-foreground">
             Added after your global instructions, before any chat&apos;s own.
           </p>
         </div>
@@ -301,7 +301,7 @@ export function ProjectDialog({
               </option>
             ))}
           </select>
-          <p className="mt-1 text-[10px] text-muted-foreground">
+          <p className="mt-1 text-[12px] text-muted-foreground">
             New chats in this project start on it. You can still change it in any chat.
           </p>
         </div>
@@ -316,7 +316,7 @@ export function ProjectDialog({
                     className="w-full truncate rounded px-2 py-1 text-left hover:bg-accent"
                     onClick={() => onOpenArtifact?.(a.id)}
                   >
-                    {a.title} <span className="text-[10px] text-muted-foreground">in {a.chat}</span>
+                    {a.title} <span className="text-[12px] text-muted-foreground">in {a.chat}</span>
                   </button>
                 </li>
               ))}
@@ -355,7 +355,7 @@ export function ProjectDialog({
         {onDelete &&
           (confirmDelete ? (
             <>
-              <span className="text-[11px] text-muted-foreground">Delete? Its chats are kept.</span>
+              <span className="text-[12px] text-muted-foreground">Delete? Its chats are kept.</span>
               <Button type="button" variant="destructive" size="sm" onClick={onDelete}>
                 Delete project
               </Button>
@@ -399,7 +399,7 @@ export function ProjectDialog({
         </Button>
       </div>
       {exported && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {exported}
         </p>
       )}

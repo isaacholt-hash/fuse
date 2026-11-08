@@ -44,7 +44,7 @@ export function ImportSection({
         <FileDown className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Import</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Bring your chats over from another app&apos;s data export. You see what will come in first;
         importing again later only adds chats that are new.
       </p>
@@ -92,10 +92,10 @@ export function ImportSection({
         ))}
       </div>
       {source && !preview && !busy && !status && (
-        <p className="mt-2 text-[11px] text-muted-foreground">Pick {source.hint}.</p>
+        <p className="mt-2 text-[12px] text-muted-foreground">Pick {source.hint}.</p>
       )}
       {busy && (
-        <p className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+        <p className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground">
           <LoaderCircle className="size-3 animate-spin" />
           {busy}
         </p>
@@ -143,7 +143,7 @@ export function ImportSection({
         </div>
       )}
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}

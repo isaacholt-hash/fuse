@@ -67,7 +67,7 @@ export function ArtifactCard({
       </span>
       <span className="min-w-0">
         <span className="block truncate text-[13px] font-medium">{title}</span>
-        <span className="block text-[11px] text-muted-foreground">
+        <span className="block text-[12px] text-muted-foreground">
           {writing ? "Writing…" : `${KIND[type]}${language ? ` · ${language}` : ""} · open`}
         </span>
       </span>
@@ -248,7 +248,7 @@ export function ArtifactPanel({
       <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-2 border-b px-4 py-2">
         <span className="min-w-0 flex-1 basis-[140px]">
           <span className="block truncate text-[13px] font-medium">{artifact.title}</span>
-          <span className="block text-[10px] text-muted-foreground">
+          <span className="block text-[12px] text-muted-foreground">
             {KIND[artifact.type]}
             {artifact.language ? ` · ${artifact.language}` : ""}
             {artifact.version === null
@@ -325,7 +325,7 @@ export function ArtifactPanel({
         </Button>
         {canPreview && (
           <span
-            className="flex rounded-md border p-0.5 text-[11px]"
+            className="flex rounded-md border p-0.5 text-[12px]"
             role="tablist"
             aria-label="View"
           >
@@ -346,7 +346,7 @@ export function ArtifactPanel({
         )}
         {canPreview && tab === "preview" && onAllowCdn && PAGE_TYPES.has(artifact.type) && (
           <label
-            className="flex items-center gap-1 text-[11px] text-muted-foreground"
+            className="flex items-center gap-1 text-[12px] text-muted-foreground"
             title="Let this preview load scripts and styles from cdnjs, jsDelivr and unpkg. Off: nothing leaves the preview."
           >
             <input
@@ -424,7 +424,7 @@ export function ArtifactPanel({
           {versions.versions.length > 1 && (
             <select
               aria-label="Version"
-              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[11px]"
+              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[12px]"
               value={String(shown)}
               onChange={(e) => {
                 const v = Number(e.target.value);
@@ -442,7 +442,7 @@ export function ArtifactPanel({
           {versions.versions.length > 1 && (
             <select
               aria-label="Compare with"
-              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[11px]"
+              className="h-7 min-w-0 flex-1 rounded-md border border-input bg-background px-1.5 text-[12px]"
               value={versions.compareWith === null ? "" : String(versions.compareWith)}
               onChange={(e) => {
                 versions.onCompare(e.target.value === "" ? null : Number(e.target.value));
@@ -479,7 +479,7 @@ export function ArtifactPanel({
       {saved && (
         <p
           role="status"
-          className="border-b bg-muted/30 px-4 py-1.5 text-[11px] text-muted-foreground"
+          className="border-b bg-muted/30 px-4 py-1.5 text-[12px] text-muted-foreground"
         >
           {saved}
         </p>
@@ -495,7 +495,7 @@ export function ArtifactPanel({
             setAsking(null);
           }}
         >
-          <p className="mb-1.5 text-[11px] text-muted-foreground">
+          <p className="mb-1.5 text-[12px] text-muted-foreground">
             {asking.selection
               ? `Change the selected part (${String(asking.selection.length)} characters):`
               : "Change the whole artifact (select text first to change just a part):"}

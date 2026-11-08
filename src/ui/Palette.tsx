@@ -114,7 +114,7 @@ export function CommandPalette({
                     <Command className="size-3.5 text-muted-foreground" />
                   )}
                   <span className="flex-1 truncate">{item.label}</span>
-                  <span className="text-[10px] text-muted-foreground">{item.group}</span>
+                  <span className="text-[12px] text-muted-foreground">{item.group}</span>
                   {item.shortcut && <Hint>{item.shortcut}</Hint>}
                   {i === active && <CornerDownLeft className="size-3 text-muted-foreground" />}
                 </button>

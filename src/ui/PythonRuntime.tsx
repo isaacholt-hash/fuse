@@ -39,12 +39,12 @@ export function PythonRuntimeSection({
         <FileCode2 className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Python for data work</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Lets Work runs analyse spreadsheets and CSVs and make charts with Python, in the same
         sandbox as commands. It&apos;s downloaded only if you install it, and kept in FUSE&apos;s
         own folder; your own Python, if you have one, isn&apos;t touched.
       </p>
-      <div className="space-y-2 text-[11px] leading-5">
+      <div className="space-y-2 text-[12px] leading-5">
         {!offer && !installed && (
           <p className="text-muted-foreground">
             FUSE has no Python build for this computer yet (Windows and Linux on x86-64 only).

@@ -134,7 +134,7 @@ export function ImportPaste({
         </Button>
       )}
       {status && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {status}
         </p>
       )}

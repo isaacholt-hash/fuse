@@ -234,7 +234,7 @@ export function Sidebar({
                 type="button"
                 aria-pressed={shownFilter === state}
                 disabled={counts[state] === 0}
-                className={`rounded-full border px-2 py-0.5 text-[10px] disabled:opacity-40 ${shownFilter === state ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
+                className={`rounded-full border px-2 py-0.5 text-[12px] disabled:opacity-40 ${shownFilter === state ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
                 onClick={() => {
                   setStateFilter(shownFilter === state ? null : state);
                 }}
@@ -250,7 +250,7 @@ export function Sidebar({
               <button
                 key={t}
                 aria-pressed={filter === t}
-                className={`rounded-full border px-2 py-0.5 text-[10px] ${filter === t ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
+                className={`rounded-full border px-2 py-0.5 text-[12px] ${filter === t ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-sidebar-accent"}`}
                 onClick={() => {
                   setTag(filter === t ? null : t);
                 }}
@@ -284,7 +284,7 @@ export function Sidebar({
             </Tip>
           </div>
           {visibleProjects.length === 0 && filter === null && (
-            <p className="px-3 py-1 text-[11px] text-muted-foreground">
+            <p className="px-3 py-1 text-[12px] text-muted-foreground">
               Group chats that share instructions.
             </p>
           )}
@@ -312,7 +312,7 @@ export function Sidebar({
                     )}
                     <span className="truncate text-[12px] font-medium">{project.name}</span>
                     {project.state && <StateDot state={project.state} />}
-                    <span className="ml-auto tabular-nums text-[10px] text-muted-foreground">
+                    <span className="ml-auto tabular-nums text-[12px] text-muted-foreground">
                       {project.threads.length}
                     </span>
                   </button>
@@ -343,7 +343,7 @@ export function Sidebar({
                 {open && (
                   <div className="mt-1 ml-4 space-y-1 border-l pl-1.5">
                     {project.threads.length === 0 ? (
-                      <p className="px-3 py-1.5 text-[11px] text-muted-foreground">{none}</p>
+                      <p className="px-3 py-1.5 text-[12px] text-muted-foreground">{none}</p>
                     ) : (
                       project.threads.map(row)
                     )}
@@ -412,12 +412,12 @@ export function Sidebar({
         </Button>
       </div>
       <div className="flex items-center gap-2.5 border-t px-5 py-4">
-        <span className="flex size-7 items-center justify-center rounded-full border bg-background text-[10px] font-semibold">
+        <span className="flex size-7 items-center justify-center rounded-full border bg-background text-[12px] font-semibold">
           IH
         </span>
         <div className="flex-1">
           <p className="text-xs font-medium">Isaac’s workspace</p>
-          <p className="mt-0.5 text-[10px] text-muted-foreground">Local · Personal</p>
+          <p className="mt-0.5 text-[12px] text-muted-foreground">Local · Personal</p>
         </div>
         <ChevronDown className="size-3 text-muted-foreground" aria-hidden="true" />
       </div>
@@ -516,7 +516,7 @@ function ThreadRow({
               <Money micro={thread.costMicro} className="shrink-0 text-[12px]" />
             </span>
             {thread.tags.length > 0 && (
-              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+              <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
                 {thread.tags.map((t) => (
                   <span key={t} className="mr-1.5">
                     #{t}

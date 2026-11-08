@@ -107,7 +107,7 @@ export function ResearchSetup({
               />
               <span>
                 {place === "hulk" ? "HULK" : "This computer"}
-                <span className="mt-0.5 block text-[11px] leading-5 text-muted-foreground">
+                <span className="mt-0.5 block text-[12px] leading-5 text-muted-foreground">
                   {locations[place] ??
                     (place === "hulk"
                       ? `${remoteCreatesChat ? "Starts a separate Research Chat on HULK in the same project. " : ""}Continues with this window closed. HULK can read the scope and selected context; folders and permissions stay here.`
@@ -121,7 +121,7 @@ export function ResearchSetup({
           <legend className="mb-1 text-xs font-medium">
             Context — nothing selected by default
           </legend>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-[12px] text-muted-foreground">
             Research has no command, repository-write or additional MCP access. Your current draft
             is kept.
           </p>
@@ -185,12 +185,12 @@ export function ResearchSetup({
               {models.worker.displayName} for research; {models.best.displayName} for planning and
               synthesis.
             </p>
-            <p className="text-[11px] text-muted-foreground">{models.reason}.</p>
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">{models.reason}.</p>
+            <p className="text-[12px] text-muted-foreground">
               Estimate: about {money(models.estimatedMicroUsd)} for five searches and a report;
               actual usage can vary.
             </p>
-            <p className="text-[11px] leading-5 text-muted-foreground">
+            <p className="text-[12px] leading-5 text-muted-foreground">
               Base planning reservation: {money(models.firstBoundMicroUsd)} before selected context;
               the actual reservation includes that context. Each search reserves up to{" "}
               {money(models.searchBoundMicroUsd)}. Allowances are not the final bill; actual tokens
@@ -212,7 +212,7 @@ export function ResearchSetup({
             disabled={busy}
           />
         </label>
-        <p className="text-[11px] leading-5 text-muted-foreground">
+        <p className="text-[12px] leading-5 text-muted-foreground">
           At most 12 searches, 24 source reads, 30 model calls and 30 minutes. Research pauses
           before the next request cannot fit the cap or a budget; limits retain a labelled partial
           report.
@@ -282,7 +282,7 @@ export function ResearchTask({
             : `${money(task.spentMicroUsd)} of ${money(task.capMicroUsd)}`}
         </span>
       </div>
-      <p className="line-clamp-2 text-[11px] text-muted-foreground">{task.title.slice(0, 500)}</p>
+      <p className="line-clamp-2 text-[12px] text-muted-foreground">{task.title.slice(0, 500)}</p>
       {task.readOnly ? (
         <p className="text-muted-foreground">Synced history · read-only</p>
       ) : (

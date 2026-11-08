@@ -91,25 +91,25 @@ export function McpServersSection({
         <Plug className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">MCP servers</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Tools from other programs and services, through the Model Context Protocol. A project
         switches a server on for its chats and runs. Local servers run in the sandbox; their
         variables (tokens, keys) are kept in this computer&apos;s keychain, never in FUSE&apos;s
         data or sent to a model.
       </p>
-      <ul className="mb-3 space-y-2 text-[11px]">
+      <ul className="mb-3 space-y-2 text-[12px]">
         {servers.length === 0 && <li className="text-muted-foreground">No servers yet.</li>}
         {servers.map((s) => (
           <li key={s.id} className="rounded-lg border p-3">
             <div className="flex items-center gap-2">
               <span className="font-medium">{s.name}</span>
-              <span className="truncate font-mono text-[10px] text-muted-foreground">
+              <span className="truncate font-mono text-[11px] text-muted-foreground">
                 {s.detail}
               </span>
               {onCheck && (
                 <button
                   type="button"
-                  className="ml-auto text-[11px] hover:underline disabled:opacity-50"
+                  className="ml-auto text-[12px] hover:underline disabled:opacity-50"
                   disabled={s.health === "checking"}
                   onClick={() => {
                     onCheck(s.id);
@@ -120,7 +120,7 @@ export function McpServersSection({
               )}
               <button
                 type="button"
-                className={`${onCheck ? "" : "ml-auto "}text-[11px] text-destructive hover:underline`}
+                className={`${onCheck ? "" : "ml-auto "}text-[12px] text-destructive hover:underline`}
                 onClick={() => {
                   onRemove(s.id);
                 }}
@@ -142,7 +142,7 @@ export function McpServersSection({
                   {s.health.tools.map((t) => (
                     <li key={t.name} title={t.description}>
                       <span className="font-mono">{t.name}</span>{" "}
-                      <span className="text-[10px] text-muted-foreground">{t.kind}</span>
+                      <span className="text-[12px] text-muted-foreground">{t.kind}</span>
                     </li>
                   ))}
                 </ul>
@@ -187,7 +187,7 @@ export function McpServersSection({
               </>
             )}
             {s.variables.length > 0 && (
-              <p className="mt-1 text-[10px] text-muted-foreground">
+              <p className="mt-1 text-[12px] text-muted-foreground">
                 Variables:{" "}
                 {s.variables.map((v) => `${v.name} (${v.set ? "set" : "not set"})`).join(", ")}
               </p>
@@ -210,7 +210,7 @@ export function McpServersSection({
       {draft ? (
         <form
           aria-label="Add an MCP server"
-          className="space-y-2 rounded-lg border p-3 text-[11px]"
+          className="space-y-2 rounded-lg border p-3 text-[12px]"
           onSubmit={(e) => {
             e.preventDefault();
             void onAdd(draft).then((p) => {
@@ -314,7 +314,7 @@ export function McpServersSection({
             ))}
             <button
               type="button"
-              className="text-[11px] hover:underline"
+              className="text-[12px] hover:underline"
               onClick={() => {
                 set({ variables: [...draft.variables, { name: "", value: "" }] });
               }}

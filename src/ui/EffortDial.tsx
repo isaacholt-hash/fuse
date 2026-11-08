@@ -33,7 +33,7 @@ export function EffortOptions({
   const current = value ?? effort.auto;
   return (
     <div role="group" aria-label="Reasoning effort" className="border-t px-4 py-2.5">
-      <p className="mb-1.5 text-[11px] text-muted-foreground">
+      <p className="mb-1.5 text-[12px] text-muted-foreground">
         Effort for this message. The usual is {EFFORT_LABELS[effort.auto]}.
       </p>
       <div className="flex flex-wrap gap-1">
@@ -46,7 +46,7 @@ export function EffortOptions({
               type="button"
               role="radio"
               aria-checked={on}
-              className={`flex items-center gap-1 rounded-[4px] border px-2 py-1 text-[11px] outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${on ? "border-foreground/40 bg-accent font-medium" : "text-muted-foreground"}`}
+              className={`flex items-center gap-1 rounded-[4px] border px-2 py-1 text-[12px] outline-offset-[-2px] hover:bg-accent focus-visible:bg-accent ${on ? "border-foreground/40 bg-accent font-medium" : "text-muted-foreground"}`}
               onClick={() => {
                 onChange(level);
               }}
@@ -54,7 +54,7 @@ export function EffortOptions({
               {on && <Check className="size-3" aria-hidden />}
               {level === null ? "Usual" : EFFORT_LABELS[level]}
               {level !== null && level !== current && delta !== 0 && (
-                <span className="tabular-nums text-[10px] text-muted-foreground">
+                <span className="tabular-nums text-[12px] text-muted-foreground">
                   {signed(delta)}
                 </span>
               )}

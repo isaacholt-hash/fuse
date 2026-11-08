@@ -36,7 +36,7 @@ export function AgentAuditSection({
         <ScrollText className="size-3.5 text-muted-foreground" />
         <h2 className="text-sm font-medium">Coding agent activity</h2>
         {onExport && rows.length > 0 && (
-          <span className="ml-auto flex gap-2 text-[11px]">
+          <span className="ml-auto flex gap-2 text-[12px]">
             <button
               type="button"
               className="hover:underline"
@@ -63,11 +63,11 @@ export function AgentAuditSection({
         device.
       </p>
       {rows.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No coding runs yet.</p>
+        <p className="text-[12px] text-muted-foreground">No coding runs yet.</p>
       ) : (
         <div className="max-h-96 overflow-auto rounded-lg border">
-          <table className="w-full text-left text-[11px]">
-            <thead className="sticky top-0 bg-muted text-[10px] text-muted-foreground">
+          <table className="w-full text-left text-[12px]">
+            <thead className="sticky top-0 bg-muted text-[12px] text-muted-foreground">
               <tr>
                 <th className="px-2 py-1 font-medium">When</th>
                 <th className="px-2 py-1 font-medium">What</th>
@@ -82,7 +82,7 @@ export function AgentAuditSection({
                   <td className="px-2 py-1 whitespace-nowrap text-muted-foreground">{r.when}</td>
                   <td className="min-w-48 px-2 py-1">
                     <span className="font-mono break-all">{r.action}</span>
-                    <span className="block text-[10px] text-muted-foreground">
+                    <span className="block text-[12px] text-muted-foreground">
                       {r.kind ? `${r.kind} · ${r.project}` : r.project}
                     </span>
                   </td>
@@ -93,7 +93,7 @@ export function AgentAuditSection({
                   >
                     {r.result}
                     {r.flagged && (
-                      <span className="block font-sans text-[10px] text-destructive">
+                      <span className="block font-sans text-[12px] text-destructive">
                         {r.flagged}
                       </span>
                     )}

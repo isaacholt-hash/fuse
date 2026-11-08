@@ -55,11 +55,11 @@ export function ServerSection({
       <div className="mb-1 flex items-center gap-2">
         <Server className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">FUSE on HULK</h2>
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+        <span className="ml-auto font-mono text-[11px] text-muted-foreground">
           FUSE on HULK {version}
         </span>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         This web app uses HULK’s database. Settings → Sync can merge eligible history with
         explicitly enrolled desktops. Credentials and machine permissions stay on each installation.
       </p>
@@ -68,7 +68,7 @@ export function ServerSection({
           <MonitorSmartphone className="size-3.5 text-muted-foreground" />
           <h3 className="text-xs font-medium">Devices</h3>
         </div>
-        <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+        <p className="mb-2 text-[12px] leading-5 text-muted-foreground">
           A desktop app pairs with a one-time code, and then reaches HULK with its own token. Revoke
           a device you no longer use.
         </p>
@@ -87,7 +87,7 @@ export function ServerSection({
             Pair a device
           </Button>
           {code && (
-            <p role="status" className="text-[11px] text-muted-foreground">
+            <p role="status" className="text-[12px] text-muted-foreground">
               Code{" "}
               <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground select-all">
                 {code.code}
@@ -98,16 +98,16 @@ export function ServerSection({
           )}
         </div>
         {devices === null ? (
-          <p className="mt-2 text-[11px] text-muted-foreground">Loading devices…</p>
+          <p className="mt-2 text-[12px] text-muted-foreground">Loading devices…</p>
         ) : devices.length === 0 ? (
-          <p className="mt-2 text-[11px] text-muted-foreground">No devices paired yet.</p>
+          <p className="mt-2 text-[12px] text-muted-foreground">No devices paired yet.</p>
         ) : (
           <ul className="mt-3 divide-y rounded-md border text-xs" aria-label="Paired devices">
             {devices.map((d) => (
               <li key={d.id} className="flex items-center gap-3 px-3 py-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{d.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">
+                  <span className="block text-[12px] text-muted-foreground">
                     Paired {day(d.createdAt)} ·{" "}
                     {d.lastUsedAt === null ? "never used" : `last used ${day(d.lastUsedAt)}`}
                   </span>
@@ -129,7 +129,7 @@ export function ServerSection({
         )}
       </div>
       {error && (
-        <p role="alert" className="mt-2 text-[11px] text-destructive">
+        <p role="alert" className="mt-2 text-[12px] text-destructive">
           {error}
         </p>
       )}

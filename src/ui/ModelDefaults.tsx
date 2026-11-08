@@ -61,14 +61,14 @@ export function ModelDefaultsSection({
         <SlidersHorizontal className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Model defaults</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         For a tier, a model or a project: the most a model may write, how hard it reasons, and text
         put before every prompt. A project&apos;s beat a model&apos;s, which beat a tier&apos;s. The
         composer&apos;s effort dial beats these for one message. Temperature isn&apos;t offered:
         neither provider accepts one on its current models.
       </p>
       {set.length > 0 && (
-        <p className="mb-2 text-[11px] text-muted-foreground">
+        <p className="mb-2 text-[12px] text-muted-foreground">
           Set for: {set.map((s) => s.label).join(", ")}
         </p>
       )}
@@ -95,7 +95,7 @@ export function ModelDefaultsSection({
           ))}
         </select>
       </label>
-      <div className="grid grid-cols-2 gap-2 text-[11px]">
+      <div className="grid grid-cols-2 gap-2 text-[12px]">
         <label className="flex flex-col gap-1">
           Max output tokens (blank: the model&apos;s own)
           <Input
@@ -167,9 +167,9 @@ export function ModelDefaultsSection({
             Clear
           </Button>
         )}
-        {!valid && <span className="text-[11px] text-destructive">At least 256 tokens.</span>}
+        {!valid && <span className="text-[12px] text-destructive">At least 256 tokens.</span>}
         {status && (
-          <span role="status" className="text-[11px] text-muted-foreground">
+          <span role="status" className="text-[12px] text-muted-foreground">
             {status}
           </span>
         )}

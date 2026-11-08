@@ -87,7 +87,7 @@ export function ModelsSection({
         <Boxes className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Models</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         FUSE reads each provider&apos;s model list once a week. New models can be added with their
         prices; a model a provider stops listing is flagged here.
       </p>
@@ -113,7 +113,7 @@ export function ModelsSection({
           {busy && <LoaderCircle className="size-3 animate-spin" />}
           Check providers now
         </Button>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[12px] text-muted-foreground">
           {!canCheck
             ? "Add a key first."
             : check
@@ -122,12 +122,12 @@ export function ModelsSection({
         </span>
       </div>
       {error && (
-        <p role="status" className="mt-2 text-[11px] text-destructive">
+        <p role="status" className="mt-2 text-[12px] text-destructive">
           {error}
         </p>
       )}
       {check && check.failed.length > 0 && (
-        <p className="mt-2 text-[11px] text-muted-foreground">
+        <p className="mt-2 text-[12px] text-muted-foreground">
           Couldn&apos;t read the list from {check.failed.map((p) => PROVIDER_NAME[p]).join(" or ")}.
         </p>
       )}
@@ -157,7 +157,7 @@ export function ModelsSection({
               <li key={`${m.provider}/${m.id}`} className="flex items-center gap-2 text-xs">
                 <span className="flex-1 truncate">
                   {m.displayName}{" "}
-                  <span className="font-mono text-[10px] text-muted-foreground">
+                  <span className="font-mono text-[11px] text-muted-foreground">
                     {PROVIDER_NAME[m.provider]} · {m.id}
                   </span>
                 </span>
@@ -181,7 +181,7 @@ export function ModelsSection({
         </div>
       )}
       <form
-        className="mt-4 grid grid-cols-2 gap-2 text-[11px]"
+        className="mt-4 grid grid-cols-2 gap-2 text-[12px]"
         aria-label="Add a model"
         onSubmit={(e) => {
           e.preventDefault();
@@ -259,7 +259,7 @@ export function ModelsSection({
             <li key={m.key} className="flex items-center gap-2 text-xs">
               <span className="flex-1">
                 {m.name}{" "}
-                <span className="font-mono text-[10px] text-muted-foreground">{m.key}</span>
+                <span className="font-mono text-[11px] text-muted-foreground">{m.key}</span>
               </span>
               <Button
                 variant="ghost"

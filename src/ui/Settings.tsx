@@ -54,7 +54,7 @@ import { WEB_REASONS } from "./webReasons";
 function KeyResult({ state }: { state: KeyView }) {
   if (state.busy === "testing" || state.busy === "saving")
     return (
-      <span role="status" className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+      <span role="status" className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
         <LoaderCircle className="size-3 animate-spin" />
         {state.busy === "saving" ? "Saving and testing…" : "Testing…"}
       </span>
@@ -64,7 +64,7 @@ function KeyResult({ state }: { state: KeyView }) {
   return (
     <span
       role="status"
-      className={`flex items-center gap-1.5 text-[10px] ${tone === "error" ? "text-destructive" : "text-muted-foreground"}`}
+      className={`flex items-center gap-1.5 text-[12px] ${tone === "error" ? "text-destructive" : "text-muted-foreground"}`}
     >
       {tone === "ok" ? <Check className="size-3" /> : <CircleAlert className="size-3" />}
       {text}
@@ -107,12 +107,12 @@ export function KeyCard({
         </span>
         <div>
           <h3 className="text-sm font-semibold">{state.name}</h3>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
+          <p className="mt-0.5 text-[12px] text-muted-foreground">
             {state.provider === "openai" ? "GPT models" : "Claude models"}
           </p>
         </div>
         <a
-          className="ml-auto flex items-center gap-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+          className="ml-auto flex items-center gap-1.5 text-[12px] text-muted-foreground hover:text-foreground"
           href={state.consoleUrl}
           onClick={(e) => {
             e.preventDefault();
@@ -214,7 +214,7 @@ export function KeyCard({
               </div>
               <div className="mt-2 flex min-h-4 items-center justify-between gap-2">
                 {!state.saved && !state.result && state.busy === null && (
-                  <p className="text-[10px] text-muted-foreground">
+                  <p className="text-[12px] text-muted-foreground">
                     No key yet. Add one to use {state.name} models.
                   </p>
                 )}
@@ -545,7 +545,7 @@ export function SettingsView({
             />
           ))}
         </div>
-        <div className="mt-4 flex items-start gap-2.5 text-[11px] leading-5 text-muted-foreground">
+        <div className="mt-4 flex items-start gap-2.5 text-[12px] leading-5 text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-4 shrink-0" />
           <p>
             {web
@@ -592,7 +592,7 @@ export function SettingsView({
           <Terminal className="size-4 text-muted-foreground" />
           <span className="flex-1">
             <span className="block text-xs font-medium">Request log</span>
-            <span className="mt-1 block text-[10px] text-muted-foreground">
+            <span className="mt-1 block text-[12px] text-muted-foreground">
               The last 100 provider calls: tokens, cost, time and errors.
             </span>
           </span>
@@ -923,7 +923,7 @@ function VersionLine({
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   return (
-    <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-5 font-mono text-[10px] text-muted-foreground">
+    <div className="mt-7 flex flex-wrap items-center gap-x-3 gap-y-1 border-t pt-5 font-mono text-[11px] text-muted-foreground">
       <span>
         {web
           ? `FUSE on HULK ${version} · ${WEB_REASONS.update}`
@@ -963,7 +963,7 @@ export function RequestLog({ rows }: { rows: RequestRow[] }) {
     return <p className="py-10 text-center text-sm text-muted-foreground">No requests yet.</p>;
   return (
     <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-left text-[10px] whitespace-nowrap">
+      <table className="w-full text-left text-[12px] whitespace-nowrap">
         <thead className="bg-muted">
           <tr>
             {[
@@ -1002,7 +1002,7 @@ export function RequestLog({ rows }: { rows: RequestRow[] }) {
               >
                 {row.status}
                 {row.requestId && (
-                  <span className="mt-0.5 block font-mono text-[9px] text-muted-foreground select-all">
+                  <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground select-all">
                     {row.requestId}
                   </span>
                 )}
@@ -1031,7 +1031,7 @@ function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
         <LockKeyhole className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Recovery key</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Your chats are encrypted on this computer, with a key kept in the OS keychain. Save this
         recovery key in your password manager: you need it if the keychain loses the key (a Windows
         reset, or moving your data to a new PC).
@@ -1083,7 +1083,7 @@ function RecoveryKeySection({ load }: { load: () => Promise<string> }) {
           Show recovery key
         </Button>
       )}
-      {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+      {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
     </section>
   );
 }

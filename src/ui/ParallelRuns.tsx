@@ -47,12 +47,12 @@ export function ParallelRuns({
           </Button>
         )}
       </div>
-      <p className="text-[11px] text-muted-foreground" aria-label="Combined child spending">
+      <p className="text-[12px] text-muted-foreground" aria-label="Combined child spending">
         Combined {formatUsd(view.spentMicroUsd)} spent · {formatUsd(view.heldMicroUsd)} reserved ·{" "}
         {formatUsd(view.capMicroUsd)} cap
       </p>
       {readOnly && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           Retained history. Review and integration controls are available on the execution owner.
         </p>
       )}
@@ -63,7 +63,7 @@ export function ParallelRuns({
               <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-xs">
                 {index + 1}. {child.task}
               </span>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-[12px] text-muted-foreground">
                 {child.status === "running"
                   ? "Working"
                   : child.status === "done"
@@ -76,19 +76,19 @@ export function ParallelRuns({
               </span>
               <span className="font-mono text-[11px]">{formatUsd(child.spentMicroUsd)}</span>
             </div>
-            <p className="mt-1 break-all font-mono text-[10px] text-muted-foreground">
+            <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
               {child.branch ?? "Retained child"}
             </p>
-            <p className="mt-1 break-words text-[11px] text-muted-foreground">
+            <p className="mt-1 break-words text-[12px] text-muted-foreground">
               {child.steps} recorded steps{child.latest ? ` · ${child.latest}` : ""}
             </p>
             {child.note && (
-              <p className="mt-1 whitespace-pre-wrap text-[11px] text-muted-foreground">
+              <p className="mt-1 whitespace-pre-wrap text-[12px] text-muted-foreground">
                 {child.note}
               </p>
             )}
             {child.plan && (
-              <details className="mt-1 text-[11px]">
+              <details className="mt-1 text-[12px]">
                 <summary className="cursor-pointer">
                   Plan{child.planner ? ` · ${child.planner}` : ""}
                 </summary>
@@ -131,7 +131,7 @@ export function ParallelRuns({
           </li>
         ))}
       </ol>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-[12px] text-muted-foreground">
         Children share this run’s owner and cap. Interrupted tasks stay retained; Continue never
         restarts them automatically.
       </p>
