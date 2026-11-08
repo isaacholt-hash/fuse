@@ -721,7 +721,7 @@ function ProposalRow({
         </p>
       )}
       {proposal.conflict && (
-        <p className="mb-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs">
+        <p className="mb-2 rounded-md border border-warning/30 bg-warning-soft px-2 py-1.5 text-xs">
           This may contradict what&apos;s saved:{" "}
           <strong className="font-medium">{proposal.conflict.text}</strong>. Which stands?
         </p>

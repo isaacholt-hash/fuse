@@ -135,7 +135,7 @@ export function McpServersSection({
             )}
             {s.health && s.health !== "checking" && "server" in s.health && (
               <div className="mt-1" aria-label={`${s.name} tools`}>
-                <p className="text-emerald-700 dark:text-emerald-400">
+                <p className="text-success">
                   Running: {s.health.server} · {String(s.health.tools.length)} tools
                 </p>
                 <ul className="mt-0.5 grid grid-cols-1 gap-x-4 sm:grid-cols-2">
@@ -152,7 +152,7 @@ export function McpServersSection({
               <p className="mt-1 flex items-center gap-2">
                 {s.signedIn ? (
                   <>
-                    <span className="text-emerald-700 dark:text-emerald-400">Signed in</span>
+                    <span className="text-success">Signed in</span>
                     <button
                       type="button"
                       className="hover:underline"

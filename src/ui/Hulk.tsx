@@ -64,7 +64,7 @@ export function HulkSection({
         <div className="space-y-2">
           <p className="flex flex-wrap items-center gap-x-2 text-xs">
             <span className="font-mono">{status.address}</span>
-            <span className="text-emerald-700 dark:text-emerald-400">Paired</span>
+            <span className="text-success">Paired</span>
             <button
               type="button"
               className="flex items-center gap-1 text-muted-foreground underline underline-offset-2 hover:text-foreground"
@@ -86,10 +86,7 @@ export function HulkSection({
               : ""}
           </p>
           {status.mismatch && (
-            <p
-              role="status"
-              className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"
-            >
+            <p role="status" className="flex items-start gap-1.5 text-xs text-warning">
               <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>{status.mismatch}</span>
             </p>

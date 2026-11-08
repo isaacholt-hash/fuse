@@ -42,10 +42,7 @@ function Highlighted({ text }: { text: string }) {
     <>
       {runs.map((r, i) =>
         r.marked ? (
-          <mark
-            key={i}
-            className="rounded-sm bg-amber-200/70 px-0.5 text-foreground dark:bg-amber-500/30"
-          >
+          <mark key={i} className="rounded-sm bg-highlight px-0.5 text-foreground">
             {r.text}
           </mark>
         ) : (
