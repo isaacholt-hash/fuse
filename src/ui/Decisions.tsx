@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 const textareaClass =
-  "block min-h-14 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs leading-5 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30";
+  "block min-h-14 w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-xs leading-5 outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring dark:bg-input/30";
 
 /** One of a project's decisions (PM-15). */
 export interface DecisionView {

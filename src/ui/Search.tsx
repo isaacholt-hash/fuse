@@ -106,7 +106,7 @@ export function SearchDialog({
       description="Every question and answer, across all your chats."
       wide
     >
-      <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2">
+      <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2 focus-within:border-ring">
         <SearchIcon className="size-4 text-muted-foreground" />
         <input
           aria-label="Search chats"
