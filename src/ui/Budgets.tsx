@@ -49,7 +49,7 @@ export function BudgetsSection({
         <PiggyBank className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Budgets</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Alerts at 50, 80 and 100%. From 80%, Auto answers one tier lower (never below the quality
         floor). At 100%, every message asks first, or is stopped if you choose a hard stop. A day
         that costs more than three times your recent average also gets an alert.
@@ -69,7 +69,7 @@ export function BudgetsSection({
                       {b.hardStop ? " · hard stop" : ""}
                     </span>
                   </span>
-                  <span className="tabular-nums text-[11px]">
+                  <span className="tabular-nums text-[12px]">
                     <Money micro={b.spentMicro} /> ({Math.round(used * 100)}%)
                   </span>
                   <Button
@@ -89,7 +89,7 @@ export function BudgetsSection({
                     style={{ width: `${String(Math.min(100, used * 100))}%` }}
                   />
                 </div>
-                {b.allowed && <p className="mt-1 text-[10px] text-muted-foreground">{b.allowed}</p>}
+                {b.allowed && <p className="mt-1 text-[12px] text-muted-foreground">{b.allowed}</p>}
               </li>
             );
           })}
@@ -106,7 +106,7 @@ export function BudgetsSection({
           setHardStop(false);
         }}
       >
-        <label className="text-[11px]">
+        <label className="text-[12px]">
           <span className="mb-1 block text-muted-foreground">For</span>
           <select
             aria-label="Budget for"
@@ -124,7 +124,7 @@ export function BudgetsSection({
             ))}
           </select>
         </label>
-        <label className="text-[11px]">
+        <label className="text-[12px]">
           <span className="mb-1 block text-muted-foreground">Per</span>
           <select
             aria-label="Budget period"
@@ -138,7 +138,7 @@ export function BudgetsSection({
             <option value="day">Day</option>
           </select>
         </label>
-        <label className="text-[11px]">
+        <label className="text-[12px]">
           <span className="mb-1 block text-muted-foreground">Limit ($)</span>
           <Input
             aria-label="Budget limit in dollars"
@@ -150,7 +150,7 @@ export function BudgetsSection({
             }}
           />
         </label>
-        <label className="flex h-8 items-center gap-1.5 text-[11px]">
+        <label className="flex h-8 items-center gap-1.5 text-[12px]">
           <input
             type="checkbox"
             data-settings-control="budget-hard-stop"

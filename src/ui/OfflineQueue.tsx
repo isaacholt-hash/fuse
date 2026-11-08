@@ -51,7 +51,7 @@ export function QueuedMessages({
       className="mb-2 rounded-lg border border-dashed px-3 py-2 text-[12px]"
     >
       {items.length > 0 && (
-        <h3 className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <h3 className="mb-1 flex items-center gap-1.5 text-[12px] font-medium text-muted-foreground">
           <Clock className="size-3" />
           {online
             ? `Queued (${String(items.length)}) · back online: sending in order, with today's checks`
@@ -81,14 +81,14 @@ export function QueuedMessages({
                   }}
                 />
                 <div className="flex gap-2">
-                  <Button type="submit" size="sm" className="h-7 text-[11px]">
+                  <Button type="submit" size="sm" className="h-7 text-[12px]">
                     Save
                   </Button>
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
-                    className="h-7 text-[11px]"
+                    className="h-7 text-[12px]"
                     onClick={() => {
                       setEditing(null);
                     }}
@@ -102,7 +102,7 @@ export function QueuedMessages({
             <li key={q.id} className="flex items-start gap-2" aria-label={`Queued: ${q.text}`}>
               <span className="min-w-0 flex-1">
                 <span className="line-clamp-2 whitespace-pre-wrap">{q.text}</span>
-                <span className="block text-[11px] text-muted-foreground">
+                <span className="block text-[12px] text-muted-foreground">
                   {STATE[q.state]}
                   {q.reason ? ` · ${q.reason}` : ""}
                 </span>
@@ -111,7 +111,7 @@ export function QueuedMessages({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-7 text-[11px]"
+                  className="h-7 text-[12px]"
                   onClick={() => {
                     onSendNow(q.id);
                   }}
@@ -148,7 +148,7 @@ export function QueuedMessages({
         )}
       </ol>
       {others.length > 0 && (
-        <p className="mt-1.5 text-[11px] text-muted-foreground" role="status">
+        <p className="mt-1.5 text-[12px] text-muted-foreground" role="status">
           Also waiting:{" "}
           {others.map((o, i) => (
             <span key={o.threadId}>

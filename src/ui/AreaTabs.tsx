@@ -32,7 +32,7 @@ export function AreaTabs({
             key={a.id}
             type="button"
             aria-pressed={area === a.id}
-            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${area === a.id ? "text-foreground" : "text-muted-foreground"}`}
+            className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[12px] ${area === a.id ? "text-foreground" : "text-muted-foreground"}`}
             onClick={() => {
               onArea(a.id);
             }}

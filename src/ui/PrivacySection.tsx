@@ -29,7 +29,7 @@ export function PrivacySection({
         <ShieldCheck className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Privacy</h2>
       </div>
-      <div className="space-y-2 text-[11px] leading-5 text-muted-foreground">
+      <div className="space-y-2 text-[12px] leading-5 text-muted-foreground">
         <p>
           <span className="font-medium text-foreground">
             {web ? "Stored on HULK." : "Stored on this computer."}
@@ -101,7 +101,7 @@ export function PrivacySection({
             </select>
           </label>
         ))}
-        <p className="text-[10px] text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           A project can allow or block a provider for itself, or be set to Local only, in its
           settings.
         </p>

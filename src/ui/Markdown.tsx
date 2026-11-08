@@ -88,7 +88,7 @@ function MermaidBlock({ code }: { code: string }) {
   const drawn = svg?.code === code ? svg.url : null;
   return (
     <div className="my-5 overflow-hidden rounded-xl border" aria-label="Mermaid diagram">
-      <div className="flex items-center gap-1 border-b px-3 py-1.5 text-[11px]" role="tablist">
+      <div className="flex items-center gap-1 border-b px-3 py-1.5 text-[12px]" role="tablist">
         {(["diagram", "code"] as const).map((v) => (
           <button
             key={v}
@@ -106,7 +106,7 @@ function MermaidBlock({ code }: { code: string }) {
       {view === "code" || failed ? (
         <>
           {failed && (
-            <p className="px-4 pt-3 text-[11px] text-muted-foreground">
+            <p className="px-4 pt-3 text-[12px] text-muted-foreground">
               Couldn&apos;t draw this diagram, so here is its code.
             </p>
           )}
@@ -115,7 +115,7 @@ function MermaidBlock({ code }: { code: string }) {
       ) : drawn ? (
         <img src={drawn} alt="Diagram" className="mx-auto max-w-full bg-white p-3" />
       ) : (
-        <p className="p-4 text-[11px] text-muted-foreground">Drawing…</p>
+        <p className="p-4 text-[12px] text-muted-foreground">Drawing…</p>
       )}
     </div>
   );

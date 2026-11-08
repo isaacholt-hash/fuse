@@ -92,7 +92,7 @@ export function LockScreen({
             setWrong(false);
           }}
         />
-        <p role="status" className="mt-2 h-4 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 h-4 text-[12px] text-muted-foreground">
           {wait > 0
             ? `Too many wrong tries. Try again in ${String(wait)} s.`
             : wrong
@@ -109,7 +109,7 @@ export function LockScreen({
               Use Windows Hello
             </Button>
             {helloFailed && (
-              <p className="mt-2 text-[11px] text-muted-foreground">
+              <p className="mt-2 text-[12px] text-muted-foreground">
                 Windows Hello didn&apos;t confirm it&apos;s you. Try again or use your passcode.
               </p>
             )}
@@ -178,7 +178,7 @@ export function AppLockSection({
         <Lock className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">App lock</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Ask for a passcode when FUSE starts and after it&apos;s been left alone. Only a salted hash
         of the passcode is stored. There&apos;s no way to recover a forgotten one except Delete
         everything.
@@ -289,7 +289,7 @@ export function AppLockSection({
               Unlock with Windows Hello (face, fingerprint or PIN); the passcode still works
             </label>
           )}
-          <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+          <p role="status" className="mt-2 text-[12px] text-muted-foreground">
             {status ?? (enabled ? "App lock is on." : "App lock is off.")}
           </p>
         </>

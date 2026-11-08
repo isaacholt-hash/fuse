@@ -31,7 +31,7 @@ export function ReasoningLine({
         <button
           type="button"
           aria-expanded={open}
-          className="flex items-center gap-1.5 rounded py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+          className="flex items-center gap-1.5 rounded py-0.5 text-[12px] text-muted-foreground hover:text-foreground"
           onClick={() => {
             setOpen((o) => !o);
           }}
@@ -44,7 +44,7 @@ export function ReasoningLine({
           />
         </button>
         {r.live && onStop && (
-          <Button variant="outline" size="sm" className="h-6 gap-1 text-[11px]" onClick={onStop}>
+          <Button variant="outline" size="sm" className="h-6 gap-1 text-[12px]" onClick={onStop}>
             <Square className="size-2.5" />
             Stop
             <Hint>Esc</Hint>

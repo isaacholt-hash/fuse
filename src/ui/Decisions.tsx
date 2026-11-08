@@ -69,7 +69,7 @@ function DecisionForm({
       aria-label={draft.id ? "Edit decision" : "New decision"}
     >
       {draft.replaces && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           Replaces: <span className="line-through">{draft.replaces.text}</span>
         </p>
       )}
@@ -159,7 +159,7 @@ export function DecisionsSection({ decisions, onAdd, onEdit, onDelete }: Decisio
           </Button>
         )}
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">
+      <p className="mb-2 text-[12px] text-muted-foreground">
         Choices this project has made. Every model in the project&apos;s chats gets them first, and
         a suggested memory never overrides them. Only you add them.
       </p>
@@ -174,7 +174,7 @@ export function DecisionsSection({ decisions, onAdd, onEdit, onDelete }: Decisio
         />
       )}
       {active.length === 0 && !draft ? (
-        <p className="text-[11px] text-muted-foreground">No decisions yet.</p>
+        <p className="text-[12px] text-muted-foreground">No decisions yet.</p>
       ) : (
         <ul className="mt-1 space-y-1" aria-label="Decisions in force">
           {active.map((d) =>
@@ -200,7 +200,7 @@ export function DecisionsSection({ decisions, onAdd, onEdit, onDelete }: Decisio
                   {d.alternatives.length > 0 && (
                     <p className="text-muted-foreground">Ruled out: {d.alternatives.join("; ")}</p>
                   )}
-                  <p className="text-[10px] text-muted-foreground">{d.date}</p>
+                  <p className="text-[12px] text-muted-foreground">{d.date}</p>
                 </div>
                 <div className="flex shrink-0 gap-0.5 opacity-60 group-hover:opacity-100">
                   <Button
@@ -249,7 +249,7 @@ export function DecisionsSection({ decisions, onAdd, onEdit, onDelete }: Decisio
         </ul>
       )}
       {replaced.length > 0 && (
-        <details className="mt-2 text-[11px]">
+        <details className="mt-2 text-[12px]">
           <summary className="cursor-pointer text-muted-foreground">
             Replaced decisions ({replaced.length})
           </summary>

@@ -64,7 +64,7 @@ export function LocalModelSection({
         <Cpu className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Local model</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         A small model that runs on this computer for FUSE&apos;s own housekeeping (chat titles,
         summaries, memory suggestions), at no API cost. It never writes the answers you read, and
         FUSE works the same without it.
@@ -77,11 +77,11 @@ export function LocalModelSection({
           <Greyed>{WEB_REASONS.local}</Greyed>
         </>
       ) : error ? (
-        <p className="text-[11px] text-destructive">{error}</p>
+        <p className="text-[12px] text-destructive">{error}</p>
       ) : !view ? (
-        <p className="text-[11px] text-muted-foreground">Checking this computer…</p>
+        <p className="text-[12px] text-muted-foreground">Checking this computer…</p>
       ) : (
-        <div className="space-y-2 text-[11px] leading-5">
+        <div className="space-y-2 text-[12px] leading-5">
           <p className="text-muted-foreground">This computer: {view.computer}</p>
           <p>{view.reason}</p>
           {view.warning && <p className="text-amber-700 dark:text-amber-400">{view.warning}</p>}

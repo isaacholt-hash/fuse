@@ -91,7 +91,7 @@ export function CanvasToolbar({
       <div className="flex flex-wrap items-center gap-1.5">
         <select
           aria-label="Section"
-          className="h-7 min-w-0 flex-1 basis-[140px] rounded-md border border-input bg-background px-1.5 text-[11px]"
+          className="h-7 min-w-0 flex-1 basis-[140px] rounded-md border border-input bg-background px-1.5 text-[12px]"
           value={section}
           onChange={(e) => {
             setSection(Number(e.target.value));
@@ -108,7 +108,7 @@ export function CanvasToolbar({
             key={a.id}
             variant="outline"
             size="sm"
-            className="h-7 text-[11px]"
+            className="h-7 text-[12px]"
             disabled={canvas.busy}
             onMouseDown={(e) => {
               e.preventDefault(); // keep the selection
@@ -124,7 +124,7 @@ export function CanvasToolbar({
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 text-[11px]"
+          className="h-7 text-[12px]"
           aria-label="Comment"
           onMouseDown={(e) => {
             e.preventDefault();
@@ -138,12 +138,12 @@ export function CanvasToolbar({
           Comment
         </Button>
       </div>
-      <p className="mt-1 text-[10px] text-muted-foreground">
+      <p className="mt-1 text-[12px] text-muted-foreground">
         Acts on your selection, or on the chosen section. AI changes come back as a proposal to
         review.
       </p>
       {note && (
-        <p role="status" className="mt-1 text-[11px] text-destructive">
+        <p role="status" className="mt-1 text-[12px] text-destructive">
           {note}
         </p>
       )}
@@ -158,7 +158,7 @@ export function CanvasToolbar({
             setCommenting(null);
           }}
         >
-          <blockquote className="line-clamp-2 border-l-2 pl-2 text-[11px] text-muted-foreground">
+          <blockquote className="line-clamp-2 border-l-2 pl-2 text-[12px] text-muted-foreground">
             {commenting.range.quote}
           </blockquote>
           <div className="flex gap-2">
@@ -208,7 +208,7 @@ export function ProposalList({ canvas }: { canvas: CanvasProps }) {
             {p.state === "pending" && (
               <Button
                 size="sm"
-                className="h-7 text-[11px]"
+                className="h-7 text-[12px]"
                 disabled={p.stale}
                 onClick={() => {
                   canvas.onAccept(p.id);
@@ -221,7 +221,7 @@ export function ProposalList({ canvas }: { canvas: CanvasProps }) {
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-[11px]"
+              className="h-7 text-[12px]"
               onClick={() => {
                 canvas.onDiscard(p.id);
               }}
@@ -231,15 +231,15 @@ export function ProposalList({ canvas }: { canvas: CanvasProps }) {
             </Button>
           </div>
           {p.state === "requested" && (
-            <p className="text-[11px] text-muted-foreground">Writing a proposal…</p>
+            <p className="text-[12px] text-muted-foreground">Writing a proposal…</p>
           )}
           {p.state === "interrupted" && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               The reply stopped before a full document came back. Nothing changed.
             </p>
           )}
           {p.stale && (
-            <p role="status" className="mb-2 text-[11px] text-destructive">
+            <p role="status" className="mb-2 text-[12px] text-destructive">
               The document changed after this was proposed. Discard it, or ask again from the latest
               version.
             </p>
@@ -256,7 +256,7 @@ export function CommentList({ canvas }: { canvas: CanvasProps }) {
   if (canvas.comments.length === 0) return null;
   return (
     <section className="mt-6 border-t pt-3" aria-label="Comments">
-      <h3 className="mb-2 text-[11px] font-medium text-muted-foreground">
+      <h3 className="mb-2 text-[12px] font-medium text-muted-foreground">
         Comments ({canvas.comments.filter((c) => !c.resolved).length} open)
       </h3>
       <ul className="flex flex-col gap-2">
@@ -265,12 +265,12 @@ export function CommentList({ canvas }: { canvas: CanvasProps }) {
             key={c.id}
             className={`rounded-lg border px-3 py-2 text-[12px] ${c.resolved ? "opacity-60" : ""}`}
           >
-            <blockquote className="mb-1 line-clamp-2 border-l-2 pl-2 text-[11px] text-muted-foreground">
+            <blockquote className="mb-1 line-clamp-2 border-l-2 pl-2 text-[12px] text-muted-foreground">
               {c.quote}
             </blockquote>
             <p>{c.body}</p>
             {c.place !== "exact" && (
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-[12px] text-muted-foreground">
                 {c.place === "review"
                   ? "The passage moved in a newer version."
                   : "The passage isn't in the latest version."}
@@ -281,7 +281,7 @@ export function CommentList({ canvas }: { canvas: CanvasProps }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-[11px]"
+                  className="h-6 text-[12px]"
                   onClick={() => {
                     canvas.onReattach(c.id);
                   }}
@@ -293,7 +293,7 @@ export function CommentList({ canvas }: { canvas: CanvasProps }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-[11px]"
+                className="h-6 text-[12px]"
                 onClick={() => {
                   canvas.onResolve(c.id, !c.resolved);
                 }}
@@ -304,7 +304,7 @@ export function CommentList({ canvas }: { canvas: CanvasProps }) {
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-[11px]"
+                className="h-6 text-[12px]"
                 aria-label="Delete comment"
                 onClick={() => {
                   canvas.onDeleteComment(c.id);

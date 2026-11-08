@@ -30,7 +30,7 @@ export function RunCapSection({
         <Gauge className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Cost cap per run</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Code and Work runs pause at this cap and ask before spending more. A run warns you at 80% of
         it, with a button to remove it. Sessions and projects can set their own.
       </p>
@@ -68,7 +68,7 @@ export function RunCapSection({
         >
           Save
         </Button>
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-[12px] text-muted-foreground">
           {off ? "Off: runs don't stop on cost." : null}
         </span>
       </div>
@@ -105,13 +105,13 @@ export function KeyCapsSection({
         <Gauge className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Spend caps per key</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         A hard limit on what each key may spend, as a backstop to the limits in the providers&apos;
         consoles. Past it, FUSE makes no more calls on that key until the day or month ends; you can
         raise it for the rest of today.
       </p>
       {caps.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">Add a key first.</p>
+        <p className="text-[12px] text-muted-foreground">Add a key first.</p>
       ) : (
         <div className="space-y-3">
           {caps.map((c) => (
@@ -147,7 +147,7 @@ function CapRow({
         </span>
       </p>
       <div className="flex flex-wrap items-end gap-2">
-        <label className="flex flex-col gap-1 text-[11px]">
+        <label className="flex flex-col gap-1 text-[12px]">
           Per day ($)
           <Input
             aria-label={`${cap.name} daily cap`}
@@ -159,7 +159,7 @@ function CapRow({
             }}
           />
         </label>
-        <label className="flex flex-col gap-1 text-[11px]">
+        <label className="flex flex-col gap-1 text-[12px]">
           Per month ($)
           <Input
             aria-label={`${cap.name} monthly cap`}
@@ -196,7 +196,7 @@ function CapRow({
         )}
       </div>
       {cap.stopped && (
-        <p className="mt-2 flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400">
+        <p className="mt-2 flex items-center gap-2 text-[12px] text-amber-700 dark:text-amber-400">
           Stopped: this {cap.stopped === "day" ? "day" : "month"}&apos;s cap is reached.
           <Button
             size="sm"
@@ -210,7 +210,7 @@ function CapRow({
         </p>
       )}
       {cap.raised && (
-        <p className="mt-2 text-[11px] text-muted-foreground">Caps lifted for the rest of today.</p>
+        <p className="mt-2 text-[12px] text-muted-foreground">Caps lifted for the rest of today.</p>
       )}
     </div>
   );

@@ -52,7 +52,7 @@ export function TagsDialog({
               <button
                 key={t}
                 type="button"
-                className="rounded-full border px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-accent"
+                className="rounded-full border px-2 py-0.5 text-[12px] text-muted-foreground hover:bg-accent"
                 onClick={() => {
                   setText((v) => (v.trim() ? `${v.trim().replace(/,$/, "")}, ${t}` : t));
                 }}

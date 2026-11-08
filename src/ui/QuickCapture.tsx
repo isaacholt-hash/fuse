@@ -28,7 +28,7 @@ export function QuickCaptureSection({
         <Keyboard className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Quick capture</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         A shortcut that works from any app: it brings FUSE forward on a new chat, ready to type.
         Write it like Ctrl+Alt+Space or Super+J.
       </p>
@@ -69,12 +69,12 @@ export function QuickCaptureSection({
       {web ? (
         <Greyed>{WEB_REASONS.hotkey}</Greyed>
       ) : (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {error ?? (shortcut ? `On: ${shortcut}` : "Off")}
         </p>
       )}
       {mayNotWork && shortcut && !web && (
-        <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+        <p className="mt-1 text-[12px] text-amber-700 dark:text-amber-400">
           This desktop runs Wayland, which may not pass global shortcuts to apps. If it doesn&apos;t
           work, set one in your desktop&apos;s keyboard settings that opens FUSE.
         </p>

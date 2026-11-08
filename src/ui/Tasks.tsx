@@ -31,7 +31,7 @@ export interface TasksProps {
   onDelete: (id: string) => void;
 }
 
-const selectClass = "h-7 rounded-md border border-input bg-background px-1.5 text-[11px]";
+const selectClass = "h-7 rounded-md border border-input bg-background px-1.5 text-[12px]";
 
 function TaskEditor({
   task,
@@ -58,7 +58,7 @@ function TaskEditor({
         }}
       />
       {others.length > 0 && (
-        <fieldset className="text-[11px]">
+        <fieldset className="text-[12px]">
           <legend className="mb-1 text-muted-foreground">Waits on</legend>
           {others.map((o) => (
             <label key={o.id} className="flex items-center gap-1.5">
@@ -146,7 +146,7 @@ export function TasksSection({ tasks, onAdd, onStatus, onEdit, onDelete }: Tasks
             {t.text}
           </span>
           {t.blockedBy.length > 0 && (
-            <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">
+            <span className="ml-2 text-[12px] text-amber-700 dark:text-amber-400">
               Blocked by {t.blockedBy.join(", ")}
             </span>
           )}
@@ -183,7 +183,7 @@ export function TasksSection({ tasks, onAdd, onStatus, onEdit, onDelete }: Tasks
         <ListTodo className="size-3.5 text-muted-foreground" />
         <h3 className="text-xs font-medium">Tasks</h3>
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">
+      <p className="mb-2 text-[12px] text-muted-foreground">
         Open work in this project. Models in its chats see what&apos;s still to do. Tasks found in a
         chat wait for your review in Memory suggestions.
       </p>
@@ -209,14 +209,14 @@ export function TasksSection({ tasks, onAdd, onStatus, onEdit, onDelete }: Tasks
         </Button>
       </div>
       {current.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">Nothing to do.</p>
+        <p className="text-[12px] text-muted-foreground">Nothing to do.</p>
       ) : (
         <ul className="space-y-0.5" aria-label="Open tasks">
           {current.map(row)}
         </ul>
       )}
       {finished.length > 0 && (
-        <details className="mt-2 text-[11px]">
+        <details className="mt-2 text-[12px]">
           <summary className="cursor-pointer text-muted-foreground">
             Finished ({finished.length})
           </summary>

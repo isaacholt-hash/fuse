@@ -43,7 +43,7 @@ const pct = (s: { correct: number; total: number }) =>
   s.total === 0 ? "—" : `${String(Math.round((s.correct / s.total) * 100))}%`;
 
 const chip = (on: boolean) =>
-  `rounded-full border px-2 py-0.5 text-[10px] ${on ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-accent"}`;
+  `rounded-full border px-2 py-0.5 text-[12px] ${on ? "border-foreground bg-foreground text-background" : "text-muted-foreground hover:bg-accent"}`;
 
 /**
  * Settings → Routing policy (RT-03, RT-16): tiers, the quality floor, provider preference and
@@ -149,7 +149,7 @@ export function PolicyEditor({
         <Route className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Routing policy</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Which tier Auto starts each message on. Rules are tried top to bottom and the first match
         wins; the quality floor still applies. A change is scored on your routing test set before it
         can be saved.
@@ -249,7 +249,7 @@ export function PolicyEditor({
                   return (
                     <span
                       key={`${m.provider}/${m.id}`}
-                      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px]"
+                      className="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[12px]"
                     >
                       {name}
                       <button
@@ -274,7 +274,7 @@ export function PolicyEditor({
                 })}
                 <select
                   aria-label={`Add a model to ${tier.label}`}
-                  className="h-6 rounded border bg-transparent px-1 text-[10px]"
+                  className="h-6 rounded border bg-transparent px-1 text-[12px]"
                   value=""
                   onChange={(e) => {
                     const m = models.find((o) => o.key === e.target.value);
@@ -447,7 +447,7 @@ export function PolicyEditor({
                       </button>
                     ))}
                     {rule.when.capabilities && (
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[12px] text-muted-foreground">
                         and needs {rule.when.capabilities.join(" or ")}
                       </span>
                     )}
@@ -547,13 +547,13 @@ export function PolicyEditor({
       </Button>
 
       {issues.length > 0 && (
-        <ul className="mt-2 text-[11px] text-destructive">
+        <ul className="mt-2 text-[12px] text-destructive">
           {issues.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
       )}
-      {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+      {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
       <div className="mt-3 flex items-center gap-2">
         <Button
           size="sm"
@@ -579,14 +579,14 @@ export function PolicyEditor({
         </Button>
       </div>
       {tested?.key === key && (
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {tested.result
             ? `Picks the expected tier for ${pct(tested.result.after)} of standalone prompts (now ${pct(tested.result.before)}); ${String(tested.result.changed)} prompts change tier.`
             : "No routing test set to score against: import one below to check changes."}
         </p>
       )}
       {saved && (
-        <p role="status" className="mt-1 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-1 text-[12px] text-muted-foreground">
           {saved}
         </p>
       )}

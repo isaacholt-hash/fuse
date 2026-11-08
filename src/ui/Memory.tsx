@@ -198,7 +198,7 @@ function Provenance({ m }: { m: MemoryView }) {
     ["Version", String(m.revision)],
   ];
   return (
-    <details className="mt-0.5 text-[10px] text-muted-foreground">
+    <details className="mt-0.5 text-[12px] text-muted-foreground">
       <summary className="cursor-pointer select-none">Details</summary>
       <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
         {rows.map(([k, v]) => (
@@ -244,7 +244,7 @@ function MemoryRow({
           onChange={setDraft}
           label="Memory text"
         />
-        {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+        {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
         <div className="mt-2 flex justify-end gap-2">
           <Button
             size="sm"
@@ -283,7 +283,7 @@ function MemoryRow({
         >
           {memory.text}
         </p>
-        <p className="text-[10px] text-muted-foreground">{metaLine(memory)}</p>
+        <p className="text-[12px] text-muted-foreground">{metaLine(memory)}</p>
         <Provenance m={memory} />
       </div>
       <div className="flex shrink-0 gap-0.5 opacity-60 group-hover:opacity-100">
@@ -425,7 +425,7 @@ export function MemorySection({
         <Brain className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Memory</h2>
       </div>
-      <p className="mb-4 text-[11px] text-muted-foreground">
+      <p className="mb-4 text-[12px] text-muted-foreground">
         Facts sent to any model when they’re relevant. After a chat, a cheap model suggests new
         ones; nothing is saved until you keep it. Passwords, keys, card, account and ID numbers are
         never stored.
@@ -481,7 +481,7 @@ export function MemorySection({
           onChange={setDraft}
           label="New memory"
         />
-        {error && <p className="mt-2 text-[11px] text-destructive">{error}</p>}
+        {error && <p className="mt-2 text-[12px] text-destructive">{error}</p>}
         <div className="mt-2 flex justify-end">
           <Button
             size="sm"
@@ -498,7 +498,7 @@ export function MemorySection({
       </div>
 
       {memories.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No memories yet.</p>
+        <p className="text-[12px] text-muted-foreground">No memories yet.</p>
       ) : (
         <>
           <div className="relative mb-3">
@@ -560,7 +560,7 @@ export function MemorySection({
             if (list.length === 0) return null;
             return (
               <div key={c} className="mb-3">
-                <h3 className="mb-1 px-3 text-[10px] font-medium text-muted-foreground">
+                <h3 className="mb-1 px-3 text-[12px] font-medium text-muted-foreground">
                   {KIND_LABELS[c]}
                 </h3>
                 <ul aria-label={KIND_LABELS[c]}>
@@ -588,10 +588,10 @@ export function MemorySection({
             );
           })}
           {shown.length === 0 && (
-            <p className="px-3 text-[11px] text-muted-foreground">No memories match.</p>
+            <p className="px-3 text-[12px] text-muted-foreground">No memories match.</p>
           )}
           <div className="mt-4 flex items-center gap-2">
-            <span className="flex-1 tabular-nums text-[10px] text-muted-foreground">
+            <span className="flex-1 tabular-nums text-[12px] text-muted-foreground">
               {number(inUse.length)} memor{inUse.length === 1 ? "y" : "ies"} in use · ~
               {number(tokens)} tokens
             </span>
@@ -707,7 +707,7 @@ function ProposalRow({
   ].filter(Boolean);
   return (
     <li className="rounded-lg border p-3" aria-label={`${OP_LABELS[proposal.op]} memory`}>
-      <div className="mb-2 flex items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="mb-2 flex items-center gap-2 text-[12px] text-muted-foreground">
         <span className="rounded bg-muted px-1.5 py-0.5 font-medium text-foreground">
           {OP_LABELS[proposal.op]}
         </span>
@@ -823,7 +823,7 @@ export function MemoryReviewDialog({
       wide
     >
       {skipped.length > 0 && (
-        <p role="status" className="mb-3 rounded-lg bg-muted/60 px-3 py-2 text-[11px]">
+        <p role="status" className="mb-3 rounded-lg bg-muted/60 px-3 py-2 text-[12px]">
           Skipped {skipped.length === 1 ? "1 suggestion" : `${String(skipped.length)} suggestions`}{" "}
           that looked like {[...new Set(skipped)].join(", ")}.{" "}
           {skipped.length === 1 ? "It was" : "They were"} not stored.
@@ -855,7 +855,7 @@ export function MemoryReviewDialog({
             ))}
           </ul>
           {conflicts > 0 && (
-            <p className="mt-2 text-[11px] text-muted-foreground">
+            <p className="mt-2 text-[12px] text-muted-foreground">
               Keep all leaves {conflicts === 1 ? "the one" : `the ${String(conflicts)}`} that may
               contradict a saved fact for you to decide.
             </p>
@@ -894,7 +894,7 @@ export function MemoryBar({
     <div
       role="status"
       aria-label="Memory suggestions"
-      className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground"
+      className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground"
     >
       <Brain className={`size-3 shrink-0 ${checking ? "animate-pulse" : ""}`} />
       {checking ? (
@@ -909,7 +909,7 @@ export function MemoryBar({
             <Button
               variant="link"
               size="xs"
-              className="h-auto px-0 text-[11px] text-foreground underline underline-offset-2"
+              className="h-auto px-0 text-[12px] text-foreground underline underline-offset-2"
               onClick={onReview}
             >
               Review

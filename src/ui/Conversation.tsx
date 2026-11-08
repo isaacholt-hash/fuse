@@ -84,7 +84,7 @@ function RouteBadge({ route }: { route: RouteView }) {
   return (
     <Tip
       label={
-        <div className="w-64 space-y-1.5 py-1 text-[11px] leading-4">
+        <div className="w-64 space-y-1.5 py-1 text-[12px] leading-4">
           <p className="font-medium">Why this model</p>
           <p>{route.reason}</p>
           {route.readAs && <p className="text-muted-foreground">Read as: {route.readAs}</p>}
@@ -166,9 +166,9 @@ function LedgerTotal({ total }: { total: ThreadTotal }) {
       <div
         tabIndex={0}
         aria-label="Thread total"
-        className="rounded-md text-right text-[11px] leading-5 text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-baseline @max-[760px]:gap-x-2 @max-[760px]:text-left"
+        className="rounded-md text-right text-[12px] leading-5 text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-baseline @max-[760px]:gap-x-2 @max-[760px]:text-left"
       >
-        <span className="block text-[10px] @max-[760px]:hidden">this thread</span>
+        <span className="block text-[12px] @max-[760px]:hidden">this thread</span>
         <Money
           micro={total.micro}
           className="block text-base leading-6 @max-[760px]:text-[13px] @max-[760px]:leading-5"
@@ -247,25 +247,25 @@ function CostBadge({ message }: { message: MessageView }) {
               ([label, tokens]) => tokens > 0 || label === "Input" || label.startsWith("Output"),
             )
             .map(([label, tokens, micro]) => (
-              <div key={label} className="flex justify-between gap-3 text-[10px]">
+              <div key={label} className="flex justify-between gap-3 text-[12px]">
                 <span className="font-sans">{label}</span>
                 <span className="ml-auto">{number(tokens)}</span>
                 <span className="w-14 text-right">{micro == null ? "" : money(micro)}</span>
               </div>
             ))}
           {usage.reasoning > 0 && (
-            <div className="flex justify-between gap-3 text-[10px] text-muted-foreground">
+            <div className="flex justify-between gap-3 text-[12px] text-muted-foreground">
               <span className="font-sans">Reasoning (in output)</span>
               <span className="ml-auto">{number(usage.reasoning)}</span>
               <span className="w-14" />
             </div>
           )}
-          <div className="flex justify-between border-t pt-2 text-[10px]">
+          <div className="flex justify-between border-t pt-2 text-[12px]">
             <span className="font-sans">Total</span>
             <span>{usage.totalMicro === null ? "unknown" : money(usage.totalMicro)}</span>
           </div>
           {usage.latencyMs !== null && (
-            <div className="flex justify-between text-[10px]">
+            <div className="flex justify-between text-[12px]">
               <span className="font-sans">Time</span>
               <span>{(usage.latencyMs / 1000).toFixed(1)} s</span>
             </div>
@@ -297,11 +297,11 @@ function MemoryBadge({ memories }: { memories: { text: string; why: string }[] }
       label={
         <div className="w-64 space-y-1.5 py-1">
           <p className="mb-2 font-medium">Memories sent with this answer</p>
-          <ul className="space-y-1 text-[11px] leading-4">
+          <ul className="space-y-1 text-[12px] leading-4">
             {memories.map((m, i) => (
               <li key={i}>
                 · {m.text}
-                {m.why && <span className="block pl-2 text-[10px] opacity-70">{m.why}</span>}
+                {m.why && <span className="block pl-2 text-[12px] opacity-70">{m.why}</span>}
               </li>
             ))}
           </ul>
@@ -309,7 +309,7 @@ function MemoryBadge({ memories }: { memories: { text: string; why: string }[] }
       }
     >
       <button
-        className="mt-4 flex items-center gap-1 rounded py-1 tabular-nums text-[10px] leading-5 text-muted-foreground hover:text-foreground"
+        className="mt-4 flex items-center gap-1 rounded py-1 tabular-nums text-[12px] leading-5 text-muted-foreground hover:text-foreground"
         aria-label={`${String(memories.length)} ${memories.length === 1 ? "memory" : "memories"} used`}
       >
         <Brain className="size-3" />
@@ -357,7 +357,7 @@ function BranchPicker({
 }) {
   return (
     <span
-      className="flex items-center tabular-nums text-[10px] text-muted-foreground"
+      className="flex items-center tabular-nums text-[12px] text-muted-foreground"
       role="group"
       aria-label={`${label} versions`}
     >
@@ -610,7 +610,7 @@ export function Messages({
             <div
               className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[760px]:gap-y-1`}
             >
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-[12px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
               </div>
               {total && <LedgerTotal total={total} />}
@@ -627,7 +627,7 @@ export function Messages({
               >
                 {message.summaryAbove && (
                   <div
-                    className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[11px] text-muted-foreground"
+                    className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[12px] text-muted-foreground"
                     role="separator"
                     aria-label="Earlier messages are summarized"
                   >
@@ -640,7 +640,7 @@ export function Messages({
                   </div>
                 )}
                 {message.switchLabel && (
-                  <div className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[11px] text-muted-foreground">
+                  <div className="col-span-full mb-4 flex items-center gap-3 tabular-nums text-[12px] text-muted-foreground">
                     <div className="h-px flex-1 bg-border" />
                     <span className="text-center">{message.switchLabel}</span>
                     <div className="h-px flex-1 bg-border" />
@@ -657,7 +657,7 @@ export function Messages({
                               type="button"
                               disabled={!onOpenFile}
                               aria-label={`Open ${img.name}`}
-                              className="flex max-w-64 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left text-[11px] enabled:hover:bg-accent"
+                              className="flex max-w-64 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-left text-[12px] enabled:hover:bg-accent"
                               title={img.name}
                               onClick={() => onOpenFile?.(img.id)}
                             >
@@ -675,7 +675,7 @@ export function Messages({
                           ) : (
                             <span
                               key={img.id}
-                              className="flex h-20 w-28 items-center justify-center rounded-xl border bg-muted px-2 text-center text-[10px] text-muted-foreground"
+                              className="flex h-20 w-28 items-center justify-center rounded-xl border bg-muted px-2 text-center text-[12px] text-muted-foreground"
                             >
                               {img.name}
                             </span>
@@ -814,7 +814,7 @@ export function Messages({
                     {message.searching && (
                       <p
                         role="status"
-                        className="mb-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+                        className="mb-2 flex items-center gap-1.5 text-[12px] text-muted-foreground"
                       >
                         <Globe className="size-3 animate-pulse" />
                         Searching the web…
@@ -845,10 +845,10 @@ export function Messages({
                     )}
                     {message.sources && message.sources.length > 0 && (
                       <nav aria-label="Sources" className="mt-4">
-                        <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
+                        <p className="mb-1.5 text-[12px] font-medium text-muted-foreground">
                           Sources
                         </p>
-                        <ol className="space-y-1 text-[11px]">
+                        <ol className="space-y-1 text-[12px]">
                           {message.sources.map((s, i) => (
                             <li key={s.url} className="flex gap-2">
                               <span className="w-4 shrink-0 text-right font-mono text-muted-foreground">
@@ -877,10 +877,10 @@ export function Messages({
                     )}
                     {message.fileSources && message.fileSources.length > 0 && (
                       <div className="mt-4" aria-label="From your files and chats">
-                        <p className="mb-1.5 text-[10px] font-medium text-muted-foreground">
+                        <p className="mb-1.5 text-[12px] font-medium text-muted-foreground">
                           From your files and chats
                         </p>
-                        <ul className="space-y-0.5 text-[11px] text-muted-foreground">
+                        <ul className="space-y-0.5 text-[12px] text-muted-foreground">
                           {message.fileSources.map((source, i) => (
                             <li
                               key={`${String(i)}-${source.label}`}
@@ -905,13 +905,13 @@ export function Messages({
                       </div>
                     )}
                     {message.notice && (
-                      <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                      <p className="mt-3 flex items-center gap-1.5 text-[12px] text-muted-foreground">
                         <CircleAlert className="size-3" />
                         {message.notice}
                       </p>
                     )}
                     {message.status === "stopped" && (
-                      <span className="mt-4 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[10px] text-muted-foreground">
+                      <span className="mt-4 inline-flex items-center gap-1.5 rounded border px-2 py-1 text-[12px] text-muted-foreground">
                         <Square className="size-2.5" />
                         Stopped
                       </span>
@@ -1036,7 +1036,7 @@ export function Messages({
                         {message.escalateTo && onEscalate && (
                           <Tip label="Ask the same question one tier up. This answer stays.">
                             <button
-                              className={`mt-4 flex items-center gap-1 rounded py-1 text-[10px] leading-5 hover:text-foreground ${message.feedback === "down" ? "font-medium text-foreground" : "text-muted-foreground"}`}
+                              className={`mt-4 flex items-center gap-1 rounded py-1 text-[12px] leading-5 hover:text-foreground ${message.feedback === "down" ? "font-medium text-foreground" : "text-muted-foreground"}`}
                               onClick={onEscalate}
                             >
                               <ArrowUp className="size-3" />
@@ -1073,7 +1073,7 @@ export function Messages({
                         {onStop && !message.reasoning?.live && (
                           <button
                             type="button"
-                            className="mt-1 inline-flex items-center gap-1.5 rounded-[4px] border px-1.5 py-px text-[11px] text-foreground hover:bg-muted"
+                            className="mt-1 inline-flex items-center gap-1.5 rounded-[4px] border px-1.5 py-px text-[12px] text-foreground hover:bg-muted"
                             aria-label="Stop answer"
                             onClick={onStop}
                           >
@@ -1152,7 +1152,7 @@ function MenuRow({
       <span className="min-w-0 flex-1">
         <span className="block">{label}</span>
         {detail && (
-          <span className="block text-[11px] leading-snug text-muted-foreground">{detail}</span>
+          <span className="block text-[12px] leading-snug text-muted-foreground">{detail}</span>
         )}
       </span>
       {on !== undefined && (
@@ -1407,7 +1407,7 @@ export function Composer({
   const canAdd = Boolean(onAddFiles || onAddFolder);
   /** A mode that's on (web search, compare): a chip in the row, with an × that turns it off. */
   const onChip = (icon: ReactNode, label: string, offLabel: string, off: () => void) => (
-    <span className="flex shrink-0 items-center gap-1 rounded-[4px] bg-muted py-0.5 pr-0.5 pl-1.5 text-[11px] font-medium">
+    <span className="flex shrink-0 items-center gap-1 rounded-[4px] bg-muted py-0.5 pr-0.5 pl-1.5 text-[12px] font-medium">
       {icon}
       <span className="@max-[560px]:sr-only">{label}</span>
       <button
@@ -1586,7 +1586,7 @@ export function Composer({
                 <Columns2 className="size-3.5 text-muted-foreground" />
                 Compare models
               </span>
-              <span className="mb-1 text-[11px] text-muted-foreground">
+              <span className="mb-1 text-[12px] text-muted-foreground">
                 Pick two or three; the next message goes to each.
               </span>
               {compare.options.map((o) => {
@@ -1649,7 +1649,7 @@ export function Composer({
               {attachments.map((a) => (
                 <li
                   key={a.id}
-                  className={`flex max-w-96 items-center gap-2 rounded-lg border py-1 pr-1 pl-1 text-[11px] ${a.status === "error" ? "border-destructive/40 text-destructive" : ""}`}
+                  className={`flex max-w-96 items-center gap-2 rounded-lg border py-1 pr-1 pl-1 text-[12px] ${a.status === "error" ? "border-destructive/40 text-destructive" : ""}`}
                 >
                   {a.url ? (
                     <img src={a.url} alt="" className="size-9 shrink-0 rounded object-cover" />
@@ -1667,7 +1667,7 @@ export function Composer({
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{a.name}</span>
                     <span
-                      className={`block truncate font-mono text-[10px] ${a.large ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                      className={`block truncate font-mono text-[11px] ${a.large ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
                       title={
                         a.large
                           ? "Large file: it's resent with every message in this chat"
@@ -1683,7 +1683,7 @@ export function Composer({
                   </span>
                   {a.mode && onAttachmentMode && (
                     <span
-                      className="flex shrink-0 rounded-md border p-0.5 text-[10px]"
+                      className="flex shrink-0 rounded-md border p-0.5 text-[12px]"
                       role="group"
                       aria-label={`How ${a.name} is sent`}
                     >
@@ -1712,7 +1712,7 @@ export function Composer({
                   {a.secrets && onAttachmentSecrets && (
                     <span
                       role="alert"
-                      className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px]"
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[12px]"
                       title={`Looks like it holds ${a.secrets.summary}`}
                     >
                       <CircleAlert className="size-3 text-amber-600" />
@@ -1815,7 +1815,7 @@ export function Composer({
                   }}
                 >
                   /skill {s.name}
-                  <span className="ml-2 text-[10px] text-muted-foreground">
+                  <span className="ml-2 text-[12px] text-muted-foreground">
                     {s.versionId.slice(-8)}
                   </span>
                 </li>
@@ -1845,14 +1845,14 @@ export function Composer({
             </ul>
           )}
           {dictation && (voice.busy || voice.note) && (
-            <p role="status" className="px-1 pb-2 text-[11px] text-muted-foreground">
+            <p role="status" className="px-1 pb-2 text-[12px] text-muted-foreground">
               {voice.busy
                 ? `${voice.phase === "starting" ? "Opening microphone…" : voice.phase === "transcribing" ? "Transcribing…" : "Recording"} · ${String(Math.floor(voice.durationMs / 1000))}s / 120s · ≈ ${money(voice.estimateMicro)} · ${money(speechPrice.micro_usd_per_minute)}/min`
                 : voice.note}
             </p>
           )}
           {blocked && (
-            <p role="status" className="px-1 pb-1 text-[11px] text-destructive">
+            <p role="status" className="px-1 pb-1 text-[12px] text-destructive">
               {blocked}
             </p>
           )}
@@ -2023,7 +2023,7 @@ export function Composer({
                               <span className="block text-xs font-medium">
                                 {choice === "auto" ? "Auto" : `${MODE_LABELS[choice]} tier`}
                               </span>
-                              <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                              <span className="mt-0.5 block text-[12px] text-muted-foreground">
                                 {routing.descriptions[choice]}
                               </span>
                             </span>
@@ -2034,7 +2034,7 @@ export function Composer({
                         ))}
                       </div>
                     )}
-                    <div className="flex justify-between px-4 pt-3 text-[9px] text-muted-foreground">
+                    <div className="flex justify-between px-4 pt-3 text-[12px] text-muted-foreground">
                       <span>{routing ? "Or pin a model" : "Model / context"}</span>
                       <span>Input / output per 1M</span>
                     </div>
@@ -2042,7 +2042,7 @@ export function Composer({
                       {[...new Set(models.map((item) => item.providerName))].map((provider) => (
                         <div key={provider}>
                           {filtered.some((item) => item.providerName === provider) && (
-                            <h3 className="px-2 pt-3 pb-1.5 text-[10px] font-semibold text-muted-foreground">
+                            <h3 className="px-2 pt-3 pb-1.5 text-[12px] font-semibold text-muted-foreground">
                               {provider}
                             </h3>
                           )}
@@ -2061,11 +2061,11 @@ export function Composer({
                               >
                                 <span className="flex-1">
                                   <span className="block text-xs font-medium">{item.name}</span>
-                                  <span className="mt-0.5 block font-mono text-[10px] text-muted-foreground">
+                                  <span className="mt-0.5 block font-mono text-[11px] text-muted-foreground">
                                     {item.context} context
                                   </span>
                                 </span>
-                                <span className="font-mono text-[10px] text-muted-foreground">
+                                <span className="font-mono text-[11px] text-muted-foreground">
                                   ${item.inputPrice.toFixed(2)} / ${item.outputPrice.toFixed(2)}
                                 </span>
                                 <span className="w-4">
@@ -2090,7 +2090,7 @@ export function Composer({
                         onChange={setEffortChoice}
                       />
                     )}
-                    <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[10px] text-muted-foreground">
+                    <div className="flex items-center gap-2 border-t bg-muted/30 px-4 py-2.5 text-[12px] text-muted-foreground">
                       <Command className="size-3" />
                       <span className="flex-1">
                         Switch models anytime. Your history comes along.
@@ -2134,7 +2134,7 @@ export function Composer({
               {folders.map((f) => (
                 <span
                   key={f.id}
-                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-[4px] bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-[4px] bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground"
                   title={f.own ? f.path : `${f.path} (from the project)`}
                 >
                   <FolderOpen className="size-3 shrink-0" />
@@ -2219,7 +2219,7 @@ export function Composer({
           <div aria-hidden className="@max-[760px]:hidden" />
         )}
         {(streaming || status || comparing || guide || (context && context.used > 0)) && (
-          <div className="col-start-1 mt-2 flex items-center justify-between gap-2 px-1 text-[11px] text-muted-foreground">
+          <div className="col-start-1 mt-2 flex items-center justify-between gap-2 px-1 text-[12px] text-muted-foreground">
             <span className="flex min-w-0 items-center gap-1.5">
               {streaming ? (
                 <>
@@ -2251,7 +2251,7 @@ export function Composer({
                 <span
                   tabIndex={0}
                   aria-label="Context used"
-                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[10px] ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
+                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[11px] ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
                 >
                   <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
                     <span
@@ -2304,7 +2304,7 @@ function OrganisePlan({
     <div
       role="alertdialog"
       aria-label="Reorganise these files?"
-      className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+      className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
     >
       <p className="mb-1 font-medium">
         Move {String(plan.moves.length)} file{plan.moves.length === 1 ? "" : "s"}? Nothing is
@@ -2369,7 +2369,7 @@ function OrganisePlan({
 /** M10 step 25: a step's number, as in the mock. */
 function StepNumber({ n }: { n: number }) {
   return (
-    <span className="w-4 shrink-0 text-right text-[11px] text-muted-foreground tabular-nums">
+    <span className="w-4 shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">
       {n}
     </span>
   );
@@ -2456,28 +2456,28 @@ function RunCard({
         {run.readOnly && <span className="text-muted-foreground">Synced history · read-only</span>}
         <span className="text-muted-foreground">{run.modeLabel}</span>
         {run.branch && (
-          <span className="truncate font-mono text-[10px] text-muted-foreground">
+          <span className="truncate font-mono text-[11px] text-muted-foreground">
             on {run.branch}
           </span>
         )}
         <span
-          className={`rounded px-1.5 py-0.5 text-[10px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
+          className={`rounded px-1.5 py-0.5 text-[12px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
         >
           {RUN_STATUS[run.status]}
         </span>
         {live && run.activeSince !== null && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="text-[12px] text-muted-foreground">
             <RunningFor since={run.activeSince} />
           </span>
         )}
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground tabular-nums">
+        <span className="ml-auto font-mono text-[11px] text-muted-foreground tabular-nums">
           {run.costLabel}
         </span>
         {live && onStop && (
           <Button
             size="sm"
             variant="outline"
-            className="h-6 px-2 text-[10px]"
+            className="h-6 px-2 text-[12px]"
             aria-label={`Stop this ${run.title.toLowerCase()}`}
             onClick={() => {
               onStop(run.id);
@@ -2572,7 +2572,7 @@ function RunCard({
         <div
           role="note"
           aria-label="A tool result may have asked for this"
-          className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-[11px]"
+          className="mt-2 rounded-lg border border-destructive/40 bg-destructive/5 p-2 text-[12px]"
         >
           <p className="mb-1 font-medium text-destructive">
             Check this one: something the run read may have asked for it.
@@ -2608,7 +2608,7 @@ function RunCard({
         <div
           role="alertdialog"
           aria-label="Allow the network?"
-          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
@@ -2671,7 +2671,7 @@ function RunCard({
                       ? "Use this MCP tool?"
                       : "Make this change?"
           }
-          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[11px]"
+          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
@@ -2841,7 +2841,7 @@ function RunCard({
       {live && !run.streaming && (
         <p
           role="status"
-          className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground"
+          className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground"
         >
           <LoaderCircle className="size-3 animate-spin" />
           Working…
@@ -2905,7 +2905,7 @@ function RunCard({
                     {c.label}
                   </button>
                   {c.lines.length > 0 && (
-                    <span className="shrink-0 font-mono text-[10px] tabular-nums">
+                    <span className="shrink-0 font-mono text-[11px] tabular-nums">
                       <span className="text-emerald-600 dark:text-emerald-400">+{c.added}</span>{" "}
                       <span className="text-destructive">−{c.removed}</span>
                     </span>
@@ -2923,7 +2923,7 @@ function RunCard({
                     </Button>
                   )}
                   {c.undone ? (
-                    <span className="ml-auto text-[10px] text-muted-foreground">Undone</span>
+                    <span className="ml-auto text-[12px] text-muted-foreground">Undone</span>
                   ) : (
                     !run.readOnly &&
                     onUndoChange &&
@@ -2954,13 +2954,13 @@ function RunCard({
       )}
       {/* A handed-over run's push: "Pushed …", or why it wasn't. */}
       {run.status === "done" && run.note && (
-        <p className="mt-2 text-[11px] text-muted-foreground">{run.note}</p>
+        <p className="mt-2 text-[12px] text-muted-foreground">{run.note}</p>
       )}
       {/* AG-05: warned before the cap pauses it, with the cap one click from off. */}
       {live && run.cap?.state === "near" && (
         <div
           role="status"
-          className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400"
+          className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-amber-700 dark:text-amber-400"
         >
           <span>{run.cap.label}</span>
           {onRemoveCap && (
@@ -2977,7 +2977,7 @@ function RunCard({
         </div>
       )}
       {(run.status === "paused" || run.status === "stopped") && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px]">
           {run.note && <span className="text-muted-foreground">{run.note}</span>}
           {!run.readOnly && onContinue && (
             <Button

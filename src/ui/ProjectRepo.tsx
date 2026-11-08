@@ -65,7 +65,7 @@ function RunLimitsFields({
   const dollars = limits.capMicroUsd === null ? "" : (limits.capMicroUsd / 1_000_000).toFixed(2);
   return (
     <div className="space-y-1" aria-label="Run limits">
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[12px] text-muted-foreground">
         Each run stops at these limits. Empty means FUSE&apos;s default. Waiting for your answer
         doesn&apos;t count.
       </p>
@@ -160,7 +160,7 @@ export function ProjectRepoSection({
         <FolderGit2 className="size-3.5 text-muted-foreground" />
         <h3 className="text-xs font-medium">Folders</h3>
       </div>
-      <p className="mb-2 text-[10px] text-muted-foreground">
+      <p className="mb-2 text-[12px] text-muted-foreground">
         Folders this project&apos;s chats can work in with Code. FUSE can only reach files inside
         them, and skips anything a folder&apos;s .gitignore leaves out.
       </p>
@@ -187,7 +187,7 @@ export function ProjectRepoSection({
                     Remove
                   </button>
                 </div>
-                <label className="flex items-center gap-2 text-[11px]">
+                <label className="flex items-center gap-2 text-[12px]">
                   <input
                     type="checkbox"
                     checked={f.readSecrets}
@@ -198,7 +198,7 @@ export function ProjectRepoSection({
                   Let it read files that look like secrets (.env, keys) here
                 </label>
                 {onNetwork && (
-                  <label className="flex items-center gap-2 text-[11px]">
+                  <label className="flex items-center gap-2 text-[12px]">
                     <input
                       type="checkbox"
                       checked={f.network ?? false}
@@ -216,7 +216,7 @@ export function ProjectRepoSection({
         <button type="button" className={buttonClass} onClick={onAdd}>
           {folders.length === 0 ? "Link a folder…" : "Add a folder…"}
         </button>
-        {note && <p className="text-[10px] text-muted-foreground">{note}</p>}
+        {note && <p className="text-[12px] text-muted-foreground">{note}</p>}
         {folders.length > 0 && onRunMode && (
           <label className="flex items-center gap-2">
             <span className="shrink-0">Coding runs start as</span>
@@ -242,7 +242,7 @@ export function ProjectRepoSection({
         )}
         {commands.length > 0 && (
           <div>
-            <p className="mb-1 text-[10px] text-muted-foreground">
+            <p className="mb-1 text-[12px] text-muted-foreground">
               Always allowed here (destructive commands still ask):
             </p>
             <ul className="space-y-1">

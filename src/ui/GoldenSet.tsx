@@ -68,7 +68,7 @@ export function GoldenSetSection({
         <FlaskConical className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Routing test set</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Real prompts with the tier you&apos;d expect. Auto routing is checked against them. Import a
         .jsonl file, one prompt per line. Importing replaces the current set, and the prompts stay
         on this computer.
@@ -123,19 +123,19 @@ export function GoldenSetSection({
             </p>
           )}
           {score.needsContext.total > 0 && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
+            <p className="mt-1 text-[12px] text-muted-foreground">
               Mid-conversation prompts, scored apart because Auto reads one message:{" "}
               {String(score.needsContext.correct)} of {String(score.needsContext.total)}.
             </p>
           )}
           {score.misses.length > 0 && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[11px] text-muted-foreground">
+              <summary className="cursor-pointer text-[12px] text-muted-foreground">
                 Show the {String(score.misses.length)} it got wrong
               </summary>
               <ul className="mt-2 space-y-2">
                 {score.misses.map((m) => (
-                  <li key={m.position} className="text-[11px] leading-4">
+                  <li key={m.position} className="text-[12px] leading-4">
                     <span className="tabular-nums text-muted-foreground">#{m.position}</span>{" "}
                     expected {TIER(m.expected)}, got {TIER(m.got)}
                     <span className="text-muted-foreground">
@@ -154,7 +154,7 @@ export function GoldenSetSection({
         </div>
       )}
       {errors.length > 0 && (
-        <div className="mt-2 text-[11px] text-destructive" role="alert">
+        <div className="mt-2 text-[12px] text-destructive" role="alert">
           <p>Nothing was imported:</p>
           <ul className="mt-1 list-disc pl-4">
             {errors.slice(0, SHOWN_ERRORS).map((e) => (

@@ -30,7 +30,7 @@ function InstructionBox({
         <label htmlFor={id} className="text-xs font-medium">
           {label}
         </label>
-        <span className="tabular-nums text-[10px] text-muted-foreground">
+        <span className="tabular-nums text-[12px] text-muted-foreground">
           {number(value.length)} / {number(maxChars)}
         </span>
       </div>
@@ -45,7 +45,7 @@ function InstructionBox({
           onChange(e.target.value);
         }}
       />
-      <p className="mt-1 text-[10px] text-muted-foreground">{hint}</p>
+      <p className="mt-1 text-[12px] text-muted-foreground">{hint}</p>
     </div>
   );
 }
@@ -54,7 +54,7 @@ function SaveRow({ dirty, saved, onSave }: { dirty: boolean; saved: boolean; onS
   return (
     <div className="flex items-center justify-end gap-3">
       {saved && !dirty && (
-        <span className="flex items-center gap-1 text-[11px] text-muted-foreground" role="status">
+        <span className="flex items-center gap-1 text-[12px] text-muted-foreground" role="status">
           <Check className="size-3" />
           Saved
         </span>
@@ -91,7 +91,7 @@ export function GlobalInstructionsSection({
         <ScrollText className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Custom instructions</h2>
       </div>
-      <p className="mb-4 text-[11px] text-muted-foreground">
+      <p className="mb-4 text-[12px] text-muted-foreground">
         Sent with every message, on every model. Each chat can add its own from its header.
       </p>
       <div className="space-y-4">
@@ -135,7 +135,7 @@ export function InstructionsButton({ count, onClick }: { count: number; onClick:
       <Button
         variant="ghost"
         size="sm"
-        className={`gap-1.5 text-[11px] ${count ? "" : "text-muted-foreground"}`}
+        className={`gap-1.5 text-[12px] ${count ? "" : "text-muted-foreground"}`}
         aria-label={`Instructions (${count ? `${String(count)} active` : "none"})`}
         onClick={onClick}
       >
@@ -192,12 +192,12 @@ export function ThreadInstructionsDialog({
             </Button>
           </div>
           {globalParts.length === 0 ? (
-            <p className="text-[11px] text-muted-foreground">None set.</p>
+            <p className="text-[12px] text-muted-foreground">None set.</p>
           ) : (
             <div className="space-y-2">
               {globalParts.map((p) => (
                 <div key={p.label} className="rounded-lg bg-muted/60 px-3 py-2">
-                  <p className="text-[10px] font-medium text-muted-foreground">{p.label}</p>
+                  <p className="text-[12px] font-medium text-muted-foreground">{p.label}</p>
                   <p className="mt-1 text-xs leading-5 whitespace-pre-wrap">{p.text}</p>
                 </div>
               ))}
@@ -213,7 +213,7 @@ export function ThreadInstructionsDialog({
           onChange={setDraft}
         />
         <div className="flex items-center justify-between gap-3">
-          <span className="tabular-nums text-[10px] text-muted-foreground">
+          <span className="tabular-nums text-[12px] text-muted-foreground">
             {tokens ? `~${number(tokens)} tokens added to every message` : "No instructions yet"}
           </span>
           <SaveRow

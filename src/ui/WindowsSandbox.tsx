@@ -29,7 +29,7 @@ export function WindowsSandboxSection({
         <Box className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Sandbox on Windows</h2>
       </div>
-      <div className="space-y-2 text-[11px] leading-5 text-muted-foreground">
+      <div className="space-y-2 text-[12px] leading-5 text-muted-foreground">
         <p>
           When this is on, commands run in a Windows sandbox. They can write only in the chat&apos;s
           folders, and they have no network unless you allow it. While it&apos;s off, commands run
@@ -73,7 +73,7 @@ export function WindowsSandboxSection({
           Reset folder permissions
         </Button>
         {said && (
-          <p role="status" className="text-[11px] text-muted-foreground">
+          <p role="status" className="text-[12px] text-muted-foreground">
             {said}
           </p>
         )}

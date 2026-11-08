@@ -44,7 +44,7 @@ export function NotificationsSection({
         <BellOff className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Notifications</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         What FUSE may tell you about, and when it stays quiet. Nothing makes a sound unless you turn
         the sound on. During quiet hours a run that needs you waits silently and shows on the home
         screen.
@@ -166,7 +166,7 @@ export function NotificationsSection({
             The same time twice means the whole day. An evening-to-morning range runs overnight.
           </span>
         </div>
-        <p role="status" className="mt-2 text-[11px] text-muted-foreground">
+        <p role="status" className="mt-2 text-[12px] text-muted-foreground">
           {describeQuiet(settings.quiet)}
         </p>
       </fieldset>

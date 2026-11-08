@@ -74,19 +74,19 @@ export function ScheduledTasksSection({
         {onOpenPage && (
           <button
             type="button"
-            className="ml-auto text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            className="ml-auto text-[12px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
             onClick={onOpenPage}
           >
             All scheduled tasks
           </button>
         )}
       </div>
-      <p className="mb-2 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-2 text-[12px] leading-5 text-muted-foreground">
         A saved prompt that runs by itself, once or every day or week, as a Code or Work run in a
         new chat in this project. Times are HULK&apos;s local time ({timeZone}).
       </p>
       {web && tasks.length === 0 && (
-        <p className="mb-2 text-[11px] text-muted-foreground">No scheduled tasks yet.</p>
+        <p className="mb-2 text-[12px] text-muted-foreground">No scheduled tasks yet.</p>
       )}
       {web && tasks.length > 0 && (
         <ul className="mb-2 divide-y rounded-md border text-xs" aria-label="Scheduled tasks list">
@@ -96,7 +96,7 @@ export function ScheduledTasksSection({
               <li key={s.id} className="flex flex-wrap items-start gap-x-3 gap-y-1 px-3 py-2">
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{s.name}</span>
-                  <span className="block text-[11px] text-muted-foreground">
+                  <span className="block text-[12px] text-muted-foreground">
                     {describeRepeat(s)} ·{" "}
                     {s.enabled
                       ? s.nextAt === null
@@ -106,7 +106,7 @@ export function ScheduledTasksSection({
                   </span>
                   {last && (
                     <span
-                      className={`block text-[11px] ${last.failed ? "text-destructive" : "text-muted-foreground"}`}
+                      className={`block text-[12px] ${last.failed ? "text-destructive" : "text-muted-foreground"}`}
                     >
                       {last.text}
                       {s.lastThreadId && (
@@ -126,7 +126,7 @@ export function ScheduledTasksSection({
                     </span>
                   )}
                 </span>
-                <label className="flex items-center gap-1.5 text-[11px]">
+                <label className="flex items-center gap-1.5 text-[12px]">
                   <input
                     type="checkbox"
                     aria-label={`${s.name} on`}
@@ -141,7 +141,7 @@ export function ScheduledTasksSection({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-[11px]"
+                  className="h-6 text-[12px]"
                   aria-label={`Edit ${s.name}`}
                   onClick={() => {
                     setEditing({
@@ -168,7 +168,7 @@ export function ScheduledTasksSection({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-6 text-[11px] text-destructive"
+                  className="h-6 text-[12px] text-destructive"
                   aria-label={`Delete ${s.name}`}
                   onClick={() => {
                     setDeleting(s);

@@ -29,7 +29,7 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
         <Wrench className="size-3.5" aria-hidden />
         Tools
       </h3>
-      <p className="mb-2 text-[10px] text-muted-foreground">
+      <p className="mb-2 text-[12px] text-muted-foreground">
         What this project&apos;s chats and its Code and Work runs may use. A tool that&apos;s off
         isn&apos;t offered to the model. Writes, commands and sends still ask as the run&apos;s mode
         says.
@@ -37,13 +37,13 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
       <div className="space-y-2">
         {kinds.map((kind) => (
           <fieldset key={kind}>
-            <legend className="text-[10px] text-muted-foreground">{kind}</legend>
+            <legend className="text-[12px] text-muted-foreground">{kind}</legend>
             <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
               {tools
                 .filter((t) => t.kind === kind)
                 .map((t) => (
                   <li key={t.name}>
-                    <label className="flex items-center gap-2 text-[11px]">
+                    <label className="flex items-center gap-2 text-[12px]">
                       <input
                         type="checkbox"
                         checked={t.on || t.core}
@@ -53,7 +53,7 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
                         }}
                       />
                       <span className="font-mono">{t.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
+                      <span className="text-[12px] text-muted-foreground">
                         {t.core ? `${t.where} · always on` : t.where}
                       </span>
                     </label>
@@ -64,11 +64,11 @@ export function ProjectToolsSection({ tools, onSwitch, servers, onServer }: Proj
         ))}
         {servers && servers.length > 0 && onServer && (
           <fieldset>
-            <legend className="text-[10px] text-muted-foreground">MCP servers</legend>
+            <legend className="text-[12px] text-muted-foreground">MCP servers</legend>
             <ul className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
               {servers.map((s) => (
                 <li key={s.id}>
-                  <label className="flex items-center gap-2 text-[11px]">
+                  <label className="flex items-center gap-2 text-[12px]">
                     <input
                       type="checkbox"
                       checked={s.on}

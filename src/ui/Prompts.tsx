@@ -37,7 +37,7 @@ export function PromptsSection({
         <BookMarked className="size-4 text-muted-foreground" />
         <h2 className="text-sm font-medium">Prompt library</h2>
       </div>
-      <p className="mb-3 text-[11px] leading-5 text-muted-foreground">
+      <p className="mb-3 text-[12px] leading-5 text-muted-foreground">
         Prompts you use again. Type / in the message box or find them in the palette (Ctrl+Shift+P).
         Write {"{{name}}"} for a part you fill in each time.
       </p>
@@ -47,7 +47,7 @@ export function PromptsSection({
             <li key={p.id} className="flex items-center gap-2 text-xs">
               <span className="flex-1 truncate">
                 {p.name}{" "}
-                <span className="text-[10px] text-muted-foreground">{where(p.projectId)}</span>
+                <span className="text-[12px] text-muted-foreground">{where(p.projectId)}</span>
               </span>
               <Button
                 variant="ghost"
