@@ -108,7 +108,7 @@ export function DiffView({ lines }: { lines: NonNullable<VersionsProps["diff"]> 
       {lines.map((l, i) => (
         <span
           key={i}
-          className={`block px-3 ${l.kind === "add" ? "bg-emerald-500/15" : l.kind === "del" ? "bg-destructive/10 text-muted-foreground line-through" : ""}`}
+          className={`block px-3 ${l.kind === "add" ? "bg-success-soft" : l.kind === "del" ? "bg-destructive/10 text-muted-foreground line-through" : ""}`}
         >
           <span
             className="mr-3 inline-block w-3 text-muted-foreground select-none"

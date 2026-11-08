@@ -161,9 +161,9 @@ test("effort is in the model menu; a chosen level shows on the model chip", () =
   );
 });
 
-test("the estimate turns amber only when it's over the cap left", () => {
+test("the estimate turns to warning only when it's over the cap left", () => {
   show({ capLeft: 5000 });
-  expect(screen.getByLabelText("Estimated cost").className).toContain("text-amber-700");
+  expect(screen.getByLabelText("Estimated cost").className).toContain("text-warning");
   cleanup();
   show({ capLeft: 900_000 });
   expect(screen.getByLabelText("Estimated cost").className).toContain("text-muted-foreground");

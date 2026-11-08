@@ -52,7 +52,7 @@ export function FilesPanel({
                   {c.label}
                 </span>
                 <span className="shrink-0 tabular-nums text-[12px]">
-                  <span className="text-emerald-700 dark:text-emerald-400">+{String(c.added)}</span>{" "}
+                  <span className="text-success">+{String(c.added)}</span>{" "}
                   <span className="text-destructive">-{String(c.removed)}</span>
                 </span>
                 {!c.undone && c.previewable && onPreview && (

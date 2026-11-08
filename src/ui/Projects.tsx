@@ -106,7 +106,7 @@ export function KnowledgeSection({
                 </span>
               </span>
               <span
-                className={`shrink-0 text-[12px] ${f.ready ? "text-muted-foreground" : "text-amber-700 dark:text-amber-400"}`}
+                className={`shrink-0 text-[12px] ${f.ready ? "text-muted-foreground" : "text-warning"}`}
               >
                 {f.maySend ? f.status : "Kept on this computer"}
               </span>

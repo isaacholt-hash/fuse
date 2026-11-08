@@ -111,7 +111,7 @@ function TextLines({ text, focus }: { text: string; focus: FileViewerView["focus
             key={n}
             ref={hit && n === from ? first : undefined}
             data-cited={hit || undefined}
-            className={`block px-4 whitespace-pre-wrap ${hit ? "bg-amber-200/50 dark:bg-amber-500/20" : ""}`}
+            className={`block px-4 whitespace-pre-wrap ${hit ? "bg-highlight" : ""}`}
           >
             <span className="mr-3 inline-block w-8 text-right text-muted-foreground select-none">
               {n}

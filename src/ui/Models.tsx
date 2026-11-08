@@ -136,9 +136,9 @@ export function ModelsSection({
           {check.missing.map((m) => (
             <li
               key={`${m.provider}/${m.id}`}
-              className="flex gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
+              className="flex gap-2 rounded-lg border border-warning/30 bg-warning-soft p-2 text-xs"
             >
-              <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-amber-600" />
+              <CircleAlert className="mt-0.5 size-3.5 shrink-0 text-warning" />
               <span>
                 <strong className="font-medium">{m.displayName}</strong> is no longer listed by{" "}
                 {PROVIDER_NAME[m.provider]}

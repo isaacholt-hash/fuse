@@ -84,7 +84,7 @@ export function LocalModelSection({
         <div className="space-y-2 text-[12px] leading-5">
           <p className="text-muted-foreground">This computer: {view.computer}</p>
           <p>{view.reason}</p>
-          {view.warning && <p className="text-amber-700 dark:text-amber-400">{view.warning}</p>}
+          {view.warning && <p className="text-warning">{view.warning}</p>}
           {view.profile && (
             <div className="rounded-lg border p-3">
               <p className="font-medium">{view.profile.name}</p>

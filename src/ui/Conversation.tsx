@@ -620,9 +620,7 @@ export function Messages({
                 key={message.id}
                 id={`message-${message.id}`}
                 className={`${LEDGER_GRID} py-3.5 ${
-                  focusId === message.id
-                    ? "-mx-3 rounded-[10px] bg-amber-100/40 px-3 dark:bg-amber-500/10"
-                    : ""
+                  focusId === message.id ? "-mx-3 rounded-[10px] bg-highlight/50 px-3" : ""
                 }`}
               >
                 {message.summaryAbove && (
@@ -1667,7 +1665,7 @@ export function Composer({
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{a.name}</span>
                     <span
-                      className={`block truncate font-mono text-[11px] ${a.large ? "text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                      className={`block truncate font-mono text-[11px] ${a.large ? "text-warning" : "text-muted-foreground"}`}
                       title={
                         a.large
                           ? "Large file: it's resent with every message in this chat"
@@ -1712,10 +1710,10 @@ export function Composer({
                   {a.secrets && onAttachmentSecrets && (
                     <span
                       role="alert"
-                      className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[12px]"
+                      className="flex shrink-0 items-center gap-1 rounded-md border border-warning/40 bg-warning-soft px-1.5 py-0.5 text-[12px]"
                       title={`Looks like it holds ${a.secrets.summary}`}
                     >
-                      <CircleAlert className="size-3 text-amber-600" />
+                      <CircleAlert className="size-3 text-warning" />
                       <span className="max-w-40 truncate">Secrets? {a.secrets.summary}</span>
                       {a.secrets.canRemove && (
                         <button
@@ -2168,7 +2166,7 @@ export function Composer({
                 <span
                   tabIndex={0}
                   aria-label="Estimated cost"
-                  className={`shrink-0 text-[12px] whitespace-nowrap tabular-nums ${overCap ? "font-medium text-amber-700 dark:text-amber-400" : "text-muted-foreground"}`}
+                  className={`shrink-0 text-[12px] whitespace-nowrap tabular-nums ${overCap ? "font-medium text-warning" : "text-muted-foreground"}`}
                 >
                   {streaming ? "so far " : "≈ "}
                   {money(estimated)}
@@ -2227,10 +2225,7 @@ export function Composer({
                   Generating response
                 </>
               ) : status ? (
-                <span
-                  role="status"
-                  className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400"
-                >
+                <span role="status" className="flex items-center gap-1.5 text-warning">
                   <CircleAlert className="size-2.5" />
                   {status}
                 </span>
@@ -2251,7 +2246,7 @@ export function Composer({
                 <span
                   tabIndex={0}
                   aria-label="Context used"
-                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[11px] ${context.used >= context.summarizeAt * 0.8 ? "text-amber-700 dark:text-amber-400" : ""}`}
+                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[11px] ${context.used >= context.summarizeAt * 0.8 ? "text-warning" : ""}`}
                 >
                   <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
                     <span
@@ -2304,7 +2299,7 @@ function OrganisePlan({
     <div
       role="alertdialog"
       aria-label="Reorganise these files?"
-      className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
+      className="mt-2 rounded-lg border border-warning/40 bg-warning-soft/50 p-2 text-[12px]"
     >
       <p className="mb-1 font-medium">
         Move {String(plan.moves.length)} file{plan.moves.length === 1 ? "" : "s"}? Nothing is
@@ -2461,7 +2456,7 @@ function RunCard({
           </span>
         )}
         <span
-          className={`rounded px-1.5 py-0.5 text-[12px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-amber-500/15 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}
+          className={`rounded px-1.5 py-0.5 text-[12px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground"}`}
         >
           {RUN_STATUS[run.status]}
         </span>
@@ -2608,7 +2603,7 @@ function RunCard({
         <div
           role="alertdialog"
           aria-label="Allow the network?"
-          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
+          className="mt-2 rounded-lg border border-warning/40 bg-warning-soft/50 p-2 text-[12px]"
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
@@ -2671,7 +2666,7 @@ function RunCard({
                       ? "Use this MCP tool?"
                       : "Make this change?"
           }
-          className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 text-[12px]"
+          className="mt-2 rounded-lg border border-warning/40 bg-warning-soft/50 p-2 text-[12px]"
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
@@ -2691,7 +2686,7 @@ function RunCard({
                 </p>
               )}
               {approval.unsandboxed && (
-                <p className="mb-2 text-amber-700 dark:text-amber-400">
+                <p className="mb-2 text-warning">
                   No sandbox on this computer: it runs with your full rights, and can change files
                   outside this chat&apos;s folders.
                 </p>
@@ -2775,7 +2770,7 @@ function RunCard({
               <pre className="mb-2 overflow-x-auto rounded bg-background px-2 py-1 font-mono text-[11px] break-all whitespace-pre-wrap">
                 {approval.url}
               </pre>
-              <p className="mb-2 text-amber-700 dark:text-amber-400">
+              <p className="mb-2 text-warning">
                 Reading it sends the address to that site, and {approval.why}.
               </p>
             </>
@@ -2785,9 +2780,7 @@ function RunCard({
                 {approval.summary}?
               </p>
               {approval.remote && (
-                <p className="mb-2 text-amber-700 dark:text-amber-400">
-                  This goes to GitHub, outside this computer.
-                </p>
+                <p className="mb-2 text-warning">This goes to GitHub, outside this computer.</p>
               )}
             </>
           ) : (
@@ -2855,7 +2848,7 @@ function RunCard({
               {number(run.changes.length)} file{run.changes.length === 1 ? "" : "s"}
             </span>
             <span className="font-mono text-[11px] tabular-nums">
-              <span className="text-emerald-600 dark:text-emerald-400">
+              <span className="text-success">
                 +{number(applied.reduce((n, c) => n + c.added, 0))}
               </span>{" "}
               <span className="text-destructive">
@@ -2906,7 +2899,7 @@ function RunCard({
                   </button>
                   {c.lines.length > 0 && (
                     <span className="shrink-0 font-mono text-[11px] tabular-nums">
-                      <span className="text-emerald-600 dark:text-emerald-400">+{c.added}</span>{" "}
+                      <span className="text-success">+{c.added}</span>{" "}
                       <span className="text-destructive">−{c.removed}</span>
                     </span>
                   )}
@@ -2960,7 +2953,7 @@ function RunCard({
       {live && run.cap?.state === "near" && (
         <div
           role="status"
-          className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-amber-700 dark:text-amber-400"
+          className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-warning"
         >
           <span>{run.cap.label}</span>
           {onRemoveCap && (

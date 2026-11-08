@@ -74,7 +74,7 @@ export function QuickCaptureSection({
         </p>
       )}
       {mayNotWork && shortcut && !web && (
-        <p className="mt-1 text-[12px] text-amber-700 dark:text-amber-400">
+        <p className="mt-1 text-[12px] text-warning">
           This desktop runs Wayland, which may not pass global shortcuts to apps. If it doesn&apos;t
           work, set one in your desktop&apos;s keyboard settings that opens FUSE.
         </p>

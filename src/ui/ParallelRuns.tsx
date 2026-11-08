@@ -248,7 +248,7 @@ export function ParallelReviewDialog({
                     {attempt.result?.commit}
                   </span>
                   {attempt.state === "failed" && (
-                    <span className="block text-amber-700 dark:text-amber-400">
+                    <span className="block text-warning">
                       Retained after an interrupted acknowledgement; native verification is
                       required.
                     </span>

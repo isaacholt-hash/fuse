@@ -5669,9 +5669,9 @@ export function ChatApp({
             <div
               key={s.provider}
               aria-label="Spend cap notice"
-              className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+              className="flex items-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-xs"
             >
-              <CircleAlert className="size-3.5 text-amber-600" />
+              <CircleAlert className="size-3.5 text-warning" />
               <span className="flex-1">
                 {providerName(s.provider)} has reached its{" "}
                 {s.over === "day"
@@ -5759,9 +5759,9 @@ export function ChatApp({
           modelCheck?.missing.some((m) => m.tiers.length > 0) && (
             <div
               aria-label="Models notice"
-              className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+              className="flex items-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-xs"
             >
-              <CircleAlert className="size-3.5 text-amber-600" />
+              <CircleAlert className="size-3.5 text-warning" />
               <span className="flex-1">
                 A model a tier uses is no longer listed by its provider:{" "}
                 {modelCheck.missing
@@ -5795,9 +5795,9 @@ export function ChatApp({
         {notif.banners.prices && !pricesNoticeOff && oldestPriceDays(catalog, at) > STALE_DAYS && (
           <div
             aria-label="Prices notice"
-            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+            className="flex items-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-xs"
           >
-            <CircleAlert className="size-3.5 text-amber-600" />
+            <CircleAlert className="size-3.5 text-warning" />
             <span className="flex-1">
               Some prices were last checked {oldestPriceDays(catalog, at)} days ago, so costs may be
               off.
@@ -5828,9 +5828,9 @@ export function ChatApp({
           <div
             key={`${String(i)}-${a}`}
             role="alert"
-            className="flex items-center gap-2 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs"
+            className="flex items-center gap-2 border-b border-warning/30 bg-warning-soft px-4 py-2 text-xs"
           >
-            <CircleAlert className="size-3.5 text-amber-600" />
+            <CircleAlert className="size-3.5 text-warning" />
             <span className="flex-1">{a}</span>
             <Button
               variant="ghost"

@@ -28,11 +28,11 @@ export interface ScheduledRow {
 const CHIP: Record<ScheduleStatus, { label: string; className: string }> = {
   active: {
     label: "Active",
-    className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+    className: "bg-success-soft text-success",
   },
   paused: { label: "Paused", className: "bg-muted text-muted-foreground" },
   done: { label: "Done", className: "bg-muted text-muted-foreground" },
-  idle: { label: "Not scheduled", className: "bg-amber-500/15 text-amber-700 dark:text-amber-400" },
+  idle: { label: "Not scheduled", className: "bg-warning-soft text-warning" },
 };
 
 /**
