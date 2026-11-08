@@ -85,7 +85,7 @@ export function BudgetsSection({
                 </div>
                 <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
                   <div
-                    className={`h-full ${used >= 1 ? "bg-destructive" : used >= 0.8 ? "bg-amber-500" : "bg-foreground/60"}`}
+                    className={`h-full ${used >= 1 ? "bg-destructive" : used >= 0.8 ? "bg-warning" : "bg-foreground/60"}`}
                     style={{ width: `${String(Math.min(100, used * 100))}%` }}
                   />
                 </div>

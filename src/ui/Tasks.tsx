@@ -146,7 +146,7 @@ export function TasksSection({ tasks, onAdd, onStatus, onEdit, onDelete }: Tasks
             {t.text}
           </span>
           {t.blockedBy.length > 0 && (
-            <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">
+            <span className="ml-2 text-[10px] text-warning">
               Blocked by {t.blockedBy.join(", ")}
             </span>
           )}

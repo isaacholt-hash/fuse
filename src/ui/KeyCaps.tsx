@@ -196,7 +196,7 @@ function CapRow({
         )}
       </div>
       {cap.stopped && (
-        <p className="mt-2 flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-400">
+        <p className="mt-2 flex items-center gap-2 text-[11px] text-warning">
           Stopped: this {cap.stopped === "day" ? "day" : "month"}&apos;s cap is reached.
           <Button
             size="sm"

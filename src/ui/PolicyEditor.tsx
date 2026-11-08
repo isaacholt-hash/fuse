@@ -359,7 +359,7 @@ export function PolicyEditor({
           {suggestions.map((s) => (
             <div
               key={s.key}
-              className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-2 text-xs"
+              className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning-soft p-2 text-xs"
             >
               <span className="flex-1">
                 Suggested from your overrides: <strong className="font-medium">{s.text}</strong>{" "}

@@ -68,7 +68,7 @@ export function ProjectPrivacySection({
         ))}
       </select>
       {mode === "local_only" && (
-        <p className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
+        <p className="mt-1 text-[10px] text-warning">
           Chats here get no model answers: the local model only does housekeeping (titles,
           summaries, memory suggestions). Sums, conversions and checks are still answered.
         </p>
