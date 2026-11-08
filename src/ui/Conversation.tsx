@@ -1793,7 +1793,7 @@ export function Composer({
                   else send();
                 }
               }}
-              className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground/75"
+              className="block max-h-[30dvh] min-h-14 w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 outline-none placeholder:text-muted-foreground"
             />
           )}
           {skillMatches.length > 0 && (
