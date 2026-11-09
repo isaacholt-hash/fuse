@@ -156,7 +156,12 @@ Step 2 (release record; owner acceptance pending):
   - `fix/run-card`: a finished parallel run leads with "2 done, edits kept apart" and one
     primary Review integration; child tasks are rows, not boxes in a box; branch, plan and
     steps fold under "N steps", and a finished run's own steps under "This run · N steps"
-    (open while it works or waits). The e2e driver now matches the first visible element.
+    (open while it works or waits). The e2e driver now matches the first visible element
+    ([#336](https://github.com/isaacholt-hash/fuse/pull/336); one CI rerun for the known
+    `App.web` sign-in timeout).
+  - `fix/money-in-code`: the run card and each child show spend as copper money (sans 13,
+    tabular), not muted 11 px mono; the cap is stated once, in the session strip and "cap
+    left". "Children spent $x" replaces "Combined … · $0.00 reserved · $5.00 cap".
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

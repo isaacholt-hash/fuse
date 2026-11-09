@@ -319,6 +319,7 @@ export function runView(
     title: run.kind === "research" ? "Research" : run.kind === "work" ? "Work run" : "Coding run",
     ...(run.readOnly ? { readOnly: true } : {}),
     status: run.status,
+    spentMicro: run.spentMicroUsd,
     costLabel: isUncapped(run.capMicroUsd)
       ? `${formatUsd(run.spentMicroUsd)} · no cap`
       : `${formatUsd(run.spentMicroUsd)} of ${formatUsd(run.capMicroUsd)}`,
