@@ -350,7 +350,8 @@ test("M10 step 13: Code rows show a run going, waiting for you, or a new result,
     expect(within(row()).queryByRole("img")).toBeNull();
   }, SLOW);
   // Mark as unread brings it back.
-  await user.click(screen.getByRole("button", { name: "Mark Fix the build as unread" }));
+  await user.click(screen.getByRole("button", { name: "Actions for Fix the build" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Mark as unread" }));
   await waitFor(() => {
     expect(within(row()).getByRole("img", { name: "New result" })).toBeInTheDocument();
   }, SLOW);

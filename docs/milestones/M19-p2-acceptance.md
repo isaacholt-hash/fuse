@@ -161,7 +161,18 @@ Step 2 (release record; owner acceptance pending):
     `App.web` sign-in timeout).
   - `fix/money-in-code`: the run card and each child show spend as copper money (sans 13,
     tabular), not muted 11 px mono; the cap is stated once, in the session strip and "cap
-    left". "Children spent $x" replaces "Combined … · $0.00 reserved · $5.00 cap".
+    left". "Children spent $x" replaces "Combined … · $0.00 reserved · $5.00 cap"
+    ([#337](https://github.com/isaacholt-hash/fuse/pull/337)).
+- **Impeccable critique re-run, 2026-11-09: 24/36** (error recovery not scored: the fixture
+  shows no error state; about 27/40) on main `ac6fa89`, deployed to HULK the same day. The
+  three fixes above held. Two new P1s, one PR each:
+  - `fix/run-total`: "Children spent" showed the whole run's total, which includes the
+    parent's planning, so the child rows never added up to it; it now sums the rows and
+    names the run's total beside it
+    ([#338](https://github.com/isaacholt-hash/fuse/pull/338)).
+  - `fix/sidebar-row-actions`: a row's five hover icons covered the title and caught clicks
+    meant for it; they are one "Actions for …" menu over the cost, the row makes room for it
+    so the cost stays readable, and Delete sits apart at the bottom.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

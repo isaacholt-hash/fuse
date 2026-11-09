@@ -15,6 +15,7 @@ import {
   FolderOpen,
   FolderPlus,
   MessageSquare,
+  MoreHorizontal,
   PanelLeftClose,
   Pencil,
   Pin,
@@ -25,6 +26,7 @@ import {
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
+import { DropdownMenu } from "radix-ui";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Hint, Mark, Money, Tip } from "./primitives";
@@ -492,7 +494,8 @@ function ThreadRow({
             aria-current={selected ? "page" : undefined}
             onClick={onSelect}
           >
-            <span className="flex items-center gap-1.5 pr-1">
+            {/* On hover the row makes room for its actions button, so the cost stays readable. */}
+            <span className="flex items-center gap-1.5 pr-1 group-focus-within:pr-6 group-hover:pr-6 group-has-data-[state=open]:pr-6">
               {thread.state && <StateDot state={thread.state} />}
               <span
                 className={`min-w-0 flex-1 truncate text-[13px] ${thread.state === "unseen" ? "font-semibold" : ""}`}
@@ -525,59 +528,96 @@ function ThreadRow({
               </span>
             )}
           </button>
-          <div className="absolute right-2 bottom-1.5 flex gap-0.5 rounded bg-sidebar-accent opacity-0 group-focus-within:opacity-100 group-hover:opacity-100">
-            {!thread.archived && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`${thread.pinned ? "Unpin" : "Pin"} ${thread.title}`}
-                onClick={onPin}
-              >
-                {thread.pinned ? <PinOff className="size-3" /> : <Pin className="size-3" />}
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Rename ${thread.title}`}
-              onClick={onStartRename}
-            >
-              <Pencil className="size-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`${thread.archived ? "Unarchive" : "Archive"} ${thread.title}`}
-              onClick={onArchive}
-            >
-              {thread.archived ? (
-                <ArchiveRestore className="size-3" />
-              ) : (
-                <Archive className="size-3" />
-              )}
-            </Button>
-            {onMarkUnread && thread.state !== "unseen" && (
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                aria-label={`Mark ${thread.title} as unread`}
-                onClick={onMarkUnread}
-              >
-                <MailOpen className="size-3" />
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              aria-label={`Delete ${thread.title}`}
-              onClick={onDelete}
-            >
-              <Trash2 className="size-3" />
-            </Button>
-          </div>
+          <RowMenu
+            thread={thread}
+            onPin={onPin}
+            onRename={onStartRename}
+            onArchive={onArchive}
+            onMarkUnread={onMarkUnread}
+            onDelete={onDelete}
+          />
         </>
       )}
     </div>
+  );
+}
+
+const ROW_ITEM =
+  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none focus:bg-accent";
+
+/**
+ * A row's actions sit behind one button over the cost, so they never cover the title or catch
+ * a click meant for it (critique 2026-11-09). Delete is set apart at the bottom.
+ */
+function RowMenu({
+  thread,
+  onPin,
+  onRename,
+  onArchive,
+  onMarkUnread,
+  onDelete,
+}: {
+  thread: ThreadView;
+  onPin: () => void;
+  onRename: () => void;
+  onArchive: () => void;
+  onMarkUnread?: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <DropdownMenu.Root>
+      <DropdownMenu.Trigger asChild>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label={`Actions for ${thread.title}`}
+          className="absolute top-2 right-2 bg-sidebar-accent opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100"
+        >
+          <MoreHorizontal className="size-3.5" />
+        </Button>
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Portal>
+        <DropdownMenu.Content
+          align="end"
+          sideOffset={4}
+          // Rename puts focus in the name field; don't pull it back to the trigger.
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+          }}
+          className="z-30 min-w-40 rounded-lg border bg-popover p-1 shadow-lg"
+        >
+          {!thread.archived && (
+            <DropdownMenu.Item className={ROW_ITEM} onSelect={onPin}>
+              {thread.pinned ? <PinOff className="size-3.5" /> : <Pin className="size-3.5" />}
+              {thread.pinned ? "Unpin" : "Pin"}
+            </DropdownMenu.Item>
+          )}
+          <DropdownMenu.Item className={ROW_ITEM} onSelect={onRename}>
+            <Pencil className="size-3.5" />
+            Rename
+          </DropdownMenu.Item>
+          <DropdownMenu.Item className={ROW_ITEM} onSelect={onArchive}>
+            {thread.archived ? (
+              <ArchiveRestore className="size-3.5" />
+            ) : (
+              <Archive className="size-3.5" />
+            )}
+            {thread.archived ? "Unarchive" : "Archive"}
+          </DropdownMenu.Item>
+          {onMarkUnread && thread.state !== "unseen" && (
+            <DropdownMenu.Item className={ROW_ITEM} onSelect={onMarkUnread}>
+              <MailOpen className="size-3.5" />
+              Mark as unread
+            </DropdownMenu.Item>
+          )}
+          <DropdownMenu.Separator className="my-1 h-px bg-border" />
+          <DropdownMenu.Item className={`${ROW_ITEM} text-destructive`} onSelect={onDelete}>
+            <Trash2 className="size-3.5" />
+            Delete…
+          </DropdownMenu.Item>
+        </DropdownMenu.Content>
+      </DropdownMenu.Portal>
+    </DropdownMenu.Root>
   );
 }
 
