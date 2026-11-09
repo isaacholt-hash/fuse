@@ -2158,7 +2158,7 @@ export function Composer({
               {folders.map((f) => (
                 <span
                   key={f.id}
-                  className="flex min-w-11 max-w-40 shrink items-center gap-1 overflow-hidden rounded-[4px] bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground"
+                  className="flex max-w-[min(10rem,40%)] shrink-0 items-center gap-1 overflow-hidden rounded-[4px] bg-muted px-1.5 py-0.5 text-[12px] text-muted-foreground"
                   title={f.own ? f.path : `${f.path} (from the project)`}
                 >
                   <FolderOpen className="size-3 shrink-0" />

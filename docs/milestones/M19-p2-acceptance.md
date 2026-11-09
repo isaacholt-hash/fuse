@@ -177,7 +177,11 @@ Step 2 (release record; owner acceptance pending):
   - `fix/ledger-column` (P2): the ledger column now runs unbroken, as the spec says. Past the
     header the thread total stays at the top as one line ("this thread $0.015"), and the
     composer's estimate sits in the margin as "next message ≈ $0.0102" above "cap left",
-    muted and amber only over the cap, which also takes it out of the composer's button row.
+    muted and amber only over the cap, which also takes it out of the composer's button row
+    ([#340](https://github.com/isaacholt-hash/fuse/pull/340)).
+  - `fix/phone-composer` (P2): on a phone the Code session strip fits two rows (16 px
+    gutter, a tighter gap, the word "Mode" left to the select's own name), and the
+    composer's folder chip keeps its name ("repo", not "r…") instead of shrinking first.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

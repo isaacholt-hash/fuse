@@ -40,7 +40,7 @@ export function SessionStrip({
     <div
       aria-label="Session"
       role="group"
-      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-6 py-2 text-[12px] text-muted-foreground"
+      className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1 border-b px-6 py-2 text-[12px] text-muted-foreground max-[800px]:px-5 max-[560px]:gap-x-3"
     >
       <span className="flex items-center gap-1.5">
         {where === "hulk" ? <Server className="size-3.5" /> : <Laptop className="size-3.5" />}
@@ -57,7 +57,8 @@ export function SessionStrip({
         <span className="font-mono text-[11px]">{branch ?? "current branch"}</span>
       </span>
       <label className="flex items-center gap-1.5">
-        Mode
+        {/* The select names itself; on a phone the word gives its room to the cap. */}
+        <span className="max-[560px]:sr-only">Mode</span>
         <select
           aria-label="What this session's runs may do"
           className="h-6 rounded-[4px] border-0 bg-muted px-1.5 text-[12px] font-medium text-foreground dark:scheme-dark"
