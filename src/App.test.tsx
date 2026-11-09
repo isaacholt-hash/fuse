@@ -1997,16 +1997,19 @@ test("chats can be pinned to the top, archived out of the list, and tagged and f
   });
   await user.click(filter.getByRole("button", { name: "#work" }));
 
-  await user.click(await sidebar().findByRole("button", { name: `Pin ${gardenTitle}` }));
+  await user.click(await sidebar().findByRole("button", { name: `Actions for ${gardenTitle}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Pin" }));
   const pinned = within(await sidebar().findByRole("region", { name: "Pinned" }));
   expect(pinned.getByText(gardenTitle)).toBeInTheDocument();
-  await user.click(pinned.getByRole("button", { name: `Archive ${gardenTitle}` }));
+  await user.click(pinned.getByRole("button", { name: `Actions for ${gardenTitle}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Archive" }));
   await waitFor(() => {
     expect(sidebar().queryByRole("region", { name: "Pinned" })).not.toBeInTheDocument();
   });
   const archived = within(sidebar().getByRole("region", { name: "Archived" }));
   await user.click(archived.getByRole("button", { name: "Archived (1)" }));
-  await user.click(archived.getByRole("button", { name: `Unarchive ${gardenTitle}` }));
+  await user.click(archived.getByRole("button", { name: `Actions for ${gardenTitle}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Unarchive" }));
   await waitFor(() => {
     expect(sidebar().queryByRole("region", { name: "Archived" })).not.toBeInTheDocument();
   });
@@ -2249,7 +2252,8 @@ test("rename and delete a thread", async () => {
   await user.type(title, "New name{Enter}");
   expect(await sidebar().findByText("New name")).toBeInTheDocument();
 
-  await user.click(sidebar().getByRole("button", { name: "Delete New name" }));
+  await user.click(sidebar().getByRole("button", { name: "Actions for New name" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
   await user.click(await screen.findByRole("button", { name: "Delete conversation" }));
   expect(await sidebar().findByText("No chats yet")).toBeInTheDocument();
   expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(0);
@@ -2263,7 +2267,8 @@ test("delete a chat: Undo brings it back; otherwise its rows are purged once the
   const [thread] = await listThreads(db, DEFAULT_TENANT);
   if (!thread) throw new Error("no thread");
 
-  await user.click(sidebar().getByRole("button", { name: `Delete ${thread.title}` }));
+  await user.click(sidebar().getByRole("button", { name: `Actions for ${thread.title}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
   expect(
     await screen.findByText(/, its messages, summaries and search entries/),
   ).toBeInTheDocument();
@@ -2277,7 +2282,8 @@ test("delete a chat: Undo brings it back; otherwise its rows are purged once the
   expect(await listThreads(db, DEFAULT_TENANT)).toHaveLength(1);
 
   // Dismissing the notice ends the window at once.
-  await user.click(sidebar().getByRole("button", { name: `Delete ${thread.title}` }));
+  await user.click(sidebar().getByRole("button", { name: `Actions for ${thread.title}` }));
+  await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
   await user.click(await screen.findByRole("button", { name: "Delete conversation" }));
   await user.click(await screen.findByRole("button", { name: "Dismiss" }));
   await waitFor(async () => {
