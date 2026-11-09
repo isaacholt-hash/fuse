@@ -167,7 +167,7 @@ const perMessage = (micro: number, answers: number) =>
   answers > 0 ? Math.round(micro / answers) : null;
 
 /** The column's head: the thread's total, its tokens and what a message costs on average. */
-function LedgerTotal({ total }: { total: ThreadTotal }) {
+function LedgerTotal({ total, compact = false }: { total: ThreadTotal; compact?: boolean }) {
   const per = perMessage(total.micro, total.answers);
   const rate = total.cacheRate;
   return (
@@ -183,16 +183,24 @@ function LedgerTotal({ total }: { total: ThreadTotal }) {
         aria-label="Thread total"
         className="rounded-md text-right text-[12px] leading-5 text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-baseline @max-[760px]:gap-x-2 @max-[760px]:text-left"
       >
-        <span className="block text-[12px] @max-[760px]:hidden">this thread</span>
-        <Money
-          micro={total.micro}
-          className="block text-base leading-6 @max-[760px]:text-[13px] @max-[760px]:leading-5"
-        />
-        <span className="block">
+        {compact ? (
+          <>
+            this thread <Money micro={total.micro} className="text-[13px]" />
+          </>
+        ) : (
+          <>
+            <span className="block text-[12px] @max-[760px]:hidden">this thread</span>
+            <Money
+              micro={total.micro}
+              className="block text-base leading-6 @max-[760px]:text-[13px] @max-[760px]:leading-5"
+            />
+          </>
+        )}
+        <span className={compact ? "hidden" : "block"}>
           {number(total.tokens)} tokens
           {rate !== null && rate > 0 && ` · ${String(Math.round(rate * 100))}% cached`}
         </span>
-        {per !== null && <span className="block">about {money(per)} a message</span>}
+        {per !== null && !compact && <span className="block">about {money(per)} a message</span>}
       </div>
     </Tip>
   );
@@ -552,6 +560,8 @@ export function Messages({
   const [copied, setCopied] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [away, setAway] = useState(false);
+  // Past the header, the thread total stays at the top as one line (the ledger column's head).
+  const [scrolled, setScrolled] = useState(false);
   // CH-13: text selected in an answer, offered as a quote for the reply.
   const [picked, setPicked] = useState<{ text: string; top: number; left: number } | null>(null);
   const lastMessage = messages.at(-1);
@@ -600,6 +610,7 @@ export function Messages({
         onScroll={(e) => {
           const el = e.currentTarget;
           setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 240);
+          setScrolled(el.scrollTop > 48);
           setPicked(null);
         }}
         onMouseUp={() => {
@@ -623,18 +634,18 @@ export function Messages({
         ) : (
           <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
             <div
-              className={`${LEDGER_GRID} mb-2 items-baseline border-b pb-3.5 @max-[760px]:gap-y-1`}
+              className={`${LEDGER_GRID} sticky top-0 z-10 -mx-3 mb-2 items-baseline px-3 border-b bg-background @max-[760px]:gap-y-1 ${scrolled ? "py-2" : "pb-3.5"}`}
             >
               <div className="text-[12px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
               </div>
-              {total && <LedgerTotal total={total} />}
+              {total && <LedgerTotal total={total} compact={scrolled} />}
             </div>
             {messages.map((message) => (
               <div
                 key={message.id}
                 id={`message-${message.id}`}
-                className={`${LEDGER_GRID} py-3.5 ${
+                className={`${LEDGER_GRID} scroll-mt-14 py-3.5 ${
                   focusId === message.id ? "-mx-3 rounded-[10px] bg-highlight/50 px-3" : ""
                 }`}
               >
@@ -2168,26 +2179,6 @@ export function Composer({
               ))}
             </div>
             {dictation && <DictationControls config={dictation} {...voice} />}
-            {estimated !== null && (
-              <Tip
-                label={
-                  overCap
-                    ? "More than what's left of this session's cap: the run would stop when it reaches it"
-                    : streaming
-                      ? "What this message has cost so far"
-                      : "Estimated cost of the next message"
-                }
-              >
-                <span
-                  tabIndex={0}
-                  aria-label="Estimated cost"
-                  className={`shrink-0 text-[12px] whitespace-nowrap tabular-nums ${overCap ? "font-medium text-warning" : "text-muted-foreground"}`}
-                >
-                  {streaming ? "so far " : "≈ "}
-                  {money(estimated)}
-                </span>
-              </Tip>
-            )}
             {streaming ? (
               <Tip label="Stop · Esc">
                 <Button
@@ -2221,12 +2212,39 @@ export function Composer({
             )}
           </div>
         </div>
-        {capLeft !== null ? (
-          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground @max-[760px]:order-last @max-[760px]:pt-1 @max-[760px]:pb-0 @max-[760px]:text-left">
-            cap left
-            <span className="block @max-[760px]:ml-1.5 @max-[760px]:inline" aria-label="Cap left">
-              <Money micro={capLeft} className="text-[13px]" />
-            </span>
+        {estimated !== null || capLeft !== null ? (
+          <div className="pb-2.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[760px]:order-last @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:gap-x-3 @max-[760px]:pt-1 @max-[760px]:pb-0 @max-[760px]:text-left">
+            {estimated !== null && (
+              <Tip
+                label={
+                  overCap
+                    ? "More than what's left of this session's cap: the run would stop when it reaches it"
+                    : streaming
+                      ? "What this message has cost so far"
+                      : "Estimated cost of the next message"
+                }
+              >
+                <span
+                  tabIndex={0}
+                  aria-label="Estimated cost"
+                  className={`block whitespace-nowrap ${overCap ? "font-medium text-warning" : "text-muted-foreground"}`}
+                >
+                  {streaming ? "so far " : "next message ≈ "}
+                  {money(estimated)}
+                </span>
+              </Tip>
+            )}
+            {capLeft !== null && (
+              <span className="block">
+                cap left
+                <span
+                  className="block @max-[760px]:ml-1.5 @max-[760px]:inline"
+                  aria-label="Cap left"
+                >
+                  <Money micro={capLeft} className="text-[13px]" />
+                </span>
+              </span>
+            )}
           </div>
         ) : (
           <div aria-hidden className="@max-[760px]:hidden" />
