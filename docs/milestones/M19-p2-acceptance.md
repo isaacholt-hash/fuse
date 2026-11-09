@@ -146,6 +146,12 @@ Step 2 (release record; owner acceptance pending):
     theming 4, responsive 3, integrity 4). Detector source scan: no findings. Populated
     threads and run cards at 12 px were not screenshotted (no seeded data); empty states
     in Chat, Code, Settings, Usage and dark were.
+- **Impeccable critique, 2026-11-09: 25/40** on a populated Chat thread and a Code parallel run
+  (throwaway fixture server, scripted replies). Chat's ledger margin reads as FUSE's own; the
+  Code run card doesn't. axe: 0 violations. Three P1 fixes, one PR each:
+  - `fix/routing-reason`: the margin now says why in plain text ("read as chat, low") and
+    "Best ≈ $x" on its own line; a click or Enter opens the rule in full, so the reason no
+    longer needs a hover (product rule 1, the spec's margin).
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

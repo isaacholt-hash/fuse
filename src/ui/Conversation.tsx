@@ -79,35 +79,50 @@ const MODE_LABELS: Record<ModeChoice, string> = {
   best: "Best",
 };
 
-/** How the answer's model was picked, and what Best would have cost (RT-09). */
+/**
+ * How the answer's model was picked, and what Best would have cost (RT-09). The margin shows the
+ * why in plain text (what Auto read the message as); a click or Enter opens the rule in full,
+ * so it never depends on hover.
+ */
 function RouteBadge({ route }: { route: RouteView }) {
   return (
-    <Tip
-      label={
-        <div className="w-64 space-y-1.5 py-1 text-[12px] leading-4">
-          <p className="font-medium">Why this model</p>
-          <p>{route.reason}</p>
-          {route.readAs && <p className="text-muted-foreground">Read as: {route.readAs}</p>}
-          {route.bestMicro !== null && (
-            <p className="text-muted-foreground">
-              On Best: about {money(route.bestMicro)} (the same tokens on the cheapest Best model)
-            </p>
-          )}
-        </div>
-      }
-    >
-      <button
-        className="block max-w-full rounded text-right text-muted-foreground hover:text-foreground @max-[760px]:text-left"
-        aria-label={`Routing: ${route.label}`}
-      >
-        <span>{route.label}</span>
-        {route.bestMicro !== null && (
-          <span>
-            · <Money micro={route.bestMicro} className="font-normal" /> on Best
-          </span>
-        )}
-      </button>
-    </Tip>
+    <div className="text-right text-muted-foreground @max-[760px]:contents">
+      <Popover.Root>
+        <Popover.Trigger asChild>
+          <button
+            type="button"
+            className="max-w-full rounded underline decoration-border decoration-dotted underline-offset-[3px] hover:text-foreground hover:decoration-foreground"
+            aria-label={`Routing: ${route.label}`}
+          >
+            {route.label}
+          </button>
+        </Popover.Trigger>
+        <Popover.Portal>
+          <Popover.Content
+            side="left"
+            align="start"
+            sideOffset={8}
+            collisionPadding={12}
+            className="z-50 w-64 space-y-1.5 rounded-lg border bg-popover px-3 py-2.5 text-[12px] leading-4 text-popover-foreground shadow-lg"
+          >
+            <p className="font-medium">Why this model</p>
+            <p>{route.reason}</p>
+            {route.readAs && <p className="text-muted-foreground">Read as: {route.readAs}</p>}
+            {route.bestMicro !== null && (
+              <p className="text-muted-foreground">
+                On Best: about {money(route.bestMicro)} (the same tokens on the cheapest Best model)
+              </p>
+            )}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
+      {route.readAs && <span className="block">read as {route.readAs}</span>}
+      {route.bestMicro !== null && (
+        <span className="block">
+          Best ≈ <Money micro={route.bestMicro} className="font-normal" />
+        </span>
+      )}
+    </div>
   );
 }
 

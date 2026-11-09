@@ -586,8 +586,12 @@ describe("auto routing", () => {
     await user.type(await composer(), "What is FUSE?{Enter}");
     expect(await screen.findByText("Everyday answer.")).toBeInTheDocument();
     // Same 1,200 in / 400 out on Test Best: 1,200 × $10 + 400 × $50 per MTok = $0.032.
+    // The why is in the margin as text, not behind a hover; a click opens the rule in full.
     const everyday = await screen.findByRole("button", { name: "Routing: Auto · Balanced" });
-    expect(everyday).toHaveTextContent("Auto · Balanced· $0.032 on Best");
+    expect(everyday.parentElement).toHaveTextContent(/Auto · Balancedread as .+Best ≈ \$0\.032/);
+    await user.click(everyday);
+    expect(await screen.findByText("Why this model")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     expect(
       screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
     ).toBeInTheDocument();
@@ -598,7 +602,7 @@ describe("auto routing", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByText("Careful answer.")).toBeInTheDocument();
     const careful = await screen.findByRole("button", { name: "Routing: Auto · Best" });
-    expect(careful).not.toHaveTextContent("on Best");
+    expect(careful.parentElement).not.toHaveTextContent("Best ≈");
     expect(
       screen.getByRole("button", { name: "Cost breakdown for Test Best" }),
     ).toBeInTheDocument();
