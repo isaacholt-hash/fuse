@@ -95,9 +95,9 @@ test("the row: +, the model, Options, the folder, the estimate and Send; nothing
     .map((b) => b.getAttribute("aria-label"));
   expect(names).toEqual(["Add", "Choose model (Ctrl+K)", "Options", "Remove folder lighthouse"]);
   expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeTruthy();
-  // The estimate is muted beside Send, not copper in the margin.
+  // The estimate is muted in the margin beside the composer, labelled, not copper.
   const est = screen.getByLabelText("Estimated cost");
-  expect(est.textContent).toBe("≈ $0.008");
+  expect(est.textContent).toBe("next message ≈ $0.008");
   expect(est.className).toContain("text-muted-foreground");
   // No persistent privacy or keyboard lines.
   expect(screen.queryByText(/Your keys/)).toBeNull();

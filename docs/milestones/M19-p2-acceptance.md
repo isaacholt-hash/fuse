@@ -172,7 +172,12 @@ Step 2 (release record; owner acceptance pending):
     ([#338](https://github.com/isaacholt-hash/fuse/pull/338)).
   - `fix/sidebar-row-actions`: a row's five hover icons covered the title and caught clicks
     meant for it; they are one "Actions for …" menu over the cost, the row makes room for it
-    so the cost stays readable, and Delete sits apart at the bottom.
+    so the cost stays readable, and Delete sits apart at the bottom
+    ([#339](https://github.com/isaacholt-hash/fuse/pull/339)).
+  - `fix/ledger-column` (P2): the ledger column now runs unbroken, as the spec says. Past the
+    header the thread total stays at the top as one line ("this thread $0.015"), and the
+    composer's estimate sits in the margin as "next message ≈ $0.0102" above "cap left",
+    muted and amber only over the cap, which also takes it out of the composer's button row.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
