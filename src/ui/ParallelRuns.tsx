@@ -36,7 +36,7 @@ export function ParallelRuns({
   return (
     <section aria-label="Parallel tasks" className="mt-3 space-y-2 border-t pt-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-[12px] font-medium">
+        <h2 className="text-[12px] font-medium">
           Parallel tasks · {view.children.length}
           {!active && finished > 0 && (
             <span className="font-normal text-muted-foreground">
@@ -44,7 +44,7 @@ export function ParallelRuns({
               · {finished} done, edits kept apart
             </span>
           )}
-        </h3>
+        </h2>
         {!readOnly && onIntegrate && (
           // The one next step once the children finish; outline while they still work.
           <Button
@@ -136,7 +136,7 @@ export function ParallelRuns({
                     variant="outline"
                     size="sm"
                     className="h-7 text-[12px]"
-                    aria-label={`Review child ${String(index + 1)}`}
+                    aria-label={`Review changes, child ${String(index + 1)}`}
                     disabled={active}
                     onClick={() => {
                       onReview(child.id);
