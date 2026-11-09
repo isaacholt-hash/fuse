@@ -78,6 +78,7 @@ test("steps read as plain lines; the finished run's last turn is the answer, not
     title: "Coding run",
     status: "done",
     costLabel: "$0.1234 of $1.00",
+    spentMicro: 123_400,
     activeSince: null,
     note: null,
     streaming: "",

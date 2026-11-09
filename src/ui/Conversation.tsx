@@ -2502,9 +2502,12 @@ function RunCard({
             <RunningFor since={run.activeSince} />
           </span>
         )}
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground tabular-nums">
-          {run.costLabel}
-        </span>
+        {run.spentMicro !== undefined ? (
+          // Money, as everywhere: the cap lives once, in the session strip and "cap left".
+          <Money micro={run.spentMicro} className="ml-auto text-[13px]" />
+        ) : (
+          <span className="ml-auto text-muted-foreground tabular-nums">{run.costLabel}</span>
+        )}
         {live && onStop && (
           <Button
             size="sm"

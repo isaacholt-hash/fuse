@@ -155,6 +155,8 @@ export interface RunView {
   status: "running" | "paused" | "done" | "stopped" | "error";
   /** e.g. "$0.12 of $1.00", or "$0.12 · no cap". */
   costLabel: string;
+  /** What the run has spent; the card shows it as money and leaves the cap to the session strip. */
+  spentMicro?: number;
   /**
    * AG-05: where the run stands against its cost cap. "near" while it runs past 80% of it (with
    * the warning to show), "reached" when it paused there, "off" when it has none.

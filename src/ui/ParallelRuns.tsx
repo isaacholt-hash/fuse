@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatUsd } from "@/cost/cost";
 import { diffLines } from "@/artifacts/diff";
 import { DiffView } from "./Artifacts";
-import { Modal } from "./primitives";
+import { Modal, Money } from "./primitives";
 import type {
   ChildCommitPin,
   ChildReviewAttempt,
@@ -57,9 +56,15 @@ export function ParallelRuns({
           </Button>
         )}
       </div>
-      <p className="text-[12px] text-muted-foreground" aria-label="Combined child spending">
-        Combined {formatUsd(view.spentMicroUsd)} spent · {formatUsd(view.heldMicroUsd)} reserved ·{" "}
-        {formatUsd(view.capMicroUsd)} cap
+      <p className="text-[12px] text-muted-foreground">
+        Children spent <Money micro={view.spentMicroUsd} />
+        {view.heldMicroUsd > 0 && (
+          <>
+            {" "}
+            · <Money micro={view.heldMicroUsd} className="font-normal" /> set aside for work still
+            running
+          </>
+        )}
       </p>
       {readOnly && (
         <p className="text-[12px] text-muted-foreground">
@@ -84,7 +89,7 @@ export function ParallelRuns({
                         ? "Stopped"
                         : "Paused"}
               </span>
-              <span className="font-mono text-[11px]">{formatUsd(child.spentMicroUsd)}</span>
+              <Money micro={child.spentMicroUsd} className="text-[13px] leading-[18px]" />
             </div>
             {child.note && (
               <p className="mt-1 whitespace-pre-wrap text-[12px] text-muted-foreground">

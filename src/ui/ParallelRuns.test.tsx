@@ -53,7 +53,10 @@ it("progress has the plan, exact child Stop and combined spending while integrat
       onIntegrate={vi.fn()}
     />,
   );
-  expect(screen.getByLabelText("Combined child spending")).toHaveTextContent("$0.0003 spent");
+  // Money in copper; what's set aside while children work is said, the cap stays in the strip.
+  expect(screen.getByText(/Children spent/)).toHaveTextContent(
+    "Children spent $0.0003 · $0.0001 set aside for work still running",
+  );
   expect(screen.getByRole("button", { name: "Review integration" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Review child 1" })).toBeDisabled();
   // Branch and plan are plumbing: folded under the step count until asked for.
