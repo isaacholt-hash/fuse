@@ -1,4 +1,4 @@
-import { ParallelRuns } from "./ParallelRuns";
+import { Details, ParallelRuns } from "./ParallelRuns";
 import { money, number } from "./format";
 import { speechPrice } from "@/cost/duration";
 import { DictationControls } from "./Dictation";
@@ -2389,6 +2389,28 @@ function StepNumber({ n }: { n: number }) {
  * A coding run on its answer (M6): what it did, step by step, and what it cost against its cap.
  * Paused at the cap or stopped, it can go on from where it was.
  */
+/** A finished run's steps fold under "N steps"; while it works or waits, they stay open. */
+function FoldWhenDone({
+  done,
+  count,
+  afterTasks,
+  children,
+}: {
+  done: boolean;
+  count: number;
+  /** Under parallel tasks, the run's own steps sit apart so they don't read as the last child's. */
+  afterTasks: boolean;
+  children: ReactNode;
+}) {
+  if (!done) return children;
+  const steps = `${String(count)} step${count === 1 ? "" : "s"}`;
+  return (
+    <div className={afterTasks ? "mt-2.5 border-t pt-1.5" : undefined}>
+      <Details summary={afterTasks ? `This run · ${steps}` : steps}>{children}</Details>
+    </div>
+  );
+}
+
 function RunCard({
   run,
   busy,
@@ -2520,63 +2542,72 @@ function RunCard({
         />
       )}
       {(run.steps.length > 0 || run.streaming) && (
-        <ol className="mt-2 space-y-1 text-[12px]">
-          {run.steps.map((s, i) =>
-            s.kind === "tool" ? (
-              <li key={s.id} className="flex items-start gap-1.5">
-                <StepNumber n={i + 1} />
-                {s.label.startsWith("Searched") ? (
-                  <Search className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-                ) : s.label.startsWith("Listed") ? (
-                  <FolderTree className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-                ) : (
-                  <FileText className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
-                )}
-                <span className="min-w-0 flex-1">
-                  {s.output === undefined ? (
-                    <span className="font-mono break-all">{s.label}</span>
+        <FoldWhenDone
+          done={!live && !approval && !run.streaming}
+          count={run.steps.length}
+          afterTasks={Boolean(run.parallel)}
+        >
+          <ol className="mt-2 space-y-1 text-[12px]">
+            {run.steps.map((s, i) =>
+              s.kind === "tool" ? (
+                <li key={s.id} className="flex items-start gap-1.5">
+                  <StepNumber n={i + 1} />
+                  {s.label.startsWith("Searched") ? (
+                    <Search className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
+                  ) : s.label.startsWith("Listed") ? (
+                    <FolderTree className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
                   ) : (
-                    <button
-                      type="button"
-                      aria-expanded={openStep === s.id}
-                      className="text-left font-mono break-all hover:underline"
-                      onClick={() => {
-                        setOpenStep(openStep === s.id ? null : s.id);
-                      }}
-                    >
-                      {s.label}
-                    </button>
+                    <FileText className="mt-0.5 size-3 shrink-0 text-muted-foreground" />
                   )}
-                  {s.error && <span className="ml-1.5 text-destructive">{s.error}</span>}
-                  {s.output !== undefined && openStep === s.id && (
-                    <pre
-                      aria-label={`Output of ${s.label}`}
-                      className="mt-1 max-h-80 overflow-auto rounded border bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap"
-                    >
-                      {s.output}
-                    </pre>
-                  )}
-                </span>
-              </li>
-            ) : (
-              <li key={s.id} className="flex items-start gap-1.5 text-muted-foreground">
-                <StepNumber n={i + 1} />
-                <span className="min-w-0 flex-1 whitespace-pre-wrap">{s.label}</span>
-                {s.tokens !== undefined && (
-                  <span className="shrink-0 tabular-nums" aria-label={`${number(s.tokens)} tokens`}>
-                    {compact(s.tokens).toLowerCase()}
+                  <span className="min-w-0 flex-1">
+                    {s.output === undefined ? (
+                      <span className="font-mono break-all">{s.label}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-expanded={openStep === s.id}
+                        className="text-left font-mono break-all hover:underline"
+                        onClick={() => {
+                          setOpenStep(openStep === s.id ? null : s.id);
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    )}
+                    {s.error && <span className="ml-1.5 text-destructive">{s.error}</span>}
+                    {s.output !== undefined && openStep === s.id && (
+                      <pre
+                        aria-label={`Output of ${s.label}`}
+                        className="mt-1 max-h-80 overflow-auto rounded border bg-background px-2 py-1 font-mono text-[11px] whitespace-pre-wrap"
+                      >
+                        {s.output}
+                      </pre>
+                    )}
                   </span>
-                )}
+                </li>
+              ) : (
+                <li key={s.id} className="flex items-start gap-1.5 text-muted-foreground">
+                  <StepNumber n={i + 1} />
+                  <span className="min-w-0 flex-1 whitespace-pre-wrap">{s.label}</span>
+                  {s.tokens !== undefined && (
+                    <span
+                      className="shrink-0 tabular-nums"
+                      aria-label={`${number(s.tokens)} tokens`}
+                    >
+                      {compact(s.tokens).toLowerCase()}
+                    </span>
+                  )}
+                </li>
+              ),
+            )}
+            {run.streaming && (
+              <li className="flex items-start gap-1.5 text-muted-foreground">
+                <StepNumber n={run.steps.length + 1} />
+                <span className="min-w-0 flex-1 whitespace-pre-wrap">{run.streaming}</span>
               </li>
-            ),
-          )}
-          {run.streaming && (
-            <li className="flex items-start gap-1.5 text-muted-foreground">
-              <StepNumber n={run.steps.length + 1} />
-              <span className="min-w-0 flex-1 whitespace-pre-wrap">{run.streaming}</span>
-            </li>
-          )}
-        </ol>
+            )}
+          </ol>
+        </FoldWhenDone>
       )}
       {approval && onApprove && run.approvalFlags && run.approvalFlags.length > 0 && (
         <div

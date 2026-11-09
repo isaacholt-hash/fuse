@@ -56,8 +56,14 @@ it("progress has the plan, exact child Stop and combined spending while integrat
   expect(screen.getByLabelText("Combined child spending")).toHaveTextContent("$0.0003 spent");
   expect(screen.getByRole("button", { name: "Review integration" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Review child 1" })).toBeDisabled();
-  await userEvent.click(screen.getByText("Plan · Best"));
+  // Branch and plan are plumbing: folded under the step count until asked for.
+  expect(screen.getByText("Inspect and test.")).not.toBeVisible();
+  await userEvent.click(screen.getByText("2 steps"));
+  expect(screen.getByText("Plan · Best")).toBeVisible();
   expect(screen.getByText("Inspect and test.")).toBeVisible();
+  expect(screen.getByText("fuse/child/recorded")).toBeVisible();
+  // While a child works, the retention note says what an interruption keeps.
+  expect(screen.getByText(/Continue never restarts them/)).toBeVisible();
   await userEvent.click(screen.getByRole("button", { name: "Stop child 1" }));
   expect(onStop).toHaveBeenCalledWith("child");
 });
@@ -181,4 +187,30 @@ it("an interrupted attempt offers explicit claim release and keeps evidence with
   );
   expect(onRelease).toHaveBeenCalledWith("lost");
   expect(onApply).not.toHaveBeenCalled();
+});
+
+it("a finished run leads with the outcome and one primary next step", () => {
+  const done: ParallelView = {
+    ...view,
+    children: view.children.map((c) => ({ ...c, status: "done" as const })),
+  };
+  render(
+    <ParallelRuns
+      view={done}
+      parentRunning={false}
+      readOnly={false}
+      onReview={vi.fn()}
+      onIntegrate={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: /Parallel tasks · 1/ })).toHaveTextContent(
+    "1 done, edits kept apart",
+  );
+  const integrate = screen.getByRole("button", { name: "Review integration" });
+  expect(integrate).toBeEnabled();
+  expect(integrate.className).toContain("bg-primary");
+  expect(screen.getByRole("button", { name: "Review child 1" }).className).toContain(
+    "border-border",
+  );
+  expect(screen.queryByText(/Continue never restarts them/)).toBeNull();
 });
