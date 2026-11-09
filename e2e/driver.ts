@@ -171,9 +171,15 @@ export class Session {
    */
   private probe(xpath: string) {
     return this.run<{ x: number; y: number; text: string; hit: boolean } | null>(`
-      const el = document.evaluate(${JSON.stringify(xpath)}, document, null,
-        XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-      if (!(el instanceof HTMLElement)) return null;
+      // The first visible match: text can also sit in a closed fold (a finished run's steps).
+      const all = document.evaluate(${JSON.stringify(xpath)}, document, null,
+        XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+      let el = null;
+      for (let i = 0; i < all.snapshotLength; i++) {
+        const n = all.snapshotItem(i);
+        if (n instanceof HTMLElement && n.getClientRects().length > 0) { el = n; break; }
+      }
+      if (!el) return null;
       el.scrollIntoView({ block: "nearest", inline: "nearest" });
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) return null;

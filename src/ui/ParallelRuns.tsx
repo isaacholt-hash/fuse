@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatUsd } from "@/cost/cost";
 import { diffLines } from "@/artifacts/diff";
@@ -28,18 +29,27 @@ export function ParallelRuns({
   onStop?: (childId: string) => void;
 }) {
   const active = parentRunning || view.children.some((c) => c.status === "running");
+  const finished = view.children.filter((c) => c.status === "done").length;
+  // Retention is worth saying while children work or when one stopped early, not after a clean run.
+  const interrupted = view.children.some((c) => c.status !== "done" && c.status !== "running");
   return (
-    <section
-      aria-label="Parallel tasks"
-      className="mt-3 space-y-2 rounded-md border bg-background p-2.5"
-    >
+    <section aria-label="Parallel tasks" className="mt-3 space-y-2 border-t pt-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-xs font-medium">Parallel tasks · {view.children.length}</h3>
+        <h3 className="text-[12px] font-medium">
+          Parallel tasks · {view.children.length}
+          {!active && finished > 0 && (
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              · {finished} done, edits kept apart
+            </span>
+          )}
+        </h3>
         {!readOnly && onIntegrate && (
+          // The one next step once the children finish; outline while they still work.
           <Button
             size="sm"
-            variant="outline"
-            className="h-7 text-xs"
+            variant={active ? "outline" : "default"}
+            className="h-7 text-[12px]"
             disabled={active}
             onClick={onIntegrate}
           >
@@ -56,11 +66,11 @@ export function ParallelRuns({
           Retained history. Review and integration controls are available on the execution owner.
         </p>
       )}
-      <ol className="space-y-2">
+      <ol className="divide-y">
         {view.children.map((child, index) => (
-          <li key={child.id} className="rounded border p-2" data-parallel-child={child.id}>
+          <li key={child.id} className="py-2 first:pt-0 last:pb-0" data-parallel-child={child.id}>
             <div className="flex flex-wrap items-start gap-2">
-              <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-xs">
+              <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-[12px]">
                 {index + 1}. {child.task}
               </span>
               <span className="text-[12px] text-muted-foreground">
@@ -76,34 +86,30 @@ export function ParallelRuns({
               </span>
               <span className="font-mono text-[11px]">{formatUsd(child.spentMicroUsd)}</span>
             </div>
-            <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-              {child.branch ?? "Retained child"}
-            </p>
-            <p className="mt-1 break-words text-[12px] text-muted-foreground">
-              {child.steps} recorded steps{child.latest ? ` · ${child.latest}` : ""}
-            </p>
             {child.note && (
               <p className="mt-1 whitespace-pre-wrap text-[12px] text-muted-foreground">
                 {child.note}
               </p>
             )}
-            {child.plan && (
-              <details className="mt-1 text-[12px]">
-                <summary className="cursor-pointer">
-                  Plan{child.planner ? ` · ${child.planner}` : ""}
-                </summary>
-                <p className="mt-1 break-words whitespace-pre-wrap text-muted-foreground">
-                  {child.plan}
-                </p>
-              </details>
-            )}
+            <Details summary={`${String(child.steps)} steps`}>
+              <p className="break-all font-mono text-[11px]">{child.branch ?? "Retained child"}</p>
+              {child.latest && <p className="break-words">Latest: {child.latest}</p>}
+              {child.plan && (
+                <>
+                  <p className="text-foreground">
+                    Plan{child.planner ? ` · ${child.planner}` : ""}
+                  </p>
+                  <p className="break-words whitespace-pre-wrap">{child.plan}</p>
+                </>
+              )}
+            </Details>
             {!readOnly && (
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-1.5 flex flex-wrap gap-2">
                 {child.status === "running" && onStop && (
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-xs"
+                    className="h-7 text-[12px]"
                     aria-label={`Stop child ${String(index + 1)}`}
                     onClick={() => {
                       onStop(child.id);
@@ -116,7 +122,7 @@ export function ParallelRuns({
                   <Button
                     variant="outline"
                     size="sm"
-                    className="h-7 text-xs"
+                    className="h-7 text-[12px]"
                     aria-label={`Review child ${String(index + 1)}`}
                     disabled={active}
                     onClick={() => {
@@ -131,11 +137,29 @@ export function ParallelRuns({
           </li>
         ))}
       </ol>
-      <p className="text-[12px] text-muted-foreground">
-        Children share this run’s owner and cap. Interrupted tasks stay retained; Continue never
-        restarts them automatically.
-      </p>
+      {(active || interrupted) && (
+        <p className="text-[12px] text-muted-foreground">
+          Children share this run’s owner and cap. Interrupted tasks stay retained; Continue never
+          restarts them automatically.
+        </p>
+      )}
     </section>
+  );
+}
+
+/** A quiet fold for run plumbing (branch, plan, steps): closed by default, one click away. */
+export function Details({ summary, children }: { summary: string; children: ReactNode }) {
+  return (
+    <details className="group mt-1 text-[12px] text-muted-foreground">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded hover:text-foreground [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          aria-hidden
+          className="size-3 transition-transform group-open:rotate-90 motion-reduce:transition-none"
+        />
+        {summary}
+      </summary>
+      <div className="mt-1 space-y-1 pl-4">{children}</div>
+    </details>
   );
 }
 

@@ -151,7 +151,12 @@ Step 2 (release record; owner acceptance pending):
   Code run card doesn't. axe: 0 violations. Three P1 fixes, one PR each:
   - `fix/routing-reason`: the margin now says why in plain text ("read as chat, low") and
     "Best ≈ $x" on its own line; a click or Enter opens the rule in full, so the reason no
-    longer needs a hover (product rule 1, the spec's margin).
+    longer needs a hover (product rule 1, the spec's margin)
+    ([#335](https://github.com/isaacholt-hash/fuse/pull/335)).
+  - `fix/run-card`: a finished parallel run leads with "2 done, edits kept apart" and one
+    primary Review integration; child tasks are rows, not boxes in a box; branch, plan and
+    steps fold under "N steps", and a finished run's own steps under "This run · N steps"
+    (open while it works or waits). The e2e driver now matches the first visible element.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
