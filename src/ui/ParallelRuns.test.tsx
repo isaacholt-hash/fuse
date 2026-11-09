@@ -59,7 +59,7 @@ it("progress has the plan, exact child Stop and combined spending while integrat
     "Children spent $0.0002 of the run's $0.0003 · $0.0001 set aside for work still running",
   );
   expect(screen.getByRole("button", { name: "Review integration" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Review child 1" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Review changes, child 1" })).toBeDisabled();
   // Branch and plan are plumbing: folded under the step count until asked for.
   expect(screen.getByText("Inspect and test.")).not.toBeVisible();
   await userEvent.click(screen.getByText("2 steps"));
@@ -95,7 +95,7 @@ it("paused retained children can be reviewed after their parent pauses without r
       onReview={onReview}
     />,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Review child 1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Review changes, child 1" }));
   expect(onReview).toHaveBeenCalledWith("child");
   expect(screen.queryByText("Resume child")).not.toBeInTheDocument();
 });
@@ -213,7 +213,7 @@ it("a finished run leads with the outcome and one primary next step", () => {
   const integrate = screen.getByRole("button", { name: "Review integration" });
   expect(integrate).toBeEnabled();
   expect(integrate.className).toContain("bg-primary");
-  expect(screen.getByRole("button", { name: "Review child 1" }).className).toContain(
+  expect(screen.getByRole("button", { name: "Review changes, child 1" }).className).toContain(
     "border-border",
   );
   expect(screen.queryByText(/Continue never restarts them/)).toBeNull();

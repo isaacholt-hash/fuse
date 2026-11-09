@@ -472,7 +472,7 @@ test("send a message: the answer streams in, then shows model, tokens and cost",
   expect(margin).toHaveTextContent("1,200 in · 400 out");
   const total = screen.getByLabelText("Thread total");
   expect(total).toHaveTextContent(/\$0\.0064.*1,600 tokens/);
-  expect(total).toHaveTextContent("about $0.0064 a message");
+  expect(total).toHaveTextContent("≈ $0.0064 a message");
   // The thread is saved, titled from the question, with its cost in the sidebar.
   await waitFor(() => {
     expect(sidebar().getByText("What is FUSE?")).toBeInTheDocument();

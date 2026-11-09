@@ -181,7 +181,12 @@ Step 2 (release record; owner acceptance pending):
     ([#340](https://github.com/isaacholt-hash/fuse/pull/340)).
   - `fix/phone-composer` (P2): on a phone the Code session strip fits two rows (16 px
     gutter, a tighter gap, the word "Mode" left to the select's own name), and the
-    composer's folder chip keeps its name ("repo", not "r…") instead of shrinking first.
+    composer's folder chip keeps its name ("repo", not "r…") instead of shrinking first
+    ([#341](https://github.com/isaacholt-hash/fuse/pull/341)).
+  - `fix/p3-labels-headings` (P3): each child's Review button is announced as "Review
+    changes, child N", so its name starts with the words on it; the Parallel tasks heading
+    is an h2 under the thread's h1; and the per-message average reads "≈ $0.003 a message"
+    on one line in the margin.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
