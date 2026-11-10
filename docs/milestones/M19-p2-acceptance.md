@@ -199,6 +199,12 @@ Step 2 (release record; owner acceptance pending):
     shows what it has spent ("so far"), not the next-message estimate under that label. The
     estimate prices the context with the thread's cache share and its typical answer length
     ($0.0032 against $0.003 actual, was $0.0102).
+  - `fix/plain-run-steps` (P1/P2, critique re-run 2026-11-10): the run's own plan names its
+    model ("Plan · Claude Opus 5.5") and lists its steps; IDs in step text shorten to their
+    first block; a model turn's count reads "20 tokens"; the parallel-start approval asks one
+    question ("Start 2 parallel tasks from commit d2180e5?"), lists the tasks, and keeps the
+    guarantees in plain weight; a task's own approvals name its worktree short ("In this
+    task's own worktree, fuse/child/9217cc3e"), full name on hover; "Tasks spent".
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

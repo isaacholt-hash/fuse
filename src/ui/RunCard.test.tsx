@@ -23,9 +23,7 @@ test.each(["command", "network"] as const)(
       onApprove,
     );
     expect(
-      screen.getByText(
-        /This approval applies only to this child|This change stays separate from the parent/,
-      ),
+      screen.getByText(/approving affects only this task|the change stays apart from the parent/),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", {
@@ -295,4 +293,24 @@ test("AG-05: paused at its cap, a run can go on without a cap", () => {
   expect(onContinue).toHaveBeenLastCalledWith("r1", true);
   fireEvent.click(screen.getByRole("button", { name: "Continue without cap" }));
   expect(onContinue).toHaveBeenLastCalledWith("r1", "uncap");
+});
+
+test("a parallel start asks one question, lists its tasks and keeps the guarantees in plain weight", () => {
+  show({
+    ...base,
+    approval: {
+      kind: "git",
+      remote: false,
+      summary:
+        "Start 2 parallel tasks from commit d42d8c4\n\n1. Write alpha.\n2. Write beta.\n\nEach task works in its own worktree.",
+    },
+  });
+  expect(screen.getByText("Start 2 parallel tasks from commit d42d8c4?").className).toContain(
+    "font-medium",
+  );
+  const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+  expect(items).toEqual(expect.arrayContaining(["Write alpha.", "Write beta."]));
+  expect(screen.getByText("Each task works in its own worktree.").className).toContain(
+    "text-muted-foreground",
+  );
 });
