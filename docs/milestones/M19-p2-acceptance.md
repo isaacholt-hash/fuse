@@ -193,6 +193,14 @@ Step 2 (release record; owner acceptance pending):
     first ID block (full name on hover), and lists a "1. … 2. …" plan as numbered items; the
     composer reads "context 0% used" in body type, and the margin says "read as chat,
     simple" instead of "chat, low".
+  - `fix/type-and-a11y` (P3, critique re-run 2026-11-10): the thread title is 16 px and the
+    run card's "Parallel tasks" heading 15 px over 12 px margin text (detector: flat type
+    hierarchy gone at 1280); the cost pill and the model chip are named by what they show,
+    then what they do ("$0.003, cost breakdown for …", "Auto, choose model (Ctrl+K)",
+    `aria-keyshortcuts`), with no `aria-label` on plain spans; the per-message margin is no
+    longer an unnamed `<aside>` landmark; on a coarse pointer the margin buttons, step folds,
+    source links and chip remove buttons are at least 24 px. axe: no violations in Chat and
+    Code, light and dark, 1280 and 390.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

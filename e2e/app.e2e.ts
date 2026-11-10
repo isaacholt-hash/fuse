@@ -96,7 +96,7 @@ test("send a message and see its cost", async () => {
     await app.type(composer, "Say hello");
     await app.press("Enter");
     expect(await nextAnswer(0)).toContain(HELLO);
-    await app.find('//*[starts-with(@aria-label, "Cost breakdown for")]');
+    await app.find('//button[contains(., "cost breakdown for")]');
   });
 });
 
@@ -176,16 +176,16 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
         const box = document.querySelector('textarea[aria-label="Message"]').closest('[data-composer-box]').getBoundingClientRect();
         // The row clips what doesn't fit, so its controls must end inside the row itself.
         const row = document.querySelector('[data-composer-row]').getBoundingClientRect();
-        const names = ["Add", "Choose model (Ctrl+K)", "Options"];
+        const names = ['[aria-label="Add"]', '[aria-keyshortcuts="Control+K"]', '[aria-label="Options"]'];
         const out = (n, edge) => {
-          const b = document.querySelector('[aria-label="' + n + '"]');
+          const b = document.querySelector(n);
           if (!b) return true;
           const r = b.getBoundingClientRect();
           return r.left < edge.left || r.right > edge.right;
         };
         // M10 step 26: the row is "+", the model and Options; the rest is in their menus.
         return names.filter((n) => out(n, row))
-          .concat(out("Send message (Enter)", box) ? ["Send message (Enter)"] : []);`);
+          .concat(out('[aria-label="Send message (Enter)"]', box) ? ["Send message (Enter)"] : []);`);
       expect(outside).toEqual([]);
     });
   }

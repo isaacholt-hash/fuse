@@ -37,12 +37,12 @@ export function ParallelRuns({
   return (
     <section aria-label="Parallel tasks" className="mt-3 space-y-2 border-t pt-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-[12px] font-medium">
+        <h2 className="text-[15px] font-medium">
           Parallel tasks · {view.children.length}
           {!active && finished > 0 && (
-            <span className="font-normal text-muted-foreground">
+            <span className="text-[12px] font-normal text-muted-foreground">
               {" "}
-              · {finished} done, edits kept apart
+              · {finished} done, each in its own worktree
             </span>
           )}
         </h2>
@@ -186,7 +186,7 @@ function PlanText({ plan }: { plan: string }) {
 export function Details({ summary, children }: { summary: string; children: ReactNode }) {
   return (
     <details className="group mt-1 text-[12px] text-muted-foreground">
-      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded hover:text-foreground [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded hover:text-foreground pointer-coarse:min-h-6 [&::-webkit-details-marker]:hidden">
         <ChevronRight
           aria-hidden
           className="size-3 transition-transform group-open:rotate-90 motion-reduce:transition-none"

@@ -6927,7 +6927,7 @@ export function ChatApp({
                         onClick={showRename}
                         disabled={!thread}
                       >
-                        <h1 className="truncate text-[13px] font-semibold tracking-tight">
+                        <h1 className="truncate text-[16px] leading-6 font-semibold tracking-tight">
                           {thread?.title ?? (area === "code" ? "New session" : "New chat")}
                         </h1>
                         {thread && (

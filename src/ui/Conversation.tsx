@@ -160,7 +160,7 @@ const LEDGER_GRID =
 const MARGIN =
   "min-w-0 pt-0.5 text-right text-[12px] leading-[1.5] text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-center @max-[760px]:gap-x-2.5 @max-[760px]:pt-0 @max-[760px]:text-left";
 const MARGIN_BUTTON =
-  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[760px]:text-left";
+  "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[760px]:text-left pointer-coarse:min-h-6";
 
 /** "≈ $0.03 a message", for the ledger head. */
 const perMessage = (micro: number, answers: number) =>
@@ -298,15 +298,13 @@ function CostBadge({ message }: { message: MessageView }) {
         </div>
       }
     >
-      <button
-        className={`${MARGIN_BUTTON} text-[13px] leading-5`}
-        aria-label={`Cost breakdown for ${message.model ?? "model"}`}
-      >
+      <button className={`${MARGIN_BUTTON} text-[13px] leading-5`}>
         {usage.totalMicro === null ? (
           <span className="text-foreground/70">cost unknown</span>
         ) : (
           <Money micro={usage.totalMicro} className="motion-safe:animate-settle" />
         )}
+        <span className="sr-only">, cost breakdown for {message.model ?? "model"}</span>
       </button>
     </Tip>
   );
@@ -728,7 +726,7 @@ export function Messages({
                   </div>
                 ) : null}
                 {message.role === "user" ? (
-                  <aside className={MARGIN}>
+                  <div data-ledger-margin className={MARGIN}>
                     <span className="block">
                       You{message.time !== undefined && ` · ${clock(message.time)}`}
                     </span>
@@ -783,7 +781,7 @@ export function Messages({
                         </Tip>
                       )}
                     </div>
-                  </aside>
+                  </div>
                 ) : (
                   <article className="min-w-0 max-w-[68ch]">
                     {message.run && (
@@ -915,7 +913,7 @@ export function Messages({
                               <FileText className="size-3 shrink-0" />
                               {onOpenSource && source.chunkId ? (
                                 <button
-                                  className="text-left underline-offset-2 hover:text-foreground hover:underline"
+                                  className="text-left underline-offset-2 hover:text-foreground hover:underline pointer-coarse:min-h-6"
                                   onClick={() => {
                                     if (source.chunkId) onOpenSource(source.chunkId);
                                   }}
@@ -1076,7 +1074,7 @@ export function Messages({
                   </article>
                 )}
                 {message.role === "assistant" && (
-                  <aside className={MARGIN}>
+                  <div data-ledger-margin className={MARGIN}>
                     {!message.cachedFrom && !message.noModel && message.model && (
                       <span className="block font-medium text-foreground">
                         {message.model}
@@ -1117,7 +1115,7 @@ export function Messages({
                         )}
                       </>
                     )}
-                  </aside>
+                  </div>
                 )}
               </div>
             ))}
@@ -1439,7 +1437,7 @@ export function Composer({
       <button
         type="button"
         aria-label={offLabel}
-        className="rounded-[3px] p-0.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none"
+        className="rounded-[3px] p-0.5 text-muted-foreground hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:outline-none pointer-coarse:p-1.5"
         onClick={off}
       >
         <X className="size-3" />
@@ -1959,7 +1957,7 @@ export function Composer({
                     variant="ghost"
                     size="sm"
                     className="min-w-0 shrink gap-1.5 rounded-[4px] bg-muted text-xs font-medium"
-                    aria-label="Choose model (Ctrl+K)"
+                    aria-keyshortcuts="Control+K"
                   >
                     <Sparkles className="size-3.5 @max-[560px]:hidden" />
                     <span className="shrink-0">{modeLabel ?? model.name}</span>
@@ -1967,10 +1965,7 @@ export function Composer({
                       <span className="shrink-0 text-muted-foreground">· once</span>
                     )}
                     {preview && (
-                      <span
-                        className="min-w-0 truncate text-muted-foreground"
-                        aria-label={`Auto picks ${preview}`}
-                      >
+                      <span className="min-w-0 truncate text-muted-foreground" data-auto-picks>
                         → {preview}
                       </span>
                     )}
@@ -1981,10 +1976,11 @@ export function Composer({
                       />
                     )}
                     {effortChoice && (
-                      <span className="shrink-0 text-muted-foreground" aria-label="Effort chosen">
+                      <span className="shrink-0 text-muted-foreground" data-effort-chosen>
                         · {EFFORT_LABELS[effortChoice]}
                       </span>
                     )}
+                    <span className="sr-only">, choose model (Ctrl+K)</span>
                     <ChevronDown className="size-3 shrink-0" />
                   </Button>
                 </Popover.Trigger>

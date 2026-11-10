@@ -209,7 +209,7 @@ it("a finished run leads with the outcome and one primary next step", () => {
     />,
   );
   expect(screen.getByRole("heading", { name: /Parallel tasks · 1/ })).toHaveTextContent(
-    "1 done, edits kept apart",
+    "1 done, each in its own worktree",
   );
   const integrate = screen.getByRole("button", { name: "Review integration" });
   expect(integrate).toBeEnabled();
