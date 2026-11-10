@@ -2248,7 +2248,7 @@ export function Composer({
                   className="block @max-[760px]:ml-1.5 @max-[760px]:inline"
                   aria-label="Cap left"
                 >
-                  <Money micro={capLeft} className="text-[13px]" />
+                  <Money micro={capLeft} exact className="text-[13px]" />
                 </span>
               </span>
             )}
@@ -2527,8 +2527,9 @@ function RunCard({
             <RunningFor since={run.activeSince} />
           </span>
         )}
-        {run.spentMicro !== undefined ? (
-          // Money, as everywhere: the cap lives once, in the session strip and "cap left".
+        {run.status === "done" ? null : run.spentMicro !== undefined ? (
+          // The live run's total; once done, its message's margin carries it and the cap lives
+          // once, in "cap left" under the composer.
           <Money micro={run.spentMicro} className="ml-auto text-[13px]" />
         ) : (
           <span className="ml-auto text-muted-foreground tabular-nums">{run.costLabel}</span>

@@ -53,10 +53,21 @@ export function Mark({ small = false }: { small?: boolean }) {
 }
 
 /** A sum of money: copper, tabular figures, the one coloured thing on the page (M10 step 23). */
-export function Money({ micro, className = "" }: { micro: number; className?: string }) {
-  return (
-    <span className={`text-copper font-medium tabular-nums ${className}`}>{money(micro)}</span>
-  );
+export function Money({
+  micro,
+  exact = false,
+  className = "",
+}: {
+  micro: number;
+  /** Keep a dollar amount's fractions of a cent ($4.9978), so a small spend isn't rounded away. */
+  exact?: boolean;
+  className?: string;
+}) {
+  const text =
+    exact && micro >= 1_000_000 && micro % 10_000 !== 0
+      ? `$${(micro / 1_000_000).toFixed(4)}`
+      : money(micro);
+  return <span className={`text-copper font-medium tabular-nums ${className}`}>{text}</span>;
 }
 
 /**

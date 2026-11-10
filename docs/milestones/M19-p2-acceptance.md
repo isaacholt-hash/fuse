@@ -208,6 +208,10 @@ Step 2 (release record; owner acceptance pending):
   - `fix/sticky-ledger-head` (P2, critique re-run 2026-11-10): the conversation scrolls with
     padding under the sticky ledger head, so a run card brought into view keeps its header,
     status and Stop visible; on a phone the head is one row (date left, thread total right).
+  - `fix/one-number-per-scope` (P2, critique re-run 2026-11-10): a finished Code run showed
+    $0.0022 four times. The session strip drops "Cap · spent" (the ledger head has the total,
+    "cap left" the cap); a done run's card drops its total (its answer's margin carries it);
+    "cap left" keeps fractions of a cent ($4.9978, not $5.00).
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

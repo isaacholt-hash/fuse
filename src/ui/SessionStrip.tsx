@@ -1,5 +1,4 @@
 import { FileDiff, FolderGit2, GitBranch, Laptop, Server } from "lucide-react";
-import { Money } from "./primitives";
 
 const MODES = {
   plan: "Read-only",
@@ -9,8 +8,8 @@ const MODES = {
 
 /**
  * M10 step 16 (CH-19): one line under a session's header: where it runs, its folders, the branch
- * its latest run is on, what its runs may do (changeable here), what it has spent against its
- * cap, and the Files panel.
+ * its latest run is on, what its runs may do (changeable here), and the Files panel. Money lives
+ * in the ledger: the thread total at its head, "cap left" under the composer.
  */
 export function SessionStrip({
   where,
@@ -18,8 +17,6 @@ export function SessionStrip({
   branch,
   mode,
   onMode,
-  spentMicro,
-  capMicro,
   files,
   filesOpen,
   onFiles,
@@ -29,8 +26,6 @@ export function SessionStrip({
   branch: string | null;
   mode: keyof typeof MODES;
   onMode: (mode: keyof typeof MODES) => void;
-  spentMicro: number;
-  capMicro: number;
   /** How many files its runs changed and artifacts it made. */
   files: number;
   filesOpen: boolean;
@@ -75,9 +70,6 @@ export function SessionStrip({
           ))}
         </select>
       </label>
-      <span className="tabular-nums" aria-label="Spent of cap">
-        Cap <Money micro={capMicro} /> · spent <Money micro={spentMicro} />
-      </span>
       <button
         type="button"
         aria-pressed={filesOpen}
