@@ -148,6 +148,19 @@ test("open Settings", async () => {
   });
 });
 
+/** "+" then Add a folder; a fresh session's composer can remount under the first click, so open the menu again if it closed. */
+async function addFolder() {
+  for (let tries = 0; ; tries++) {
+    await app.click(button("Add"));
+    try {
+      await app.click(button("Add a folder"), 3_000);
+      return;
+    } catch (e) {
+      if (tries >= 2) throw e;
+    }
+  }
+}
+
 test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
   const escape = join(homedir(), "Documents", "escape.txt");
   rmSync(escape, { force: true });
@@ -156,24 +169,7 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     await app.chord("2");
     await app.chord("n");
     // M10 step 26: "+" holds Add a folder; a new session's kind is in Run settings.
-    await app.click(button("Add"));
-    // TEMP diagnostic for #348's Windows failure; removed before merge.
-    await new Promise((r) => setTimeout(r, 800));
-    console.log(
-      "DIAG",
-      JSON.stringify(
-        await app.run(`
-      const adds = [...document.querySelectorAll('button')].filter((b) => b.getAttribute('aria-label') === 'Add' || b.innerText.trim() === 'Add');
-      return {
-        adds: adds.map((b) => ({ html: b.outerHTML.slice(0, 160), rects: b.getClientRects().length, expanded: b.getAttribute('aria-expanded') })),
-        content: [...document.querySelectorAll('[role="dialog"]')].map((d) => d.outerHTML.slice(0, 300)),
-        folder: !!document.querySelector('[aria-label="Add a folder"]'),
-        active: document.activeElement ? document.activeElement.outerHTML.slice(0, 160) : null,
-        coarse: matchMedia('(pointer: coarse)').matches,
-      };`),
-      ),
-    );
-    await app.click(button("Add a folder"));
+    await addFolder();
     await app.sees("fuse-e2e");
     await app.click(button("Run settings"));
     await app.click(button("Work run"));
@@ -270,8 +266,7 @@ test.skipIf(!PYTHON)(
     await step("python-run", async () => {
       await app.chord("2");
       await app.chord("n");
-      await app.click(button("Add"));
-      await app.click(button("Add a folder"));
+      await addFolder();
       await app.sees("fuse-e2e");
       await app.click(button("Run settings"));
       await app.click(button("Work run"));
