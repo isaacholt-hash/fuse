@@ -608,7 +608,7 @@ export function Messages({
       <div
         ref={scrollRef}
         data-conversation-scroll
-        className="@container h-full overflow-y-auto scroll-smooth"
+        className="@container h-full scroll-pt-16 overflow-y-auto scroll-smooth"
         onScroll={(e) => {
           const el = e.currentTarget;
           setAway(el.scrollHeight - el.scrollTop - el.clientHeight > 240);
@@ -636,7 +636,7 @@ export function Messages({
         ) : (
           <div className="mx-auto w-[min(100%,calc(68ch+132px+88px))] px-8 pt-6 pb-12 text-[15px] max-[800px]:px-5">
             <div
-              className={`${LEDGER_GRID} sticky top-0 z-10 -mx-3 mb-2 items-baseline px-3 border-b bg-background @max-[760px]:gap-y-1 ${scrolled ? "py-2" : "pb-3.5"}`}
+              className={`${LEDGER_GRID} sticky top-0 z-10 -mx-3 mb-2 items-baseline px-3 border-b bg-background @max-[760px]:flex @max-[760px]:justify-between @max-[760px]:gap-x-3 ${scrolled ? "py-2" : "pb-3.5"}`}
             >
               <div className="text-[12px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
