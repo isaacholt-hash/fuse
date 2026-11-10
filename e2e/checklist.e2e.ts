@@ -228,7 +228,8 @@ test("3. a Code session with a project and a cost cap runs, named after its task
       ),
     ).toBe("");
     await app.find(`${row("E2E edit checklist.txt")}[@aria-current="page"]`);
-    expect(await app.text(byLabel("Spent of cap"))).toContain("Cap $0.50");
+    // The session's $0.50 cap shows once, as what is left of it under the composer.
+    expect(await app.text(byLabel("Cap left"))).toMatch(/^\$0\.(50|4\d{1,3})$/);
   });
 });
 

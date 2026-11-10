@@ -314,3 +314,12 @@ test("a parallel start asks one question, lists its tasks and keeps the guarante
     "text-muted-foreground",
   );
 });
+
+test("a running run's card shows its live total; once done, its answer's margin carries it", () => {
+  show({ ...base, spentMicro: 2200 });
+  const head = screen.getByRole("region", { name: "Work run" });
+  expect(head.textContent).toContain("$0.0022");
+  cleanup();
+  show({ ...base, status: "done", spentMicro: 2200 });
+  expect(screen.getByRole("region", { name: "Work run" }).textContent).not.toContain("$0.0022");
+});
