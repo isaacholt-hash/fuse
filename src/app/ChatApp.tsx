@@ -639,6 +639,7 @@ import { useUpdate } from "./useUpdate";
 import {
   areaOf,
   cacheHitRate,
+  estimateMessageMicro,
   emptyState,
   inArea,
   threadState,
@@ -648,6 +649,7 @@ import {
   modelOption,
   requestRow,
   threadTokens,
+  unbookedRunSpend,
   threadView,
   withLive,
   type LiveAnswer,
@@ -2277,10 +2279,7 @@ export function ChatApp({
     const target =
       (firstOfTier ? findModel(catalog, firstOfTier.provider, firstOfTier.id) : undefined) ?? model;
     const tokens = input.contextTokens ?? 0;
-    const price = priceFor(target, tokens);
-    return Math.round(
-      (tokens * priceToMicro(price.input) + 800 * priceToMicro(price.output)) / 1_000_000,
-    );
+    return estimateMessageMicro(tokens, priceFor(target, tokens), messages);
   };
 
   /**
@@ -4592,6 +4591,12 @@ export function ChatApp({
   const keyFor = keys.keys.find((k) => k.provider === model.provider);
   const missingKey = keyFor && !keyFor.saved && keyFor.busy !== "loading" ? keyFor.name : null;
   const cacheRate = cacheHitRate(messages);
+  // One live total: a running run's spend joins the thread's until it lands on its message.
+  const liveRunSpend = unbookedRunSpend(
+    [...threadRuns.values()].map((r) => r.run),
+    messages,
+  );
+  const threadSpent = (thread?.costMicroUsd ?? 0) + liveRunSpend;
   // M10 step 13: questions waiting (this app's runs, or every page's on the web), and how each
   // chat's handovers to HULK are going.
   const waitingRuns = new Set([
@@ -4723,6 +4728,8 @@ export function ChatApp({
     .filter((t) => !t.incognito && inArea(t, area))
     .map((t) => ({
       ...threadView(t, at),
+      // The open session's row ticks with its live run, like the strip and the ledger head.
+      ...(t.id === thread?.id ? { costMicro: threadSpent } : {}),
       state: threadState({
         latest: latestRuns.get(t.id),
         waiting: waitingRuns,
@@ -7085,7 +7092,7 @@ export function ChatApp({
                       }
                       mode={sessionMode}
                       onMode={setSessionMode}
-                      spentMicro={thread.costMicroUsd}
+                      spentMicro={threadSpent}
                       capMicro={sessionCap}
                       files={sessionChanges.length + threadArtifacts.length}
                       filesOpen={filesOpen}
@@ -7142,7 +7149,7 @@ export function ChatApp({
                         {...(thread
                           ? {
                               total: {
-                                micro: thread.costMicroUsd,
+                                micro: threadSpent,
                                 tokens: threadTokens(messages),
                                 cacheRate,
                                 answers: messages.filter(
@@ -7333,9 +7340,10 @@ export function ChatApp({
                         model={{ ...modelOption(model), ...tierProp(model) }}
                         models={options}
                         estimate={estimateDraft}
+                        spentSoFar={liveRunSpend > 0 ? liveRunSpend : null}
                         capLeft={
                           thread && thread.kind !== "chat"
-                            ? Math.max(0, sessionCap - thread.costMicroUsd)
+                            ? Math.max(0, sessionCap - threadSpent)
                             : null
                         }
                         skills={usableSkills.map((s) => ({ name: s.name, versionId: s.versionId }))}

@@ -193,6 +193,12 @@ Step 2 (release record; owner acceptance pending):
     first ID block (full name on hover), and lists a "1. … 2. …" plan as numbered items; the
     composer reads "context 0% used" in body type, and the margin says "read as chat,
     simple" instead of "chat, low".
+  - `fix/live-money` (P1, critique re-run 2026-11-10): one live total. A running run's spend
+    joins the thread's until it lands on its message, so the strip, the ledger head, the
+    sidebar row, "cap left" and the run card agree mid-run; while a run goes the composer
+    shows what it has spent ("so far"), not the next-message estimate under that label. The
+    estimate prices the context with the thread's cache share and its typical answer length
+    ($0.0032 against $0.003 actual, was $0.0102).
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
