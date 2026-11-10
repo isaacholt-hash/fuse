@@ -96,7 +96,7 @@ test("send a message and see its cost", async () => {
     await app.type(composer, "Say hello");
     await app.press("Enter");
     expect(await nextAnswer(0)).toContain(HELLO);
-    await app.find('//*[starts-with(@aria-label, "Cost breakdown for")]');
+    await app.find('//button[contains(., "cost breakdown for")]');
   });
 });
 
@@ -148,6 +148,19 @@ test("open Settings", async () => {
   });
 });
 
+/** "+" then Add a folder; a fresh session's composer can remount under the first click, so open the menu again if it closed. */
+async function addFolder() {
+  for (let tries = 0; ; tries++) {
+    await app.click(button("Add"));
+    try {
+      await app.click(button("Add a folder"), 3_000);
+      return;
+    } catch (e) {
+      if (tries >= 2) throw e;
+    }
+  }
+}
+
 test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
   const escape = join(homedir(), "Documents", "escape.txt");
   rmSync(escape, { force: true });
@@ -156,8 +169,7 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
     await app.chord("2");
     await app.chord("n");
     // M10 step 26: "+" holds Add a folder; a new session's kind is in Run settings.
-    await app.click(button("Add"));
-    await app.click(button("Add a folder"));
+    await addFolder();
     await app.sees("fuse-e2e");
     await app.click(button("Run settings"));
     await app.click(button("Work run"));
@@ -176,16 +188,16 @@ test("a Work run on a test folder: step 9's checks 2, 3 and 5", async () => {
         const box = document.querySelector('textarea[aria-label="Message"]').closest('[data-composer-box]').getBoundingClientRect();
         // The row clips what doesn't fit, so its controls must end inside the row itself.
         const row = document.querySelector('[data-composer-row]').getBoundingClientRect();
-        const names = ["Add", "Choose model (Ctrl+K)", "Options"];
+        const names = ['[aria-label="Add"]', '[aria-keyshortcuts="Control+K"]', '[aria-label="Options"]'];
         const out = (n, edge) => {
-          const b = document.querySelector('[aria-label="' + n + '"]');
+          const b = document.querySelector(n);
           if (!b) return true;
           const r = b.getBoundingClientRect();
           return r.left < edge.left || r.right > edge.right;
         };
         // M10 step 26: the row is "+", the model and Options; the rest is in their menus.
         return names.filter((n) => out(n, row))
-          .concat(out("Send message (Enter)", box) ? ["Send message (Enter)"] : []);`);
+          .concat(out('[aria-label="Send message (Enter)"]', box) ? ["Send message (Enter)"] : []);`);
       expect(outside).toEqual([]);
     });
   }
@@ -254,8 +266,7 @@ test.skipIf(!PYTHON)(
     await step("python-run", async () => {
       await app.chord("2");
       await app.chord("n");
-      await app.click(button("Add"));
-      await app.click(button("Add a folder"));
+      await addFolder();
       await app.sees("fuse-e2e");
       await app.click(button("Run settings"));
       await app.click(button("Work run"));
