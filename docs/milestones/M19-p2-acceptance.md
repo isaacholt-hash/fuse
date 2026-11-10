@@ -193,6 +193,10 @@ Step 2 (release record; owner acceptance pending):
     first ID block (full name on hover), and lists a "1. … 2. …" plan as numbered items; the
     composer reads "context 0% used" in body type, and the margin says "read as chat,
     simple" instead of "chat, low".
+  - `fix/one-number-per-scope` (P2, critique re-run 2026-11-10): a finished Code run showed
+    $0.0022 four times. The session strip drops "Cap · spent" (the ledger head has the total,
+    "cap left" the cap); a done run's card drops its total (its answer's margin carries it);
+    "cap left" keeps fractions of a cent ($4.9978, not $5.00).
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

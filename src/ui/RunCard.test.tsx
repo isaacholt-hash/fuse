@@ -296,3 +296,12 @@ test("AG-05: paused at its cap, a run can go on without a cap", () => {
   fireEvent.click(screen.getByRole("button", { name: "Continue without cap" }));
   expect(onContinue).toHaveBeenLastCalledWith("r1", "uncap");
 });
+
+test("a running run's card shows its live total; once done, its answer's margin carries it", () => {
+  show({ ...base, spentMicro: 2200 });
+  const head = screen.getByRole("region", { name: "Work run" });
+  expect(head.textContent).toContain("$0.0022");
+  cleanup();
+  show({ ...base, status: "done", spentMicro: 2200 });
+  expect(screen.getByRole("region", { name: "Work run" }).textContent).not.toContain("$0.0022");
+});

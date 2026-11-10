@@ -7085,8 +7085,6 @@ export function ChatApp({
                       }
                       mode={sessionMode}
                       onMode={setSessionMode}
-                      spentMicro={thread.costMicroUsd}
-                      capMicro={sessionCap}
                       files={sessionChanges.length + threadArtifacts.length}
                       filesOpen={filesOpen}
                       onFiles={() => {
