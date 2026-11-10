@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ParallelRuns, ParallelReviewDialog, type ParallelDialogState } from "./ParallelRuns";
+import { shortBranch } from "@/parallel/branch";
 import type { ParallelView } from "@/parallel/types";
 afterEach(cleanup);
 const view: ParallelView = {
@@ -217,4 +218,33 @@ it("a finished run leads with the outcome and one primary next step", () => {
     "border-border",
   );
   expect(screen.queryByText(/Continue never restarts them/)).toBeNull();
+});
+it("shortens a child branch's UUID and lists a numbered plan", async () => {
+  expect(shortBranch("fuse/child/4b1ce1a0-b1d6-40de-b5a6-e1e2d5bd3029")).toBe(
+    "fuse/child/4b1ce1a0",
+  );
+  const child = view.children[0];
+  if (!child) throw new Error("fixture has a child");
+  render(
+    <ParallelRuns
+      view={{
+        ...view,
+        children: [
+          {
+            ...child,
+            branch: "fuse/child/4b1ce1a0-b1d6-40de-b5a6-e1e2d5bd3029",
+            plan: "1. Inspect the task. 2. Write the result. 3. Check the worktree.",
+          },
+        ],
+      }}
+      readOnly={false}
+      parentRunning={false}
+    />,
+  );
+  await userEvent.click(screen.getByText("2 steps"));
+  expect(screen.getByText("fuse/child/4b1ce1a0")).toBeVisible();
+  const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+  expect(items).toEqual(
+    expect.arrayContaining(["Inspect the task.", "Write the result.", "Check the worktree."]),
+  );
 });

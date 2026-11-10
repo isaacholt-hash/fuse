@@ -195,6 +195,19 @@ function reasoningView(
 
 const TIER_LABELS: Record<string, string> = { cheap: "Cheap", balanced: "Balanced", best: "Best" };
 
+/** "anthropic/claude-opus-5-5" as "Claude Opus 5.5"; an unknown ref stays as stored. */
+export function modelName(catalog: Catalog, ref: string): string {
+  const [provider, ...rest] = ref.split("/");
+  const found =
+    provider === "openai" || provider === "anthropic"
+      ? findModel(catalog, provider, rest.join("/"))
+      : undefined;
+  return found?.displayName ?? ref;
+}
+
+/** Plain words for a classified task's complexity, as the routing policy editor names them. */
+const COMPLEXITY_LABELS: Record<string, string> = { low: "simple", medium: "medium", high: "hard" };
+
 /** The routing badge: how the model was picked, and the same tokens priced on Best (RT-09). */
 export function routeView(m: Message): RouteView | undefined {
   const r = m.route;
@@ -210,7 +223,10 @@ export function routeView(m: Message): RouteView | undefined {
   return {
     label,
     reason: r.reason,
-    readAs: intent && r.complexity ? `${intent}, ${r.complexity}` : null,
+    readAs:
+      intent && r.complexity
+        ? `${intent}, ${COMPLEXITY_LABELS[r.complexity] ?? r.complexity}`
+        : null,
     bestMicro: r.tier === "best" ? null : m.bestCostMicroUsd,
     tier: r.tier,
   };
