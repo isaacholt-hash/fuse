@@ -4131,7 +4131,7 @@ export function ChatApp({
     for (const v of views) {
       const r = threadRuns.get(v.id);
       if (r && r.run.kind !== "research") {
-        v.run = runView(r.run, r.steps, r.streaming, r.changes);
+        v.run = runView(r.run, r.steps, r.streaming, r.changes, (ref) => modelName(catalog, ref));
         const childProgress = parallel.views.get(r.run.id);
         if (childProgress)
           v.run.parallel = {

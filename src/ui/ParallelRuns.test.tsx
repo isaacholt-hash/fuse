@@ -56,8 +56,8 @@ it("progress has the plan, exact child Stop and combined spending while integrat
   );
   // The children's share adds up to their rows; the run's total includes the parent's planning.
   // Money in copper; what's set aside while children work is said, the cap stays in the strip.
-  expect(screen.getByText(/Children spent/)).toHaveTextContent(
-    "Children spent $0.0002 of the run's $0.0003 · $0.0001 set aside for work still running",
+  expect(screen.getByText(/Tasks spent/)).toHaveTextContent(
+    "Tasks spent $0.0002 of the run's $0.0003 · $0.0001 set aside for work still running",
   );
   expect(screen.getByRole("button", { name: "Review integration" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Review changes, child 1" })).toBeDisabled();

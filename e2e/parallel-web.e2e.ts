@@ -112,7 +112,7 @@ describe.skipIf(!URL || !BROWSER)(
     test("denial creates no child and exact approved tasks are visible in both themes", async () => {
       await app.type(byLabel("Message"), "Recorded parallel tasks: alpha and beta.");
       await app.press("Enter");
-      await app.find('//*[contains(text(),"Start 2 child Code runs at commit")]');
+      await app.find('//*[contains(text(),"Start 2 parallel tasks from commit")]');
       expect((await counters()).children).toBe(0);
       await app.run(
         "document.querySelector('[aria-label=\"Allow once\"]').scrollIntoView({block:'end'});",
@@ -137,7 +137,7 @@ describe.skipIf(!URL || !BROWSER)(
     test("HULK finishes separate children after caller navigation and preserves original parent bytes and totals", async () => {
       await app.type(byLabel("Message"), "Recorded parallel tasks again: alpha and beta.");
       await app.press("Enter");
-      await app.find('//*[contains(text(),"Start 2 child Code runs at commit")]');
+      await app.find('//*[contains(text(),"Start 2 parallel tasks from commit")]');
       await app.click(button("Allow once"));
       await app.find("//*[@data-child-approval]");
       const firstChild = await app.run<string>(

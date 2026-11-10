@@ -60,7 +60,7 @@ export function ParallelRuns({
         )}
       </div>
       <p className="text-[12px] text-muted-foreground">
-        Children spent <Money micro={childrenMicro} />
+        Tasks spent <Money micro={childrenMicro} />
         {view.spentMicroUsd > childrenMicro && (
           <>
             {" "}
@@ -166,7 +166,7 @@ export function ParallelRuns({
 }
 
 /** A plan written "1. … 2. … 3. …" on one line reads as a numbered list. */
-function PlanText({ plan }: { plan: string }) {
+export function PlanText({ plan }: { plan: string }) {
   const steps = plan
     .split(/(?:^|\s)(?=\d+\.\s)/)
     .map((s) => s.replace(/^\d+\.\s+/, "").trim())
