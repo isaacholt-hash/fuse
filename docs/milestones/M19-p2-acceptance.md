@@ -193,6 +193,12 @@ Step 2 (release record; owner acceptance pending):
     first ID block (full name on hover), and lists a "1. … 2. …" plan as numbered items; the
     composer reads "context 0% used" in body type, and the margin says "read as chat,
     simple" instead of "chat, low".
+  - `fix/plain-run-steps` (P1/P2, critique re-run 2026-11-10): the run's own plan names its
+    model ("Plan · Claude Opus 5.5") and lists its steps; IDs in step text shorten to their
+    first block; a model turn's count reads "20 tokens"; the parallel-start approval asks one
+    question ("Start 2 parallel tasks from commit d2180e5?"), lists the tasks, and keeps the
+    guarantees in plain weight; a task's own approvals name its worktree short ("In this
+    task's own worktree, fuse/child/9217cc3e"), full name on hover; "Tasks spent".
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

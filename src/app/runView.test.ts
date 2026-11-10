@@ -240,3 +240,21 @@ test("M10 step 11: a working run counts its active time from its leg's start plu
   expect(working.activeSince).toBe(140);
   expect(runView(run, []).activeSince).toBeNull();
 });
+
+test("the plan names its model, and IDs in step text shorten to their first block", () => {
+  const v = runView(
+    { ...run, status: "running", plan: "1. Split.", planner: "anthropic/claude-opus-5-5" },
+    [
+      {
+        ...steps[0],
+        kind: "model",
+        text: "Child b78f9413-98b8-49b7-80f5-3322de16e0e3: running",
+      } as RunStep,
+    ],
+    "",
+    [],
+    (ref) => (ref === "anthropic/claude-opus-5-5" ? "Claude Opus 5.5" : ref),
+  );
+  expect(v.steps[0]?.label).toBe("Plan · Claude Opus 5.5\n1. Split.");
+  expect(v.steps.some((s) => s.label === "Child b78f9413: running")).toBe(true);
+});

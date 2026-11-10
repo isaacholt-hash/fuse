@@ -1,4 +1,5 @@
-import { Details, ParallelRuns } from "./ParallelRuns";
+import { Details, ParallelRuns, PlanText } from "./ParallelRuns";
+import { shortBranch } from "@/parallel/branch";
 import { money, number } from "./format";
 import { speechPrice } from "@/cost/duration";
 import { DictationControls } from "./Dictation";
@@ -2611,13 +2612,20 @@ function RunCard({
               ) : (
                 <li key={s.id} className="flex items-start gap-1.5 text-muted-foreground">
                   <StepNumber n={i + 1} />
-                  <span className="min-w-0 flex-1 whitespace-pre-wrap">{s.label}</span>
+                  {s.id === "plan" ? (
+                    <span className="min-w-0 flex-1">
+                      {s.label.split("\n")[0]}
+                      <PlanText plan={s.label.split("\n").slice(1).join("\n")} />
+                    </span>
+                  ) : (
+                    <span className="min-w-0 flex-1 whitespace-pre-wrap">{s.label}</span>
+                  )}
                   {s.tokens !== undefined && (
                     <span
                       className="shrink-0 tabular-nums"
                       aria-label={`${number(s.tokens)} tokens`}
                     >
-                      {compact(s.tokens).toLowerCase()}
+                      {compact(s.tokens).toLowerCase()} tokens
                     </span>
                   )}
                 </li>
@@ -2676,8 +2684,11 @@ function RunCard({
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
-              Child worktree: {approval.child.branch ?? approval.child.runId}. This change stays
-              separate from the parent.
+              In this task&apos;s own worktree,{" "}
+              <span title={approval.child.branch ?? approval.child.runId}>
+                {shortBranch(approval.child.branch ?? approval.child.runId)}
+              </span>
+              : the change stays apart from the parent.
             </p>
           )}
           <p className="mb-1 font-medium">This command seems to need the network:</p>
@@ -2739,8 +2750,11 @@ function RunCard({
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
-              Child worktree: {approval.child.branch ?? approval.child.runId}. This approval applies
-              only to this child.
+              In this task&apos;s own worktree,{" "}
+              <span title={approval.child.branch ?? approval.child.runId}>
+                {shortBranch(approval.child.branch ?? approval.child.runId)}
+              </span>
+              : approving affects only this task.
             </p>
           )}
           {approval.kind === "command" ? (
@@ -2845,9 +2859,7 @@ function RunCard({
             </>
           ) : approval.kind === "git" ? (
             <>
-              <p className="mb-1 whitespace-pre-wrap break-words font-medium">
-                {approval.summary}?
-              </p>
+              <GitSummary summary={approval.summary} />
               {approval.remote && (
                 <p className="mb-2 text-warning">This goes to GitHub, outside this computer.</p>
               )}
@@ -3070,5 +3082,32 @@ function RunCard({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * A git approval's summary: its first paragraph is the question; a "1. … 2. …" paragraph is the
+ * list of what it starts; the rest is what it guarantees, in plain weight.
+ */
+function GitSummary({ summary }: { summary: string }) {
+  const [question = "", ...rest] = summary.split(/\n\s*\n/);
+  return (
+    <div className="mb-2 space-y-1.5 break-words">
+      <p className="font-medium whitespace-pre-wrap">{question.trim()}?</p>
+      {rest.map((block, i) => {
+        const items = block.split("\n").map((l) => /^\d+\.\s+(.*)$/.exec(l.trim()));
+        return items.every(Boolean) ? (
+          <ol key={i} className="list-decimal space-y-0.5 pl-5">
+            {items.map((m, j) => (
+              <li key={j}>{m?.[1]}</li>
+            ))}
+          </ol>
+        ) : (
+          <p key={i} className="whitespace-pre-wrap text-muted-foreground">
+            {block}
+          </p>
+        );
+      })}
+    </div>
   );
 }

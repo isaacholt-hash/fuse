@@ -8,6 +8,7 @@ import type { AuditRowView } from "@/ui/AgentAudit";
 import type { ApprovalRequest } from "@/agent/run";
 import { KIND_LABEL, kindOf } from "@/agent/registry";
 import type { ApprovalView, RunChangeView, RunStepView, RunView } from "@/ui/types";
+import { shortBranch as shortIds } from "@/parallel/branch";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 const reviewActionKind = (name: string) =>
@@ -271,6 +272,8 @@ export function runView(
   steps: RunStep[],
   streaming = "",
   changes: RunChange[] = [],
+  /** "anthropic/claude-opus-5-5" as "Claude Opus 5.5"; the raw reference without a catalog. */
+  modelLabel: (ref: string) => string = (ref) => ref,
 ): RunView {
   const lastModel = steps.findLast((s) => s.kind === "model");
   const views: RunStepView[] = run.plan
@@ -278,7 +281,7 @@ export function runView(
         {
           id: "plan",
           kind: "note",
-          label: `Plan (${run.planner ?? "planner"}):\n${run.plan}`,
+          label: `Plan · ${run.planner ? modelLabel(run.planner) : "planner"}\n${run.plan}`,
           error: null,
         },
       ]
@@ -296,7 +299,7 @@ export function runView(
       views.push({
         id: s.id,
         kind: "tool",
-        label: toolLabel(s.call.name, s.call.input),
+        label: shortIds(toolLabel(s.call.name, s.call.input)),
         error: s.isError ? firstLine(s.output) : null,
         ...(s.call.name === "run_command" ||
         s.call.name === "run_python" ||
@@ -308,7 +311,7 @@ export function runView(
       views.push({
         id: s.id,
         kind: "note",
-        label: s.text.trim(),
+        label: shortIds(s.text.trim()),
         error: null,
         ...(s.tokens !== undefined ? { tokens: s.tokens } : {}),
       });

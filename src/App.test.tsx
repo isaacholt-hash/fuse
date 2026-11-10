@@ -3472,8 +3472,8 @@ test("M6: a linked project's chat runs a coding task: steps, cost and the answer
   expect(await card.findByText("Done")).toBeInTheDocument();
   expect(card.getByText("Read README.md")).toBeInTheDocument();
   // RT-14: on Auto, the Best tier planned first; the loop ran on the routed model.
-  expect(card.getByText(/Plan \(anthropic\/test-best\)/)).toBeInTheDocument();
-  expect(card.getByText("1. Read the README.")).toBeInTheDocument();
+  expect(card.getByText("Plan · Test Best")).toBeInTheDocument();
+  expect(card.getAllByText("1. Read the README.").length).toBeGreaterThan(0);
   expect(await screen.findByText("It's called Lighthouse.")).toBeInTheDocument();
   // The tool result went back to the model with the turn.
   expect(calls.anthropic?.at(-2)?.at(-1)?.toolResults?.[0]?.content).toBe(

@@ -1928,7 +1928,7 @@ async function delegateCode(
       {
         kind: "git",
         remote: false,
-        summary: `Start ${String(tasks.length)} child Code run${tasks.length === 1 ? "" : "s"} at commit ${base.commit}\n\n${tasks.map((t, i) => `${String(i + 1)}. ${t}`).join("\n\n")}\n\nOne owner and one combined cap: ${formatUsd(exposure.cap)}; ${formatUsd(exposure.spent)} spent and ${formatUsd(exposure.held)} reserved. Each child gets a separate worktree. Uncommitted parent changes and secret-looking files are excluded. Children cannot delegate or use Git directly. Review, commit and integration happen through the parent controls`,
+        summary: `Start ${String(tasks.length)} parallel task${tasks.length === 1 ? "" : "s"} from commit ${base.commit.slice(0, 7)}\n\n${tasks.map((t, i) => `${String(i + 1)}. ${t}`).join("\n")}\n\nEach task works in its own worktree and shares this run's cap: ${formatUsd(exposure.cap)}, with ${formatUsd(exposure.spent)} spent and ${formatUsd(exposure.held)} reserved. Uncommitted changes and secret-looking files stay out. Tasks can't use Git or start tasks of their own; you review, commit and integrate their work here.`,
       },
       input,
     );
