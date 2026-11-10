@@ -445,7 +445,7 @@ test("F5: a slow reload from mid-answer can't put the finished answer back to st
   );
   await user.type(await composer(), "What is FUSE?{Enter}");
   expect(
-    await screen.findByRole("button", { name: "Cost breakdown for Test Claude" }),
+    await screen.findByRole("button", { name: /cost breakdown for Test Claude$/ }),
   ).toBeInTheDocument();
   release();
   // Let the held reload finish and render.
@@ -453,7 +453,7 @@ test("F5: a slow reload from mid-answer can't put the finished answer back to st
     await new Promise((r) => setTimeout(r, 50));
   });
   expect(
-    screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
+    screen.getByRole("button", { name: /cost breakdown for Test Claude$/ }),
   ).toBeInTheDocument();
   expect(screen.getByText("Hello there.")).toBeInTheDocument();
 });
@@ -465,9 +465,9 @@ test("send a message: the answer streams in, then shows model, tokens and cost",
   expect(await screen.findByText("Hello there.")).toBeInTheDocument();
   // 1,200 in × $2 + 400 out × $10 per MTok = $0.0064
   // M10 step 24: the figure sits in the ledger margin under the model's name, the tokens below.
-  const badge = await screen.findByRole("button", { name: "Cost breakdown for Test Claude" });
+  const badge = await screen.findByRole("button", { name: /cost breakdown for Test Claude$/ });
   expect(badge).toHaveTextContent("$0.0064");
-  const margin = badge.closest("aside");
+  const margin = badge.closest("[data-ledger-margin]");
   expect(margin).toHaveTextContent("Test Claude");
   expect(margin).toHaveTextContent("1,200 in · 400 out");
   const total = screen.getByLabelText("Thread total");
@@ -566,14 +566,14 @@ test("F6: a model picked just before sending is the one used, even while its pin
   expect(screen.getByText("Switched to Test GPT · full history sent")).toBeInTheDocument();
   release();
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: "Choose model (Ctrl+K)" })).toHaveTextContent(
+    expect(screen.getByRole("button", { name: /choose model \(Ctrl\+K\)$/ })).toHaveTextContent(
       "Test GPT",
     );
   });
 });
 
 describe("auto routing", () => {
-  const modeButton = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  const modeButton = () => screen.getByRole("button", { name: /choose model \(Ctrl\+K\)$/ });
   const HARD =
     "Design the technical architecture and a phased implementation plan for our billing system.";
 
@@ -593,18 +593,18 @@ describe("auto routing", () => {
     expect(await screen.findByText("Why this model")).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(
-      screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
+      screen.getByRole("button", { name: /cost breakdown for Test Claude$/ }),
     ).toBeInTheDocument();
 
     // The button previews Auto's pick while you type.
     await user.type(await composer(), HARD);
-    expect(screen.getByLabelText("Auto picks Best")).toBeInTheDocument();
+    expect(document.querySelector("[data-auto-picks]")).toHaveTextContent("→ Best");
     await user.keyboard("{Enter}");
     expect(await screen.findByText("Careful answer.")).toBeInTheDocument();
     const careful = await screen.findByRole("button", { name: "Routing: Auto · Best" });
     expect(careful.parentElement).not.toHaveTextContent("Best ≈");
     expect(
-      screen.getByRole("button", { name: "Cost breakdown for Test Best" }),
+      screen.getByRole("button", { name: /cost breakdown for Test Best$/ }),
     ).toBeInTheDocument();
 
     const chats = (await listRecentRequests(db, DEFAULT_TENANT, 10)).filter(
@@ -792,18 +792,18 @@ test("M10 step 22: the effort dial sends the chosen level with the model's full 
   });
   await composer();
   // M10 step 26: effort is in the model menu. Unset, it's the usual level for the model.
-  const chip = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  const chip = () => screen.getByRole("button", { name: /choose model \(Ctrl\+K\)$/ });
   await user.click(chip());
   const effort = within(await screen.findByRole("group", { name: "Reasoning effort" }));
   expect(effort.getByRole("radio", { name: "Usual" })).toHaveAttribute("aria-checked", "true");
   await user.click(effort.getByRole("radio", { name: /^Max/ }));
   await user.keyboard("{Escape}");
   // A chosen level shows on the model chip until it's sent.
-  expect(within(chip()).getByLabelText("Effort chosen")).toHaveTextContent("· Max");
+  expect(chip().querySelector("[data-effort-chosen]")).toHaveTextContent("· Max");
   await user.type(await composer(), "What is FUSE?{Enter}");
   expect(await screen.findByText("Deep answer.")).toBeInTheDocument();
   expect(options[0]).toMatchObject({ effort: "max", maxOutputTokens: 1000 });
-  expect(within(chip()).queryByLabelText("Effort chosen")).toBeNull();
+  expect(chip().querySelector("[data-effort-chosen]")).toBeNull();
   await user.type(await composer(), "And then?{Enter}");
   expect(await screen.findByText("Normal answer.")).toBeInTheDocument();
   expect(options.at(-1)).not.toHaveProperty("effort");
@@ -1193,7 +1193,7 @@ test("Ask AI to edit: the request routes like a message and the result shows as 
   const asked = calls.anthropic?.[1]?.at(-1)?.content ?? "";
   expect(asked).toContain('Edit the artifact "Note" (id note): Make it warmer');
   // Costed like any answer.
-  expect(screen.getAllByRole("button", { name: /Cost breakdown/ })).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: /cost breakdown/ })).toHaveLength(2);
   await user.click(proposal.getByRole("button", { name: "Accept as new version" }));
   expect(await panel.findByText(/version 2/)).toBeInTheDocument();
   expect(panel.queryByRole("region", { name: /Proposal:/ })).toBeNull();
@@ -1338,7 +1338,7 @@ test("pins: next message only, then back to the chat's mode; a project can defau
     anthropic: [() => answer("From Best."), () => answer("From Balanced.")],
   });
   await composer();
-  const modeButton = () => screen.getByRole("button", { name: "Choose model (Ctrl+K)" });
+  const modeButton = () => screen.getByRole("button", { name: /choose model \(Ctrl\+K\)$/ });
   await user.keyboard("{Control>}k{/Control}");
   await user.click(await screen.findByRole("checkbox", { name: "Next message only" }));
   await user.click(
@@ -1546,7 +1546,9 @@ test("app lock: set a passcode, it locks on the next start, wrong ones are refus
   await user.type(lockScreen.getByLabelText("Passcode"), "4321{Enter}");
   // Reload preserves the Settings destination behind the lock.
   await user.click(await screen.findByRole("button", { name: "Back to Chat" }));
-  expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /choose model \(Ctrl\+K\)$/ }),
+  ).toBeInTheDocument();
 }, 20_000);
 
 test("app lock with Windows Hello: turned on in Settings, asked as soon as the lock screen shows", async () => {
@@ -1573,7 +1575,9 @@ test("app lock with Windows Hello: turned on in Settings, asked as soon as the l
   );
   // Hello confirms it's you and restores the Settings URL without the passcode.
   await user.click(await screen.findByRole("button", { name: "Back to Chat" }));
-  expect(await screen.findByRole("button", { name: "Choose model (Ctrl+K)" })).toBeInTheDocument();
+  expect(
+    await screen.findByRole("button", { name: /choose model \(Ctrl\+K\)$/ }),
+  ).toBeInTheDocument();
   expect(hello.asks).toEqual(["Unlock FUSE"]);
 }, 20_000);
 
@@ -1631,7 +1635,7 @@ test("memory conflicts: a suggestion that contradicts a saved fact asks which st
     />,
   );
   const user = userEvent.setup();
-  await screen.findByRole("button", { name: "Choose model (Ctrl+K)" });
+  await screen.findByRole("button", { name: /choose model \(Ctrl\+K\)$/ });
   await user.keyboard("{Control>},{/Control}");
   await user.click(await screen.findByRole("button", { name: "Personalization" }));
   const section = within(await screen.findByRole("region", { name: "Memory" }));
@@ -1833,7 +1837,7 @@ test("learning from overrides: three moves up for one kind of question suggest a
 test("stay on this provider: offered once a chat has an answer, saved on the chat", async () => {
   const { user, db } = setup();
   await user.type(await composer(), "Hello{Enter}");
-  await screen.findByRole("button", { name: "Cost breakdown for Test Claude" });
+  await screen.findByRole("button", { name: /cost breakdown for Test Claude$/ });
   await user.click(screen.getByRole("button", { name: "Conversation actions" }));
   await user.click(await screen.findByRole("menuitemcheckbox", { name: "Stay on Anthropic" }));
   await waitFor(async () => {
@@ -1856,7 +1860,7 @@ test("an unsure question gets the Cheap tier's second opinion, which can move it
   });
   await user.type(await composer(), `${question}{Enter}`);
   expect(
-    await screen.findByRole("button", { name: "Cost breakdown for Test Best" }),
+    await screen.findByRole("button", { name: /cost breakdown for Test Best$/ }),
   ).toBeInTheDocument();
   expect(choreCalls.filter((c) => c.kind === "classify")).toEqual([
     { kind: "classify", model: "test-gpt", input: question },
@@ -1890,7 +1894,7 @@ test("routing policy: a new rule is tested, saved, and Auto follows it", async (
   await user.click(screen.getByRole("button", { name: "Back to Chat" }));
   await user.type(await composer(), "Write an email to my landlord about the boiler{Enter}");
   expect(
-    await screen.findByRole("button", { name: "Cost breakdown for Test Best" }),
+    await screen.findByRole("button", { name: /cost breakdown for Test Best$/ }),
   ).toBeInTheDocument();
 });
 
@@ -2452,7 +2456,7 @@ test("reopening the app reopens the last thread, with its messages and costs", a
   expect(await screen.findByText("Remember me.")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Save this" })).toBeInTheDocument();
   expect(
-    screen.getByRole("button", { name: "Cost breakdown for Test Claude" }),
+    screen.getByRole("button", { name: /cost breakdown for Test Claude$/ }),
   ).toBeInTheDocument();
 });
 
@@ -2723,9 +2727,9 @@ test("web search: on by default, toggle per thread, live status, cited sources a
   );
   expect(sources.getByText("example.com")).toBeInTheDocument();
   // No search fee in the test catalog's tool prices, so the cost is tokens only; the count shows.
-  expect(screen.getByRole("button", { name: /Cost breakdown/ }).closest("aside")).toHaveTextContent(
-    "1 search",
-  );
+  expect(
+    screen.getByRole("button", { name: /cost breakdown/ }).closest("[data-ledger-margin]"),
+  ).toHaveTextContent("1 search");
   // Remembered on the thread.
   expect((await listThreads(db, DEFAULT_TENANT))[0]?.webSearch).toBe(true);
 });
@@ -2778,7 +2782,7 @@ describe("auto-update", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const user = renderWith(updates(() => Promise.reject(new Error("offline"))).api);
     // No keys here, so the composer asks for one: wait for the app itself.
-    await screen.findByRole("button", { name: "Choose model (Ctrl+K)" });
+    await screen.findByRole("button", { name: /choose model \(Ctrl\+K\)$/ });
     await waitFor(() => {
       expect(warn).toHaveBeenCalled();
     });

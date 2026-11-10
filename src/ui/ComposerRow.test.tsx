@@ -93,7 +93,8 @@ test("the row: +, the model, Options, the folder, the estimate and Send; nothing
   const names = within(row)
     .getAllByRole("button")
     .map((b) => b.getAttribute("aria-label"));
-  expect(names).toEqual(["Add", "Choose model (Ctrl+K)", "Options", "Remove folder lighthouse"]);
+  expect(names).toEqual(["Add", null, "Options", "Remove folder lighthouse"]);
+  expect(within(row).getAllByRole("button")[1]?.textContent).toMatch(/, choose model \(Ctrl\+K\)$/);
   expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeTruthy();
   // The estimate is muted in the margin beside the composer, labelled, not copper.
   const est = screen.getByLabelText("Estimated cost");
@@ -166,7 +167,7 @@ test("effort is in the model menu; a chosen level shows on the model chip", () =
   const effort = within(screen.getByRole("group", { name: "Reasoning effort" }));
   expect(effort.getByRole("radio", { name: "Usual" })).toHaveAttribute("aria-checked", "true");
   fireEvent.click(effort.getByRole("radio", { name: /High/ }));
-  expect(screen.getByRole("button", { name: "Choose model (Ctrl+K)" }).textContent).toContain(
+  expect(screen.getByRole("button", { name: /choose model \(Ctrl\+K\)$/ }).textContent).toContain(
     "· High",
   );
 });
