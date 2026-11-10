@@ -2276,12 +2276,12 @@ export function Composer({
             </span>
             {context && context.used > 0 && (
               <Tip
-                label={`About ${number(context.used)} tokens go to the model with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
+                label={`About ${number(context.used)} of the model's ${compact(context.window)} tokens go to it with each message. Above ${compact(context.summarizeAt)}, older turns are sent as a summary.`}
               >
                 <span
                   tabIndex={0}
                   aria-label="Context used"
-                  className={`flex shrink-0 items-center gap-1.5 font-mono text-[11px] ${context.used >= context.summarizeAt * 0.8 ? "text-warning" : ""}`}
+                  className={`flex shrink-0 items-center gap-1.5 text-[12px] tabular-nums ${context.used >= context.summarizeAt * 0.8 ? "text-warning" : ""}`}
                 >
                   <span className="h-[3px] w-10 overflow-hidden rounded-[2px] bg-border">
                     <span
@@ -2291,8 +2291,8 @@ export function Composer({
                       }}
                     />
                   </span>
-                  {String(Math.min(100, Math.round((context.used / context.window) * 100)))}% of{" "}
-                  {compact(context.window)}
+                  context {String(Math.min(100, Math.round((context.used / context.window) * 100)))}
+                  % used
                 </span>
               </Tip>
             )}

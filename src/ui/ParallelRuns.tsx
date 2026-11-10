@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { diffLines } from "@/artifacts/diff";
 import { DiffView } from "./Artifacts";
 import { Modal, Money } from "./primitives";
+import { shortBranch } from "@/parallel/branch";
 import type {
   ChildCommitPin,
   ChildReviewAttempt,
@@ -105,14 +106,18 @@ export function ParallelRuns({
               </p>
             )}
             <Details summary={`${String(child.steps)} steps`}>
-              <p className="break-all font-mono text-[11px]">{child.branch ?? "Retained child"}</p>
+              {child.branch && (
+                <p className="font-mono text-[12px]" title={child.branch}>
+                  {shortBranch(child.branch)}
+                </p>
+              )}
               {child.latest && <p className="break-words">Latest: {child.latest}</p>}
               {child.plan && (
                 <>
                   <p className="text-foreground">
                     Plan{child.planner ? ` · ${child.planner}` : ""}
                   </p>
-                  <p className="break-words whitespace-pre-wrap">{child.plan}</p>
+                  <PlanText plan={child.plan} />
                 </>
               )}
             </Details>
@@ -157,6 +162,23 @@ export function ParallelRuns({
         </p>
       )}
     </section>
+  );
+}
+
+/** A plan written "1. … 2. … 3. …" on one line reads as a numbered list. */
+function PlanText({ plan }: { plan: string }) {
+  const steps = plan
+    .split(/(?:^|\s)(?=\d+\.\s)/)
+    .map((s) => s.replace(/^\d+\.\s+/, "").trim())
+    .filter(Boolean);
+  if (steps.length < 2 || !/^\s*1\.\s/.test(plan))
+    return <p className="break-words whitespace-pre-wrap">{plan}</p>;
+  return (
+    <ol className="list-decimal space-y-0.5 pl-5 break-words">
+      {steps.map((step, i) => (
+        <li key={i}>{step}</li>
+      ))}
+    </ol>
   );
 }
 

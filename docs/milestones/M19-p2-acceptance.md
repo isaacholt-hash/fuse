@@ -186,7 +186,13 @@ Step 2 (release record; owner acceptance pending):
   - `fix/p3-labels-headings` (P3): each child's Review button is announced as "Review
     changes, child N", so its name starts with the words on it; the Parallel tasks heading
     is an h2 under the thread's h1; and the per-message average reads "≈ $0.003 a message"
-    on one line in the margin.
+    on one line in the margin
+    ([#342](https://github.com/isaacholt-hash/fuse/pull/342)).
+  - `fix/plain-vocabulary` (P3): the run card names a child's planner by display name
+    ("Claude Opus 5.5", not "anthropic/claude-opus-5-5"), shortens the child branch to its
+    first ID block (full name on hover), and lists a "1. … 2. …" plan as numbered items; the
+    composer reads "context 0% used" in body type, and the margin says "read as chat,
+    simple" instead of "chat, low".
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

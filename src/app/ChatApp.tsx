@@ -644,6 +644,7 @@ import {
   threadState,
   worstState,
   messageViews,
+  modelName,
   modelOption,
   requestRow,
   threadTokens,
@@ -4133,7 +4134,13 @@ export function ChatApp({
       if (r && r.run.kind !== "research") {
         v.run = runView(r.run, r.steps, r.streaming, r.changes);
         const childProgress = parallel.views.get(r.run.id);
-        if (childProgress) v.run.parallel = childProgress;
+        if (childProgress)
+          v.run.parallel = {
+            ...childProgress,
+            children: childProgress.children.map((c) =>
+              c.planner ? { ...c, planner: modelName(catalog, c.planner) } : c,
+            ),
+          };
         const waiting = pendingApproval(approvals, r.run.id);
         if (waiting) {
           v.run.approval = approvalView(waiting.request);

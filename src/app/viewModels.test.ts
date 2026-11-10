@@ -7,6 +7,7 @@ import {
   cacheHitRate,
   groupFor,
   messageViews,
+  modelName,
   modelOption,
   requestRow,
   withLive,
@@ -329,4 +330,10 @@ test("M10 step 13: a row waits, goes, or has a new result, most urgent first", a
   expect(worstState([null, "unseen", "going"])).toBe("going");
   expect(worstState(["unseen", "waiting", "going"])).toBe("waiting");
   expect(worstState([null, null])).toBeNull();
+});
+
+test("modelName: a stored provider/id ref reads as the catalog's display name", () => {
+  expect(modelName(catalog, "anthropic/claude-sonnet-5-5")).toBe(sonnet.displayName);
+  expect(modelName(catalog, "anthropic/not-a-model")).toBe("anthropic/not-a-model");
+  expect(modelName(catalog, "Best")).toBe("Best");
 });
