@@ -5,11 +5,14 @@ import type { Message } from "@/storage/messages";
 import { EMPTY_USAGE } from "@/storage/usage";
 import {
   cacheHitRate,
+  estimateMessageMicro,
   groupFor,
   messageViews,
   modelName,
   modelOption,
   requestRow,
+  typicalOutputTokens,
+  unbookedRunSpend,
   withLive,
 } from "./viewModels";
 
@@ -336,4 +339,33 @@ test("modelName: a stored provider/id ref reads as the catalog's display name", 
   expect(modelName(catalog, "anthropic/claude-sonnet-5-5")).toBe(sonnet.displayName);
   expect(modelName(catalog, "anthropic/not-a-model")).toBe("anthropic/not-a-model");
   expect(modelName(catalog, "Best")).toBe("Best");
+});
+
+test("the next-message estimate prices the thread's cache share and its typical answer", () => {
+  const price = { input: 3, output: 15, cachedInput: 0.3 };
+  // No history: all input at full price plus an 800-token answer.
+  expect(estimateMessageMicro(10_000, price, [])).toBe(30_000 + 12_000);
+  const history = [
+    msg({ role: "user" }),
+    answer("anthropic", "claude-sonnet-5-5", {
+      usage: { ...EMPTY_USAGE, inputTokens: 1000, cachedInputTokens: 9000, outputTokens: 200 },
+    }),
+  ];
+  expect(typicalOutputTokens(history)).toBe(200);
+  // 90% cached: 1000 at $3 + 9000 at $0.30, plus 200 out at $15.
+  expect(estimateMessageMicro(10_000, price, history)).toBe(3000 + 2700 + 3000);
+});
+
+test("a live run's spend counts until it lands on its message, and only once after", () => {
+  const live = answer("anthropic", "claude-sonnet-5-5", { id: "run-msg", status: "streaming" });
+  expect(unbookedRunSpend([{ messageId: "run-msg", spentMicroUsd: 1100 }], [live])).toBe(1100);
+  const booked = {
+    ...live,
+    status: "complete" as const,
+    usage: { ...EMPTY_USAGE, costMicroUsd: 2200 },
+  };
+  expect(unbookedRunSpend([{ messageId: "run-msg", spentMicroUsd: 2200 }], [booked])).toBe(0);
+  // Continued after it booked: only the new spend is added.
+  expect(unbookedRunSpend([{ messageId: "run-msg", spentMicroUsd: 2500 }], [booked])).toBe(300);
+  expect(unbookedRunSpend([{ messageId: null, spentMicroUsd: 400 }], [])).toBe(400);
 });

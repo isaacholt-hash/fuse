@@ -360,6 +360,48 @@ export function messageViews(
   return out;
 }
 
+/** A typical answer's output tokens in this thread, for the next-message estimate; 800 before any. */
+export function typicalOutputTokens(messages: Message[]): number {
+  const outs = messages
+    .filter((m) => m.role === "assistant" && m.status === "complete" && m.usage.outputTokens > 0)
+    .map((m) => m.usage.outputTokens);
+  return outs.length > 0 ? Math.round(outs.reduce((a, b) => a + b, 0) / outs.length) : 800;
+}
+
+/**
+ * What the next message should cost: its context priced with the thread's own cache share (cached
+ * input at the cached rate), plus a typical answer from this thread.
+ */
+export function estimateMessageMicro(
+  contextTokens: number,
+  price: CatalogModel["price"],
+  messages: Message[],
+): number {
+  const cached = cacheHitRate(messages) ?? 0;
+  const input =
+    contextTokens * (1 - cached) * priceToMicro(price.input) +
+    contextTokens * cached * priceToMicro(price.cachedInput ?? price.input);
+  return Math.round(
+    (input + typicalOutputTokens(messages) * priceToMicro(price.output)) / 1_000_000,
+  );
+}
+
+/**
+ * Spend of this thread's runs not yet on their message: a live run books its cost to the message
+ * when it finishes, so until then the thread total, the strip and "cap left" add it here.
+ */
+export function unbookedRunSpend(
+  runs: { messageId: string | null; spentMicroUsd: number }[],
+  messages: Message[],
+): number {
+  let extra = 0;
+  for (const r of runs) {
+    const booked = messages.find((m) => m.id === r.messageId)?.usage.costMicroUsd ?? 0;
+    extra += Math.max(0, r.spentMicroUsd - booked);
+  }
+  return extra;
+}
+
 /** Share of a thread's input tokens read from the provider's cache (RT-07); null with no input. */
 export function cacheHitRate(messages: Message[]): number | null {
   let cached = 0;

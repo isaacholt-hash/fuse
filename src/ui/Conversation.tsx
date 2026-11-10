@@ -1233,6 +1233,7 @@ export function Composer({
   context,
   compare,
   estimate,
+  spentSoFar = null,
   capLeft = null,
   prompts = [],
   onPickPrompt,
@@ -1317,6 +1318,8 @@ export function Composer({
   compare?: CompareView;
   /** M10 step 24: what the next message would cost, in micro-dollars, for the ledger's estimate. */
   estimate?: (text: string) => number | null;
+  /** While a run is going: what it has spent so far, shown in the estimate's place. */
+  spentSoFar?: number | null;
   /** M10 step 25: in a Code session, what's left of its cap takes the estimate's place. */
   capLeft?: number | null;
   /** CH-12: saved prompts, offered when the message starts with "/". */
@@ -1418,7 +1421,8 @@ export function Composer({
   const preview = routing?.selected === "auto" ? routing.preview(text) : null;
   const previewTier = preview ? (routing?.previewTier?.(text) ?? null) : null;
   const effortView = effortFor?.(text) ?? null;
-  const estimated = estimate?.(text) ?? null;
+  // While streaming, the estimate gives way to what the run has spent; a plain chat shows nothing.
+  const estimated = streaming ? (spentSoFar ?? null) : (estimate?.(text) ?? null);
   // M10 step 26: the estimate is muted beside Send; amber only when it's more than the cap left.
   const overCap = estimated !== null && capLeft !== null && estimated > capLeft;
   const modeLabel = routing?.selected ? MODE_LABELS[routing.selected] : null;
