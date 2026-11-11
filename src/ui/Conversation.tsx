@@ -2313,6 +2313,24 @@ export function Composer({
   );
 }
 
+/** A task's first line, short enough for the approval's header. */
+function firstLine(task: string): string {
+  const line = task.trim().split("\n")[0] ?? "";
+  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
+}
+
+/** A change not yet made is asked in the present: "Create result.txt?", not "Created result.txt?". */
+function askChange(label: string): string {
+  const verbs: [string, string][] = [
+    ["Created ", "Create "],
+    ["Edited ", "Edit "],
+    ["Deleted ", "Delete "],
+    ["Moved ", "Move "],
+  ];
+  const hit = verbs.find(([past]) => label.startsWith(past));
+  return `${hit ? hit[1] + label.slice(hit[0].length) : label}?`;
+}
+
 const RUN_STATUS: Record<RunView["status"], string> = {
   running: "Working",
   paused: "Paused",
@@ -2478,6 +2496,14 @@ function RunCard({
   const applied = run.changes.filter((c) => !c.undone);
   // M10 step 25: Y and N answer the approval when the focus is not in a field.
   const pending = approval && approval.kind !== "organise" ? approval.kind : null;
+  // A task's question names the task as the Parallel tasks list does: "Task 2 · Write beta".
+  const childIndex = approval?.child
+    ? (run.parallel?.children.findIndex((c) => c.id === approval.child?.runId) ?? -1)
+    : -1;
+  const childTask =
+    childIndex < 0
+      ? "This task"
+      : `Task ${String(childIndex + 1)} · ${firstLine(run.parallel?.children[childIndex]?.task ?? "")}`;
   // A new question scrolls into view: it can arrive below the fold while the owner reads above.
   const questionRef = useRef<HTMLDivElement>(null);
   const questionKey = pending ? `${pending}:${approval?.child?.runId ?? run.id}` : null;
@@ -2703,11 +2729,10 @@ function RunCard({
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
-              In this task&apos;s own worktree,{" "}
-              <span title={approval.child.branch ?? approval.child.runId}>
-                {shortBranch(approval.child.branch ?? approval.child.runId)}
+              <span title={shortBranch(approval.child.branch ?? approval.child.runId)}>
+                {childTask}
               </span>
-              : the change stays apart from the parent.
+              , in its own worktree: the change stays apart from the parent.
             </p>
           )}
           <p className="mb-1 font-medium">This command seems to need the network:</p>
@@ -2770,11 +2795,10 @@ function RunCard({
         >
           {approval.child && (
             <p data-child-approval={approval.child.runId} className="mb-2 break-words font-medium">
-              In this task&apos;s own worktree,{" "}
-              <span title={approval.child.branch ?? approval.child.runId}>
-                {shortBranch(approval.child.branch ?? approval.child.runId)}
+              <span title={shortBranch(approval.child.branch ?? approval.child.runId)}>
+                {childTask}
               </span>
-              : approving affects only this task.
+              , in its own worktree: approving affects only this task.
             </p>
           )}
           {approval.kind === "command" ? (
@@ -2886,7 +2910,7 @@ function RunCard({
             </>
           ) : (
             <>
-              <p className="mb-1 font-medium">{approval.change.label}?</p>
+              <p className="mb-1 font-medium">{askChange(approval.change.label)}</p>
               {approval.change.lines.length > 0 && (
                 <div className="mb-2 max-h-80 overflow-auto rounded border bg-background">
                   <DiffView lines={approval.change.lines} />

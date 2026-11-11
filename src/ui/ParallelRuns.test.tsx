@@ -60,7 +60,7 @@ it("progress has the plan, exact child Stop and combined spending while integrat
     "Tasks spent $0.0002 of the run's $0.0003 · $0.0001 set aside for work still running",
   );
   expect(screen.getByRole("button", { name: "Review integration" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Review changes, child 1" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Review changes, task 1" })).toBeDisabled();
   // Branch and plan are plumbing: folded under the step count until asked for.
   expect(screen.getByText("Inspect and test.")).not.toBeVisible();
   await userEvent.click(screen.getByText("2 steps"));
@@ -68,8 +68,8 @@ it("progress has the plan, exact child Stop and combined spending while integrat
   expect(screen.getByText("Inspect and test.")).toBeVisible();
   expect(screen.getByText("fuse/child/recorded")).toBeVisible();
   // While a child works, the retention note says what an interruption keeps.
-  expect(screen.getByText(/Continue never restarts them/)).toBeVisible();
-  await userEvent.click(screen.getByRole("button", { name: "Stop child 1" }));
+  expect(screen.getByText(/Continue never restarts it/)).toBeVisible();
+  await userEvent.click(screen.getByRole("button", { name: "Stop task 1" }));
   expect(onStop).toHaveBeenCalledWith("child");
 });
 it("the task whose question is open reads Waiting for you, not Working", () => {
@@ -77,6 +77,11 @@ it("the task whose question is open reads Waiting for you, not Working", () => {
   const row = screen.getByText("1. Fix alpha").closest("li");
   expect(row).toHaveTextContent("Waiting for you");
   expect(row).not.toHaveTextContent("Working");
+});
+it("one step is one step", () => {
+  const one = { ...view, children: view.children.map((c) => ({ ...c, steps: 1 })) };
+  render(<ParallelRuns view={one} parentRunning readOnly={false} />);
+  expect(screen.getByText("1 step")).toBeInTheDocument();
 });
 it("replicated history has no review, integration or stop authority", () => {
   render(
@@ -102,7 +107,7 @@ it("paused retained children can be reviewed after their parent pauses without r
       onReview={onReview}
     />,
   );
-  await userEvent.click(screen.getByRole("button", { name: "Review changes, child 1" }));
+  await userEvent.click(screen.getByRole("button", { name: "Review changes, task 1" }));
   expect(onReview).toHaveBeenCalledWith("child");
   expect(screen.queryByText("Resume child")).not.toBeInTheDocument();
 });
@@ -220,10 +225,10 @@ it("a finished run leads with the outcome and one primary next step", () => {
   const integrate = screen.getByRole("button", { name: "Review integration" });
   expect(integrate).toBeEnabled();
   expect(integrate.className).toContain("bg-primary");
-  expect(screen.getByRole("button", { name: "Review changes, child 1" }).className).toContain(
+  expect(screen.getByRole("button", { name: "Review changes, task 1" }).className).toContain(
     "border-border",
   );
-  expect(screen.queryByText(/Continue never restarts them/)).toBeNull();
+  expect(screen.queryByText(/Continue never restarts it/)).toBeNull();
 });
 it("shortens a child branch's UUID and lists a numbered plan", async () => {
   expect(shortBranch("fuse/child/4b1ce1a0-b1d6-40de-b5a6-e1e2d5bd3029")).toBe(

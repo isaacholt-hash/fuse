@@ -350,3 +350,59 @@ test("a run stopped on a question says it is waiting for you, scrolls it into vi
     vi.useRealTimers();
   }
 });
+
+test("a task's question names the task, and a change not yet made is asked in the present", () => {
+  show({
+    ...base,
+    parallel: {
+      spentMicroUsd: 0,
+      heldMicroUsd: 0,
+      capMicroUsd: 1000,
+      children: [
+        {
+          id: "child-a",
+          task: "Write alpha",
+          status: "done",
+          branch: null,
+          plan: null,
+          planner: null,
+          spentMicroUsd: 0,
+          note: null,
+          steps: 1,
+          latest: null,
+        },
+        {
+          id: "child-b",
+          task: "Write beta\nwith detail",
+          status: "running",
+          branch: "fuse/child/child-b",
+          plan: null,
+          planner: null,
+          spentMicroUsd: 0,
+          note: null,
+          steps: 2,
+          latest: null,
+        },
+      ],
+    },
+    approval: {
+      kind: "edit",
+      change: {
+        id: "pending",
+        label: "Created result.txt",
+        added: 1,
+        removed: 0,
+        lines: [],
+        undone: false,
+        previewable: false,
+      },
+      child: { runId: "child-b", parentId: "r1", branch: "fuse/child/child-b" },
+    },
+  });
+  const ask = screen.getByRole("alertdialog");
+  expect(ask).toHaveTextContent(
+    "Task 2 · Write beta, in its own worktree: approving affects only this task.",
+  );
+  expect(ask).toHaveTextContent("Create result.txt?");
+  expect(ask).not.toHaveTextContent("Created result.txt?");
+});

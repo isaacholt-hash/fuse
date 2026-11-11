@@ -229,7 +229,7 @@ describe.skipIf(!URL || !BROWSER)(
       const notes = join(repo, "notes.txt");
       const originalStat = statSync(notes, { bigint: true });
       const before = await counters();
-      await app.find(button("Review changes, child 1"));
+      await app.find(button("Review changes, task 1"));
       expect(
         await app.run("return document.querySelectorAll('[data-parallel-child] details').length;"),
       ).toBe(2);
@@ -237,7 +237,7 @@ describe.skipIf(!URL || !BROWSER)(
         "document.querySelector('section[aria-label=\"Parallel tasks\"]').scrollIntoView({block:'center'});",
       );
       await themes("progress");
-      await app.click(button("Review changes, child 1"));
+      await app.click(button("Review changes, task 1"));
       await app.find(button("Commit reviewed child"));
       await themes("child-review");
       await app.click(button("Cancel"));

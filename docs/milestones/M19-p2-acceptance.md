@@ -224,6 +224,12 @@ Step 2 (release record; owner acceptance pending):
     said "Working", "Generating response" and "Running for 0 s". Now the card's chip, the
     task's row and the composer say "Waiting for you"; the spinner line gives way to the
     question, which scrolls into view when it appears; "Running for" ticks every second.
+  - `fix/plain-run-wording` (P1, critique re-run 2026-11-11): the parent's step line said
+    "Child <uuid>: running"; it now says "Task 2: working". "Stop child" is "Stop task", "1
+    steps" is "1 step", and the footnote reads "Tasks share this run's cap. A stopped task keeps
+    its work; Continue never restarts it on its own." A task's question names the task ("Task
+    2 · Write beta, in its own worktree"), the branch kept as a tooltip, and a change not yet
+    made is asked in the present ("Create result.txt?", not "Created result.txt?").
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
