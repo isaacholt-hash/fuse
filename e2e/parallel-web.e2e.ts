@@ -252,7 +252,7 @@ describe.skipIf(!URL || !BROWSER)(
       expect(countRefs()).toEqual([parentHead, parentHead]);
       const pins: { childId: string; commit: string }[] = [];
       for (const n of [1, 2]) {
-        await app.click(button(`Review changes, child ${String(n)}`));
+        await app.click(button(`Review changes, task ${String(n)}`));
         await app.find(button("Commit reviewed child"));
         if (n === 1)
           await app.run(`
