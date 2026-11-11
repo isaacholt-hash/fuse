@@ -4190,6 +4190,12 @@ export function ChatApp({
     (selectedId in live ||
       research.busy ||
       [...threadRuns.values()].some((r) => r.run.status === "running"));
+  // A run here stopped on a question: the composer says it is waiting, not generating.
+  const waitingOnYou =
+    streaming &&
+    [...threadRuns.values()].some(
+      (r) => r.run.status === "running" && pendingApproval(approvals, r.run.id) !== undefined,
+    );
   // M10 step 16: every file the session's runs changed, oldest first, for the Files panel.
   const sessionChanges = withEscalation.flatMap((m) => m.run?.changes ?? []);
   /**
@@ -7355,6 +7361,7 @@ export function ChatApp({
                           estimate: compareEstimate,
                         }}
                         streaming={streaming}
+                        waiting={waitingOnYou}
                         missingKey={missingKey}
                         pickerOpen={picker}
                         onPickerOpen={setPicker}

@@ -72,6 +72,12 @@ it("progress has the plan, exact child Stop and combined spending while integrat
   await userEvent.click(screen.getByRole("button", { name: "Stop child 1" }));
   expect(onStop).toHaveBeenCalledWith("child");
 });
+it("the task whose question is open reads Waiting for you, not Working", () => {
+  render(<ParallelRuns view={view} parentRunning readOnly={false} waitingChildId="child" />);
+  const row = screen.getByText("1. Fix alpha").closest("li");
+  expect(row).toHaveTextContent("Waiting for you");
+  expect(row).not.toHaveTextContent("Working");
+});
 it("replicated history has no review, integration or stop authority", () => {
   render(
     <ParallelRuns

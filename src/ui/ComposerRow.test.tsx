@@ -185,3 +185,11 @@ test("a guide holds Send and says what to do, quietly", () => {
   expect(screen.getByRole("note").textContent).toBe("Choose a project to start.");
   expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeDisabled();
 });
+
+test("a run stopped on a question: the composer says it is waiting for you, not generating", () => {
+  show({ streaming: true, waiting: true });
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "Waiting for you: answer the question above",
+  );
+  expect(screen.queryByText("Generating response")).toBeNull();
+});
