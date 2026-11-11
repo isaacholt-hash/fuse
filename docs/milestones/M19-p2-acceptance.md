@@ -220,6 +220,10 @@ Step 2 (release record; owner acceptance pending):
     longer an unnamed `<aside>` landmark; on a coarse pointer the margin buttons, step folds,
     source links and chip remove buttons are at least 24 px. axe: no violations in Chat and
     Code, light and dark, 1280 and 390.
+  - `fix/run-waiting-state` (P1, critique re-run 2026-11-11): a run stopped on an approval
+    said "Working", "Generating response" and "Running for 0 s". Now the card's chip, the
+    task's row and the composer say "Waiting for you"; the spinner line gives way to the
+    question, which scrolls into view when it appears; "Running for" ticks every second.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

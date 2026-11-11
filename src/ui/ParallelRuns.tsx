@@ -17,6 +17,7 @@ export function ParallelRuns({
   view,
   readOnly,
   parentRunning,
+  waitingChildId,
   onReview,
   onIntegrate,
   onStop,
@@ -24,6 +25,8 @@ export function ParallelRuns({
   view: ParallelView;
   readOnly: boolean;
   parentRunning: boolean;
+  /** The task whose question is open in the run card: it reads "Waiting for you", not "Working". */
+  waitingChildId?: string;
   onReview?: (childId: string) => void;
   onIntegrate?: () => void;
   onStop?: (childId: string) => void;
@@ -87,16 +90,20 @@ export function ParallelRuns({
               <span className="min-w-0 flex-1 break-words whitespace-pre-wrap text-[12px]">
                 {index + 1}. {child.task}
               </span>
-              <span className="text-[12px] text-muted-foreground">
-                {child.status === "running"
-                  ? "Working"
-                  : child.status === "done"
-                    ? "Done"
-                    : child.status === "error"
-                      ? "Failed"
-                      : child.status === "stopped"
-                        ? "Stopped"
-                        : "Paused"}
+              <span
+                className={`text-[12px] ${child.status === "running" && child.id === waitingChildId ? "text-warning" : "text-muted-foreground"}`}
+              >
+                {child.status === "running" && child.id === waitingChildId
+                  ? "Waiting for you"
+                  : child.status === "running"
+                    ? "Working"
+                    : child.status === "done"
+                      ? "Done"
+                      : child.status === "error"
+                        ? "Failed"
+                        : child.status === "stopped"
+                          ? "Stopped"
+                          : "Paused"}
               </span>
               <Money micro={child.spentMicroUsd} className="text-[13px] leading-[18px]" />
             </div>

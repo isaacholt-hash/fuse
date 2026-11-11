@@ -1234,6 +1234,7 @@ export function Composer({
   estimate,
   spentSoFar = null,
   capLeft = null,
+  waiting = false,
   prompts = [],
   onPickPrompt,
   skills = [],
@@ -1247,6 +1248,8 @@ export function Composer({
   model: ModelOption;
   models: ModelOption[];
   streaming: boolean;
+  /** A run here is stopped on a question for the owner: the status says so, not "Generating". */
+  waiting?: boolean;
   /** Provider name when the selected model's provider has no key yet. */
   missingKey: string | null;
   pickerOpen: boolean;
@@ -2255,7 +2258,12 @@ export function Composer({
         {(streaming || status || comparing || guide || (context && context.used > 0)) && (
           <div className="col-start-1 mt-2 flex items-center justify-between gap-2 px-1 text-[12px] text-muted-foreground">
             <span className="flex min-w-0 items-center gap-1.5">
-              {streaming ? (
+              {streaming && waiting ? (
+                <span role="status" className="flex items-center gap-1.5 text-warning">
+                  <CircleAlert className="size-2.5" />
+                  Waiting for you: answer the question above
+                </span>
+              ) : streaming ? (
                 <>
                   <LoaderCircle className="size-2.5 animate-spin" />
                   Generating response
@@ -2470,6 +2478,15 @@ function RunCard({
   const applied = run.changes.filter((c) => !c.undone);
   // M10 step 25: Y and N answer the approval when the focus is not in a field.
   const pending = approval && approval.kind !== "organise" ? approval.kind : null;
+  // A new question scrolls into view: it can arrive below the fold while the owner reads above.
+  const questionRef = useRef<HTMLDivElement>(null);
+  const questionKey = pending ? `${pending}:${approval?.child?.runId ?? run.id}` : null;
+  useEffect(() => {
+    const el = questionRef.current;
+    // jsdom has no scrollIntoView.
+    if (questionKey && el && typeof el.scrollIntoView === "function")
+      el.scrollIntoView({ block: "nearest" });
+  }, [questionKey]);
   useEffect(() => {
     if (!pending || !onApprove || run.readOnly) return;
     const onKey = (e: KeyboardEvent) => {
@@ -2514,9 +2531,9 @@ function RunCard({
           </span>
         )}
         <span
-          className={`rounded px-1.5 py-0.5 text-[12px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground"}`}
+          className={`rounded px-1.5 py-0.5 text-[12px] ${run.status === "error" ? "bg-destructive/10 text-destructive" : run.status === "paused" || (live && approval) ? "bg-warning-soft text-warning" : "bg-muted text-muted-foreground"}`}
         >
-          {RUN_STATUS[run.status]}
+          {live && approval ? "Waiting for you" : RUN_STATUS[run.status]}
         </span>
         {live && run.activeSince !== null && (
           <span className="text-[12px] text-muted-foreground">
@@ -2549,6 +2566,7 @@ function RunCard({
           view={run.parallel}
           readOnly={Boolean(run.readOnly)}
           parentRunning={live}
+          {...(approval?.child ? { waitingChildId: approval.child.runId } : {})}
           {...(onReviewChild
             ? {
                 onReview: (childId: string) => {
@@ -2733,6 +2751,7 @@ function RunCard({
       )}
       {approval && approval.kind !== "organise" && approval.kind !== "network" && onApprove && (
         <div
+          ref={questionRef}
           role="alertdialog"
           aria-label={
             approval.kind === "command"
@@ -2913,7 +2932,7 @@ function RunCard({
           </div>
         </div>
       )}
-      {live && !run.streaming && (
+      {live && !run.streaming && !approval && (
         <p
           role="status"
           className="mt-2 flex items-center gap-1.5 text-[12px] text-muted-foreground"

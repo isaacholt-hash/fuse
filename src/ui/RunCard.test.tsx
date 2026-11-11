@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Tooltip } from "radix-ui";
 import { Messages } from "./Conversation";
 import type { ApprovalView, RunView } from "./types";
@@ -322,4 +322,31 @@ test("a running run's card shows its live total; once done, its answer's margin 
   cleanup();
   show({ ...base, status: "done", spentMicro: 2200 });
   expect(screen.getByRole("region", { name: "Work run" }).textContent).not.toContain("$0.0022");
+});
+
+test("a run stopped on a question says it is waiting for you, scrolls it into view and ticks each second", () => {
+  vi.useFakeTimers();
+  const scroll = vi.fn();
+  const prior = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
+  Object.defineProperty(Element.prototype, "scrollIntoView", { value: scroll, configurable: true });
+  try {
+    show({
+      ...base,
+      activeSince: Date.now(),
+      approval: { kind: "command", command: "pnpm test", destructive: null },
+    });
+    const card = screen.getByRole("region", { name: "Work run" });
+    expect(card).toHaveTextContent("Waiting for you");
+    expect(card).not.toHaveTextContent("Working");
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText("Running for").textContent).toBe("Running for 0 s");
+    act(() => {
+      vi.advanceTimersByTime(3_000);
+    });
+    expect(screen.getByLabelText("Running for").textContent).toBe("Running for 3 s");
+  } finally {
+    if (prior) Object.defineProperty(Element.prototype, "scrollIntoView", prior);
+    else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+    vi.useRealTimers();
+  }
 });
