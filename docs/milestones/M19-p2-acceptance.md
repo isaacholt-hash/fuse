@@ -236,6 +236,10 @@ Step 2 (release record; owner acceptance pending):
     $0.0008, not $0.0007). "Cap left" leaves out what running parallel work has set aside. The
     thread head's average reads "avg $0.0022 a message", so it no longer competes with the
     composer's "next message ≈" estimate for the draft.
+  - `fix/run-cost-once` (P2, critique re-run 2026-11-11): during a run one cost showed four or
+    five times in one view while the thread head said "0 tokens". The composer no longer
+    repeats the run's "so far" (the run card carries it; "cap left" stays), and the head counts
+    the live run's tokens from its steps until its message carries them.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

@@ -13,6 +13,7 @@ import {
   requestRow,
   typicalOutputTokens,
   unbookedRunSpend,
+  unbookedRunTokens,
   capLeftMicro,
   withLive,
 } from "./viewModels";
@@ -380,4 +381,15 @@ test("cap left leaves out what running parallel work has set aside", () => {
   expect(capLeftMicro(5_000_000, 2_200, runs, held)).toBe(4_914_200);
   expect(capLeftMicro(5_000_000, 2_200, [{ id: "p", status: "done" }], held)).toBe(4_997_800);
   expect(capLeftMicro(50_000, 2_200, runs, held)).toBe(0);
+});
+
+test("a live run's tokens count in the head until its message carries them", () => {
+  const live = answer("anthropic", "claude-sonnet-5-5", { id: "run-msg", status: "streaming" });
+  const run = {
+    run: { messageId: "run-msg" },
+    steps: [{ kind: "model", tokens: 1200 }, { kind: "tool" }, { kind: "model", tokens: 300 }],
+  };
+  expect(unbookedRunTokens([run], [live])).toBe(1500);
+  const booked = { ...live, usage: { ...EMPTY_USAGE, inputTokens: 1000, outputTokens: 500 } };
+  expect(unbookedRunTokens([run], [booked])).toBe(0);
 });

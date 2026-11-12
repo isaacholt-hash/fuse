@@ -105,9 +105,10 @@ test("the row: +, the model, Options, the folder, the estimate and Send; nothing
   expect(screen.queryByText(/Enter to send/)).toBeNull();
 });
 
-test("while a run goes, the estimate gives way to what it has spent; a plain chat shows neither", () => {
-  show({ streaming: true, spentSoFar: 1100 });
-  expect(screen.getByLabelText("Estimated cost").textContent).toBe("so far $0.0011");
+test("while a run goes, the composer repeats no cost: the run card carries it, cap left stays", () => {
+  show({ streaming: true, capLeft: 4_997_800 });
+  expect(screen.queryByLabelText("Estimated cost")).toBeNull();
+  expect(screen.getByLabelText("Cap left")).toHaveTextContent("$4.9978");
 });
 
 test("while a plain chat answer streams, no estimate shows", () => {

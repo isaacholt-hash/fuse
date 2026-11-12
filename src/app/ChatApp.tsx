@@ -650,6 +650,7 @@ import {
   requestRow,
   threadTokens,
   unbookedRunSpend,
+  unbookedRunTokens,
   capLeftMicro,
   threadView,
   withLive,
@@ -7155,7 +7156,9 @@ export function ChatApp({
                           ? {
                               total: {
                                 micro: threadSpent,
-                                tokens: threadTokens(messages),
+                                tokens:
+                                  threadTokens(messages) +
+                                  unbookedRunTokens([...threadRuns.values()], messages),
                                 cacheRate,
                                 answers: messages.filter(
                                   (m) => m.role === "assistant" && m.status === "complete",
@@ -7345,7 +7348,6 @@ export function ChatApp({
                         model={{ ...modelOption(model), ...tierProp(model) }}
                         models={options}
                         estimate={estimateDraft}
-                        spentSoFar={liveRunSpend > 0 ? liveRunSpend : null}
                         capLeft={
                           thread && thread.kind !== "chat"
                             ? capLeftMicro(
