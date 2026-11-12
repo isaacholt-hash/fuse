@@ -3772,7 +3772,7 @@ test("M6: Ask first (the project's default) shows an edit's diff and waits for A
   expect(screen.getByLabelText("What the coding run may do")).toHaveValue("ask");
   await user.type(await composer(), "Set a to 2{Enter}");
   const ask = within(await screen.findByRole("alertdialog", { name: "Make this change?" }));
-  expect(ask.getByText("Edited a.ts?")).toBeInTheDocument();
+  expect(ask.getByText("Edit a.ts?")).toBeInTheDocument();
   expect(ask.getByText("const a = 2;")).toBeInTheDocument();
   expect(files.get("a.ts")).toBe("const a = 1;\n");
   await user.click(ask.getByRole("button", { name: "Allow once" }));

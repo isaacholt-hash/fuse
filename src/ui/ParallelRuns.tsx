@@ -112,7 +112,7 @@ export function ParallelRuns({
                 {child.note}
               </p>
             )}
-            <Details summary={`${String(child.steps)} steps`}>
+            <Details summary={`${String(child.steps)} step${child.steps === 1 ? "" : "s"}`}>
               {child.branch && (
                 <p className="font-mono text-[12px]" title={child.branch}>
                   {shortBranch(child.branch)}
@@ -135,12 +135,12 @@ export function ParallelRuns({
                     variant="outline"
                     size="sm"
                     className="h-7 text-[12px]"
-                    aria-label={`Stop child ${String(index + 1)}`}
+                    aria-label={`Stop task ${String(index + 1)}`}
                     onClick={() => {
                       onStop(child.id);
                     }}
                   >
-                    Stop child
+                    Stop task
                   </Button>
                 )}
                 {onReview && (
@@ -148,7 +148,7 @@ export function ParallelRuns({
                     variant="outline"
                     size="sm"
                     className="h-7 text-[12px]"
-                    aria-label={`Review changes, child ${String(index + 1)}`}
+                    aria-label={`Review changes, task ${String(index + 1)}`}
                     disabled={active}
                     onClick={() => {
                       onReview(child.id);
@@ -164,8 +164,8 @@ export function ParallelRuns({
       </ol>
       {(active || interrupted) && (
         <p className="text-[12px] text-muted-foreground">
-          Children share this run’s owner and cap. Interrupted tasks stay retained; Continue never
-          restarts them automatically.
+          Tasks share this run’s cap. A stopped task keeps its work; Continue never restarts it on
+          its own.
         </p>
       )}
     </section>

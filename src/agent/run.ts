@@ -1778,11 +1778,22 @@ async function runCommand(
 }
 
 /** One ready child may be dispatched once. A restart retains interrupted work, never replays it. */
+/** A task's state in the parent's step line, in the card's words. */
+const TASK_STATE: Record<string, string> = {
+  running: "working",
+  paused: "paused",
+  done: "done",
+  stopped: "stopped",
+  error: "failed",
+};
+
 async function executeChild(
   deps: RunDeps,
   childId: string,
   parentId: string,
   input: LoopInput,
+  /** 1-based, as the Parallel tasks list numbers it. */
+  taskNumber: number,
 ): Promise<void> {
   const { db, tenant } = deps;
   const stamp = Date.now();
@@ -1852,7 +1863,7 @@ async function executeChild(
             deps,
             parentId,
             input,
-            `Child ${childId}: ${p.run.status}${p.streaming ? `\n${p.streaming.slice(-2000)}` : ""}`,
+            `Task ${String(taskNumber)}: ${TASK_STATE[p.run.status] ?? p.run.status}${p.streaming ? `\n${p.streaming.slice(-2000)}` : ""}`,
           ).catch(() => {});
         },
       },
@@ -1963,9 +1974,9 @@ async function delegateCode(
       const children = await deps.git.prepareChildren(request);
       if (!input.signal?.aborted)
         await Promise.allSettled(
-          children
-            .filter((c) => c.state === "ready")
-            .map((c) => executeChild(deps, c.id, run.id, input)),
+          children.flatMap((c, i) =>
+            c.state === "ready" ? [executeChild(deps, c.id, run.id, input, i + 1)] : [],
+          ),
         );
       const results = await Promise.all(
         children.map(async (c) => {
