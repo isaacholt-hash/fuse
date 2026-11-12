@@ -230,6 +230,12 @@ Step 2 (release record; owner acceptance pending):
     its work; Continue never restarts it on its own." A task's question names the task ("Task
     2 · Write beta, in its own worktree"), the branch kept as a tooltip, and a change not yet
     made is asked in the present ("Create result.txt?", not "Created result.txt?").
+  - `fix/one-money-format` (P2, critique re-run 2026-11-11): money under $1 is whole cents
+    ($0.50, a cap) or four places ($0.4120), never three, so a column no longer jumps between
+    $0.41, $0.412 and $0.4123. "Tasks spent" adds the rows as shown ($0.0004 + $0.0004 is
+    $0.0008, not $0.0007). "Cap left" leaves out what running parallel work has set aside. The
+    thread head's average reads "avg $0.0022 a message", so it no longer competes with the
+    composer's "next message ≈" estimate for the draft.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

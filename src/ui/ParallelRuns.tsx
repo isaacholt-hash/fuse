@@ -36,7 +36,11 @@ export function ParallelRuns({
   // Retention is worth saying while children work or when one stopped early, not after a clean run.
   const interrupted = view.children.some((c) => c.status !== "done" && c.status !== "running");
   // The run's total also covers the parent's own planning, so the children's share is their rows' sum.
-  const childrenMicro = view.children.reduce((sum, c) => sum + c.spentMicroUsd, 0);
+  // Summed as each row shows it (to $0.0001), so $0.0004 + $0.0004 reads $0.0008, not $0.0007.
+  const childrenMicro = view.children.reduce(
+    (sum, c) => sum + Math.round(c.spentMicroUsd / 100) * 100,
+    0,
+  );
   return (
     <section aria-label="Parallel tasks" className="mt-3 space-y-2 border-t pt-2.5">
       <div className="flex flex-wrap items-center justify-between gap-2">

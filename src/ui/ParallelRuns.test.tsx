@@ -78,6 +78,20 @@ it("the task whose question is open reads Waiting for you, not Working", () => {
   expect(row).toHaveTextContent("Waiting for you");
   expect(row).not.toHaveTextContent("Working");
 });
+it("Tasks spent adds the rows as they are shown", () => {
+  const [first] = view.children;
+  if (!first) throw new Error("fixture has a child");
+  const two = {
+    ...view,
+    spentMicroUsd: 2000,
+    children: [
+      { ...first, id: "a", spentMicroUsd: 370 },
+      { ...first, id: "b", task: "Fix beta", spentMicroUsd: 360 },
+    ],
+  };
+  render(<ParallelRuns view={two} parentRunning={false} readOnly={false} />);
+  expect(screen.getByText(/Tasks spent/)).toHaveTextContent(/^Tasks spent \$0\.0008/);
+});
 it("one step is one step", () => {
   const one = { ...view, children: view.children.map((c) => ({ ...c, steps: 1 })) };
   render(<ParallelRuns view={one} parentRunning readOnly={false} />);

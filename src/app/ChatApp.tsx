@@ -650,6 +650,7 @@ import {
   requestRow,
   threadTokens,
   unbookedRunSpend,
+  capLeftMicro,
   threadView,
   withLive,
   type LiveAnswer,
@@ -7347,7 +7348,12 @@ export function ChatApp({
                         spentSoFar={liveRunSpend > 0 ? liveRunSpend : null}
                         capLeft={
                           thread && thread.kind !== "chat"
-                            ? Math.max(0, sessionCap - threadSpent)
+                            ? capLeftMicro(
+                                sessionCap,
+                                threadSpent,
+                                [...threadRuns.values()].map((r) => r.run),
+                                (id) => parallel.views.get(id)?.heldMicroUsd ?? 0,
+                              )
                             : null
                         }
                         skills={usableSkills.map((s) => ({ name: s.name, versionId: s.versionId }))}
