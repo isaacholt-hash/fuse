@@ -135,6 +135,23 @@ test("errors and length-limit notices carry their plain-English text", () => {
 describe("live answer overlay", () => {
   const live = { threadId: "t", model: sonnet, text: "Hel", userText: "Hi", files: [] };
 
+  test("a streaming answer shows its tier and why from the start", () => {
+    const route = {
+      mode: "auto" as const,
+      tier: "balanced" as const,
+      ruleId: "chat",
+      reason: "read as chat, low",
+      intent: "chat",
+      complexity: "low",
+    };
+    const views = messageViews(withLive([], { ...live, route }), catalog);
+    const answer = views.at(-1);
+    expect(answer?.status).toBe("streaming");
+    expect(answer?.tier).toBe("balanced");
+    expect(answer?.route?.label).toBe("Auto · Balanced");
+    expect(answer?.live?.costMicro).toBeGreaterThan(0);
+  });
+
   test("before the engine saves anything: synthetic question and answer", () => {
     const rows = withLive([], live);
     expect(rows.map((r) => [r.role, r.content, r.status])).toEqual([

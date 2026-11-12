@@ -2401,7 +2401,21 @@ export function ChatApp({
             };
     setLive((all) => ({
       ...all,
-      [threadId]: { threadId, model: routed.model, text: "", startedAt: Date.now(), ...placement },
+      [threadId]: {
+        threadId,
+        model: routed.model,
+        text: "",
+        startedAt: Date.now(),
+        route: {
+          mode: routed.info.mode,
+          tier: routed.info.tier,
+          ruleId: routed.info.ruleId,
+          reason: routed.info.reason,
+          intent: routed.info.intent,
+          complexity: routed.info.complexity,
+        },
+        ...placement,
+      },
     }));
     let loaded = false;
     const onText = (text: string) => {

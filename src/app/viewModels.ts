@@ -8,7 +8,7 @@ import { guessReasoningTokens } from "@/routing/effort";
 import { splitAnswer } from "@/artifacts/parse";
 import { INTENT_LABELS } from "@/routing/classify";
 import type { FileRecord } from "@/storage/files";
-import type { Message } from "@/storage/messages";
+import type { Message, MessageRoute } from "@/storage/messages";
 import type { RequestLogRecord } from "@/storage/requestLog";
 import type { Thread, ThreadKind } from "@/storage/threads";
 import { EMPTY_USAGE } from "@/storage/usage";
@@ -345,7 +345,8 @@ export function messageViews(
     }
     const reasoning = reasoningView(m, model, now);
     if (reasoning) view.reasoning = reasoning;
-    const routed = m.status === "streaming" ? undefined : routeView(m);
+    // The why shows from the first token: routing is decided before the answer starts.
+    const routed = routeView(m);
     if (routed) view.route = routed;
     const cited = sources.get(m.id);
     if (cited?.length) view.sources = cited;
@@ -479,6 +480,8 @@ export interface LiveAnswer {
   /** M10 step 22: the reasoning summary so far, and when the answer was asked for. */
   reasoning?: string;
   startedAt?: number;
+  /** How the model was picked, so the margin shows tier and why before the saved row loads. */
+  route?: MessageRoute | null;
   /**
    * Where the answer goes until its saved row loads: after this message id (rows after it are
    * replaced), at the start (null), or at the end (undefined, a new question).
@@ -545,6 +548,7 @@ export function withLive(base: Message[], live: LiveAnswer | undefined): Message
       provider: live.model.provider,
       model: live.model.id,
       reasoningSummary: live.reasoning || null,
+      route: live.route ?? null,
       ...(live.startedAt ? { createdAt: live.startedAt } : {}),
     }),
   ];

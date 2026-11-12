@@ -1086,15 +1086,16 @@ export function Messages({
                       <>
                         {message.live && (
                           <>
-                            <Money
-                              micro={message.live.costMicro}
-                              className="block text-[13px] leading-5"
-                            />
+                            <span className="block text-[13px] leading-5">
+                              <span className="text-[12px] text-muted-foreground">so far </span>
+                              <Money micro={message.live.costMicro} />
+                            </span>
                             <span className="block" aria-live="off">
                               {number(message.live.outTokens)} out so far
                             </span>
                           </>
                         )}
+                        {message.route && <RouteBadge route={message.route} />}
                         {onStop && !message.reasoning?.live && (
                           <button
                             type="button"
