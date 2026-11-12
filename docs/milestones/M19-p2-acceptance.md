@@ -240,6 +240,10 @@ Step 2 (release record; owner acceptance pending):
     five times in one view while the thread head said "0 tokens". The composer no longer
     repeats the run's "so far" (the run card carries it; "cap left" stays), and the head counts
     the live run's tokens from its steps until its message carries them.
+  - `fix/streaming-margin` (P2, critique re-run 2026-11-11): while a Chat answer streamed its
+    margin showed the model and a bare figure, with tier and reason only once it finished. The
+    live answer now carries its route from the first moment, so the margin shows the tier bars,
+    "so far $0.0012" and the routing reason ("Auto · Balanced") while it streams.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
