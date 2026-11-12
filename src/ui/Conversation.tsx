@@ -163,7 +163,7 @@ const MARGIN =
 const MARGIN_BUTTON =
   "block max-w-full rounded text-right tabular-nums text-muted-foreground hover:text-foreground @max-[760px]:text-left pointer-coarse:min-h-6";
 
-/** "≈ $0.03 a message", for the ledger head. */
+/** "avg $0.0300 a message", for the ledger head: what answers cost so far, not an estimate. */
 const perMessage = (micro: number, answers: number) =>
   answers > 0 ? Math.round(micro / answers) : null;
 
@@ -202,7 +202,7 @@ function LedgerTotal({ total, compact = false }: { total: ThreadTotal; compact?:
           {rate !== null && rate > 0 && ` · ${String(Math.round(rate * 100))}% cached`}
         </span>
         {per !== null && !compact && (
-          <span className="block whitespace-nowrap">≈ {money(per)} a message</span>
+          <span className="block whitespace-nowrap">avg {money(per)} a message</span>
         )}
       </div>
     </Tip>

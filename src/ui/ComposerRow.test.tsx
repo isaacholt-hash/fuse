@@ -98,7 +98,7 @@ test("the row: +, the model, Options, the folder, the estimate and Send; nothing
   expect(screen.getByRole("button", { name: "Send message (Enter)" })).toBeTruthy();
   // The estimate is muted in the margin beside the composer, labelled, not copper.
   const est = screen.getByLabelText("Estimated cost");
-  expect(est.textContent).toBe("next message ≈ $0.008");
+  expect(est.textContent).toBe("next message ≈ $0.0080");
   expect(est.className).toContain("text-muted-foreground");
   // No persistent privacy or keyboard lines.
   expect(screen.queryByText(/Your keys/)).toBeNull();

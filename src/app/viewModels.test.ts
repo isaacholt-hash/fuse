@@ -13,6 +13,7 @@ import {
   requestRow,
   typicalOutputTokens,
   unbookedRunSpend,
+  capLeftMicro,
   withLive,
 } from "./viewModels";
 
@@ -368,4 +369,15 @@ test("a live run's spend counts until it lands on its message, and only once aft
   // Continued after it booked: only the new spend is added.
   expect(unbookedRunSpend([{ messageId: "run-msg", spentMicroUsd: 2500 }], [booked])).toBe(300);
   expect(unbookedRunSpend([{ messageId: null, spentMicroUsd: 400 }], [])).toBe(400);
+});
+
+test("cap left leaves out what running parallel work has set aside", () => {
+  const held = (id: string) => (id === "p" ? 83_600 : 0);
+  const runs = [
+    { id: "p", status: "running" },
+    { id: "q", status: "done" },
+  ];
+  expect(capLeftMicro(5_000_000, 2_200, runs, held)).toBe(4_914_200);
+  expect(capLeftMicro(5_000_000, 2_200, [{ id: "p", status: "done" }], held)).toBe(4_997_800);
+  expect(capLeftMicro(50_000, 2_200, runs, held)).toBe(0);
 });

@@ -402,6 +402,20 @@ export function unbookedRunSpend(
   return extra;
 }
 
+/**
+ * What "cap left" shows: the cap less what was spent and what running parallel work has set
+ * aside, since that money is spoken for. Never below zero.
+ */
+export function capLeftMicro(
+  cap: number,
+  spent: number,
+  runs: { id: string; status: string }[],
+  heldFor: (runId: string) => number,
+): number {
+  const held = runs.reduce((sum, r) => (r.status === "running" ? sum + heldFor(r.id) : sum), 0);
+  return Math.max(0, cap - spent - held);
+}
+
 /** Share of a thread's input tokens read from the provider's cache (RT-07); null with no input. */
 export function cacheHitRate(messages: Message[]): number | null {
   let cached = 0;

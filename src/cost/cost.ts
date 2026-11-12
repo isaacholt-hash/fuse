@@ -37,7 +37,7 @@ export function cost(usage: Usage, price: ModelPrice): number {
 }
 
 /** "$0.0093" style display, from integer micro-dollars (no float rounding).
- * Under $1: up to 4 decimals, trailing zeros trimmed to 2. From $1: 2 decimals. */
+ * Under $1: 2 decimals for whole cents, else 4. From $1: 2 decimals. */
 export function formatUsd(micro: number): string {
   const sign = micro < 0 ? "-" : "";
   const abs = Math.abs(micro);
@@ -49,8 +49,8 @@ export function formatUsd(micro: number): string {
   const units = Math.round(abs / 100); // $0.0001 units
   if (units === 0) return `${sign}<$0.0001`;
   if (units === 10_000) return `${sign}$1.00`;
-  const decimals = String(units)
-    .padStart(4, "0")
-    .replace(/0{1,2}$/, "");
-  return `${sign}$0.${decimals}`;
+  // Whole cents read as cents ($0.50, a cap); anything finer keeps all four places, so a
+  // column of spends never jumps between $0.41, $0.412 and $0.4123.
+  const four = String(units).padStart(4, "0");
+  return `${sign}$0.${units % 100 === 0 ? four.slice(0, 2) : four}`;
 }

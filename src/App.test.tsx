@@ -472,7 +472,7 @@ test("send a message: the answer streams in, then shows model, tokens and cost",
   expect(margin).toHaveTextContent("1,200 in · 400 out");
   const total = screen.getByLabelText("Thread total");
   expect(total).toHaveTextContent(/\$0\.0064.*1,600 tokens/);
-  expect(total).toHaveTextContent("≈ $0.0064 a message");
+  expect(total).toHaveTextContent("avg $0.0064 a message");
   // The thread is saved, titled from the question, with its cost in the sidebar.
   await waitFor(() => {
     expect(sidebar().getByText("What is FUSE?")).toBeInTheDocument();
@@ -872,7 +872,7 @@ test("budgets: alerts as spend crosses them, and over the limit a message asks f
   await user.selectOptions(budgets.getByLabelText("Budget period"), "day");
   await user.type(budgets.getByLabelText("Budget limit in dollars"), "0.005");
   await user.click(budgets.getByRole("button", { name: "Add budget" }));
-  expect(await budgets.findByText(/\$0\.005 a day/)).toBeInTheDocument();
+  expect(await budgets.findByText(/\$0\.0050 a day/)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /Back to Chat/ }));
 
   // $0.0064 answer + $0.0028 title = $0.0092: past the $0.005 budget.
@@ -884,7 +884,7 @@ test("budgets: alerts as spend crosses them, and over the limit a message asks f
 
   await user.type(await composer(), "And then?{Enter}");
   const ask = within(await screen.findByRole("dialog"));
-  expect(ask.getByText(/Everything: \$0\.0092 of \$0\.005 this day/)).toBeInTheDocument();
+  expect(ask.getByText(/Everything: \$0\.0092 of \$0\.0050 this day/)).toBeInTheDocument();
   await user.click(ask.getByRole("button", { name: "Send anyway" }));
   expect(await screen.findByText("Second.")).toBeInTheDocument();
 });
@@ -1024,7 +1024,7 @@ test("spend caps: past a key's daily cap FUSE stops calling it, until raised for
   await user.type(await composer(), "Hello{Enter}");
   await screen.findByText("First.");
   const notice = await screen.findByLabelText("Spend cap notice");
-  expect(notice).toHaveTextContent("Anthropic has reached its daily cap ($0.0064 of $0.001)");
+  expect(notice).toHaveTextContent("Anthropic has reached its daily cap ($0.0064 of $0.0010)");
   await user.type(await composer(), "Again{Enter}");
   expect(await screen.findByText(/No model at Balanced or above/)).toBeInTheDocument();
   expect(calls.anthropic).toHaveLength(1);

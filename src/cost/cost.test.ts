@@ -54,7 +54,8 @@ test("formatUsd keeps small amounts readable", () => {
   expect(formatUsd(0)).toBe("$0.00");
   expect(formatUsd(10_500)).toBe("$0.0105");
   expect(formatUsd(93)).toBe("$0.0001");
-  expect(formatUsd(412_000)).toBe("$0.412");
+  expect(formatUsd(412_000)).toBe("$0.4120");
+  expect(formatUsd(500_000)).toBe("$0.50");
   expect(formatUsd(16_400_000)).toBe("$16.40");
   expect(formatUsd(40)).toBe("<$0.0001");
   expect(formatUsd(41_200)).toBe("$0.0412");
