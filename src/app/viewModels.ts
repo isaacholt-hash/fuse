@@ -416,6 +416,29 @@ export function capLeftMicro(
   return Math.max(0, cap - spent - held);
 }
 
+/**
+ * Tokens a run has used that its message doesn't carry yet: while it works, its turns' tokens sit
+ * on its steps, so the thread head would say "0 tokens" beside a growing total.
+ */
+export function unbookedRunTokens(
+  runs: { run: { messageId: string | null }; steps: { kind: string; tokens?: number }[] }[],
+  messages: Message[],
+): number {
+  let extra = 0;
+  for (const r of runs) {
+    const m = messages.find((x) => x.id === r.run.messageId);
+    const booked = m
+      ? m.usage.inputTokens +
+        m.usage.cachedInputTokens +
+        m.usage.cacheWriteTokens +
+        m.usage.outputTokens
+      : 0;
+    const used = r.steps.reduce((sum, s) => sum + (s.tokens ?? 0), 0);
+    extra += Math.max(0, used - booked);
+  }
+  return extra;
+}
+
 /** Share of a thread's input tokens read from the provider's cache (RT-07); null with no input. */
 export function cacheHitRate(messages: Message[]): number | null {
   let cached = 0;
