@@ -244,6 +244,12 @@ Step 2 (release record; owner acceptance pending):
     margin showed the model and a bare figure, with tier and reason only once it finished. The
     live answer now carries its route from the first moment, so the margin shows the tier bars,
     "so far $0.0012" and the routing reason ("Auto · Balanced") while it streams.
+  - `fix/a11y-quick` (P2/P3, critique re-run 2026-11-14): key hints are drawn by CSS, so Stop,
+    Allow once and Deny are named by their words (axe label-content-name-mismatch) and say their
+    key with `aria-keyshortcuts`; the hint takes the control's own colour at 70%, so the Y on
+    Allow once passes contrast (was 2.7:1). The streaming caret is `role="img"` (was a span with
+    a prohibited label); the canvas card is named by what it shows; a task's own full stop no
+    longer reads "result.txt., in its own worktree"; the routing reason is 24 px on touch.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

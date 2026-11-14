@@ -406,3 +406,43 @@ test("a task's question names the task, and a change not yet made is asked in th
   expect(ask).toHaveTextContent("Create result.txt?");
   expect(ask).not.toHaveTextContent("Created result.txt?");
 });
+
+test("a11y: Allow once is named by its words, says its key, and a task's full stop isn't doubled", () => {
+  show({
+    ...base,
+    parallel: {
+      spentMicroUsd: 0,
+      heldMicroUsd: 0,
+      capMicroUsd: 1000,
+      children: [
+        {
+          id: "child-a",
+          task: "Write alpha in result.txt.",
+          status: "running",
+          branch: null,
+          plan: null,
+          planner: null,
+          spentMicroUsd: 0,
+          note: null,
+          steps: 1,
+          latest: null,
+        },
+      ],
+    },
+    approval: {
+      kind: "command",
+      command: "echo hi",
+      destructive: null,
+      child: { runId: "child-a", parentId: "r1", branch: null },
+    },
+  });
+  const allow = screen.getByRole("button", { name: "Allow once" });
+  expect(allow).toHaveAttribute("aria-keyshortcuts", "Y");
+  // The key is drawn, not written: the button's text is just its words.
+  expect(allow.textContent).toBe("Allow once");
+  expect(screen.getByRole("alertdialog")).toHaveTextContent(
+    "Task 1 · Write alpha in result.txt, in its own worktree",
+  );
+  // The empty answer's caret is a named picture, not a span with a stray label.
+  expect(screen.getByRole("img", { name: "Response streaming" })).toBeInTheDocument();
+});
