@@ -41,14 +41,23 @@ export function defaultEffortOf(model: Pick<CatalogModel, "defaultEffort">): Eff
 
 /**
  * What `chosen` adds to (or takes from) a message's cost compared with `baseline`, in
- * micro-dollars: the difference in typical reasoning tokens at the model's output rate.
+ * micro-dollars, at the model's output rate.
+ *
+ * With `outputTokens` (the output the next-message estimate already assumes at `baseline`), that
+ * output scales by the levels' typical reasoning ratio, so a level never saves more than the
+ * estimate's own output: "next message ≈ $0.0032" can't sit beside "Low −$0.0270". Without it,
+ * the difference in typical reasoning tokens.
  */
 export function extraReasoningMicro(
   model: Pick<CatalogModel, "price">,
   baseline: EffortLevel,
   chosen: EffortLevel,
+  outputTokens?: number,
 ): number {
-  const tokens = TYPICAL_REASONING_TOKENS[chosen] - TYPICAL_REASONING_TOKENS[baseline];
+  const from = TYPICAL_REASONING_TOKENS[baseline];
+  const to = TYPICAL_REASONING_TOKENS[chosen];
+  const tokens =
+    outputTokens === undefined || from === 0 ? to - from : outputTokens * (to / from - 1);
   return Math.round((tokens * priceToMicro(model.price.output)) / 1_000_000);
 }
 
