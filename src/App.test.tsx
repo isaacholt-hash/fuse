@@ -1123,14 +1123,14 @@ test("an artifact shows as a card, opens in the side panel, and the same id make
   const panel = within(await screen.findByRole("complementary", { name: "Artifact: Lisbon trip" }));
   expect(panel.getByText("Tram 28.")).toBeInTheDocument();
   expect(panel.getByText(/version 1/)).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Open Lisbon trip" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Lisbon trip/ })).toBeInTheDocument();
 
   await user.type(await composer(), "Add Belém{Enter}");
   expect(await screen.findByText("Tram 28, then Belém.")).toBeInTheDocument();
   expect(screen.getByText(/version 2/)).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Close artifact" }));
   expect(screen.queryByRole("complementary", { name: /Artifact:/ })).not.toBeInTheDocument();
-  await user.click(screen.getAllByRole("button", { name: "Open Lisbon trip" })[0] as HTMLElement);
+  await user.click(screen.getAllByRole("button", { name: /^Lisbon trip/ })[0] as HTMLElement);
   expect(
     await screen.findByRole("complementary", { name: "Artifact: Lisbon trip" }),
   ).toBeInTheDocument();

@@ -103,11 +103,19 @@ export function Greyed({ children }: { children: ReactNode }) {
     </p>
   );
 }
-export function Hint({ children }: { children: ReactNode }) {
+/**
+ * A key hint ("Esc", "Ctrl N"). The key is drawn by CSS, not text, so it isn't part of the
+ * control's accessible name (WCAG 2.5.3: the name starts with the words you see); the control
+ * says its key with aria-keyshortcuts where it has one. It takes the control's own colour at
+ * 70%, which passes contrast on a filled button as on the page.
+ */
+export function Hint({ children }: { children: string }) {
   return (
-    <kbd className="rounded border border-current/10 px-1 py-0.5 font-mono text-[11px] leading-none text-muted-foreground">
-      {children}
-    </kbd>
+    <kbd
+      aria-hidden
+      data-key={children}
+      className="rounded border border-current/10 px-1 py-0.5 font-mono text-[11px] leading-none text-current opacity-70 after:content-[attr(data-key)]"
+    />
   );
 }
 export function Tip({ label, children }: { label: ReactNode; children: ReactNode }) {

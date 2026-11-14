@@ -91,7 +91,7 @@ describe.skipIf(!URL || !BROWSER)("scoped context tools in the shared web app", 
     await app.press("Escape");
   });
   test("the saved artifact reopens, an owner edit creates another version, and keyword retrieval records source UUIDs", async () => {
-    await app.click(byLabel("Open Context brief"));
+    await app.click('//button[starts-with(normalize-space(), "Context brief")]');
     await app.find(byLabel("Artifact: Context brief"));
     await app.click(byLabel("Edit artifact"));
     await app.type(

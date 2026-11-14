@@ -59,7 +59,6 @@ export function ArtifactCard({
   return (
     <button
       className={`my-4 flex w-full max-w-md items-center gap-3 rounded-xl border px-4 py-3 text-left hover:bg-accent ${open ? "border-ring" : ""}`}
-      aria-label={`Open ${title}`}
       onClick={onOpen}
     >
       <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">

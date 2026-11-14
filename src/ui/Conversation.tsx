@@ -92,7 +92,7 @@ function RouteBadge({ route }: { route: RouteView }) {
         <Popover.Trigger asChild>
           <button
             type="button"
-            className="max-w-full rounded underline decoration-border decoration-dotted underline-offset-[3px] hover:text-foreground hover:decoration-foreground"
+            className="max-w-full rounded underline decoration-border decoration-dotted underline-offset-[3px] hover:text-foreground hover:decoration-foreground pointer-coarse:min-h-6"
             aria-label={`Routing: ${route.label}`}
           >
             {route.label}
@@ -831,6 +831,7 @@ export function Messages({
                         {message.status === "streaming" && (
                           <span
                             className="mt-2 inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground"
+                            role="img"
                             aria-label="Response streaming"
                           />
                         )}
@@ -848,6 +849,7 @@ export function Messages({
                     {message.status === "streaming" && !message.content && !message.searching && (
                       <span
                         className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground"
+                        role="img"
                         aria-label="Response streaming"
                       />
                     )}
@@ -1105,6 +1107,7 @@ export function Messages({
                             type="button"
                             className="mt-1 inline-flex items-center gap-1.5 rounded-[4px] border px-1.5 py-px text-[12px] text-foreground hover:bg-muted"
                             aria-label="Stop answer"
+                            aria-keyshortcuts="Escape"
                             onClick={onStop}
                           >
                             Stop <Hint>Esc</Hint>
@@ -2315,7 +2318,7 @@ export function Composer({
 
 /** A task's first line, short enough for the approval's header. */
 function firstLine(task: string): string {
-  const line = task.trim().split("\n")[0] ?? "";
+  const line = (task.trim().split("\n")[0] ?? "").replace(/[.;:,]+$/, "");
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 }
 
@@ -2922,6 +2925,7 @@ function RunCard({
             <Button
               size="sm"
               aria-label="Allow once"
+              aria-keyshortcuts="Y"
               onClick={() => {
                 onApprove(approval.child?.runId ?? run.id, "yes");
               }}
@@ -2947,6 +2951,7 @@ function RunCard({
               variant="outline"
               size="sm"
               aria-label="Deny"
+              aria-keyshortcuts="N"
               onClick={() => {
                 onApprove(approval.child?.runId ?? run.id, "no");
               }}
