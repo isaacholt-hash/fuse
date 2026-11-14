@@ -406,3 +406,29 @@ test("a task's question names the task, and a change not yet made is asked in th
   expect(ask).toHaveTextContent("Create result.txt?");
   expect(ask).not.toHaveTextContent("Created result.txt?");
 });
+
+test("RT-14: the margin names the model doing the run's work and who planned it", () => {
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        messages={[
+          { id: "q", role: "user", content: "Go", status: "complete" },
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "streaming",
+            model: "Claude Opus 5.5",
+            providerName: "Anthropic",
+            run: { ...base, worker: "Claude Sonnet 5.5", planner: "Claude Opus 5.5" },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  const margin = [...document.querySelectorAll("[data-ledger-margin]")].at(-1);
+  expect(margin).toHaveTextContent("Claude Sonnet 5.5");
+  expect(margin).toHaveTextContent("planned on Claude Opus 5.5");
+});

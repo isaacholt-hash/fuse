@@ -317,8 +317,12 @@ export function runView(
       });
     }
   }
+  const worker = modelLabel(`${run.provider}/${run.model}`);
+  const planner = run.planner ? modelLabel(run.planner) : null;
   return {
     id: run.id,
+    worker,
+    ...(planner && planner !== worker ? { planner } : {}),
     title: run.kind === "research" ? "Research" : run.kind === "work" ? "Work run" : "Coding run",
     ...(run.readOnly ? { readOnly: true } : {}),
     status: run.status,
