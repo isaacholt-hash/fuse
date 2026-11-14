@@ -244,6 +244,11 @@ Step 2 (release record; owner acceptance pending):
     margin showed the model and a bare figure, with tier and reason only once it finished. The
     live answer now carries its route from the first moment, so the margin shows the tier bars,
     "so far $0.0012" and the routing reason ("Auto · Balanced") while it streams.
+  - `fix/effort-deltas` (P1, critique re-run 2026-11-14): the effort row offered "Low
+    -$0.0270" beside "next message ≈ $0.0032": the dial priced a fixed reasoning table while the
+    estimate used the thread's measured output. Each level now scales the estimate's own output
+    by the levels' typical reasoning ratio, so a saving never exceeds the message, and the row
+    keeps one precision ("+$0.0300", not "+$0.03"); differences under $0.0001 aren't shown.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
