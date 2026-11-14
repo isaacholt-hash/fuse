@@ -651,6 +651,7 @@ import {
   threadTokens,
   unbookedRunSpend,
   unbookedRunTokens,
+  typicalOutputTokens,
   capLeftMicro,
   threadView,
   withLive,
@@ -2311,7 +2312,9 @@ export function ChatApp({
     return {
       auto,
       options: effortsOf(target),
-      extraMicro: (level) => extraReasoningMicro(target, auto, level),
+      // Scaled from the output the estimate assumes, so the two never disagree.
+      extraMicro: (level) =>
+        extraReasoningMicro(target, auto, level, typicalOutputTokens(messages)),
     };
   };
 

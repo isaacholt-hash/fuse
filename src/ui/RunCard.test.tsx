@@ -446,3 +446,29 @@ test("a11y: Allow once is named by its words, says its key, and a task's full st
   // The empty answer's caret is a named picture, not a span with a stray label.
   expect(screen.getByRole("img", { name: "Response streaming" })).toBeInTheDocument();
 });
+
+test("RT-14: the margin names the model doing the run's work and who planned it", () => {
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        messages={[
+          { id: "q", role: "user", content: "Go", status: "complete" },
+          {
+            id: "a",
+            role: "assistant",
+            content: "",
+            status: "streaming",
+            model: "Claude Opus 5.5",
+            providerName: "Anthropic",
+            run: { ...base, worker: "Claude Sonnet 5.5", planner: "Claude Opus 5.5" },
+          },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  const margin = [...document.querySelectorAll("[data-ledger-margin]")].at(-1);
+  expect(margin).toHaveTextContent("Claude Sonnet 5.5");
+  expect(margin).toHaveTextContent("planned on Claude Opus 5.5");
+});

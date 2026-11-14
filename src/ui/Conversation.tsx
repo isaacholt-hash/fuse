@@ -1080,9 +1080,13 @@ export function Messages({
                   <div data-ledger-margin className={MARGIN}>
                     {!message.cachedFrom && !message.noModel && message.model && (
                       <span className="block font-medium text-foreground">
-                        {message.model}
+                        {/* A run names the model doing its work, the same while it runs and once done. */}
+                        {message.run?.worker ?? message.model}
                         {message.tier && <Tier tier={message.tier} className="ml-1.5" />}
                       </span>
+                    )}
+                    {message.run?.planner && (
+                      <span className="block">planned on {message.run.planner}</span>
                     )}
                     {message.status === "streaming" ? (
                       <>

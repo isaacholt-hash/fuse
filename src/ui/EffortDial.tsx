@@ -13,8 +13,11 @@ export interface EffortView {
   extraMicro: (level: EffortLevel) => number;
 }
 
+/** One precision for the whole row: "+$0.0300" beside "−$0.0027", never "+$0.03". */
+const four = (micro: number) =>
+  micro >= 1_000_000 ? money(micro) : `$${(micro / 1_000_000).toFixed(4)}`;
 const signed = (micro: number) =>
-  micro === 0 ? "" : micro > 0 ? `+${money(micro)}` : `−${money(-micro)}`;
+  Math.abs(micro) < 50 ? "" : micro > 0 ? `+${four(micro)}` : `−${four(-micro)}`;
 
 /**
  * The effort for this one message, inside the model menu (M10 step 26; a dial of its own in
@@ -53,7 +56,7 @@ export function EffortOptions({
             >
               {on && <Check className="size-3" aria-hidden />}
               {level === null ? "Usual" : EFFORT_LABELS[level]}
-              {level !== null && level !== current && delta !== 0 && (
+              {level !== null && level !== current && signed(delta) !== "" && (
                 <span className="tabular-nums text-[12px] text-muted-foreground">
                   {signed(delta)}
                 </span>
