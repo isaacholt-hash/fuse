@@ -84,16 +84,17 @@ fn linklike(path: &Path) -> bool {
     let Ok(meta) = std::fs::symlink_metadata(path) else {
         return false;
     };
-    if meta.file_type().is_symlink() {
-        return true;
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        if meta.file_attributes() & 0x400 != 0 {
-            return true;
-        }
-    }
+    // One expression, so the Linux build (no Windows block) isn't an `if … return true; false`.
+    meta.file_type().is_symlink() || reparse_point(&meta)
+}
+/// A Windows reparse point (junction, mount point) reads as a link too.
+#[cfg(windows)]
+fn reparse_point(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    meta.file_attributes() & 0x400 != 0
+}
+#[cfg(not(windows))]
+fn reparse_point(_meta: &std::fs::Metadata) -> bool {
     false
 }
 
