@@ -148,6 +148,12 @@ export interface MessageView {
 /** A coding run shown on its answer (M6 step 5b). */
 export interface RunView {
   id: string;
+  /**
+   * RT-14: the model doing the work and, on Auto, the Best model that planned (and writes the
+   * summary), by display name. The margin names the worker and says who planned.
+   */
+  worker?: string;
+  planner?: string;
   parallel?: import("@/parallel/types").ParallelView;
   readOnly?: boolean;
   /** WF-01: "Coding run" or "Work run". */

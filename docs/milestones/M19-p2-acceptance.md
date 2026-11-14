@@ -244,6 +244,10 @@ Step 2 (release record; owner acceptance pending):
     margin showed the model and a bare figure, with tier and reason only once it finished. The
     live answer now carries its route from the first moment, so the margin shows the tier bars,
     "so far $0.0012" and the routing reason ("Auto · Balanced") while it streams.
+  - `fix/run-margin-model` (P1, critique re-run 2026-11-14): on Auto a Code run plans and
+    summarizes on a Best model and works on the routed one (RT-14), but the margin named one
+    while it ran and the other once done. It now names the model doing the work, the same
+    throughout, with "planned on Claude Opus 5.5" beneath when another model planned.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |

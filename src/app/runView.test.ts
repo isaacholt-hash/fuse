@@ -75,6 +75,7 @@ const steps: RunStep[] = [
 test("steps read as plain lines; the finished run's last turn is the answer, not a step", () => {
   expect(runView(run, steps)).toEqual({
     id: "r1",
+    worker: "anthropic/x",
     title: "Coding run",
     status: "done",
     costLabel: "$0.1234 of $1.00",
@@ -257,4 +258,14 @@ test("the plan names its model, and IDs in step text shorten to their first bloc
   );
   expect(v.steps[0]?.label).toBe("Plan · Claude Opus 5.5\n1. Split.");
   expect(v.steps.some((s) => s.label === "Child b78f9413: running")).toBe(true);
+});
+
+test("RT-14: a planned run names the model doing the work and who planned", () => {
+  const names = (ref: string) =>
+    ({ "anthropic/x": "Claude Sonnet 5.5", "anthropic/claude-opus-5-5": "Claude Opus 5.5" })[ref] ??
+    ref;
+  const v = runView({ ...run, planner: "anthropic/claude-opus-5-5" }, [], "", [], names);
+  expect(v.worker).toBe("Claude Sonnet 5.5");
+  expect(v.planner).toBe("Claude Opus 5.5");
+  expect(runView({ ...run, planner: "anthropic/x" }, [], "", [], names).planner).toBeUndefined();
 });
