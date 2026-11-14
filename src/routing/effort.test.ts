@@ -29,6 +29,11 @@ test("what a level adds is the typical reasoning difference at the output rate",
   expect(extraReasoningMicro(opus, "medium", "max")).toBe(216_000);
   expect(extraReasoningMicro(opus, "medium", "medium")).toBe(0);
   expect(extraReasoningMicro(opus, "high", "low")).toBeLessThan(0);
+  // Scaled from the estimate's own output: a saving never exceeds what that output costs.
+  // 120 tokens at high: low is 120 x (300/3000 - 1) = -108 tokens at $20/M = -$0.00216.
+  expect(extraReasoningMicro(opus, "high", "low", 120)).toBe(-2160);
+  expect(-extraReasoningMicro(opus, "high", "low", 120)).toBeLessThan(120 * 20);
+  expect(extraReasoningMicro(opus, "high", "max", 120)).toBe(7200);
   expect(guessReasoningTokens(0)).toBe(0);
   expect(guessReasoningTokens(401)).toBe(101);
 });

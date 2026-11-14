@@ -248,6 +248,11 @@ Step 2 (release record; owner acceptance pending):
     summarizes on a Best model and works on the routed one (RT-14), but the margin named one
     while it ran and the other once done. It now names the model doing the work, the same
     throughout, with "planned on Claude Opus 5.5" beneath when another model planned.
+  - `fix/effort-deltas` (P1, critique re-run 2026-11-14): the effort row offered "Low
+    -$0.0270" beside "next message ≈ $0.0032": the dial priced a fixed reasoning table while the
+    estimate used the thread's measured output. Each level now scales the estimate's own output
+    by the levels' typical reasoning ratio, so a saving never exceeds the message, and the row
+    keeps one precision ("+$0.0300", not "+$0.03"); differences under $0.0001 aren't shown.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
