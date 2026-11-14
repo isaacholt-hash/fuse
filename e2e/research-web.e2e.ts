@@ -85,7 +85,7 @@ describe.skipIf(!URL || !BROWSER)("research web fixture", () => {
     expect(
       await app.run('return document.querySelector("textarea[aria-label=\\"Message\\"]").value;'),
     ).toBe("Keep this research draft.");
-    await app.click('//button[@aria-label="Open Research report"]');
+    await app.click('//button[starts-with(normalize-space(), "Research report")]');
     await app.find('//*[@aria-label="Artifact: Research report"]');
     await app.sees("The recorded measurement is two metres.");
     await app.screenshot(join(SHOTS, "report-dark.png"));
