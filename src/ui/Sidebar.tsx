@@ -206,7 +206,7 @@ export function Sidebar({
             onClick={onSearch}
           >
             <Search className="size-3.5" />
-            Search chats
+            {code ? "Search sessions" : "Search chats"}
             <span className="ml-auto">
               <Hint>Ctrl ⇧ F</Hint>
             </span>

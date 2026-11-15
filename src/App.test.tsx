@@ -3827,6 +3827,9 @@ test("M10 step 12: two areas: each lists its own threads, has its own empty stat
   expect(sidebar().queryByRole("button", { name: /^Plan the week/ })).toBeNull();
   expect(screen.getAllByRole("button", { name: /^New session/ }).length).toBeGreaterThan(0);
   expect(screen.getAllByText("No sessions yet").length).toBeGreaterThan(0);
+  // Code speaks of sessions, not chats; its search finds both, and says so.
+  expect(screen.getByRole("button", { name: /^Search sessions/ })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /^Search chats/ })).toBeNull();
 
   // A thread written here is a session, listed here and not in Chat. It needs a folder first.
   expect(
