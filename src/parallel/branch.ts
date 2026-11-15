@@ -5,3 +5,15 @@ export function shortBranch(branch: string): string {
     "$1",
   );
 }
+
+/** A task's first line, short enough for a header: no trailing full stop, at most 60 characters. */
+export function firstLine(task: string): string {
+  const line = (task.trim().split("\n")[0] ?? "").replace(/[.;:,]+$/, "");
+  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
+}
+
+/** A task as the run card names it: "Task 2 · Write beta". */
+export function taskLabel(tasks: readonly { id: string; task: string }[], id: string): string {
+  const i = tasks.findIndex((t) => t.id === id);
+  return i < 0 ? "the task" : `Task ${String(i + 1)} · ${firstLine(tasks[i]?.task ?? "")}`;
+}

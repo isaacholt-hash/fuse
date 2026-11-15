@@ -6,6 +6,7 @@ import type { GitApi } from "@/repo/git";
 import { ParallelReviewDialog, type ParallelDialogState } from "@/ui/ParallelRuns";
 import type { ChildCommitPin, ParallelApi, ParallelView } from "./types";
 import { parallelProgress, stopParallelChild } from "./progress";
+import { taskLabel } from "./branch";
 
 interface Options {
   db: SqlDb;
@@ -255,6 +256,7 @@ export function useParallelRuns(options: Options) {
     dialog: dialog ? (
       <ParallelReviewDialog
         state={dialog}
+        taskName={(childId) => taskLabel(views.get(dialog.parentId)?.children ?? [], childId)}
         onClose={close}
         onPlan={(pins) => {
           void prepare(pins);

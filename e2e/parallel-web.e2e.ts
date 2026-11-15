@@ -238,7 +238,7 @@ describe.skipIf(!URL || !BROWSER)(
       );
       await themes("progress");
       await app.click(button("Review changes, task 1"));
-      await app.find(button("Commit reviewed child"));
+      await app.find(button("Commit these changes"));
       await themes("child-review");
       await app.click(button("Cancel"));
       const countRefs = () =>
@@ -253,7 +253,7 @@ describe.skipIf(!URL || !BROWSER)(
       const pins: { childId: string; commit: string }[] = [];
       for (const n of [1, 2]) {
         await app.click(button(`Review changes, task ${String(n)}`));
-        await app.find(button("Commit reviewed child"));
+        await app.find(button("Commit these changes"));
         if (n === 1)
           await app.run(`
           const original = window.fetch.bind(window);
@@ -266,8 +266,8 @@ describe.skipIf(!URL || !BROWSER)(
             return response;
           };
         `);
-        await app.click(button("Commit reviewed child"));
-        await app.sees("Reviewed child commit created.");
+        await app.click(button("Commit these changes"));
+        await app.sees("Task changes committed.");
         if (n === 1) {
           await app.sees("Completion was confirmed from the execution owner’s retained record");
           await themes("child-recovered-acknowledgement");
@@ -289,7 +289,7 @@ describe.skipIf(!URL || !BROWSER)(
           "return document.querySelectorAll('[role=dialog] input[type=checkbox]:checked').length;",
         ),
       ).toBe(0);
-      for (const pin of pins) await app.click(byLabel(`Select commit ${pin.commit}`));
+      for (const pin of pins) await app.click(`//input[@data-commit="${pin.commit}"]`);
       expect(
         await app.run(
           "return document.querySelectorAll('[role=dialog] input[type=checkbox]:checked').length;",
@@ -305,12 +305,12 @@ describe.skipIf(!URL || !BROWSER)(
           { encoding: "utf8" },
         ).trim(),
       ).toBe("");
-      await app.click(byLabel(`Select commit ${pins[1]?.commit ?? ""}`));
+      await app.click(`//input[@data-commit="${pins[1]?.commit ?? ""}"]`);
       await app.click(button("Review selected commits"));
-      await app.find(button("Approve integration branch"));
+      await app.find(button("Create integration branch"));
       await themes("integration-review");
       writeFileSync(notes, "parent changed after review\n");
-      await app.click(button("Approve integration branch"));
+      await app.click(button("Create integration branch"));
       await app.sees("The parent changed since delegation.");
       await themes("integration-stale");
       expect(
@@ -333,10 +333,10 @@ describe.skipIf(!URL || !BROWSER)(
       await app.click(button("Cancel"));
       await app.click(button("Review integration"));
       await app.find(button("Review selected commits"));
-      await app.click(byLabel(`Select commit ${pins[0]?.commit ?? ""}`));
+      await app.click(`//input[@data-commit="${pins[0]?.commit ?? ""}"]`);
       await app.click(button("Review selected commits"));
-      await app.find(button("Approve integration branch"));
-      await app.click(button("Approve integration branch"));
+      await app.find(button("Create integration branch"));
+      await app.click(button("Create integration branch"));
       await app.sees("Integration branch is ready for review.");
       await themes("integration-complete");
       await app.resize(390, 844);

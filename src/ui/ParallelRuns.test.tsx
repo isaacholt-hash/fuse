@@ -137,14 +137,52 @@ it("a displayed diff does nothing until explicit approval and Cancel never appro
       onRelease={vi.fn()}
     />,
   );
-  expect(screen.getByLabelText("Reviewed child diffs")).toHaveTextContent("alpha.txt");
+  expect(screen.getByLabelText("Changes to review")).toHaveTextContent("alpha.txt");
   expect(screen.getByText(/FUSE <fuse@local>/)).toBeVisible();
   expect(onApply).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
   expect(onClose).toHaveBeenCalledOnce();
   expect(onApply).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole("button", { name: "Commit reviewed child" }));
+  await userEvent.click(screen.getByRole("button", { name: "Commit these changes" }));
   expect(onApply).toHaveBeenCalledOnce();
+});
+it("a review leads with what changes, in short hashes, under the task's name, with both buttons in the footer", () => {
+  render(
+    <ParallelReviewDialog
+      state={{
+        ...state,
+        snapshot: state.snapshot && { ...state.snapshot, childHead: "b".repeat(40) },
+      }}
+      taskName={() => "Task 2 · Write alpha"}
+      onApply={vi.fn()}
+      onClose={vi.fn()}
+      onPlan={vi.fn()}
+      onRelease={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("dialog", { name: "Review Task 2 · Write alpha" })).toBeVisible();
+  expect(screen.getByText("1 file, +1 −1 lines")).toBeVisible();
+  // Short hashes, full on hover; no "child" or "regular file" in the words.
+  expect(screen.getByTitle("a".repeat(40))).toHaveTextContent(/^aaaaaaa$/);
+  expect(screen.getByTitle("b".repeat(40))).toHaveTextContent(/^bbbbbbb$/);
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).not.toHaveTextContent(/child|regular file|a{8}/i);
+  const commit = screen.getByRole("button", { name: "Commit these changes" });
+  const cancel = screen.getByRole("button", { name: "Cancel" });
+  expect(commit.parentElement).toBe(cancel.parentElement);
+});
+it("the task's revision is shown only when it differs from the one the task started from", () => {
+  render(
+    <ParallelReviewDialog
+      state={state}
+      onApply={vi.fn()}
+      onClose={vi.fn()}
+      onPlan={vi.fn()}
+      onRelease={vi.fn()}
+    />,
+  );
+  expect(screen.getAllByTitle("a".repeat(40))).toHaveLength(1);
+  expect(screen.queryByText(/task at/)).not.toBeInTheDocument();
 });
 it("integration has no preselected commits and submits only the explicitly selected exact revision", async () => {
   const onPlan = vi.fn();
@@ -210,10 +248,10 @@ it("an interrupted attempt offers explicit claim release and keeps evidence with
   );
   expect(screen.getByRole("alert")).toHaveTextContent("Acknowledgement interrupted");
   expect(
-    screen.queryByRole("button", { name: "Approve integration branch" }),
+    screen.queryByRole("button", { name: "Create integration branch" }),
   ).not.toBeInTheDocument();
   await userEvent.click(
-    screen.getByRole("button", { name: "Keep evidence and release interrupted claim" }),
+    screen.getByRole("button", { name: "Keep what it did and clear the claim" }),
   );
   expect(onRelease).toHaveBeenCalledWith("lost");
   expect(onApply).not.toHaveBeenCalled();

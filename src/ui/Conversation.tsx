@@ -1,5 +1,5 @@
 import { Details, ParallelRuns, PlanText } from "./ParallelRuns";
-import { shortBranch } from "@/parallel/branch";
+import { firstLine, shortBranch } from "@/parallel/branch";
 import { money, number } from "./format";
 import { speechPrice } from "@/cost/duration";
 import { DictationControls } from "./Dictation";
@@ -2314,12 +2314,6 @@ export function Composer({
       </div>
     </footer>
   );
-}
-
-/** A task's first line, short enough for the approval's header. */
-function firstLine(task: string): string {
-  const line = (task.trim().split("\n")[0] ?? "").replace(/[.;:,]+$/, "");
-  return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 }
 
 /** A change not yet made is asked in the present: "Create result.txt?", not "Created result.txt?". */
