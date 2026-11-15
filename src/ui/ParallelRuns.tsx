@@ -5,6 +5,7 @@ import { diffLines } from "@/artifacts/diff";
 import { DiffView } from "./Artifacts";
 import { Modal, Money } from "./primitives";
 import { shortBranch } from "@/parallel/branch";
+import { changeSummary, shortSha } from "@/parallel/review";
 import type {
   ChildCommitPin,
   ChildReviewAttempt,
@@ -225,12 +226,15 @@ export function ParallelReviewDialog({
   onPlan,
   onApply,
   onRelease,
+  taskName = () => "the task",
 }: {
   state: ParallelDialogState;
   onClose: () => void;
   onPlan: (commits: ChildCommitPin[]) => void;
   onApply: () => void;
   onRelease: (token: string) => void;
+  /** A task as the run card names it ("Task 2 · Rename the helper"). */
+  taskName?: (childId: string) => string;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const commits = new Map<string, ChildReviewAttempt>();
@@ -246,21 +250,47 @@ export function ParallelReviewDialog({
   }
   const choosing = state.selecting && !state.snapshot && !state.result;
   const integration = state.selecting || state.snapshot?.childId === null;
+  const name = (childId: string | null) => (childId ? taskName(childId) : "the task");
+  const snap = state.snapshot && !state.result ? state.snapshot : null;
+  const summary = snap ? changeSummary(snap.files) : null;
+  const primary = choosing ? (
+    <Button
+      disabled={state.busy || selected.size === 0}
+      onClick={() => {
+        onPlan(
+          [...selected].flatMap((childId) => {
+            const commit = commits.get(childId)?.result?.commit;
+            return commit ? [{ childId, commit }] : [];
+          }),
+        );
+      }}
+    >
+      Review selected commits
+    </Button>
+  ) : snap ? (
+    <Button disabled={state.busy} onClick={onApply}>
+      {snap.childId ? "Commit these changes" : "Create integration branch"}
+    </Button>
+  ) : null;
   return (
     <Modal
       open
       wide
       title={
         state.result
-          ? "Reviewed repository change complete"
+          ? integration
+            ? "Integration branch ready"
+            : "Changes committed"
           : integration
             ? "Review integration"
-            : "Review child changes"
+            : `Review ${name(snap?.childId ?? null)}`
       }
       description={
         state.result
-          ? "The approved commit is retained on this execution owner."
-          : "Review the pinned revisions and diff before approving a repository change."
+          ? "The commit stays on the machine that ran the task."
+          : integration
+            ? "Check the combined changes before FUSE builds an integration branch from them."
+            : "Check the task's changes before FUSE commits them to its branch."
       }
       onOpenChange={(open) => {
         if (!open && !state.busy) onClose();
@@ -269,9 +299,7 @@ export function ParallelReviewDialog({
       <div className="space-y-3 text-xs">
         {state.busy && (
           <p role="status">
-            {state.snapshot
-              ? "Finishing the approved repository change…"
-              : "Reading retained work…"}
+            {state.snapshot ? "Finishing the approved change…" : "Reading the task's work…"}
           </p>
         )}
         {state.notice && (
@@ -287,20 +315,19 @@ export function ParallelReviewDialog({
         {choosing && (
           <>
             <p>
-              Select exact child commits. Conflicting edits or changed parent/child inputs pause
-              integration.
+              Pick the task commits to combine. If their edits conflict, or a task changed since you
+              reviewed it, integration pauses.
             </p>
             {commits.size === 0 && (
-              <p className="text-muted-foreground">
-                Review and commit at least one child’s changes first.
-              </p>
+              <p className="text-muted-foreground">Review and commit at least one task first.</p>
             )}
             {[...commits].map(([childId, attempt]) => (
               <label key={childId} className="flex items-start gap-2 rounded border p-2">
                 <input
                   type="checkbox"
                   className="mt-1"
-                  aria-label={`Select commit ${attempt.result?.commit ?? ""}`}
+                  aria-label={`Select ${name(childId)}`}
+                  data-commit={attempt.result?.commit}
                   disabled={state.busy}
                   checked={selected.has(childId)}
                   onChange={(e) => {
@@ -313,85 +340,79 @@ export function ParallelReviewDialog({
                   }}
                 />
                 <span className="min-w-0">
-                  <span className="block break-all font-mono">{attempt.result?.branch}</span>
-                  <span className="block break-all font-mono text-muted-foreground">
-                    {attempt.result?.commit}
-                  </span>
+                  <span className="block font-medium">{name(childId)}</span>
+                  {attempt.result && (
+                    <span
+                      className="block break-all text-muted-foreground"
+                      title={`${attempt.result.branch} · ${attempt.result.commit}`}
+                    >
+                      {shortBranch(attempt.result.branch)} · {shortSha(attempt.result.commit)}
+                    </span>
+                  )}
                   {attempt.state === "failed" && (
                     <span className="block text-warning">
-                      Retained after an interrupted acknowledgement; native verification is
-                      required.
+                      Kept after an interrupted commit; check it on the machine that ran it.
                     </span>
                   )}
                 </span>
               </label>
             ))}
-            <Button
-              disabled={state.busy || selected.size === 0}
-              onClick={() => {
-                onPlan(
-                  [...selected].flatMap((childId) => {
-                    const commit = commits.get(childId)?.result?.commit;
-                    return commit ? [{ childId, commit }] : [];
-                  }),
-                );
-              }}
-            >
-              Review selected commits
-            </Button>
           </>
         )}
-        {state.snapshot && !state.result && (
+        {snap && summary && (
           <>
-            <p className="break-all">
-              Parent revision <code>{state.snapshot.parentBase.commit}</code>
+            <p className="text-sm font-medium">{summary}</p>
+            <p className="text-muted-foreground">
+              {snap.childId
+                ? "Only these changes are committed, to the task's own branch. "
+                : "FUSE builds a separate integration branch and worktree from these commits; your folder and its staged files stay as they are. "}
+              Based on{" "}
+              <code title={snap.parentBase.commit}>{shortSha(snap.parentBase.commit)}</code>
+              {snap.childHead && snap.childHead !== snap.parentBase.commit && (
+                <>
+                  , task at <code title={snap.childHead}>{shortSha(snap.childHead)}</code>
+                </>
+              )}
+              {snap.commits.length > 0 && (
+                <>
+                  {", "}
+                  {snap.commits.map((pin, i) => (
+                    <span key={pin.childId}>
+                      {i > 0 && ", "}
+                      {name(pin.childId)} <code title={pin.commit}>{shortSha(pin.commit)}</code>
+                    </span>
+                  ))}
+                </>
+              )}
+              . Commits are authored as FUSE &lt;fuse@local&gt;.
             </p>
-            {state.snapshot.childHead && (
-              <p className="break-all">
-                Child revision <code>{state.snapshot.childHead}</code>
-              </p>
-            )}
-            {state.snapshot.commits.map((pin) => (
-              <p className="break-all font-mono" key={pin.childId}>
-                Child commit {pin.commit}
-              </p>
-            ))}
-            <p>
-              {state.snapshot.childId
-                ? "This commits only the reviewed child changes."
-                : "This creates a separate integration branch and worktree from the exact child commits. The original folder and index are preserved."}{" "}
-              Commits use FUSE &lt;fuse@local&gt; as author and committer.
-            </p>
-            <div className="max-h-[45vh] space-y-3 overflow-auto" aria-label="Reviewed child diffs">
-              {state.snapshot.files.map((file) => (
+            <div className="max-h-[45vh] space-y-3 overflow-auto" aria-label="Changes to review">
+              {snap.files.map((file) => (
                 <section key={file.path}>
                   <h3 className="mb-1 break-all font-mono text-xs">
                     {file.path} ·{" "}
-                    {file.after === null ? "deleted" : file.before === null ? "new" : "changed"} ·{" "}
-                    {file.mode === "100755" ? "executable" : "regular file"}
+                    {file.after === null ? "deleted" : file.before === null ? "new" : "changed"}
+                    {file.mode === "100755" ? " · executable" : ""}
                   </h3>
                   <DiffView lines={diffLines(file.before ?? "", file.after ?? "")} />
                 </section>
               ))}
             </div>
-            <Button disabled={state.busy} onClick={onApply}>
-              {state.snapshot.childId ? "Commit reviewed child" : "Approve integration branch"}
-            </Button>
           </>
         )}
         {state.result && (
           <div role="status" className="space-y-2 rounded border p-3">
             <p className="font-medium">
-              {integration
-                ? "Integration branch is ready for review."
-                : "Reviewed child commit created."}
+              {integration ? "Integration branch is ready for review." : "Task changes committed."}
             </p>
-            <p className="break-all font-mono">{state.result.branch}</p>
-            <p className="break-all font-mono">{state.result.commit}</p>
-            <p className="break-all">Worktree: {state.result.path}</p>
+            <p className="break-all" title={`${state.result.branch} · ${state.result.commit}`}>
+              <code>{shortBranch(state.result.branch)}</code> ·{" "}
+              <code>{shortSha(state.result.commit)}</code>
+            </p>
+            <p className="break-all text-muted-foreground">Worktree: {state.result.path}</p>
             <p className="text-muted-foreground">
-              Use the existing Code/Git workflow to review this branch or explicitly link its
-              worktree for another task. Nothing starts automatically.
+              Review the branch with Code's Git tools, or link its worktree to another task. Nothing
+              starts on its own.
             </p>
           </div>
         )}
@@ -400,12 +421,13 @@ export function ParallelReviewDialog({
           .map((a) => (
             <div key={a.id} className="space-y-2 rounded border p-2">
               <p>
-                A previous {a.kind === "child" ? "child commit" : "integration"} attempt has an
-                unacknowledged outcome. Its evidence is retained; it will not replay.
+                An earlier {a.kind === "child" ? "task commit" : "integration"} was interrupted
+                before FUSE heard how it ended. What it did is kept; it won't run again.
               </p>
               {a.result && (
-                <p className="break-all font-mono">
-                  {a.result.branch} · {a.result.commit}
+                <p className="break-all" title={`${a.result.branch} · ${a.result.commit}`}>
+                  <code>{shortBranch(a.result.branch)}</code> ·{" "}
+                  <code>{shortSha(a.result.commit)}</code>
                 </p>
               )}
               {a.state === "working" && (
@@ -416,15 +438,16 @@ export function ParallelReviewDialog({
                     onRelease(a.id);
                   }}
                 >
-                  Keep evidence and release interrupted claim
+                  Keep what it did and clear the claim
                 </Button>
               )}
             </div>
           ))}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2 border-t pt-3">
           <Button variant="outline" disabled={state.busy} onClick={onClose}>
             {state.result ? "Done" : "Cancel"}
           </Button>
+          {primary}
         </div>
       </div>
     </Modal>
