@@ -22,7 +22,7 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 | Stack | Tauri 2 + React + TypeScript (Vite); SQLite locally (sqlite-vec added in P1 for memory) |
 | UI | shadcn/ui + Tailwind |
 | Package manager | pnpm |
-| Platforms | **Desktop only in P1.** Dev on HULK (Linux). Windows builds come from GitHub Actions, not cross-compiling. Self-hosted web on HULK in P2 |
+| Platforms | **Desktop only in P1.** Dev on BANNER (Linux; `~/fuse` there); HULK only runs the deployed server. Windows builds come from GitHub Actions, not cross-compiling. Self-hosted web on HULK in P2 |
 | Providers | OpenAI + Anthropic together from M0, held to streaming chat + token counts + cost |
 | Web search | Provider-native search tools; no separate search key in P1 |
 | Routing rule | Quality floor first (RT-17), cost second. Cheap tier never answers the user |
@@ -44,12 +44,12 @@ One desktop app (web in P2) that replaces the Claude, ChatGPT, Claude Code and C
 - **Each step = one branch + one PR** (`m0/<short-name>`). PR description says: what changed, how Isaac tests it (exact commands), what's next.
 - Before opening a PR: `pnpm lint`, `pnpm typecheck`, `pnpm test` pass, and the app starts with `pnpm tauri dev`.
 - **Ship every step with the `ship-step` skill** (`.claude/skills/ship-step/`): `pnpm check`, `scripts/screenshot.sh`, PR, merge.
-- **Merge it yourself once checks pass:** the checks above, a screenshot of the running app (HULK is headless: use Xvfb), the secret scan, and CI green once CI exists. Use `gh pr merge <n> --merge --delete-branch`. Don't merge if anything fails, or if the PR asks Isaac a question that's still open.
+- **Merge it yourself once checks pass:** the checks above, a screenshot of the running app (`scripts/screenshot.sh`, which uses Xvfb), the secret scan, and CI green once CI exists. Use `gh pr merge <n> --merge --delete-branch`. Don't merge if anything fails, or if the PR asks Isaac a question that's still open.
 - After merging, send Isaac the PR link, screenshot and next step. **P2 exception, explicitly approved by Isaac on 2026-11-05:** continue unattended through all numbered M13–M19 steps in `docs/P2-completion.md`. This overrides stopping after each merge, never checks or unresolved product decisions. M10–M12 are complete. Report new issues in scoped follow-up PRs; keep live activation and owner acceptance separate.
 - If something in the milestone looks wrong or a decision is missing, **ask Isaac** rather than guessing. Write questions as a short list with your recommendation for each.
 - Isaac reviews in short sprints: keep PRs small, explanations short, and lead with what he needs to do.
 - Tick the step's box in the milestone file in the same PR.
-- **Files on HULK:** leave nothing loose in `~`. Throwaway files go in `~/scratch` (emptied of anything untouched for 14 days); the rest of the rules are in `~/hulkwatch/HOST_CONTRACT.md` §7. `src-tauri/target/debug` is deleted on the first Sunday of each month (`hulk-fuse-cargo-clean.timer`, skipped while a build runs), so the next build after that is a full one.
+- **Where work happens:** develop, build and test on BANNER in `~/fuse` (`src-tauri/target` is a symlink to `/mnt/data/build/fuse-target`). BANNER has 2 cores, so the full Vitest run can time out under load; rerun failed files before treating a timeout as a bug. HULK's `~/fuse` is deploy-only: never edit there; deploy by merging to `main`, then on HULK `git pull` and `bash scripts/deploy-server.sh` (owner-run, as before). On HULK leave nothing loose in `~` (`~/hulkwatch/HOST_CONTRACT.md` §7); `src-tauri/target/debug` there is deleted on the first Sunday of each month by `hulk-fuse-cargo-clean.timer`.
 
 ## Secrets — hard rules
 
