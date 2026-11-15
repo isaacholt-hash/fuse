@@ -37,6 +37,10 @@ if [[ -n "${FUSE_SEED_DIR:-}" ]]; then
   cp -a "$FUSE_SEED_DIR/." "$XDG_CONFIG_HOME/com.isaacholt.fuse/"
 fi
 
+# Draw on the Xvfb display only: on a machine with a desktop session (banner), GTK would otherwise
+# find its Wayland socket and open the window on the real screen.
+unset WAYLAND_DISPLAY
+export GDK_BACKEND=x11
 # WebKitGTK renders black under Xvfb without these.
 export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1 LIBGL_ALWAYS_SOFTWARE=1
 TAURI_ARGS=()
