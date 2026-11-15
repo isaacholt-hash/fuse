@@ -259,6 +259,11 @@ Step 2 (release record; owner acceptance pending):
     estimate used the thread's measured output. Each level now scales the estimate's own output
     by the levels' typical reasoning ratio, so a saving never exceeds the message, and the row
     keeps one precision ("+$0.0300", not "+$0.03"); differences under $0.0001 aren't shown.
+  - `fix/code-wording` (P1, critique re-run 2026-11-15): Code used Chat's words and showed two
+    contradictions while a run waited. The sidebar reads "Search sessions" (the dialog, which
+    finds both, "Search sessions and chats"), the ledger head "this session"; the run card no
+    longer shows "Running for" beside "Waiting for you", and a run's message has no bare
+    streaming caret under its card (a plain answer keeps it).
   - `fix/review-dialog` (P1, critique re-run 2026-11-15): the commit review was the least
     designed screen at the highest-stakes moment: two identical 40-character hashes, "child",
     "regular file", and Commit mid-dialog away from Cancel. It now names the task as the run card

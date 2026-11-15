@@ -168,7 +168,15 @@ const perMessage = (micro: number, answers: number) =>
   answers > 0 ? Math.round(micro / answers) : null;
 
 /** The column's head: the thread's total, its tokens and what a message costs on average. */
-function LedgerTotal({ total, compact = false }: { total: ThreadTotal; compact?: boolean }) {
+function LedgerTotal({
+  total,
+  compact = false,
+  noun,
+}: {
+  total: ThreadTotal;
+  compact?: boolean;
+  noun: "thread" | "session";
+}) {
   const per = perMessage(total.micro, total.answers);
   const rate = total.cacheRate;
   return (
@@ -181,16 +189,16 @@ function LedgerTotal({ total, compact = false }: { total: ThreadTotal; compact?:
     >
       <div
         tabIndex={0}
-        aria-label="Thread total"
+        aria-label={noun === "session" ? "Session total" : "Thread total"}
         className="rounded-md text-right text-[12px] leading-5 text-muted-foreground tabular-nums @max-[760px]:flex @max-[760px]:flex-wrap @max-[760px]:items-baseline @max-[760px]:gap-x-2 @max-[760px]:text-left"
       >
         {compact ? (
           <>
-            this thread <Money micro={total.micro} className="text-[13px]" />
+            this {noun} <Money micro={total.micro} className="text-[13px]" />
           </>
         ) : (
           <>
-            <span className="block text-[12px] @max-[760px]:hidden">this thread</span>
+            <span className="block text-[12px] @max-[760px]:hidden">this {noun}</span>
             <Money
               micro={total.micro}
               className="block text-base leading-6 @max-[760px]:text-[13px] @max-[760px]:leading-5"
@@ -471,6 +479,7 @@ export function Messages({
   messages,
   empty,
   home,
+  noun = "thread",
   startedAt,
   onRetry,
   onEscalate,
@@ -532,6 +541,8 @@ export function Messages({
   empty?: { heading: string };
   /** M10 step 14: a new chat or session shows this instead of the plain empty state. */
   home?: ReactNode;
+  /** What the ledger head calls the conversation: "this thread" in Chat, "this session" in Code. */
+  noun?: "thread" | "session";
   /** When the conversation started (Unix ms). */
   startedAt: number | null;
   /** M10 step 24: the thread's total, at the head of the ledger margin. */
@@ -640,7 +651,7 @@ export function Messages({
               <div className="text-[12px] text-muted-foreground">
                 {startedAt !== null && startedLabel(startedAt)}
               </div>
-              {total && <LedgerTotal total={total} compact={scrolled} />}
+              {total && <LedgerTotal total={total} compact={scrolled} noun={noun} />}
             </div>
             {messages.map((message) => (
               <div
@@ -846,13 +857,17 @@ export function Messages({
                         Searching the web…
                       </p>
                     )}
-                    {message.status === "streaming" && !message.content && !message.searching && (
-                      <span
-                        className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground"
-                        role="img"
-                        aria-label="Response streaming"
-                      />
-                    )}
+                    {/* A run's card shows its own progress; the bare caret is for a plain answer. */}
+                    {message.status === "streaming" &&
+                      !message.content &&
+                      !message.searching &&
+                      !message.run && (
+                        <span
+                          className="inline-block h-4 w-1.5 animate-pulse rounded-sm bg-foreground"
+                          role="img"
+                          aria-label="Response streaming"
+                        />
+                      )}
                     {message.status === "error" && (
                       <div
                         role="alert"
@@ -2558,7 +2573,8 @@ function RunCard({
         >
           {live && approval ? "Waiting for you" : RUN_STATUS[run.status]}
         </span>
-        {live && run.activeSince !== null && (
+        {/* While it waits for you, the run isn't running: no clock beside "Waiting for you". */}
+        {live && !approval && run.activeSince !== null && (
           <span className="text-[12px] text-muted-foreground">
             <RunningFor since={run.activeSince} />
           </span>

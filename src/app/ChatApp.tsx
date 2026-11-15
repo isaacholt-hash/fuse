@@ -5490,7 +5490,7 @@ export function ChatApp({
     {
       id: "search",
       group: "Actions",
-      label: "Search chats",
+      label: area === "code" ? "Search sessions and chats" : "Search chats",
       shortcut: "Ctrl ⇧ F",
       run: () => {
         setSearchOpen(true);
@@ -7131,6 +7131,7 @@ export function ChatApp({
                         key={selectedId ?? "new"}
                         messages={withEscalation}
                         empty={emptyState(area)}
+                        noun={area === "code" ? "session" : "thread"}
                         {...(homeShown
                           ? {
                               home: (
@@ -7691,6 +7692,7 @@ export function ChatApp({
         </div>
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} items={paletteItems} />
         <SearchDialog
+          title={area === "code" ? "Search sessions and chats" : "Search chats"}
           open={searchOpen}
           onOpenChange={setSearchOpen}
           onSearch={search}

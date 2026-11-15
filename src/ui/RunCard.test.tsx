@@ -324,21 +324,26 @@ test("a running run's card shows its live total; once done, its answer's margin 
   expect(screen.getByRole("region", { name: "Work run" }).textContent).not.toContain("$0.0022");
 });
 
-test("a run stopped on a question says it is waiting for you, scrolls it into view and ticks each second", () => {
+test("a run stopped on a question says it is waiting for you, with no clock, and the clock ticks once it goes on", () => {
   vi.useFakeTimers();
   const scroll = vi.fn();
   const prior = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
   Object.defineProperty(Element.prototype, "scrollIntoView", { value: scroll, configurable: true });
   try {
+    const since = Date.now();
     show({
       ...base,
-      activeSince: Date.now(),
+      activeSince: since,
       approval: { kind: "command", command: "pnpm test", destructive: null },
     });
     const card = screen.getByRole("region", { name: "Work run" });
     expect(card).toHaveTextContent("Waiting for you");
     expect(card).not.toHaveTextContent("Working");
     expect(scroll).toHaveBeenCalledTimes(1);
+    // Waiting isn't running: no "Running for" beside "Waiting for you".
+    expect(screen.queryByLabelText("Running for")).not.toBeInTheDocument();
+    cleanup();
+    show({ ...base, activeSince: since });
     expect(screen.getByLabelText("Running for").textContent).toBe("Running for 0 s");
     act(() => {
       vi.advanceTimersByTime(3_000);
@@ -443,8 +448,8 @@ test("a11y: Allow once is named by its words, says its key, and a task's full st
   expect(screen.getByRole("alertdialog")).toHaveTextContent(
     "Task 1 · Write alpha in result.txt, in its own worktree",
   );
-  // The empty answer's caret is a named picture, not a span with a stray label.
-  expect(screen.getByRole("img", { name: "Response streaming" })).toBeInTheDocument();
+  // A run's card shows its progress; no stray caret under it.
+  expect(screen.queryByRole("img", { name: "Response streaming" })).not.toBeInTheDocument();
 });
 
 test("RT-14: the margin names the model doing the run's work and who planned it", () => {
@@ -471,4 +476,25 @@ test("RT-14: the margin names the model doing the run's work and who planned it"
   const margin = [...document.querySelectorAll("[data-ledger-margin]")].at(-1);
   expect(margin).toHaveTextContent("Claude Sonnet 5.5");
   expect(margin).toHaveTextContent("planned on Claude Opus 5.5");
+});
+
+test("a plain answer streams with a named caret, and a Code session's ledger head says 'this session'", () => {
+  render(
+    <Tooltip.Provider>
+      <Messages
+        startedAt={0}
+        onRetry={() => undefined}
+        noun="session"
+        total={{ micro: 1500, tokens: 900, cacheRate: null, answers: 1 }}
+        messages={[
+          { id: "q", role: "user", content: "Go", status: "complete" },
+          { id: "a", role: "assistant", content: "", status: "streaming" },
+        ]}
+      />
+    </Tooltip.Provider>,
+  );
+  expect(screen.getByRole("img", { name: "Response streaming" })).toBeInTheDocument();
+  const head = screen.getByLabelText("Session total");
+  expect(head).toHaveTextContent("this session");
+  expect(head).not.toHaveTextContent("this thread");
 });

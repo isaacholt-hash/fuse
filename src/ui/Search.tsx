@@ -60,7 +60,10 @@ export function SearchDialog({
   onSearch,
   onOpen,
   onAttach,
+  title = "Search chats",
 }: {
+  /** What the search is called in the area it opens from; it finds Chat and Code alike. */
+  title?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSearch: (text: string) => Promise<SearchHitView[]>;
@@ -99,14 +102,14 @@ export function SearchDialog({
         }
         onOpenChange(next);
       }}
-      title="Search chats"
+      title={title}
       description="Every question and answer, across all your chats."
       wide
     >
       <div className="flex items-center gap-2.5 rounded-lg border px-3 py-2 focus-within:border-ring">
         <SearchIcon className="size-4 text-muted-foreground" />
         <input
-          aria-label="Search chats"
+          aria-label={title}
           autoFocus
           placeholder="Search…"
           className="min-w-0 flex-1 bg-transparent text-sm outline-none"
