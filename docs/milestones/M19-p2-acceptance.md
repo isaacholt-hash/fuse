@@ -266,6 +266,10 @@ Step 2 (release record; owner acceptance pending):
     7-character hashes (full on hover) and the task's revision only when it differs, and puts
     Cancel and "Commit these changes" together in a footer. Integration reads "Create
     integration branch" and lists tasks by name.
+  - `fix/focus-ring` (P1, critique re-run 2026-11-15): the focus ring and the composer's focus
+    border were copper, so a focused field or chip read as a cost signal, against "copper for
+    money and nothing else". `--ring` is now muted slate (6.1:1 light, 6.7:1 dark on the page),
+    and the spec says so.
 
 | Check | Automated | Owner on a released build |
 | --- | --- | --- |
