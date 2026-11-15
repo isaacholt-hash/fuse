@@ -401,6 +401,11 @@ const MIGRATIONS: &[MigrationFile] = &[
         description: "context_tools",
         sql: include_str!("../migrations/0073_context_tools.sql"),
     },
+    MigrationFile {
+        version: 74,
+        description: "writing_canvas",
+        sql: include_str!("../migrations/0074_writing_canvas.sql"),
+    },
 ];
 
 /// The schema this build runs: the count of its migrations (M10 F2). Two builds with the same
